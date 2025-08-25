@@ -4,6 +4,8 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MantineProvider } from '@mantine/core';
 import { Toaster } from "@/components/ui/toaster"
+import { SupabaseProvider } from "@/components/supabase-provider"
+import { ConnectionStatus } from "@/components/connection-status"
 import ClientLayout from "@/app/client-layout"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -24,10 +26,22 @@ export default function RootLayout({
       <body className={inter.className}>
         <MantineProvider>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-            <ClientLayout>
-              {children}
-            </ClientLayout>
-            <Toaster />
+            <SupabaseProvider 
+              keepAlive={true}
+              retryDelay={3000}
+              maxRetries={3}
+              useReadOnlyForQueries={true}
+            >
+              <ClientLayout>
+                {children}
+              </ClientLayout>
+              <Toaster />
+              <ConnectionStatus 
+                showBadgeOnly={true}
+                position="top-right"
+                autoHide={true}
+              />
+            </SupabaseProvider>
           </ThemeProvider>
         </MantineProvider>
       </body>
