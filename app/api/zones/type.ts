@@ -1,0 +1,58 @@
+const zones = [
+  {
+    id: "1",
+    name: "Zona Norte",
+    description: "Región norte de la ciudad",
+    coordinates: [
+      { lat: 19.45, lng: -99.2 },
+      { lat: 19.45, lng: -99.15 },
+      { lat: 19.4, lng: -99.15 },
+      { lat: 19.4, lng: -99.2 },
+    ],
+    surveyors: ["3", "4"],
+    surveys: ["1", "4"],
+    status: "active",
+  },
+  {
+    id: "2",
+    name: "Zona Centro",
+    description: "Región central de la ciudad",
+    coordinates: [
+      { lat: 19.43, lng: -99.15 },
+      { lat: 19.43, lng: -99.1 },
+      { lat: 19.38, lng: -99.1 },
+      { lat: 19.38, lng: -99.15 },
+    ],
+    surveyors: ["3"],
+    surveys: ["1"],
+    status: "active",
+  },
+  {
+    id: "3",
+    name: "Zona Sur",
+    description: "Región sur de la ciudad",
+    coordinates: [
+      { lat: 19.35, lng: -99.2 },
+      { lat: 19.35, lng: -99.15 },
+      { lat: 19.3, lng: -99.15 },
+      { lat: 19.3, lng: -99.2 },
+    ],
+    surveyors: ["4", "5"],
+    surveys: ["4"],
+    status: "active",
+  },
+  {
+    id: "4",
+    name: "Zona Este",
+    description: "Región este de la ciudad",
+    coordinates: [
+      { lat: 19.43, lng: -99.1 },
+      { lat: 19.43, lng: -99.05 },
+      { lat: 19.38, lng: -99.05 },
+      { lat: 19.38, lng: -99.1 },
+    ],
+    surveyors: ["5"],
+    surveys: [],
+    status: "inactive",
+  },
+]
