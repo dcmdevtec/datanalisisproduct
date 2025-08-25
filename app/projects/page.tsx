@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -32,7 +32,7 @@ type Company = {
   name: string
 }
 
-export default function ProjectsPage() {
+function ProjectsPageContent() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -459,5 +459,13 @@ export default function ProjectsPage() {
         cancelText="Cancelar"
       />
     </DashboardLayout>
+  )
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <ProjectsPageContent />
+    </Suspense>
   )
 }

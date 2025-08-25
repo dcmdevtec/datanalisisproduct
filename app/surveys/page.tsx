@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -56,7 +56,7 @@ type Project = {
   company_id: string
 }
 
-export default function SurveysPage() {
+function SurveysPageContent() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -411,7 +411,6 @@ export default function SurveysPage() {
             placeholder="Filtrar por empresa..."
             searchPlaceholder="Buscar empresa..."
             emptyMessage="No se encontraron empresas."
-            className="w-full sm:w-60"
           />
           <Combobox
             options={projects
@@ -442,7 +441,6 @@ export default function SurveysPage() {
               filterCompanyId ? "No se encontraron proyectos para esta empresa." : "Selecciona una empresa primero."
             }
             disabled={!filterCompanyId} // Disable if no company is selected for filtering
-            className="w-full sm:w-60"
           />
         </div>
 
@@ -742,5 +740,13 @@ export default function SurveysPage() {
         onProjectCreated={handleProjectCreated}
       />
     </DashboardLayout>
+  )
+}
+
+export default function SurveysPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <SurveysPageContent />
+    </Suspense>
   )
 }

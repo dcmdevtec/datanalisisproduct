@@ -60,7 +60,7 @@ export default function SupabaseConnectionTest() {
       }
     } catch (err) {
       console.error("Error testing connection:", err)
-      setError(err. || "Error desconocido")
+      setError(err.message || "Error desconocido")
       setIsConnected(false)
     } finally {
       setIsLoading(false)

@@ -66,7 +66,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { QuestionEditor } from "@/components/question-editor"
 import { arrayMove } from "@dnd-kit/sortable"
 
@@ -115,14 +115,16 @@ interface Question {
         value: string
       }>
     }
-    skipLogic?: {
-      enabled: boolean
-      rules: Array<{
-        condition: string // e.g., "answer === 'Yes'" or "answer.includes('Option A')"
-        targetSectionId: string // ID of the section to jump to
-        targetQuestionId?: string // ID of the question to jump to (optional)
-      }>
-    }
+            skipLogic?: {
+          enabled: boolean
+          rules: Array<{
+            condition: string // e.g., "answer === 'Yes'" or "answer.includes('Option A')"
+            targetSectionId: string // ID of the section to jump to
+            targetQuestionId?: string // ID of the question to jump to (optional)
+            targetQuestionText?: string // Text of the question to jump to (optional)
+            enabled?: boolean // Whether this rule is enabled
+          }>
+        }
     validation?: {
       required?: boolean
       minLength?: number
@@ -138,6 +140,7 @@ interface SectionSkipLogic {
   enabled: boolean
   targetSectionId?: string
   targetQuestionId?: string
+  targetQuestionText?: string
   action: "next_section" | "specific_section" | "specific_question" | "end_survey"
 }
 
@@ -506,6 +509,199 @@ const updateSkipLogicReferences = (
   })
   
   return updatedSections
+}
+
+// Función para actualizar referencias de preguntas en la lógica de salto
+const updateSkipLogicReferencesWithQuestionMapping = (
+  sections: SurveySection[],
+  questionIdMapping: { [oldId: string]: string }
+) => {
+  console.log("🔄 Actualizando referencias de preguntas en lógica de salto con mapeo de IDs...")
+  console.log("📋 Mapeo de IDs disponible:", questionIdMapping)
+  
+  // Crear una copia profunda de las secciones para no mutar el estado directamente
+  const updatedSections = sections.map(section => ({
+    ...section,
+    skipLogic: section.skipLogic ? { ...section.skipLogic } : undefined,
+    questions: section.questions.map(question => ({
+      ...question,
+      config: question.config ? {
+        ...question.config,
+        skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined
+      } : undefined
+    }))
+  }))
+  
+  let updatedReferences = 0
+  let skippedReferences = 0
+  
+  updatedSections.forEach(section => {
+    // Actualizar referencias en secciones
+    if (section.skipLogic?.enabled && section.skipLogic.targetQuestionId) {
+      const oldQuestionId = section.skipLogic.targetQuestionId
+      console.log(`🔍 Verificando referencia de pregunta en sección "${section.title}": ${oldQuestionId}`)
+      
+      if (questionIdMapping[oldQuestionId]) {
+        const newQuestionId = questionIdMapping[oldQuestionId]
+        section.skipLogic.targetQuestionId = newQuestionId
+        console.log(`✅ Referencia de pregunta actualizada en sección "${section.title}": ${oldQuestionId} -> ${newQuestionId}`)
+        updatedReferences++
+      } else {
+        console.log(`⚠️ No se encontró mapeo para pregunta ID: ${oldQuestionId} en sección "${section.title}"`)
+        console.log(`💡 Esto puede indicar que la pregunta ya tiene un ID válido o que no se procesó correctamente`)
+        skippedReferences++
+      }
+    }
+    
+    // Actualizar referencias en preguntas
+    section.questions.forEach(question => {
+      if (question.config?.skipLogic?.enabled && question.config.skipLogic.rules) {
+        question.config.skipLogic.rules.forEach((rule, ruleIndex) => {
+          // Actualizar referencias de sección
+          if (rule.targetSectionId) {
+            // Esto ya se maneja en updateSkipLogicReferences
+          }
+          
+          // Actualizar referencias de pregunta específica
+          if (rule.targetQuestionId) {
+            const oldQuestionId = rule.targetQuestionId
+            console.log(`🔍 Verificando referencia de pregunta en regla ${ruleIndex + 1} de "${question.text.substring(0, 50)}...": ${oldQuestionId}`)
+            
+            if (questionIdMapping[oldQuestionId]) {
+              const newQuestionId = questionIdMapping[oldQuestionId]
+              rule.targetQuestionId = newQuestionId
+              console.log(`✅ Referencia de pregunta actualizada en regla ${ruleIndex + 1}: ${oldQuestionId} -> ${newQuestionId}`)
+              updatedReferences++
+            } else {
+              console.log(`⚠️ No se encontró mapeo para pregunta ID: ${oldQuestionId} en regla ${ruleIndex + 1}`)
+              console.log(`💡 Esto puede indicar que la pregunta ya tiene un ID válido o que no se procesó correctamente`)
+              skippedReferences++
+            }
+          }
+        })
+      }
+    })
+  })
+  
+  console.log(`📊 Resumen de actualización: ${updatedReferences} referencias actualizadas, ${skippedReferences} referencias omitidas`)
+  
+  return updatedSections
+}
+
+// Función para validar y corregir referencias de preguntas en la lógica de salto al cargar datos
+const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySection[] => {
+  console.log("🔍 Validando referencias de preguntas en lógica de salto...")
+  
+  // Crear una copia profunda de las secciones
+  const validatedSections = sections.map(section => ({
+    ...section,
+    skipLogic: section.skipLogic ? { ...section.skipLogic } : undefined,
+    questions: section.questions.map(question => ({
+      ...question,
+      config: question.config ? {
+        ...question.config,
+        skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined
+      } : undefined
+    }))
+  }))
+  
+  // Crear un mapa de todas las preguntas disponibles por ID
+  const allQuestionsMap: { [questionId: string]: { sectionId: string; questionText: string } } = {}
+  validatedSections.forEach(section => {
+    section.questions.forEach(question => {
+      allQuestionsMap[question.id] = {
+        sectionId: section.id,
+        questionText: question.text
+      }
+    })
+  })
+  
+  let fixedReferences = 0
+  
+  validatedSections.forEach(section => {
+    // Validar referencias en secciones
+    if (section.skipLogic?.enabled && section.skipLogic.targetQuestionId) {
+      const targetQuestionId = section.skipLogic.targetQuestionId
+      if (!allQuestionsMap[targetQuestionId]) {
+        console.log(`⚠️ Referencia de pregunta inválida en sección "${section.title}": ${targetQuestionId}`)
+        
+        // Buscar una pregunta similar por texto
+        const targetQuestionText = section.skipLogic.targetQuestionText || ""
+        if (targetQuestionText) {
+          const similarQuestion = Object.entries(allQuestionsMap).find(([id, question]) => 
+            question.questionText.toLowerCase().includes(targetQuestionText.toLowerCase()) ||
+            targetQuestionText.toLowerCase().includes(question.questionText.toLowerCase())
+          )
+          
+          if (similarQuestion) {
+            const [newQuestionId, questionInfo] = similarQuestion
+            section.skipLogic.targetQuestionId = newQuestionId
+            console.log(`✅ Referencia corregida: ${targetQuestionId} -> ${newQuestionId} (${questionInfo.questionText})`)
+            fixedReferences++
+          } else {
+            // Si no se encuentra una pregunta similar, resetear la referencia
+            console.log(`❌ No se pudo encontrar pregunta similar, reseteando referencia`)
+            section.skipLogic.targetQuestionId = undefined
+            section.skipLogic.action = "next_section"
+            section.skipLogic.enabled = false
+          }
+        } else {
+          // Si no hay texto de referencia, resetear
+          section.skipLogic.targetQuestionId = undefined
+          section.skipLogic.action = "next_section"
+          section.skipLogic.enabled = false
+        }
+      }
+    }
+    
+    // Validar referencias en preguntas
+    section.questions.forEach(question => {
+      if (question.config?.skipLogic?.enabled && question.config.skipLogic.rules) {
+        question.config.skipLogic.rules.forEach(rule => {
+          // Validar referencias de pregunta específica
+          if (rule.targetQuestionId) {
+            const targetQuestionId = rule.targetQuestionId
+            if (!allQuestionsMap[targetQuestionId]) {
+              console.log(`⚠️ Referencia de pregunta inválida en regla de "${question.text.substring(0, 50)}...": ${targetQuestionId}`)
+              
+              // Buscar pregunta similar por texto
+              const targetQuestionText = rule.targetQuestionText || ""
+              if (targetQuestionText) {
+                const similarQuestion = Object.entries(allQuestionsMap).find(([id, questionInfo]) => 
+                  questionInfo.questionText.toLowerCase().includes(targetQuestionText.toLowerCase()) ||
+                  targetQuestionText.toLowerCase().includes(questionInfo.questionText.toLowerCase())
+                )
+                
+                if (similarQuestion) {
+                  const [newQuestionId, questionInfo] = similarQuestion
+                  rule.targetQuestionId = newQuestionId
+                  console.log(`✅ Referencia corregida en regla: ${targetQuestionId} -> ${newQuestionId} (${questionInfo.questionText})`)
+                  fixedReferences++
+                } else {
+                  // Si no se encuentra, deshabilitar la regla
+                  console.log(`❌ No se pudo encontrar pregunta similar, deshabilitando regla`)
+                  rule.targetQuestionId = undefined
+                  rule.enabled = false
+                }
+              } else {
+                // Si no hay texto de referencia, deshabilitar la regla
+                rule.targetQuestionId = undefined
+                rule.enabled = false
+              }
+            }
+          }
+        })
+      }
+    })
+  })
+  
+  if (fixedReferences > 0) {
+    console.log(`✅ Se corrigieron ${fixedReferences} referencias de preguntas inválidas`)
+  } else {
+    console.log("✅ Todas las referencias de preguntas son válidas")
+  }
+  
+  return validatedSections
 }
 
 interface SectionSkipLogicConfigProps {
@@ -979,6 +1175,12 @@ function CreateSurveyForProjectPageContent() {
           }
         })
         
+        // Mapa para mantener correspondencia entre IDs antiguos y nuevos de preguntas
+        const questionIdMapping: { [oldId: string]: string } = {}
+        
+        // PRIMER PASO: Guardar todas las preguntas para obtener IDs permanentes
+        console.log("🔄 PRIMER PASO: Guardando preguntas para obtener IDs permanentes...")
+        
         for (const [secIndex, section] of sections.entries()) {
           console.log(`📋 Procesando sección ${secIndex + 1}: "${section.title}"`)
           
@@ -1120,6 +1322,9 @@ function CreateSurveyForProjectPageContent() {
               throw new Error(`La pregunta ${qIndex + 1} de la sección "${section.title}" debe tener un texto válido`)
             }
 
+            // Guardar el ID antiguo para el mapeo
+            const oldQuestionId = q.id
+
             // Extraer la configuración de la pregunta
             const questionConfig = q.config || {}
             
@@ -1190,6 +1395,52 @@ function CreateSurveyForProjectPageContent() {
             
             // Actualizar el ID de la pregunta en el estado local para mantener referencias
             q.id = data.id
+            
+            // Guardar el mapeo de ID antiguo a nuevo
+            if (oldQuestionId && oldQuestionId !== 'temp-id') {
+              questionIdMapping[oldQuestionId] = data.id
+              console.log(`🔄 Mapeo de ID de pregunta: ${oldQuestionId} -> ${data.id}`)
+            }
+          }
+        }
+
+        // SEGUNDO PASO: Actualizar referencias de lógica de salto con los nuevos IDs
+        console.log("🔄 SEGUNDO PASO: Actualizando referencias de lógica de salto con nuevos IDs de preguntas...")
+        const updatedSectionsWithNewIds = updateSkipLogicReferencesWithQuestionMapping(sections, questionIdMapping)
+        setSections(updatedSectionsWithNewIds)
+
+        // TERCER PASO: Actualizar las preguntas con la lógica de salto corregida
+        console.log("🔄 TERCER PASO: Actualizando preguntas con lógica de salto corregida...")
+        
+        for (const section of updatedSectionsWithNewIds) {
+          for (const [qIndex, q] of section.questions.entries()) {
+            // Preparar datos actualizados de la pregunta
+            const questionConfig = q.config || {}
+            
+            const updatedQuestionData = {
+              // Solo actualizar los campos que pueden haber cambiado
+              skip_logic: (questionConfig as any).skipLogic || null,
+              display_logic: (questionConfig as any).displayLogic || null,
+              validation_rules: (questionConfig as any).validation || null,
+              question_config: (questionConfig as any).questionConfig || null,
+              matrix: (questionConfig as any).matrix || null,
+              style: (questionConfig as any).style || {},
+            }
+            
+            console.log(`🔄 Actualizando pregunta "${q.text.substring(0, 50)}..." con lógica corregida...`)
+            
+            const { error: updateError } = await supabase
+              .from("questions")
+              .update(updatedQuestionData)
+              .eq("id", q.id)
+              
+            if (updateError) {
+              console.error("❌ Error al actualizar pregunta con lógica corregida:", updateError)
+              // No lanzar error aquí, solo log
+              console.warn(`⚠️ No se pudo actualizar la lógica de salto de la pregunta "${q.text.substring(0, 50)}..."`)
+            } else {
+              console.log(`✅ Pregunta "${q.text.substring(0, 50)}..." actualizada con lógica corregida`)
+            }
           }
         }
 
@@ -1694,7 +1945,11 @@ function CreateSurveyForProjectPageContent() {
        })
       
       console.log("📋 Secciones formateadas:", formattedSections)
-      setSections(formattedSections)
+      
+      // Validar y corregir referencias de preguntas en la lógica de salto
+      const validatedSections = validateAndFixSkipLogicReferences(formattedSections)
+      
+      setSections(validatedSections)
     } catch (err: any) {
       console.error("Error fetching survey for edit:", err)
       setError(err.message || "No se pudo cargar la encuesta para editar.")
@@ -2016,7 +2271,7 @@ function CreateSurveyForProjectPageContent() {
               <TabsContent value="details" className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">📋 Información básica de la encuesta</CardTitle>
+                    <CardTitle className="flex items-center gap-2">�� Información básica de la encuesta</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="space-y-2">
@@ -2620,7 +2875,9 @@ function CreateSurveyForProjectPageContent() {
 export default function CreateSurveyForProjectPage() {
   return (
     <ClientLayout>
-      <CreateSurveyForProjectPageContent />
+      <Suspense fallback={<div>Cargando...</div>}>
+        <CreateSurveyForProjectPageContent />
+      </Suspense>
     </ClientLayout>
   )
 }
