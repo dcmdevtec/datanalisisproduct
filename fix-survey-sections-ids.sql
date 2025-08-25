@@ -1,49 +1,69 @@
--- Script para hacer los IDs de survey_sections únicos e inmutables
--- Ejecutar en tu base de datos PostgreSQL
+-- Script para prevenir cambios de ID en survey_sections y questions
+-- Este script configura triggers que previenen que los IDs cambien
 
--- 1. Verificar si hay IDs duplicados
-SELECT id, COUNT(*) as count
-FROM survey_sections 
-GROUP BY id 
-HAVING COUNT(*) > 1;
-
--- 2. Crear un índice único en el ID (si no existe)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_sections_id_unique 
-ON survey_sections (id);
-
--- 3. Crear una función de validación para prevenir cambios de ID
-CREATE OR REPLACE FUNCTION prevent_id_change()
+-- 1. Crear función para prevenir cambios de ID en survey_sections
+CREATE OR REPLACE FUNCTION prevent_survey_sections_id_change()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Si se está intentando cambiar el ID, lanzar error
-    IF OLD.id != NEW.id THEN
-        RAISE EXCEPTION 'No se puede cambiar el ID de una sección. ID original: %, ID nuevo: %', OLD.id, NEW.id;
+    IF OLD.id IS DISTINCT FROM NEW.id THEN
+        RAISE EXCEPTION 'No se permite cambiar el ID de la tabla survey_sections. El ID original era: %, el nuevo ID es: %', 
+                       OLD.id, NEW.id;
     END IF;
-    
-    -- Permitir la actualización de otros campos
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- 4. Crear un trigger que prevenga cambios de ID
+-- 2. Crear función para prevenir cambios de ID en questions
+CREATE OR REPLACE FUNCTION prevent_questions_id_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.id IS DISTINCT FROM NEW.id THEN
+        RAISE EXCEPTION 'No se permite cambiar el ID de la tabla questions. El ID original era: %, el nuevo ID es: %', 
+                       OLD.id, NEW.id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 3. Crear trigger para survey_sections
 DROP TRIGGER IF EXISTS prevent_survey_sections_id_change ON survey_sections;
 CREATE TRIGGER prevent_survey_sections_id_change
-    BEFORE UPDATE ON survey_sections
-    FOR EACH ROW
-    EXECUTE FUNCTION prevent_id_change();
+BEFORE UPDATE ON survey_sections
+FOR EACH ROW
+EXECUTE FUNCTION prevent_survey_sections_id_change();
 
--- 5. Verificar que el trigger se creó correctamente
+-- 4. Crear trigger para questions
+DROP TRIGGER IF EXISTS prevent_questions_id_change ON questions;
+CREATE TRIGGER prevent_questions_id_change
+BEFORE UPDATE ON questions
+FOR EACH ROW
+EXECUTE FUNCTION prevent_questions_id_change();
+
+-- 5. Verificar que los triggers se crearon
 SELECT 
-    trigger_name,
-    event_manipulation,
-    action_statement
-FROM information_schema.triggers 
-WHERE event_object_table = 'survey_sections';
+    'survey_sections' as tabla,
+    t.tgname as trigger_name,
+    p.proname as function_name
+FROM pg_trigger t
+JOIN pg_proc p ON t.tgfoid = p.oid
+WHERE t.tgrelid = 'survey_sections'::regclass
+AND t.tgname = 'prevent_survey_sections_id_change'
 
--- 6. Opcional: Agregar restricción CHECK adicional
-ALTER TABLE survey_sections 
-ADD CONSTRAINT check_id_not_changed 
-CHECK (id = id);
+UNION ALL
 
--- 7. Verificar la estructura final de la tabla
-\d survey_sections
+SELECT 
+    'questions' as tabla,
+    t.tgname as trigger_name,
+    p.proname as function_name
+FROM pg_trigger t
+JOIN pg_proc p ON t.tgfoid = p.oid
+WHERE t.tgrelid = 'questions'::regclass
+AND t.tgname = 'prevent_questions_id_change';
+
+-- 6. Mensaje de confirmación
+DO $$
+BEGIN
+    RAISE NOTICE '✅ Triggers configurados exitosamente!';
+    RAISE NOTICE '✅ Los IDs de survey_sections y questions están protegidos contra cambios.';
+    RAISE NOTICE '💡 Ahora las secciones mantendrán sus IDs al editar encuestas.';
+END $$;
