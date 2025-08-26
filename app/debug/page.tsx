@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { supabase } from "@/lib/supabase-browser"
+import { supabase } from "@/lib/supabase/client"
 import DebugSupabase from "@/components/debug-supabase"
+import { SupabaseDebug } from "@/components/supabase-debug"
 import { Loader2, Bug, Database, Shield } from "lucide-react"
 
 export default function DebugPage() {
@@ -122,10 +123,11 @@ export default function DebugPage() {
         <DebugSupabase />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid grid-cols-1 sm:grid-cols-3">
+          <TabsList className="grid grid-cols-1 sm:grid-cols-4">
             <TabsTrigger value="connection">Conexión</TabsTrigger>
             <TabsTrigger value="tables">Tablas</TabsTrigger>
             <TabsTrigger value="browser">Navegador</TabsTrigger>
+            <TabsTrigger value="supabase-debug">Supabase Debug</TabsTrigger>
           </TabsList>
 
           <TabsContent value="connection">
@@ -292,6 +294,18 @@ export default function DebugPage() {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="supabase-debug">
+            <Card>
+              <CardHeader>
+                <CardTitle>Debug de Supabase 2025</CardTitle>
+                <CardDescription>Diagnóstico completo de la conexión y configuración de Supabase</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SupabaseDebug />
               </CardContent>
             </Card>
           </TabsContent>

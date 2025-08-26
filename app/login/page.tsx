@@ -4,6 +4,7 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
+import { CookieDebug } from "@/components/cookie-debug"
 import ClientLayout from "../client-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,11 +16,18 @@ import { Globe } from "lucide-react"
 function LoginPageContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const { login, loading, error } = useAuth()
+  const { signIn, loading } = useAuth()
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await login(email, password)
+    setError(null)
+    
+    try {
+      await signIn(email, password)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Error al iniciar sesión")
+    }
   }
 
   return (
@@ -66,8 +74,6 @@ function LoginPageContent() {
                 required
               />
             </div>
-
-            
           </CardContent>
           <CardFooter className="flex flex-col">
             <Button type="submit" className="w-full" disabled={loading}>
@@ -90,6 +96,7 @@ export default function LoginPage() {
   return (
     <ClientLayout>
       <LoginPageContent />
+      <CookieDebug />
     </ClientLayout>
   )
 }

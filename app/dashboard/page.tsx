@@ -1,7 +1,5 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,24 +7,56 @@ import { BarChart3, Users, FileText, MapPin } from "lucide-react"
 
 export default function PaginaDashboard() {
   const { user, loading } = useAuth()
-  const router = useRouter()
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login")
-    } else if (!loading && user && !["admin", "supervisor"].includes(user.role)) {
-      router.push("/encuestas")
-    }
-  }, [user, loading, router])
-
-  if (loading || !user) {
+  // Solo mostrar loading si está cargando
+  if (loading) {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
+  }
+
+  // Si no hay usuario, el middleware se encargará de la redirección
+  // No necesitamos manejar redirecciones aquí
+  if (!user) {
+    return <div className="flex h-screen items-center justify-center">Redirigiendo...</div>
+  }
+
+  // Obtener el rol correctamente
+  const userRole = user.user_metadata?.role || user.app_metadata?.role
+  
+  // Solo mostrar información de debug en desarrollo
+  if (process.env.NODE_ENV === 'development') {
+    console.log('👤 Usuario en dashboard:', {
+      email: user.email,
+      role: userRole,
+      user_metadata: user.user_metadata,
+      app_metadata: user.app_metadata
+    })
+  }
+
+  // Verificar permisos para esta página específica
+  // Si el usuario no tiene permisos, mostrar un mensaje
+  if (userRole && !["admin", "supervisor"].includes(userRole)) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-screen items-center justify-center flex-col gap-4">
+          <h2 className="text-2xl font-bold">Acceso Restringido</h2>
+          <p className="text-muted-foreground">No tienes permisos para acceder al dashboard administrativo.</p>
+          <p className="text-sm text-muted-foreground">Serás redirigido automáticamente...</p>
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
     <DashboardLayout>
       <div className="p-6">
-        <h1 className="text-3xl font-bold mb-6">Panel de Control</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Panel de Control</h1>
+          {process.env.NODE_ENV === 'development' && (
+            <div className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded">
+              Rol: {userRole || 'Sin rol'}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>

@@ -1011,6 +1011,28 @@ function CreateSurveyForProjectPageContent() {
     const sectionsWithSkipLogic = sections.map((section) => ({
       ...section,
       skip_logic: section.skipLogic || null,
+      questions: section.questions.map((question) => ({
+        ...question,
+        config: {
+          ...question.config,
+          skipLogic: question.config?.skipLogic ? {
+            enabled: question.config.skipLogic.enabled,
+            rules: question.config.skipLogic.rules.map(rule => ({
+              ...rule,
+              questionId: question.id, // Add missing questionId
+              condition: rule.value || "", // Add missing condition field
+              enabled: rule.enabled !== false, // Ensure enabled is boolean
+              operator: rule.operator || "equals",
+              value: rule.value || "",
+              targetSectionId: rule.targetSectionId || "",
+              targetQuestionId: rule.targetQuestionId || undefined,
+              targetQuestionText: rule.targetQuestionText || ""
+            }))
+          } : { enabled: false, rules: [] },
+          displayLogic: question.config?.displayLogic || { enabled: false, conditions: [] },
+          validation: question.config?.validation || { required: question.required || false },
+        }
+      }))
     }))
 
     const previewData = {
@@ -1024,6 +1046,7 @@ function CreateSurveyForProjectPageContent() {
       assignedZoneSurveyors: assignedZoneSurveyors,
     }
 
+    console.log("🔍 Datos de preview con lógica de salto:", previewData)
     localStorage.setItem("surveyPreviewData", JSON.stringify(previewData))
     window.open("/preview/survey", "_blank")
   }

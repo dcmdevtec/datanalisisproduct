@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy } from "lucide-react"
+import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -88,8 +88,9 @@ function SurveysPageContent() {
   const [page, setPage] = useState(1)
   const pageSize = 10
 
-  const isAdmin = user?.role === "admin"
-  const isSupervisor = user?.role === "supervisor"
+  // Sin permisos - todos los usuarios pueden hacer todo
+  // const isAdmin = user?.role === "admin"
+  // const isSupervisor = user?.role === "supervisor"
 
   const companyOptions = companies.map((company) => ({
     label: company.name,
@@ -356,25 +357,22 @@ function SurveysPageContent() {
       <div className="p-4 sm:p-8 bg-[#f7faf9] min-h-screen">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#18b0a4]">Encuestas</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#18b0a4]">
+              <FileText className="inline-block mr-2 h-8 w-8 text-[#18b0a4]" />
+              Encuestas
+            </h1>
             <p className="mt-2 text-gray-500">Gestiona todas las encuestas de la plataforma.</p>
           </div>
-          {(isAdmin || isSupervisor) && (
-            <Button
-              onClick={() => {
-                // If a project is selected via URL param (from direct navigation or filter)
-                if (projectIdFromUrl) {
-                  router.push(`/projects/${projectIdFromUrl}/create-survey`)
-                } else {
-                  // Otherwise, open the modal to select company/project
-                  setIsCreateSurveyModalOpen(true)
-                }
-              }}
-              className="bg-[#18b0a4] hover:bg-[#18b0a4]/90"
-            >
-              <Plus className="h-4 w-4 mr-2" /> Nueva Encuesta
-            </Button>
-          )}
+          <Button
+            onClick={() => {
+              setModalSelectedCompanyId(null)
+              setModalSelectedProjectId(null)
+              setIsCreateSurveyModalOpen(true)
+            }}
+            className="bg-[#18b0a4] hover:bg-[#18b0a4]/90"
+          >
+            <Plus className="h-4 w-4 mr-2" /> Nueva Encuesta
+          </Button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 mb-8">
@@ -459,21 +457,15 @@ function SurveysPageContent() {
           <div className="text-center p-8 border rounded-lg bg-muted/50">
             <h3 className="text-lg font-medium mb-2">No hay encuestas disponibles</h3>
             <p className="text-muted-foreground mb-4">No se encontraron encuestas para mostrar.</p>
-            {(isAdmin || isSupervisor) && (
-              <Button
-                onClick={() => {
-                  // If a project is selected via URL param (from direct navigation or filter)
-                  if (projectIdFromUrl) {
-                    router.push(`/projects/${projectIdFromUrl}/create-survey`)
-                  } else {
-                    // Otherwise, open the modal to select company/project
-                    setIsCreateSurveyModalOpen(true)
-                  }
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" /> Crear tu primera encuesta
-              </Button>
-            )}
+            <Button
+              onClick={() => {
+                setModalSelectedCompanyId(null)
+                setModalSelectedProjectId(null)
+                setIsCreateSurveyModalOpen(true)
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" /> Crear tu primera encuesta
+            </Button>
           </div>
         ) : (
           <>
@@ -514,42 +506,38 @@ function SurveysPageContent() {
                           <span className="sr-only">Ver Encuesta</span>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        {(isAdmin || isSupervisor) && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                              onClick={() =>
-                                router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
-                              }
-                              title="Editar Encuesta"
-                            >
-                              <span className="sr-only">Editar Encuesta</span>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-blue-500 hover:bg-blue-500/10"
-                              onClick={() => handleDuplicateSurvey(survey.id)}
-                              title="Duplicar Encuesta"
-                            >
-                              <span className="sr-only">Duplicar Encuesta</span>
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => handleDeleteClick(survey.id)}
-                              title="Eliminar Encuesta"
-                            >
-                              <span className="sr-only">Eliminar Encuesta</span>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                          onClick={() =>
+                            router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
+                          }
+                          title="Editar Encuesta"
+                        >
+                          <span className="sr-only">Editar Encuesta</span>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-blue-500 hover:bg-blue-500/10"
+                          onClick={() => handleDuplicateSurvey(survey.id)}
+                          title="Duplicar Encuesta"
+                        >
+                          <span className="sr-only">Duplicar Encuesta</span>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:bg-red-500/10"
+                          onClick={() => handleDeleteClick(survey.id)}
+                          title="Eliminar Encuesta"
+                        >
+                          <span className="sr-only">Eliminar Encuesta</span>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

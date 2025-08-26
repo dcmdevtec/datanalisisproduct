@@ -118,8 +118,9 @@ export default function CompaniesPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  const isAdmin = user.role === "admin"
-  const isSupervisor = user.role === "supervisor"
+  // Sin permisos - todos los usuarios pueden hacer todo
+  // const isAdmin = user.role === "admin"
+  // const isSupervisor = user.role === "supervisor"
 
   const filteredCompanies = companies.filter(
     (company) =>
@@ -275,7 +276,7 @@ export default function CompaniesPage() {
   return (
     <DashboardLayout>
       <div className="p-4 sm:p-8 bg-[#f7faf9] min-h-screen">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-[#18b0a4]">
               <Building2 className="inline-block mr-2 h-8 w-8 text-[#18b0a4]" />
@@ -283,11 +284,9 @@ export default function CompaniesPage() {
             </h1>
             <p className="mt-2 text-gray-500">Gestiona las empresas de la plataforma</p>
           </div>
-          {(isAdmin || isSupervisor) && (
-            <Button onClick={handleOpenCreateCompanyModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90">
-              <Plus className="h-4 w-4 mr-2" /> Nueva Empresa
-            </Button>
-          )}
+          <Button onClick={handleOpenCreateCompanyModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90">
+            <Plus className="h-4 w-4 mr-2" /> Nueva Empresa
+          </Button>
         </div>
         <div className="mb-8">
           <input
@@ -315,11 +314,9 @@ export default function CompaniesPage() {
           <div className="text-center p-8 border rounded-lg bg-muted/50">
             <h3 className="text-lg font-medium mb-2">No hay empresas disponibles</h3>
             <p className="text-muted-foreground mb-4">No se encontraron empresas para mostrar.</p>
-            {(isAdmin || isSupervisor) && (
-              <Button onClick={handleOpenCreateCompanyModal}>
-                <Plus className="h-4 w-4 mr-2" /> Crear tu primera empresa
-              </Button>
-            )}
+            <Button onClick={handleOpenCreateCompanyModal}>
+              <Plus className="h-4 w-4 mr-2" /> Crear tu primera empresa
+            </Button>
           </div>
         ) : (
           <>
@@ -407,30 +404,26 @@ export default function CompaniesPage() {
                             <Plus className="h-4 w-4" />
                           </Button>
                         )}
-                        {(isAdmin || isSupervisor) && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                              onClick={() => handleOpenEditCompanyModal(company)}
-                              title="Editar Empresa"
-                            >
-                              <span className="sr-only">Editar Empresa</span>
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => handleDeleteClick(company.id)}
-                              title="Eliminar Empresa"
-                            >
-                              <span className="sr-only">Eliminar Empresa</span>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                          onClick={() => handleOpenEditCompanyModal(company)}
+                          title="Editar Empresa"
+                        >
+                          <span className="sr-only">Editar Empresa</span>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:bg-red-500/10"
+                          onClick={() => handleDeleteClick(company.id)}
+                          title="Eliminar Empresa"
+                        >
+                          <span className="sr-only">Eliminar Empresa</span>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

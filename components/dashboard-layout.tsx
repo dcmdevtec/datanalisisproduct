@@ -26,32 +26,79 @@ import SyncStatus from "@/components/sync-status"
 import ThemeToggle from "@/components/ui/theme-toggle"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth()
+  const { user, signOut } = useAuth()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
-  const isAdmin = user?.role === "admin"
-  const isSupervisor = user?.role === "supervisor"
-
+  // Menú simplificado sin permisos - todas las opciones visibles
   const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, show: isAdmin || isSupervisor },
-    { name: "Empresas", href: "/companies", icon: Building2, show: true },
-    { name: "Proyectos", href: "/projects", icon: FolderKanban, show: true },
-     { name: "Encuestas", href: "/surveys", icon: FileText, show: isAdmin || isSupervisor },
-      { name: "Encuestadores", href: "/surveyors", icon: FileText, show: isAdmin || isSupervisor },
-     { name: "Usuarios", href: "/users", icon: Users, show: isAdmin },
-    { name: "Zonas", href: "/zones", icon: MapPin, show: isAdmin || isSupervisor },
-    { name: "Reportes", href: "/reports", icon: BarChart3, show: true },
-    { name: "Mensajes", href: "/messages", icon: MessageSquare, show: true },
-    { name: "Configuración", href: "/settings", icon: Settings, show: isAdmin },
-  ].filter((item) => item.show)
+    { 
+      name: "Dashboard", 
+      href: "/dashboard", 
+      icon: LayoutDashboard
+    },
+    { 
+      name: "Empresas", 
+      href: "/companies", 
+      icon: Building2
+    },
+    { 
+      name: "Proyectos", 
+      href: "/projects", 
+      icon: FolderKanban
+    },
+    { 
+      name: "Encuestas", 
+      href: "/surveys", 
+      icon: FileText
+    },
+    { 
+      name: "Encuestadores", 
+      href: "/surveyors", 
+      icon: Users
+    },
+    { 
+      name: "Usuarios", 
+      href: "/users", 
+      icon: Users
+    },
+    { 
+      name: "Zonas", 
+      href: "/zones", 
+      icon: MapPin
+    },
+    { 
+      name: "Reportes", 
+      href: "/reports", 
+      icon: BarChart3
+    },
+    { 
+      name: "Mensajes", 
+      href: "/messages", 
+      icon: MessageSquare
+    },
+    { 
+      name: "Configuración", 
+      href: "/settings", 
+      icon: Settings
+    },
+  ]
+
+  const handleLogout = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error)
+    }
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Theme toggle top right */}
       <div className="fixed top-4 right-6 z-50">
-      
+        <ThemeToggle />
       </div>
+      
       {/* Sidebar for desktop */}
       <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-10">
         <div className="flex flex-col flex-grow border-r bg-white pt-5">
@@ -92,14 +139,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="h-8 w-8 rounded-full bg-[#18b0a4] flex items-center justify-center border border-[#18b0a4]">
-                    <span className="text-white font-bold">{user?.name?.charAt(0).toUpperCase() || "U"}</span>
+                    <span className="text-white font-bold">{user?.email?.charAt(0).toUpperCase() || "U"}</span>
                   </div>
                 </div>
                 <div className="ml-3 overflow-hidden">
-                  <p className="text-sm font-semibold text-[#18b0a4] truncate">{user?.name}</p>
-                  <p className="text-xs text-gray-500 capitalize truncate">{user?.role}</p>
+                  <p className="text-sm font-semibold text-[#18b0a4] truncate">{user?.email}</p>
+                  <p className="text-xs text-gray-500 capitalize truncate">Usuario</p>
                 </div>
-                <Button variant="ghost" size="icon" className="ml-auto text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={logout}>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="ml-auto text-[#18b0a4] hover:bg-[#18b0a4]/10" 
+                  onClick={handleLogout}
+                >
                   <LogOut className="h-5 w-5" />
                 </Button>
               </div>
@@ -152,12 +204,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <div className="flex items-center">
                     <div className="flex-shrink-0">
                       <div className="h-8 w-8 rounded-full bg-[#18b0a4] flex items-center justify-center border border-[#18b0a4]">
-                        <span className="text-white font-bold">{user?.name?.charAt(0).toUpperCase() || "U"}</span>
+                        <span className="text-white font-bold">{user?.email?.charAt(0).toUpperCase() || "U"}</span>
                       </div>
                     </div>
                     <div className="ml-3 overflow-hidden">
-                      <p className="text-sm font-semibold text-[#18b0a4] truncate">{user?.name}</p>
-                      <p className="text-xs text-gray-500 capitalize truncate">{user?.role}</p>
+                      <p className="text-sm font-semibold text-[#18b0a4] truncate">{user?.email}</p>
+                      <p className="text-xs text-gray-500 capitalize truncate">Usuario</p>
                     </div>
                     <Button
                       variant="ghost"
@@ -165,10 +217,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       className="ml-auto text-[#18b0a4] hover:bg-[#18b0a4]/10"
                       onClick={() => {
                         setOpen(false)
-                        logout()
+                        handleLogout()
                       }}
                     >
-                      <LogOut className="h-5 w-5" />
+                      <LogOut className="h-6 w-6" />
                     </Button>
                   </div>
                 </div>

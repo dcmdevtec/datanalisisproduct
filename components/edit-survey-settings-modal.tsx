@@ -30,6 +30,7 @@ interface SurveySettings {
   branding?: {
     showLogo: boolean
     logoPosition: string
+    logo?: string // Added for logo URL
   }
   security?: {
     passwordProtected: boolean
@@ -71,6 +72,9 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
     setEditedSettings((prev) => ({
       ...prev,
       theme: {
+        primaryColor: "#18b0a4",
+        backgroundColor: "#ffffff",
+        textColor: "#1f2937",
         ...prev.theme,
         [field]: value,
       },
@@ -81,6 +85,8 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
     setEditedSettings((prev) => ({
       ...prev,
       branding: {
+        showLogo: false,
+        logoPosition: "top",
         ...prev.branding,
         [field]: value,
       },
@@ -91,6 +97,8 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
     setEditedSettings((prev) => ({
       ...prev,
       security: {
+        passwordProtected: false,
+        preventMultipleSubmissions: false,
         ...prev.security,
         [field]: value,
       },
@@ -214,34 +222,129 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
 
           {/* Tema (Theme) */}
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Tema</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="primary-color">Color Primario</Label>
-                <Input
-                  id="primary-color"
-                  type="color"
-                  value={editedSettings.theme?.primaryColor || "#18b0a4"}
-                  onChange={(e) => handleThemeChange("primaryColor", e.target.value)}
-                />
+            <h3 className="text-lg font-medium">Tema y Colores</h3>
+            <div className="space-y-4">
+              {/* Color Preview */}
+              <div className="p-4 border rounded-lg bg-gray-50">
+                <Label className="text-sm font-medium mb-2 block">Previsualización del Tema</Label>
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-16 h-16 rounded-lg border-2 border-gray-200 shadow-sm"
+                    style={{ backgroundColor: editedSettings.theme?.backgroundColor || "#ffffff" }}
+                  >
+                    <div 
+                      className="w-full h-8 rounded-t-lg flex items-center justify-center text-white text-xs font-bold"
+                      style={{ backgroundColor: editedSettings.theme?.primaryColor || "#18b0a4" }}
+                    >
+                      Título
+                    </div>
+                    <div 
+                      className="p-2 text-xs"
+                      style={{ color: editedSettings.theme?.textColor || "#1f2937" }}
+                    >
+                      Texto de ejemplo
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    <p>• Color primario: {editedSettings.theme?.primaryColor || "#18b0a4"}</p>
+                    <p>• Color de fondo: {editedSettings.theme?.backgroundColor || "#ffffff"}</p>
+                    <p>• Color de texto: {editedSettings.theme?.textColor || "#1f2937"}</p>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="background-color">Color de Fondo</Label>
-                <Input
-                  id="background-color"
-                  type="color"
-                  value={editedSettings.theme?.backgroundColor || "#ffffff"}
-                  onChange={(e) => handleThemeChange("backgroundColor", e.target.value)}
-                />
+
+              {/* Color Pickers */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="primary-color">Color Primario</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="primary-color"
+                      type="color"
+                      value={editedSettings.theme?.primaryColor || "#18b0a4"}
+                      onChange={(e) => handleThemeChange("primaryColor", e.target.value)}
+                      className="w-12 h-10 p-1 border rounded cursor-pointer"
+                    />
+                    <Input
+                      type="text"
+                      value={editedSettings.theme?.primaryColor || "#18b0a4"}
+                      onChange={(e) => handleThemeChange("primaryColor", e.target.value)}
+                      className="flex-1 text-sm font-mono"
+                      placeholder="#18b0a4"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Color principal para botones y elementos destacados</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="background-color">Color de Fondo</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="background-color"
+                      type="color"
+                      value={editedSettings.theme?.backgroundColor || "#ffffff"}
+                      onChange={(e) => handleThemeChange("backgroundColor", e.target.value)}
+                      className="w-12 h-10 p-1 border rounded cursor-pointer"
+                    />
+                    <Input
+                      type="text"
+                      value={editedSettings.theme?.backgroundColor || "#ffffff"}
+                      onChange={(e) => handleThemeChange("backgroundColor", e.target.value)}
+                      className="flex-1 text-sm font-mono"
+                      placeholder="#ffffff"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Color de fondo de la encuesta</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="text-color">Color de Texto</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="text-color"
+                      type="color"
+                      value={editedSettings.theme?.textColor || "#1f2937"}
+                      onChange={(e) => handleThemeChange("textColor", e.target.value)}
+                      className="w-12 h-10 p-1 border rounded cursor-pointer"
+                    />
+                    <Input
+                      type="text"
+                      value={editedSettings.theme?.textColor || "#1f2937"}
+                      onChange={(e) => handleThemeChange("textColor", e.target.value)}
+                      className="flex-1 text-sm font-mono"
+                      placeholder="#1f2937"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Color del texto principal</p>
+                </div>
               </div>
+
+              {/* Preset Themes */}
               <div className="space-y-2">
-                <Label htmlFor="text-color">Color de Texto</Label>
-                <Input
-                  id="text-color"
-                  type="color"
-                  value={editedSettings.theme?.textColor || "#1f2937"}
-                  onChange={(e) => handleThemeChange("textColor", e.target.value)}
-                />
+                <Label className="text-sm font-medium">Temas Predefinidos</Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { name: "Verde Pastel", primary: "#18b0a4", background: "#f0fdf4", text: "#1f2937" },
+                    { name: "Azul Profesional", primary: "#3b82f6", background: "#f8fafc", text: "#1e293b" },
+                    { name: "Púrpura Moderno", primary: "#8b5cf6", background: "#faf5ff", text: "#1e1b4b" },
+                    { name: "Naranja Energético", primary: "#f97316", background: "#fff7ed", text: "#451a03" },
+                    { name: "Rosa Suave", primary: "#ec4899", background: "#fdf2f8", text: "#4c1d95" },
+                  ].map((theme) => (
+                    <Button
+                      key={theme.name}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        handleThemeChange("primaryColor", theme.primary)
+                        handleThemeChange("backgroundColor", theme.background)
+                        handleThemeChange("textColor", theme.text)
+                      }}
+                      className="text-xs"
+                    >
+                      {theme.name}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -249,31 +352,87 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
           {/* Branding */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Marca (Branding)</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="show-logo">Mostrar Logo</Label>
-                <Switch
-                  id="show-logo"
-                  checked={editedSettings.branding?.showLogo}
-                  onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
-                />
-              </div>
+            <div className="space-y-4">
+              {/* Logo Upload */}
               <div className="space-y-2">
-                <Label htmlFor="logo-position">Posición del Logo</Label>
-                <Select
-                  value={editedSettings.branding?.logoPosition || "top"}
-                  onValueChange={(value) => handleBrandingChange("logoPosition", value)}
-                >
-                  <SelectTrigger id="logo-position">
-                    <SelectValue placeholder="Seleccionar posición" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="top">Superior</SelectItem>
-                    <SelectItem value="bottom">Inferior</SelectItem>
-                    <SelectItem value="left">Izquierda</SelectItem>
-                    <SelectItem value="right">Derecha</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="logo-upload">Logo de la Encuesta</Label>
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    {editedSettings.branding?.logo ? (
+                      <div className="w-20 h-20 border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                        <img 
+                          src={editedSettings.branding.logo} 
+                          alt="Logo de la encuesta" 
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
+                        <span className="text-gray-400 text-xs text-center">Sin logo</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Input
+                      id="logo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          const reader = new FileReader()
+                          reader.onloadend = () => {
+                            handleBrandingChange("logo", reader.result as string)
+                          }
+                          reader.readAsDataURL(file)
+                        }
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Formatos soportados: PNG, JPG, SVG. Tamaño máximo: 2MB
+                    </p>
+                  </div>
+                </div>
+                {editedSettings.branding?.logo && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBrandingChange("logo", "")}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    Eliminar Logo
+                  </Button>
+                )}
+              </div>
+
+              {/* Logo Display Options */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="show-logo">Mostrar Logo</Label>
+                  <Switch
+                    id="show-logo"
+                    checked={editedSettings.branding?.showLogo}
+                    onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="logo-position">Posición del Logo</Label>
+                  <Select
+                    value={editedSettings.branding?.logoPosition || "top"}
+                    onValueChange={(value) => handleBrandingChange("logoPosition", value)}
+                  >
+                    <SelectTrigger id="logo-position">
+                      <SelectValue placeholder="Seleccionar posición" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="top">Superior</SelectItem>
+                      <SelectItem value="bottom">Inferior</SelectItem>
+                      <SelectItem value="left">Izquierda</SelectItem>
+                      <SelectItem value="right">Derecha</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </div>

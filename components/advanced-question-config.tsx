@@ -1,16 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useState, useEffect, useCallback } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertCircle, Eye, ArrowRight, Settings2, ArrowDown, CheckCircle } from "lucide-react"
+import { Plus, Trash2, AlertCircle, Eye, ArrowRight, Settings, ArrowDown, CheckCircle } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -86,6 +86,32 @@ interface AdvancedQuestionConfigProps {
   allSections: SurveySection[]
   allQuestions: Question[]
   onSave: (config: any) => void
+}
+
+interface DisplayCondition {
+  questionId: string
+  questionText?: string // Agregar campo para mantener el texto de referencia
+  operator: string
+  value: string
+}
+
+interface DisplayLogic {
+  enabled: boolean
+  conditions: DisplayCondition[]
+}
+
+interface SkipLogic {
+  enabled: boolean
+  rules: any[]
+}
+
+interface QuestionConfig {
+  displayLogic?: DisplayLogic
+  skipLogic?: SkipLogic
+  validation?: any
+  appearance?: any
+  advanced?: any
+  [key: string]: any
 }
 
 function QuestionPreview({ question, isConditionMet = false }: { question: Question; isConditionMet?: boolean }) {
@@ -249,7 +275,7 @@ function SkipLogicVisualizer({
   onUpdateRule: (index: number, field: string, value: any) => void
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {rules.map((rule, index) => {
         const targetSection = allSections.find((s) => {
           const match = s.id === rule.targetSectionId
@@ -267,11 +293,18 @@ function SkipLogicVisualizer({
           questions: []
         }
 
+        // Encontrar la pregunta objetivo si existe
+        const targetQuestion = rule.targetQuestionId ? 
+          allQuestions.find(q => q.id === rule.targetQuestionId) : null
+
         return (
-          <Card key={index} className={`${!targetSection ? 'border-red-300 bg-red-50' : ''}`}>
-            <CardHeader className="pb-3">
+          <Card key={index} className={`${!targetSection ? 'border-red-300 bg-red-50' : 'border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/50 to-teal-100/50'} shadow-lg hover:shadow-xl transition-all duration-300`}>
+            <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
+                <CardTitle className="text-lg flex items-center gap-3">
+                  <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-full text-sm font-bold">
+                    {index + 1}
+                  </div>
                   Regla {index + 1}
                   {!targetSection && (
                     <Badge variant="destructive" className="text-xs">
@@ -279,210 +312,248 @@ function SkipLogicVisualizer({
                     </Badge>
                   )}
                 </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={rule.enabled !== false}
+                    onCheckedChange={(checked) => onUpdateRule(index, "enabled", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                  <span className="text-xs text-muted-foreground">Activa</span>
+                </div>
               </div>
             </CardHeader>
 
-            {/* Question Preview */}
-            <QuestionPreview question={question} isConditionMet={true} />
-
-            <div className="flex items-center justify-center my-4">
-              <ArrowDown className="h-6 w-6 text-blue-500" />
-            </div>
-
-            {/* Condition Builder */}
-            <div className="bg-white p-4 rounded-lg border-2 border-dashed border-blue-200 mb-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium">Si la respuesta</span>
-
-                <Select value={rule.operator} onValueChange={(value) => {
-                  onUpdateRule(index, "operator", value)
-                }}>
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="equals">es igual a</SelectItem>
-                    <SelectItem value="not_equals">no es igual a</SelectItem>
-                    <SelectItem value="contains">contiene</SelectItem>
-                    <SelectItem value="not_contains">no contiene</SelectItem>
-                    <SelectItem value="greater_than">es mayor que</SelectItem>
-                    <SelectItem value="less_than">es menor que</SelectItem>
-                    <SelectItem value="is_empty">está vacía</SelectItem>
-                    <SelectItem value="is_not_empty">no está vacía</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {(question.type === "multiple_choice" || question.type === "checkbox") &&
-                  (rule.operator === "equals" || rule.operator === "not_equals") && (
-                    <Select value={rule.value} onValueChange={(value) => {
-                      onUpdateRule(index, "value", value)
-                    }}>
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Seleccionar opción" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {question.options.map((option, optIndex) => (
-                          <SelectItem key={optIndex} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                {question.type === "checkbox" && (rule.operator === "contains" || rule.operator === "not_contains") && (
-                  <div className="flex flex-wrap gap-2">
-                    {question.options.map((option, optIndex) => (
-                      <label key={optIndex} className="flex items-center gap-1 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={(rule.value || "").split(",").includes(option)}
-                          onChange={(e) => {
-                            const currentValues = (rule.value || "").split(",").filter(Boolean)
-                            const newValues = e.target.checked
-                              ? [...currentValues, option]
-                              : currentValues.filter((v: string) => v !== option)
-                            onUpdateRule(index, "value", newValues.join(","))
-                          }}
-                          className="rounded"
-                        />
-                        {option}
-                      </label>
-                    ))}
+            <CardContent className="space-y-6">
+              {/* Question Preview - Enhanced */}
+              <div className="bg-gradient-to-r from-green-100 to-green-50 p-4 rounded-xl border-2 border-green-300 relative">
+                <div className="absolute top-2 right-2">
+                  <div className="flex items-center gap-1 bg-green-500 text-white px-2 py-1 rounded-full text-xs">
+                    <CheckCircle className="h-3 w-3" />
+                    Condición cumplida
                   </div>
-                )}
-
-                {!(
-                  (question.type === "multiple_choice" || question.type === "checkbox") &&
-                  (rule.operator === "equals" ||
-                    rule.operator === "not_equals" ||
-                    rule.operator === "contains" ||
-                    rule.operator === "not_contains")
-                ) &&
-                  rule.operator !== "is_empty" &&
-                  rule.operator !== "is_not_empty" && (
-                    <Input
-                      value={rule.value}
-                      onChange={(e) => onUpdateRule(index, "value", e.target.value)}
-                      placeholder="Valor"
-                      className="w-[150px]"
-                    />
-                  )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center my-4">
-              <ArrowDown className="h-6 w-6 text-green-500" />
-            </div>
-
-            <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Entonces ir a:</span>
-                  <Select
-                    value={rule.targetSectionId}
-                    onValueChange={(value) => {
-                      onUpdateRule(index, "targetSectionId", value)
-                    }}
-                  >
-                    <SelectTrigger className={`w-[200px] ${!targetSection ? 'border-yellow-300 bg-yellow-50' : ''}`}>
-                      <SelectValue placeholder="Seleccionar sección" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="end_survey">Finalizar encuesta</SelectItem>
-                      {allSections.map((section) => (
-                        <SelectItem key={section.id} value={section.id}>
-                          {section.title || `Sección ${section.order_num + 1}`}
-                        </SelectItem>
+                </div>
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-green-800">{question.text}</h4>
+                  {question.type === "multiple_choice" && (
+                    <div className="space-y-2">
+                      {question.options.map((option, optIndex) => (
+                        <div key={optIndex} className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border-2 ${
+                            rule.value === option ? 'border-green-500 bg-green-500' : 'border-gray-300'
+                          }`}></div>
+                          <span className="text-sm text-green-700">{option}</span>
+                        </div>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  {!targetSection && (
-                    <span className="text-xs text-yellow-600">⚠️ Sección no encontrada</span>
+                    </div>
+                  )}
+                  {question.type === "checkbox" && (
+                    <div className="space-y-2">
+                      {question.options.map((option, optIndex) => (
+                        <div key={optIndex} className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded border-2 ${
+                            (rule.value || "").split(",").includes(option) ? 'border-green-500 bg-green-500' : 'border-gray-300'
+                          }`}></div>
+                          <span className="text-sm text-green-700">{option}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
+              </div>
 
-                {rule.targetSectionId && rule.targetSectionId !== "end_survey" && displayTargetSection && (
-                  <div className="space-y-3">
-                    {!targetSection && (
-                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800">
-                          ⚠️ <strong>Advertencia:</strong> La sección objetivo de esta regla ya no existe. 
-                          Por favor, selecciona una nueva sección válida.
-                        </p>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-2 ml-4">
-                      <span className="text-sm text-gray-600">Pregunta específica:</span>
-                      <Select
-                        value={rule.targetQuestionId || "section_start"}
-                        onValueChange={(value) => {
-                          const actualValue = value === "section_start" ? undefined : value
-                          onUpdateRule(index, "targetQuestionId", actualValue)
-                        }}
-                      >
-                        <SelectTrigger className="w-[250px]">
-                          <SelectValue />
+              {/* Flow Arrow */}
+              <div className="flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center">
+                  <ArrowDown className="h-5 w-5 text-white" />
+                </div>
+              </div>
+
+              {/* Condition Builder - Enhanced */}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-xl border-2 border-dashed border-green-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-emerald-800">Si la respuesta</span>
+                  </div>
+
+                  <Select value={rule.operator} onValueChange={(value) => {
+                    onUpdateRule(index, "operator", value)
+                  }}>
+                    <SelectTrigger className="w-full bg-white border-emerald-300 focus:border-emerald-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="equals">es igual a</SelectItem>
+                      <SelectItem value="not_equals">no es igual a</SelectItem>
+                      <SelectItem value="contains">contiene</SelectItem>
+                      <SelectItem value="not_contains">no contiene</SelectItem>
+                      <SelectItem value="greater_than">es mayor que</SelectItem>
+                      <SelectItem value="less_than">es menor que</SelectItem>
+                      <SelectItem value="is_empty">está vacía</SelectItem>
+                      <SelectItem value="is_not_empty">no está vacía</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {(question.type === "multiple_choice" || question.type === "checkbox") &&
+                    (rule.operator === "equals" || rule.operator === "not_equals") && (
+                      <Select value={rule.value} onValueChange={(value) => {
+                        onUpdateRule(index, "value", value)
+                      }}>
+                        <SelectTrigger className="w-full bg-white border-emerald-300 focus:border-emerald-500">
+                          <SelectValue placeholder="Seleccionar opción" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="section_start">Ir al inicio de la sección</SelectItem>
-                          {displayTargetSection.questions.map((q, qIndex) => (
-                            <SelectItem key={q.id} value={q.id}>
-                              Pregunta {qIndex + 1}: {q.text.replace(/<[^>]*>/g, "").substring(0, 40)}...
+                          {question.options.map((option, optIndex) => (
+                            <SelectItem key={optIndex} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                  {question.type === "checkbox" && (rule.operator === "contains" || rule.operator === "not_contains") && (
+                    <div className="col-span-full">
+                      <div className="flex flex-wrap gap-3">
+                        {question.options.map((option, optIndex) => (
+                          <label key={optIndex} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(rule.value || "").split(",").includes(option)}
+                              onChange={(e) => {
+                                const currentValues = (rule.value || "").split(",").filter(Boolean)
+                                const newValues = e.target.checked
+                                  ? [...currentValues, option]
+                                  : currentValues.filter((v: string) => v !== option)
+                                onUpdateRule(index, "value", newValues.join(","))
+                              }}
+                              className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-emerald-700">{option}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(question.type === "text" || question.type === "number") && 
+                   (rule.operator === "equals" || rule.operator === "not_equals" || rule.operator === "contains" || rule.operator === "not_contains") && (
+                    <Input
+                      value={rule.value || ""}
+                      onChange={(e) => onUpdateRule(index, "value", e.target.value)}
+                      placeholder="Valor a comparar"
+                      className="w-full bg-white border-emerald-300 focus:border-emerald-500"
+                    />
+                  )}
+
+                  {(question.type === "number") && 
+                   (rule.operator === "greater_than" || rule.operator === "not_equals") && (
+                    <Input
+                      type="number"
+                      value={rule.value || ""}
+                      onChange={(e) => onUpdateRule(index, "value", e.target.value)}
+                      placeholder="Número"
+                      className="w-full bg-white border-emerald-300 focus:border-emerald-500"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Flow Arrow */}
+              <div className="flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
+                  <ArrowDown className="h-5 w-5 text-white" />
+                </div>
+              </div>
+
+              {/* Action Block - Enhanced */}
+              <div className="bg-gradient-to-r from-emerald-100 to-green-50 p-6 rounded-xl border-2 border-emerald-300">
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-emerald-800 text-center">Entonces ir a:</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Target Section Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-emerald-700">Sección:</label>
+                      <Select value={rule.targetSectionId} onValueChange={(value) => {
+                        onUpdateRule(index, "targetSectionId", value)
+                        // Reset target question when section changes
+                        onUpdateRule(index, "targetQuestionId", "")
+                      }}>
+                        <SelectTrigger className="w-full bg-white border-teal-300 focus:border-teal-500">
+                          <SelectValue placeholder="Seleccionar sección" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allSections.map((section) => (
+                            <SelectItem key={section.id} value={section.id}>
+                              {section.title}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                )}
 
-                <div className="mt-4 p-3 bg-white rounded-lg border">
-                  {!targetSection && (
-                    <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-                      ⚠️ Sección objetivo no encontrada
+                    {/* Target Question Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-emerald-700">Pregunta específica (opcional):</label>
+                      <Select 
+                        value={rule.targetSectionId || "section_start"} 
+                        onValueChange={(value) => {
+                          // Si se selecciona "section_start", guardar undefined para indicar inicio de sección
+                          const actualValue = value === "section_start" ? undefined : value
+                          onUpdateRule(index, "targetQuestionId", actualValue)
+                          // Store question text for reference
+                          if (actualValue) {
+                            const selectedQuestion = allQuestions.find(q => q.id === actualValue)
+                            if (selectedQuestion) {
+                              onUpdateRule(index, "targetQuestionText", selectedQuestion.text)
+                            }
+                          } else {
+                            // Si es inicio de sección, limpiar el texto de pregunta
+                            onUpdateRule(index, "targetQuestionText", undefined)
+                          }
+                        }}
+                        disabled={!rule.targetSectionId}
+                      >
+                        <SelectTrigger className="w-full bg-white border-teal-300 focus:border-teal-500 disabled:bg-gray-100">
+                          <SelectValue placeholder={rule.targetSectionId ? "Seleccionar pregunta o inicio de sección" : "Primero selecciona una sección"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="section_start">Ir al inicio de la sección</SelectItem>
+                          {rule.targetSectionId && allQuestions
+                            .filter(q => {
+                              const section = allSections.find(s => s.id === rule.targetSectionId)
+                              return section && section.questions.some(sq => sq.id === q.id)
+                            })
+                            .map((question) => (
+                              <SelectItem key={question.id} value={question.id}>
+                                {question.text.length > 50 ? `${question.text.substring(0, 50)}...` : question.text}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
-                  
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="outline" className="text-xs">
-                      Preview
-                    </Badge>
-                    <ArrowRight className="h-4 w-4" />
-                    {rule.targetSectionId === "end_survey" ? (
-                      <Badge variant="destructive" className="text-xs">
-                        Fin de encuesta
-                      </Badge>
-                    ) : displayTargetSection ? (
-                      <div className="flex items-center gap-2">
-                        <Badge variant={targetSection ? "default" : "secondary"} className="text-xs">
-                          {displayTargetSection.title}
-                        </Badge>
-                        {rule.targetQuestionId && (
+                  </div>
+
+                  {/* Visual Flow Preview */}
+                  {rule.targetSectionId && (
+                    <div className="mt-4 p-3 bg-white rounded-lg border border-emerald-200">
+                      <div className="flex items-center gap-2 text-sm text-emerald-700">
+                        <ArrowRight className="h-4 w-4" />
+                        <span>Saltar a: <strong>{displayTargetSection.title}</strong></span>
+                        {rule.targetQuestionId && targetQuestion ? (
                           <>
-                            <ArrowRight className="h-3 w-3" />
-                            <Badge variant="secondary" className="text-xs">
-                              Pregunta específica
-                            </Badge>
+                            <span>→</span>
+                            <span><strong>{targetQuestion.text.length > 30 ? `${targetQuestion.text.substring(0, 30)}...` : targetQuestion.text}</strong></span>
                           </>
+                        ) : (
+                          <span className="text-emerald-600">(inicio de la sección)</span>
                         )}
                       </div>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">
-                        Seleccionar destino
-                      </Badge>
-                    )}
-                  </div>
-                  {displayTargetSection && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {displayTargetSection.questions.length} pregunta{displayTargetSection.questions.length !== 1 ? "s" : ""} en esta
-                      sección
-                    </p>
+                    </div>
                   )}
                 </div>
               </div>
-            </div>
+            </CardContent>
           </Card>
         )
       })}
@@ -500,14 +571,19 @@ export function AdvancedQuestionConfig({
 }: AdvancedQuestionConfigProps) {
   // Log simple para debugging
   console.log(`📋 Secciones disponibles: ${allSections?.length || 0}`)
+  console.log(`🔍 Preguntas disponibles: ${allQuestions?.length || 0}`)
+  console.log(`📝 Pregunta actual:`, question)
+  console.log(`🔑 IDs de preguntas disponibles:`, allQuestions?.map(q => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
   
   // Inicializar el estado con la configuración de la pregunta
-  const [config, setConfig] = useState(() => {
+  const [config, setConfig] = useState<QuestionConfig>(() => {
+    console.log("🚀 Inicializando estado de configuración para pregunta:", question.id)
+    console.log("📋 Configuración base de la pregunta:", question.config)
+    
     // Construir la configuración completa desde los campos de la base de datos
     const baseConfig = question.config || {}
     
-    // Asegurar que los campos principales existan con la estructura correcta de la BD
-    return {
+    const initialConfig = {
       // Configuraciones generales
       ...baseConfig,
       
@@ -540,15 +616,84 @@ export function AdvancedQuestionConfig({
         autoAdvance: false,
       },
     }
+    
+    console.log("✅ Configuración inicial creada:", initialConfig)
+    return initialConfig
   })
   
   const [activeTab, setActiveTab] = useState("validation")
 
+  // Función para reconciliación automática de IDs obsoletos
+  const reconcileObsoleteIds = useCallback(() => {
+    if (!allQuestions || allQuestions.length === 0) return
+    
+    console.log("🔄 Iniciando reconciliación automática de IDs obsoletos...")
+    setIsReconciling(true)
+    
+    setConfig((prev) => {
+      const updatedConditions = (prev.displayLogic?.conditions || []).map(condition => {
+        // Si ya tiene un ID válido, no hacer nada
+        if (condition.questionId && allQuestions.find(q => q.id === condition.questionId)) {
+          return condition
+        }
+        
+        // Si tiene texto pero no ID válido, intentar encontrar por texto
+        if (condition.questionText && !condition.questionId) {
+          const foundQuestion = allQuestions.find(q => q.text === condition.questionText)
+          if (foundQuestion) {
+            console.log(`✅ Reconciliación automática: "${condition.questionText}" → ID: ${foundQuestion.id}`)
+            return {
+              ...condition,
+              questionId: foundQuestion.id
+            }
+          }
+        }
+        
+        // Si tiene ID pero no se encuentra, intentar por texto
+        if (condition.questionId && condition.questionText) {
+          const foundQuestion = allQuestions.find(q => q.text === condition.questionText)
+          if (foundQuestion) {
+            console.log(`✅ Reconciliación automática: ID obsoleto ${condition.questionId} → nuevo ID: ${foundQuestion.id}`)
+            return {
+              ...condition,
+              questionId: foundQuestion.id
+            }
+          }
+        }
+        
+        return condition
+      })
+      
+      // Solo actualizar si hay cambios
+      if (JSON.stringify(updatedConditions) !== JSON.stringify(prev.displayLogic?.conditions)) {
+        console.log("🔄 Condiciones reconciliadas automáticamente")
+        return {
+          ...prev,
+          displayLogic: {
+            ...prev.displayLogic,
+            conditions: updatedConditions
+          }
+        }
+      }
+      
+      return prev
+    })
+    
+    // Ocultar el indicador después de un breve delay
+    setTimeout(() => setIsReconciling(false), 1000)
+  }, [allQuestions])
+
+  // Estado para mostrar cuando se está ejecutando la reconciliación
+  const [isReconciling, setIsReconciling] = useState(false)
+
   useEffect(() => {
     if (isOpen && question.config) {
+      console.log("🔍 Modal abierto, configuración de pregunta recibida:", question.config)
+      
+      // Actualizar la configuración cuando se abre el modal
       const baseConfig = question.config || {}
-      // console.log("🔍 Inicializando estado con config:", baseConfig) // Removed log
-      const newConfig = {
+      
+      const updatedConfig = {
         ...baseConfig,
         displayLogic: baseConfig.displayLogic || { enabled: false, conditions: [] },
         skipLogic: baseConfig.skipLogic || { enabled: false, rules: [] },
@@ -570,143 +715,60 @@ export function AdvancedQuestionConfig({
           autoAdvance: false,
         },
       }
-      setConfig(newConfig)
       
-      // Limpiar reglas inválidas después de inicializar
+      console.log("🔄 Configuración actualizada en useEffect:", updatedConfig)
+      setConfig(updatedConfig)
+      
+      // Ejecutar reconciliación automática después de actualizar la configuración
       setTimeout(() => {
-        detectSectionIdChanges()
-        cleanInvalidSkipRules()
+        reconcileObsoleteIds()
       }, 100)
     }
-  }, [isOpen, question.config, question.required])
+  }, [isOpen, question.config, question.required, reconcileObsoleteIds])
 
-  // Función para validar reglas de salto
-  const getInvalidSkipRules = () => {
-    return config.skipLogic?.rules?.filter(rule => {
-      if (!rule.targetSectionId || rule.targetSectionId === "end_survey") return false
-      return !allSections?.find(s => s.id === rule.targetSectionId)
-    }) || []
-  }
-
-  // Función para detectar cambios de ID en secciones
-  const detectSectionIdChanges = () => {
-    if (!question.config?.skipLogic?.rules) return
-    
-    const rules = question.config.skipLogic.rules
-    rules.forEach((rule, index) => {
-      if (rule.targetSectionId && rule.targetSectionId !== "end_survey") {
-        const sectionExists = allSections?.find(s => s.id === rule.targetSectionId)
-        if (!sectionExists) {
-          console.log(`🚨 ALERTA: Regla ${index + 1} apunta a sección inexistente: ${rule.targetSectionId}`)
-          console.log(`🚨 Esto puede indicar que los IDs de las secciones han cambiado`)
-        }
-      }
-    })
-  }
-
-  // Función para limpiar reglas inválidas
-  const cleanInvalidSkipRules = () => {
-    const invalidRules = getInvalidSkipRules()
-    if (invalidRules.length > 0) {
-      console.log(`🧹 Limpiando ${invalidRules.length} regla(s) de salto inválida(s)`)
-      const validRules = config.skipLogic?.rules?.filter(rule => {
-        if (!rule.targetSectionId || rule.targetSectionId === "end_survey") return true
-        return !!allSections?.find(s => s.id === rule.targetSectionId)
-      }) || []
-      updateSkipLogic("rules", validRules)
+  // Ejecutar reconciliación automática cuando cambien las preguntas disponibles
+  useEffect(() => {
+    if (isOpen && allQuestions && allQuestions.length > 0) {
+      console.log("🔄 Preguntas disponibles cambiaron, ejecutando reconciliación automática...")
+      reconcileObsoleteIds()
     }
-  }
+  }, [isOpen, allQuestions, reconcileObsoleteIds])
 
-  const handleSave = () => {
-    // Validar que todas las reglas de salto apunten a secciones válidas
-    const invalidSkipRules = config.skipLogic?.rules?.filter(rule => {
-      if (!rule.targetSectionId || rule.targetSectionId === "end_survey") return false
-      return !allSections?.find(s => s.id === rule.targetSectionId)
-    }) || []
-
-    if (invalidSkipRules.length > 0) {
-      alert(`❌ No se puede guardar: ${invalidSkipRules.length} regla(s) de salto apuntan a secciones inexistentes.\n\nPor favor, elimina o corrige estas reglas antes de guardar.`)
-      return
-    }
-
-    // Asegurar que la configuración tenga la estructura correcta para la BD
-    const finalConfig = {
-      ...config,
-      // Asegurar que los campos principales existan con la estructura correcta
-      displayLogic: {
-        enabled: config.displayLogic?.enabled || false,
-        conditions: config.displayLogic?.conditions || []
-      },
-      skipLogic: {
-        enabled: config.skipLogic?.enabled || false,
-        rules: config.skipLogic?.rules || []
-      },
-      validation: {
-        required: config.validation?.required || question.required || false,
-        ...config.validation
-      },
-      appearance: config.appearance || {
-        showNumbers: false,
-        randomizeOptions: false,
-        allowOther: false,
-        otherText: "",
-        placeholder: "",
-        helpText: "",
-      },
-      advanced: config.advanced || {
-        allowMultiple: false,
-        maxSelections: 1,
-        minSelections: 1,
-        showProgressBar: false,
-        timeLimit: 0,
-        autoAdvance: false,
-      },
-    }
-    
-    onSave(finalConfig)
-    onClose()
+  const updateConfig = (field: string, value: any) => {
+    setConfig((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
   }
 
   const updateValidation = (field: string, value: any) => {
-    
-    setConfig((prev) => {
-      const newConfig = {
-        ...prev,
-        validation: {
-          ...prev.validation,
-          [field]: value,
-        },
-      }
-      return newConfig
-    })
+    setConfig((prev) => ({
+      ...prev,
+      validation: {
+        ...prev.validation,
+        [field]: value,
+      },
+    }))
   }
 
   const updateDisplayLogic = (field: string, value: any) => {
-    
-    setConfig((prev) => {
-      const newConfig = {
-        ...prev,
-        displayLogic: {
-          ...prev.displayLogic,
-          [field]: value,
-        },
-      }
-      return newConfig
-    })
+    setConfig((prev) => ({
+      ...prev,
+      displayLogic: {
+        ...prev.displayLogic,
+        [field]: value,
+      },
+    }))
   }
 
   const updateSkipLogic = (field: string, value: any) => {
-    
-    setConfig((prev) => {
-      const newConfig = {
-        ...prev,
-        skipLogic: {
-          ...prev.skipLogic,
-          [field]: value,
-        },
-      }
-      return newConfig
-    })
+    setConfig((prev) => ({
+      ...prev,
+      skipLogic: {
+        ...prev.skipLogic,
+        [field]: value,
+      },
+    }))
   }
 
   const updateAppearance = (field: string, value: any) => {
@@ -730,364 +792,497 @@ export function AdvancedQuestionConfig({
   }
 
   const addDisplayCondition = () => {
-    const newCondition = {
-      questionId: "", // ID de la pregunta que se evalúa
-      operator: "equals", // Operador por defecto
-      value: "", // Valor por defecto
-      logicalOperator: "AND" as const, // Operador lógico por defecto
+    console.log("➕ Agregando nueva condición de visualización")
+    
+    const newCondition: DisplayCondition = {
+      questionId: "",
+      questionText: "", // Agregar campo para el texto
+      operator: "equals",
+      value: "",
     }
-    const currentConditions = config.displayLogic?.conditions || []
-    updateDisplayLogic("conditions", [...currentConditions, newCondition])
+    
+    console.log("🆕 Nueva condición creada:", newCondition)
+    
+    setConfig((prev) => {
+      const updatedConfig = {
+        ...prev,
+        displayLogic: {
+          ...prev.displayLogic,
+          conditions: [...(prev.displayLogic?.conditions || []), newCondition],
+        },
+      }
+      
+      console.log("📋 Configuración después de agregar condición:", updatedConfig)
+      return updatedConfig
+    })
+  }
+
+  const updateDisplayCondition = (index: number, field: string, value: any) => {
+    console.log("🔄 Actualizando condición", index, field, value)
+    
+    setConfig((prev) => {
+      const updatedConfig = {
+        ...prev,
+        displayLogic: {
+          ...prev.displayLogic,
+          conditions: (prev.displayLogic?.conditions || []).map((condition, i) => {
+            if (i === index) {
+              // Si se está actualizando el questionId, también actualizar el questionText
+              if (field === "questionId" && value) {
+                const selectedQuestion = allQuestions.find(q => q.id === value)
+                if (selectedQuestion) {
+                  console.log(`✅ Actualizando questionText para pregunta: ${selectedQuestion.text}`)
+                  return {
+                    ...condition,
+                    [field]: value,
+                    questionText: selectedQuestion.text
+                  }
+                }
+              }
+              
+              return { ...condition, [field]: value }
+            }
+            return condition
+          }),
+        },
+      }
+      
+      console.log(`✅ Condición ${index} actualizada:`, updatedConfig.displayLogic?.conditions?.[index])
+      console.log("💾 Configuración actualizada:", updatedConfig)
+      return updatedConfig
+    })
   }
 
   const removeDisplayCondition = (index: number) => {
-    const conditions = config.displayLogic?.conditions || []
-    const newConditions = conditions.filter((_, i) => i !== index)
-    updateDisplayLogic("conditions", newConditions)
+    setConfig((prev) => ({
+      ...prev,
+      displayLogic: {
+        ...prev.displayLogic,
+        conditions: (prev.displayLogic?.conditions || []).filter((_, i) => i !== index),
+      },
+    }))
   }
 
   const addSkipRule = () => {
     const newRule = {
-      value: "", // Valor por defecto (ej: "Opción 2")
-      operator: "equals", // Operador por defecto
-      condition: "", // Condición por defecto
-      questionId: question.id, // ID de la pregunta actual
-      targetSectionId: "", // ID de la sección destino
-      targetQuestionId: undefined, // ID de la pregunta específica (opcional)
+      condition: "",
+      operator: "equals",
+      value: "",
+      targetSectionId: "",
+      targetQuestionId: "",
+      targetQuestionText: "",
+      enabled: true,
     }
-    const currentRules = config.skipLogic?.rules || []
-    updateSkipLogic("rules", [...currentRules, newRule])
-  }
-
-  const removeSkipRule = (index: number) => {
-    const rules = config.skipLogic?.rules || []
-    const newRules = rules.filter((_, i) => i !== index)
-    updateSkipLogic("rules", newRules)
+    setConfig((prev) => ({
+      ...prev,
+      skipLogic: {
+        ...prev.skipLogic,
+        rules: [...(prev.skipLogic?.rules || []), newRule],
+      },
+    }))
   }
 
   const updateSkipRule = (index: number, field: string, value: any) => {
+    setConfig((prev) => ({
+      ...prev,
+      skipLogic: {
+        ...prev.skipLogic,
+        rules: (prev.skipLogic?.rules || []).map((rule, i) =>
+          i === index ? { ...rule, [field]: value } : rule
+        ),
+      },
+    }))
+  }
+
+  const removeSkipRule = (index: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      skipLogic: {
+        ...prev.skipLogic,
+        rules: (prev.skipLogic?.rules || []).filter((_, i) => i !== index),
+      },
+    }))
+  }
+
+  const handleSave = () => {
+    console.log("💾 Guardando configuración de pregunta:", config)
     
-    const rules = [...(config.skipLogic?.rules || [])]
-    if (rules[index]) {
-      rules[index] = { ...rules[index], [field]: value }
-      updateSkipLogic("rules", rules)
+    // Validar y limpiar IDs inválidos antes de guardar
+    const validatedConfig = {
+      ...config,
+      displayLogic: {
+        enabled: config.displayLogic?.enabled || false,
+        conditions: (config.displayLogic?.conditions || []).map(condition => {
+          const sourceQuestion = allQuestions.find(q => q.id === condition.questionId)
+          if (!sourceQuestion) {
+            console.log(`⚠️ Limpiando condición con ID inválido: ${condition.questionId}`)
+            return {
+              ...condition,
+              questionId: "",
+              questionText: "", // También limpiar el texto
+              value: ""
+            }
+          }
+          return condition
+        }).filter(condition => condition.questionId) // Solo mantener condiciones válidas
+      },
+      skipLogic: {
+        enabled: config.skipLogic?.enabled || false,
+        rules: config.skipLogic?.rules || []
+      }
     }
+    
+    console.log("✅ Configuración validada a guardar:", validatedConfig)
+    
+    // Llamar a la función onSave con la configuración validada
+    onSave(validatedConfig)
+    onClose()
   }
 
-  const getValidationOptions = () => {
-    const baseOptions = [
-      { key: "required", label: "Campo obligatorio", type: "boolean" },
-      { key: "customMessage", label: "Mensaje de error personalizado", type: "text" },
-    ]
+  const tabs = [
+    {
+      id: "validation",
+      label: "Validación",
+      icon: AlertCircle,
+      content: (
+        <div className="space-y-6">
+          <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-green-500" />
+                Reglas de Validación
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="required"
+                  checked={config.validation?.required || false}
+                  onCheckedChange={(checked) => updateValidation("required", checked)}
+                />
+                <label
+                  htmlFor="required"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Pregunta obligatoria
+                </label>
+              </div>
 
-    const typeSpecificOptions: { [key: string]: any[] } = {
-      text: [
-        { key: "minLength", label: "Longitud mínima", type: "number" },
-        { key: "maxLength", label: "Longitud máxima", type: "number" },
-        { key: "pattern", label: "Patrón (RegEx)", type: "text" },
-        { key: "allowOnlyNumbers", label: "Solo números", type: "boolean" },
-        { key: "allowOnlyLetters", label: "Solo letras", type: "boolean" },
-        { key: "allowOnlyAlphanumeric", label: "Solo alfanumérico", type: "boolean" },
-      ],
-      textarea: [
-        { key: "minLength", label: "Longitud mínima", type: "number" },
-        { key: "maxLength", label: "Longitud máxima", type: "number" },
-        { key: "minWords", label: "Mínimo de palabras", type: "number" },
-        { key: "maxWords", label: "Máximo de palabras", type: "number" },
-      ],
-      number: [
-        { key: "minValue", label: "Valor mínimo", type: "number" },
-        { key: "maxValue", label: "Valor máximo", type: "number" },
-        { key: "allowDecimals", label: "Permitir decimales", type: "boolean" },
-        { key: "decimalPlaces", label: "Lugares decimales", type: "number" },
-        { key: "allowNegative", label: "Permitir negativos", type: "boolean" },
-        { key: "mustBeInteger", label: "Solo números enteros", type: "boolean" },
-      ],
-      email: [
-        { key: "pattern", label: "Patrón de email", type: "text", defaultValue: "^[^@]+@[^@]+\\.[^@]+$" },
-        { key: "allowMultiple", label: "Permitir múltiples emails", type: "boolean" },
-        {
-          key: "separator",
-          label: "Separador (si múltiples)",
-          type: "text",
-          defaultValue: ",",
-        },
-      ],
-      phone: [
-        { key: "pattern", label: "Patrón de teléfono", type: "text", defaultValue: "\\d{3}-\\d{3}-\\d{4}" },
-        { key: "countryCode", label: "Código de país requerido", type: "boolean" },
-        {
-          key: "format",
-          label: "Formato",
-          type: "select",
-          options: [
-            { value: "international", label: "Internacional (+1234567890)" },
-            { value: "national", label: "Nacional (123-456-7890)" },
-            { value: "local", label: "Local (1234567890)" },
-          ],
-        },
-      ],
-      date: [
-        { key: "minDate", label: "Fecha mínima", type: "date" },
-        { key: "maxDate", label: "Fecha máxima", type: "date" },
-        {
-          key: "dateFormat",
-          label: "Formato de fecha",
-          type: "select",
-          options: [
-            { value: "MM/DD/YYYY", label: "MM/DD/YYYY" },
-            { value: "DD/MM/YYYY", label: "DD/MM/YYYY" },
-            { value: "YYYY-MM-DD", label: "YYYY-MM-DD" },
-          ],
-        },
-        { key: "allowFutureDates", label: "Permitir fechas futuras", type: "boolean" },
-        { key: "allowPastDates", label: "Permitir fechas pasadas", type: "boolean" },
-      ],
-      multiple_choice: [
-        { key: "minSelections", label: "Selecciones mínimas", type: "number" },
-        { key: "maxSelections", label: "Selecciones máximas", type: "number" },
-      ],
-      checkbox: [
-        { key: "minSelections", label: "Selecciones mínimas", type: "number" },
-        { key: "maxSelections", label: "Selecciones máximas", type: "number" },
-        { key: "exactSelections", label: "Número exacto de selecciones", type: "number" },
-      ],
-      rating: [
-        { key: "minRating", label: "Calificación mínima", type: "number" },
-        { key: "maxRating", label: "Calificación máxima", type: "number" },
-      ],
-      matrix: [
-        { key: "requireAllRows", label: "Requerir todas las filas", type: "boolean" },
-        { key: "allowSameAnswer", label: "Permitir misma respuesta", type: "boolean" },
-      ],
-    }
-
-    return [...baseOptions, ...(typeSpecificOptions[question.type] || [])]
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5" />
-            Configuración Avanzada
-          </DialogTitle>
-        </DialogHeader>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="validation" className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Validación
-            </TabsTrigger>
-            <TabsTrigger value="logic" className="flex items-center gap-2">
-              <Eye className="h-4 w-4" />
-              Lógica
-            </TabsTrigger>
-            <TabsTrigger value="appearance" className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4" />
-              Apariencia
-            </TabsTrigger>
-            <TabsTrigger value="advanced" className="flex items-center gap-2">
-              <ArrowRight className="h-4 w-4" />
-              Avanzado
-            </TabsTrigger>
-          </TabsList>
-
-          {/* VALIDACIÓN */}
-          <TabsContent value="validation" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Reglas de Validación</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {getValidationOptions().map((option) => (
-                  <div key={option.key} className="space-y-2">
-                    <Label>{option.label}</Label>
-                    {option.type === "boolean" ? (
-                      <Switch
-                        checked={(config.validation as any)?.[option.key] || false}
-                        onCheckedChange={(checked) => updateValidation(option.key, checked)}
-                      />
-                    ) : option.type === "number" ? (
+              {config.validation?.required && (
+                <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-green-800">Longitud mínima</label>
                       <Input
                         type="number"
-                        value={(config.validation as any)?.[option.key] || ""}
-                        onChange={(e) => updateValidation(option.key, Number.parseInt(e.target.value) || undefined)}
-                        placeholder={option.placeholder || `Ingrese ${option.label.toLowerCase()}`}
+                        value={config.validation?.minLength || ""}
+                        onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                        placeholder="Sin límite"
+                        className="bg-white border-green-300 focus:border-green-500"
                       />
-                    ) : option.type === "date" ? (
-                      <Input
-                        type="date"
-                        value={(config.validation as any)?.[option.key] || ""}
-                        onChange={(e) => updateValidation(option.key, e.target.value)}
-                      />
-                    ) : option.type === "select" ? (
-                      <Select
-                        value={(config.validation as any)?.[option.key] || ""}
-                        onValueChange={(value) => updateValidation(option.key, value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={`Seleccionar ${option.label.toLowerCase()}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {option.options?.map((opt: any) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        value={(config.validation as any)?.[option.key] || option.defaultValue || "Default Value"}
-                        onChange={(e) => updateValidation(option.key, e.target.value)}
-                        placeholder={option.placeholder || `Ingrese ${option.label.toLowerCase()}`}
-                      />
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* LÓGICA */}
-          <TabsContent value="logic" className="space-y-6">
-            {/* Lógica de Visualización */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  Lógica de Visualización
-                  <Switch
-                    checked={config.displayLogic?.enabled || false}
-                    onCheckedChange={(checked) => {
-                      updateDisplayLogic("enabled", checked)
-                    }}
-                  />
-                </CardTitle>
-              </CardHeader>
-              {config.displayLogic?.enabled && (
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Mostrar esta pregunta solo si se cumplen ciertas condiciones
-                  </p>
-
-                  {(config.displayLogic?.conditions || []).map((condition, index) => (
-                    <div key={index} className="flex items-center gap-2 p-3 border rounded-lg">
-                      <Select
-                        value={condition.questionId}
-                        onValueChange={(value) => {
-                          const conditions = [...(config.displayLogic?.conditions || [])]
-                          conditions[index] = { ...condition, questionId: value }
-                          updateDisplayLogic("conditions", conditions)
-                        }}
-                      >
-                        <SelectTrigger className="w-[200px]">
-                          <SelectValue placeholder="Seleccionar pregunta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allQuestions
-                            .filter((q) => q.id !== question.id)
-                            .map((q) => (
-                              <SelectItem key={q.id} value={String(q.id)}>
-                                {q.text.replace(/<[^>]*>/g, "").substring(0, 50)}...
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Select
-                        value={condition.operator}
-                        onValueChange={(value) => {
-                          const conditions = [...(config.displayLogic?.conditions || [])]
-                          conditions[index] = { ...condition, operator: value }
-                          updateDisplayLogic("conditions", conditions)
-                        }}
-                      >
-                        <SelectTrigger className="w-[150px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="equals">Es igual a</SelectItem>
-                          <SelectItem value="not_equals">No es igual a</SelectItem>
-                          <SelectItem value="contains">Contiene</SelectItem>
-                          <SelectItem value="not_contains">No contiene</SelectItem>
-                          <SelectItem value="greater_than">Mayor que</SelectItem>
-                          <SelectItem value="less_than">Menor que</SelectItem>
-                          <SelectItem value="is_empty">Está vacío</SelectItem>
-                          <SelectItem value="is_not_empty">No está vacío</SelectItem>
-                        </SelectContent>
-                      </Select>
-
-                      <ValueSelector
-                        question={allQuestions.find((q) => q.id === condition.questionId) || question}
-                        operator={condition.operator}
-                        value={condition.value}
-                        onChange={(value) => {
-                          const conditions = [...(config.displayLogic?.conditions || [])]
-                          conditions[index] = { ...condition, value }
-                          updateDisplayLogic("conditions", conditions)
-                        }}
-                        allQuestions={allQuestions}
-                      />
-
-                      {index > 0 && (
-                        <Select
-                          value={condition.logicalOperator || "AND"}
-                          onValueChange={(value: "AND" | "OR") => {
-                            const conditions = [...(config.displayLogic?.conditions || [])]
-                            conditions[index] = { ...condition, logicalOperator: value }
-                            updateDisplayLogic("conditions", conditions)
-                          }}
-                        >
-                          <SelectTrigger className="w-[80px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="AND">Y</SelectItem>
-                            <SelectItem value="OR">O</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-
-                      <Button variant="ghost" size="sm" onClick={() => removeDisplayCondition(index)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
-                  ))}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-green-800">Longitud máxima</label>
+                      <Input
+                        type="number"
+                        value={config.validation?.maxLength || ""}
+                        onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                        placeholder="Sin límite"
+                        className="bg-white border-green-300 focus:border-green-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-green-800">Patrón de validación (regex)</label>
+                    <Input
+                      value={config.validation?.pattern || ""}
+                      onChange={(e) => updateValidation("pattern", e.target.value)}
+                      placeholder="Ej: ^[A-Za-z]+$"
+                      className="bg-white border-green-300 focus:border-green-500"
+                    />
+                  </div>
 
-                  <Button variant="outline" onClick={addDisplayCondition} className="w-full bg-transparent">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar Condición
-                  </Button>
-                </CardContent>
-              )}
-            </Card>
-
-            {/* Lógica de Salto - Enhanced Visual Version */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  Lógica de Salto
-                  <Switch
-                    checked={config.skipLogic?.enabled || false}
-                    onCheckedChange={(checked) => {
-                      updateSkipLogic("enabled", checked)
-                    }}
-                  />
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Lógica de Salto</h3>
-                  <Switch
-                    checked={config.skipLogic?.enabled || false}
-                    onCheckedChange={(checked) => updateSkipLogic("enabled", checked)}
-                  />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-green-800">Mensaje de error personalizado</label>
+                    <Textarea
+                      value={config.validation?.customMessage || ""}
+                      onChange={(e) => updateValidation("customMessage", e.target.value)}
+                      placeholder="Mensaje que se mostrará cuando la validación falle"
+                      className="bg-white border-green-300 focus:border-green-500"
+                      rows={2}
+                    />
+                  </div>
                 </div>
-                
-                {config.skipLogic?.enabled && (
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      id: "logic",
+      label: "Lógica",
+      icon: Eye,
+      content: (
+        <div className="space-y-6 h-[500px] overflow-y-auto">
+          {/* Lógica de Visualización */}
+          <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-green-600" />
+                  Lógica de Visualización
+                </div>
+                <Switch
+                  checked={config.displayLogic?.enabled || false}
+                  onCheckedChange={(checked) => {
+                    updateDisplayLogic("enabled", checked)
+                  }}
+                  className="data-[state=checked]:bg-green-500"
+                />
+              </CardTitle>
+              <CardDescription>
+                Controla cuándo se muestra esta pregunta basándose en las respuestas de otras preguntas
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {config.displayLogic?.enabled && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-green-800">Condiciones de visualización</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={addDisplayCondition}
+                      className="bg-green-500 text-white hover:bg-green-600 border-green-500"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Condición
+                    </Button>
+                  </div>
+
+                  {/* Condiciones de visualización mejoradas */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-green-700">Condiciones de visualización</h3>
+                      {isReconciling && (
+                        <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          Reconciliando IDs...
+                        </div>
+                      )}
+                    </div>
+                    
+                    {config.displayLogic?.conditions?.map((condition, index) => {
+                      console.log(`🔍 Buscando pregunta con ID: ${condition.questionId}`)
+                      console.log(`📋 Todas las preguntas:`, allQuestions?.map(q => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
+                      
+                      const sourceQuestion = allQuestions.find((q) => q.id === condition.questionId)
+                      
+                      console.log(`✅ Pregunta fuente encontrada:`, sourceQuestion)
+                      
+                      return (
+                        <Card key={index} className="bg-gradient-to-br from-white via-green-50/30 to-emerald-100/30 border-2 border-green-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                          <CardContent className="pt-6">
+                            <div className="space-y-6">
+                              {/* Header de la condición */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                                    {index + 1}
+                                  </div>
+                                  <span className="text-lg font-semibold text-green-800">Condición {index + 1}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {/* Debug info */}
+                                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                    ID: {condition.questionId || "No seleccionado"}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeDisplayCondition(index)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-full"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Selector de pregunta */}
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium text-green-700">Si la respuesta de:</label>
+                                <Select
+                                  value={condition.questionId}
+                                  onValueChange={(value) => updateDisplayCondition(index, "questionId", value)}
+                                >
+                                  <SelectTrigger className={`w-full ${!sourceQuestion ? 'border-red-300 bg-red-50' : 'border-green-300'} focus:border-green-500`}>
+                                    <SelectValue placeholder="Seleccionar pregunta" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {allQuestions
+                                      .filter((q) => q.id !== question.id)
+                                      .map((q) => (
+                                        <SelectItem key={q.id} value={q.id}>
+                                          {q.text.length > 40 ? `${q.text.substring(0, 40)}...` : q.text}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                                
+                                {/* Mostrar texto de la pregunta seleccionada */}
+                                {condition.questionText && (
+                                  <div className={`p-2 border rounded text-sm ${
+                                    sourceQuestion 
+                                      ? 'bg-green-50 border-green-200 text-green-700' 
+                                      : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                                  }`}>
+                                    <span className="font-medium">
+                                      {sourceQuestion ? '✅ Pregunta encontrada:' : '⚠️ Pregunta guardada:'}
+                                    </span> {condition.questionText}
+                                    {!sourceQuestion && (
+                                      <div className="text-xs mt-1 text-yellow-600">
+                                        La pregunta original ya no existe en la encuesta
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* Indicador de error si no se encuentra la pregunta */}
+                                {!sourceQuestion && condition.questionId && (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                                      <AlertCircle className="h-4 w-4" />
+                                      <span>⚠️ Pregunta no encontrada. El ID "{condition.questionId}" no existe en la encuesta actual.</span>
+                                    </div>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        console.log("🧹 Limpiando ID inválido:", condition.questionId)
+                                        updateDisplayCondition(index, "questionId", "")
+                                        updateDisplayCondition(index, "value", "")
+                                        updateDisplayCondition(index, "questionText", "")
+                                      }}
+                                      className="text-red-600 hover:text-red-700 border-red-300"
+                                    >
+                                      Limpiar ID inválido
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Operador */}
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium text-green-700">Operador:</label>
+                                <Select
+                                  value={condition.operator}
+                                  onValueChange={(value) => updateDisplayCondition(index, "operator", value)}
+                                >
+                                  <SelectTrigger className="w-full bg-white border-green-300 focus:border-green-500">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="equals">es igual a</SelectItem>
+                                    <SelectItem value="not_equals">no es igual a</SelectItem>
+                                    <SelectItem value="contains">contiene</SelectItem>
+                                    <SelectItem value="not_contains">no contiene</SelectItem>
+                                    <SelectItem value="is_empty">está vacía</SelectItem>
+                                    <SelectItem value="is_not_empty">no está vacía</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              {/* Valor */}
+                              {condition.operator !== "is_empty" && condition.operator !== "is_not_empty" && (
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium text-green-700">Valor:</label>
+                                  {sourceQuestion && (
+                                    sourceQuestion.type === "multiple_choice" || sourceQuestion.type === "checkbox" ? (
+                                      /* Para preguntas de opción múltiple y checkbox */
+                                      <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
+                                        <Label className="text-xs font-medium">Seleccionar opciones:</Label>
+                                        {sourceQuestion.options.map((option, optionIndex) => (
+                                          <div key={optionIndex} className="flex items-center space-x-2">
+                                            <Checkbox
+                                              id={`option-${index}-${optionIndex}`}
+                                              checked={condition.value.includes(option)}
+                                              onCheckedChange={(checked) => {
+                                                let newValues = condition.value ? condition.value.split(",") : []
+                                                if (checked) {
+                                                  newValues.push(option)
+                                                } else {
+                                                  newValues = newValues.filter((v) => v !== option)
+                                                }
+                                                updateDisplayCondition(index, "value", newValues.join(","))
+                                              }}
+                                            />
+                                            <Label htmlFor={`option-${index}-${optionIndex}`} className="text-sm cursor-pointer">
+                                              {option}
+                                            </Label>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      /* Para preguntas de texto o número */
+                                      <Input
+                                        value={condition.value}
+                                        onChange={(e) => updateDisplayCondition(index, "value", e.target.value)}
+                                        placeholder={sourceQuestion.type === "number" ? "Número" : "Texto"}
+                                        className="w-full bg-white border-green-300 focus:border-green-500"
+                                      />
+                                    )
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Lógica de Salto - Enhanced Visual Version */}
+          <Card className="border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/50 to-teal-100/50">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ArrowRight className="h-5 w-5 text-emerald-600" />
+                  Lógica de Salto
+                </div>
+                <Switch
+                  checked={config.skipLogic?.enabled || false}
+                  onCheckedChange={(checked) => {
+                    updateSkipLogic("enabled", checked)
+                  }}
+                  className="data-[state=checked]:bg-emerald-500"
+                />
+              </CardTitle>
+              <CardDescription>
+                Define qué sucede cuando se cumple una condición específica en esta pregunta
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 ">
+              {config.skipLogic?.enabled && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-emerald-800">Reglas de salto</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={addSkipRule}
+                      className="bg-emerald-500 text-white hover:bg-emerald-600 border-emerald-500"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Regla
+                    </Button>
+                  </div>
+
                   <SkipLogicVisualizer
                     rules={config.skipLogic?.rules || []}
                     question={question}
@@ -1095,170 +1290,270 @@ export function AdvancedQuestionConfig({
                     allQuestions={allQuestions}
                     onUpdateRule={updateSkipRule}
                   />
-                )}
 
-                {(config.skipLogic?.rules || []).map((rule, index) => (
-                  <div key={index} className="flex justify-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeSkipRule(index)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Eliminar Regla
-                    </Button>
+                  {/* Botones de eliminar regla mejorados */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                    {(config.skipLogic?.rules || []).map((rule, index) => (
+                      <div key={index} className="flex flex-col items-center p-4 bg-gradient-to-br from-red-50 to-pink-50 rounded-xl border-2 border-red-200 hover:border-red-300 transition-all duration-200">
+                        <div className="text-center mb-3">
+                          <div className="w-8 h-8 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-2">
+                            {index + 1}
+                          </div>
+                          <span className="text-sm font-medium text-red-800">Regla {index + 1}</span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeSkipRule(index)}
+                          className="w-full bg-gradient-to-r from-red-500 to-pink-600 text-white hover:from-red-600 hover:to-pink-700 border-red-500 hover:border-red-600 transition-all duration-200"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Eliminar Regla
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-
-                <Button variant="outline" onClick={addSkipRule} className="w-full bg-transparent">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Regla de Salto
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* APARIENCIA */}
-          <TabsContent value="appearance" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Opciones de Apariencia</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Mostrar números en opciones</Label>
-                    <Switch
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      id: "appearance",
+      label: "Apariencia",
+      icon: Settings,
+      content: (
+        <div className="space-y-6">
+          <Card className="border-2 border-teal-200 bg-gradient-to-br from-white via-teal-50/50 to-emerald-100/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-teal-600" />
+                Configuración de Apariencia
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="showNumbers"
                       checked={config.appearance?.showNumbers || false}
                       onCheckedChange={(checked) => updateAppearance("showNumbers", checked)}
                     />
+                    <label htmlFor="showNumbers" className="text-sm font-medium text-teal-800">
+                      Mostrar números de pregunta
+                    </label>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Label>Aleatorizar opciones</Label>
-                    <Switch
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="randomizeOptions"
                       checked={config.appearance?.randomizeOptions || false}
                       onCheckedChange={(checked) => updateAppearance("randomizeOptions", checked)}
                     />
+                    <label htmlFor="randomizeOptions" className="text-sm font-medium text-teal-800">
+                      Aleatorizar opciones
+                    </label>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Label>Permitir "Otro"</Label>
-                    <Switch
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="allowOther"
                       checked={config.appearance?.allowOther || false}
                       onCheckedChange={(checked) => updateAppearance("allowOther", checked)}
                     />
+                    <label htmlFor="allowOther" className="text-sm font-medium text-teal-800">
+                      Permitir "Otra" opción
+                    </label>
                   </div>
                 </div>
 
-                {config.appearance?.allowOther && (
+                <div className="space-y-4">
+                  {config.appearance?.allowOther && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-teal-800">Texto para "Otra" opción</label>
+                      <Input
+                        value={config.appearance?.otherText || ""}
+                        onChange={(e) => updateAppearance("otherText", e.target.value)}
+                        placeholder="Otra"
+                        className="bg-white border-teal-300 focus:border-teal-500"
+                      />
+                    </div>
+                  )}
+
                   <div className="space-y-2">
-                    <Label>Texto para "Otro"</Label>
+                    <label className="text-sm font-medium text-teal-800">Texto de placeholder</label>
                     <Input
-                      value={config.appearance?.otherText || ""}
-                      onChange={(e) => updateAppearance("otherText", e.target.value)}
-                      placeholder="Otro (especificar)"
+                      value={config.appearance?.placeholder || ""}
+                      onChange={(e) => updateAppearance("placeholder", e.target.value)}
+                      placeholder="Texto de ayuda"
+                      className="bg-white border-teal-300 focus:border-teal-500"
                     />
                   </div>
-                )}
 
-                <div className="space-y-2">
-                  <Label>Texto de ayuda</Label>
-                  <Textarea
-                    value={config.appearance?.helpText || ""}
-                    onChange={(e) => updateAppearance("helpText", e.target.value)}
-                    placeholder="Texto de ayuda opcional para la pregunta"
-                    rows={3}
-                  />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-teal-800">Texto de ayuda</label>
+                    <Textarea
+                      value={config.appearance?.helpText || ""}
+                      onChange={(e) => updateAppearance("helpText", e.target.value)}
+                      placeholder="Texto explicativo adicional"
+                      className="bg-white border-teal-300 focus:border-teal-500"
+                      rows={2}
+                    />
+                  </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      id: "advanced",
+      label: "Avanzado",
+      icon: ArrowRight,
+      content: (
+        <div className="space-y-6">
+          <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowRight className="h-5 w-5 text-green-600" />
+                Configuración Avanzada
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="allowMultiple"
+                      checked={config.advanced?.allowMultiple || false}
+                      onCheckedChange={(checked) => updateAdvanced("allowMultiple", checked)}
+                    />
+                    <label htmlFor="allowMultiple" className="text-sm font-medium text-green-800">
+                      Permitir múltiples selecciones
+                    </label>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Placeholder</Label>
-                  <Input
-                    value={config.appearance?.placeholder || ""}
-                    onChange={(e) => updateAppearance("placeholder", e.target.value)}
-                    placeholder="Texto placeholder para campos de entrada"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* AVANZADO */}
-          <TabsContent value="advanced" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración Avanzada</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {(question.type === "checkbox" || question.type === "multiple_choice") && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
+                  {config.advanced?.allowMultiple && (
+                    <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
                       <div className="space-y-2">
-                        <Label>Selecciones mínimas</Label>
+                        <label className="text-sm font-medium text-green-800">Selección mínima</label>
                         <Input
                           type="number"
-                          value={config.advanced?.minSelections || ""}
-                          onChange={(e) =>
-                            updateAdvanced("minSelections", Number.parseInt(e.target.value) || undefined)
-                          }
-                          placeholder="0"
+                          value={config.advanced?.minSelections || 1}
+                          onChange={(e) => updateAdvanced("minSelections", parseInt(e.target.value))}
+                          min={1}
+                          className="bg-white border-green-300 focus:border-green-500"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Selecciones máximas</Label>
+                        <label className="text-sm font-medium text-green-800">Selección máxima</label>
                         <Input
                           type="number"
-                          value={config.advanced?.maxSelections || ""}
-                          onChange={(e) =>
-                            updateAdvanced("maxSelections", Number.parseInt(e.target.value) || undefined)
-                          }
-                          placeholder="Sin límite"
+                          value={config.advanced?.minSelections || 1}
+                          onChange={(e) => updateAdvanced("maxSelections", parseInt(e.target.value))}
+                          min={1}
+                          className="bg-white border-green-300 focus:border-green-500"
                         />
                       </div>
                     </div>
-                    <Separator />
-                  </>
-                )}
+                  )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Mostrar barra de progreso</Label>
-                    <Switch
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="showProgressBar"
                       checked={config.advanced?.showProgressBar || false}
                       onCheckedChange={(checked) => updateAdvanced("showProgressBar", checked)}
                     />
+                    <label htmlFor="showProgressBar" className="text-sm font-medium text-green-800">
+                      Mostrar barra de progreso
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-green-800">Límite de tiempo (segundos)</label>
+                    <Input
+                      type="number"
+                      value={config.advanced?.timeLimit || 0}
+                      onChange={(e) => updateAdvanced("timeLimit", parseInt(e.target.value) || 0)}
+                      placeholder="Sin límite"
+                      min={0}
+                      className="bg-white border-green-300 focus:border-green-500"
+                    />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Label>Avance automático</Label>
-                    <Switch
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="autoAdvance"
                       checked={config.advanced?.autoAdvance || false}
                       onCheckedChange={(checked) => updateAdvanced("autoAdvance", checked)}
                     />
+                    <label htmlFor="autoAdvance" className="text-sm font-medium text-green-800">
+                      Avance automático
+                    </label>
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ),
+    },
+  ]
 
-                <div className="space-y-2">
-                  <Label>Límite de tiempo (segundos)</Label>
-                  <Input
-                    type="number"
-                    value={config.advanced?.timeLimit || ""}
-                    onChange={(e) => updateAdvanced("timeLimit", Number.parseInt(e.target.value) || undefined)}
-                    placeholder="Sin límite"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-2xl">
+            <Settings className="h-6 w-6" />
+            Configuración Avanzada
+          </DialogTitle>
+          <DialogDescription className="text-base">
+            Personaliza el comportamiento y apariencia de la pregunta: "{question.text}"
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave}>Guardar Configuración</Button>
+        <div className="flex flex-col h-full">
+          {/* Navigation Tabs */}
+          <div className="border-b">
+            <nav className="flex space-x-1 overflow-x-auto">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg"
+                      : "text-gray-600 hover:text-gray-800 hover:bg-green-50/50"
+                  }`}
+                >
+                  <tab.icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {tabs.find((tab) => tab.id === activeTab)?.content}
+          </div>
+
+          {/* Footer Actions */}
+          <div className="border-t bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+            <Button variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200">
+              Guardar Cambios
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,23 +1,19 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
-import type { Session } from "@supabase/supabase-js"
-import type { Database } from "@/types/supabase"
-import { supabase } from "@/lib/supabase-browser"
-
-type SupabaseUserRow = Database["public"]["Tables"]["users"]["Row"]
+import type { Session, User } from "@supabase/supabase-js"
+import { createClient } from "@/lib/supabase/client"
+import { useRedirectDebug } from "@/hooks/use-redirect-debug"
+import { getRedirectRoute } from "@/lib/middleware/config"
 
 type AuthContextType = {
-  user: SupabaseUserRow | null
+  user: User | null
   session: Session | null
   loading: boolean
-  error: string | null
-  login: (email: string, password: string) => Promise<void>
-  logout: () => Promise<void>
-  register: (email: string, password: string, name: string, role: string) => Promise<void>
-  refreshSession: () => Promise<void>
+  signIn: (email: string, password: string) => Promise<void>
+  signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -29,137 +25,138 @@ export const useAuth = () => {
 }
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<SupabaseUserRow | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
-
-  const getUserData = async (userId: string) => {
-    const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()
-    if (error) throw error
-    return data
-  }
-
-  const refreshSession = async () => {
-    try {
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      if (userError || !userData?.user) throw userError || new Error("No user")
-
-      const { data: sessionData } = await supabase.auth.getSession()
-      setSession(sessionData.session)
-
-      const dbUser = await getUserData(userData.user.id)
-      setUser(dbUser)
-    } catch {
-      setUser(null)
-      setSession(null)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const supabase = createClient()
+  
+  // Debug de redirecciones
+  useRedirectDebug()
 
   useEffect(() => {
-    refreshSession()
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        getUserData(session.user.id).then(setUser)
-        setSession(session)
-      } else {
-        setUser(null)
-        setSession(null)
+    // Obtener sesión inicial
+    const getInitialSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) {
+          console.error('Error getting session:', error)
+        } else {
+          console.log('🔄 Sesión inicial obtenida:', session ? 'Sí' : 'No')
+          setSession(session)
+          setUser(session?.user ?? null)
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error)
+      } finally {
+        setLoading(false)
       }
-    })
-
-    return () => {
-      authListener.subscription.unsubscribe()
     }
-  }, [])
 
-  const login = async (email: string, password: string) => {
-    setLoading(true)
-    setError(null)
+    getInitialSession()
+
+    // Listener de cambios de autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('🔄 Auth state changed:', event, session?.user?.email)
+        setSession(session)
+        setUser(session?.user ?? null)
+        setLoading(false)
+
+        // Solo redirigir en eventos específicos y evitar bucles
+        if (event === 'SIGNED_IN' && session && !isRedirecting) {
+          setIsRedirecting(true)
+          
+          // Obtener el rol del usuario
+          const userRole = session.user.user_metadata?.role || session.user.app_metadata?.role
+          
+          // Verificar si hay una redirección pendiente
+          const redirectedFrom = searchParams.get('redirectedFrom')
+          const targetRoute = redirectedFrom || getRedirectRoute(userRole)
+          
+          console.log('✅ Usuario autenticado:', {
+            email: session.user.email,
+            role: userRole,
+            redirectedFrom,
+            targetRoute
+          })
+          
+          toast({
+            title: "Inicio de sesión exitoso",
+            description: `Bienvenido, ${session.user.email}`,
+          })
+          
+          // Usar router.replace en lugar de push para evitar bucles
+          console.log('🚀 Redirigiendo a:', targetRoute)
+          router.replace(targetRoute)
+          
+          // Reset flag después de un momento
+          setTimeout(() => setIsRedirecting(false), 2000)
+        }
+
+        // Manejar logout
+        if (event === 'SIGNED_OUT') {
+          setIsRedirecting(false)
+          console.log('👋 Usuario desconectado')
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [supabase, router, searchParams, toast, isRedirecting])
+
+  const signIn = async (email: string, password: string) => {
     try {
+      setLoading(true)
+      console.log('🔐 Iniciando login para:', email)
+      
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
 
-      const userData = await getUserData(data.user.id)
-      setUser(userData)
-      setSession(data.session)
-
-      router.push(
-        userData.role === "admin" || userData.role === "supervisor"
-          ? "/dashboard"
-          : userData.role === "surveyor"
-          ? "/surveys"
-          : "/results"
-      )
-
-      toast({
-        title: "Inicio de sesión exitoso",
-        description: `Bienvenido, ${userData.name}`,
-      })
+      console.log('✅ Login exitoso')
+      
+      // NO redirigir aquí, dejar que onAuthStateChange maneje todo
+      console.log('⏳ Esperando que onAuthStateChange maneje la redirección...')
+      
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al iniciar sesión"
-      setError(message)
+      console.error('❌ Error en login:', message)
       toast({ title: "Error", description: message, variant: "destructive" })
+      throw error
     } finally {
       setLoading(false)
     }
   }
 
-  const logout = async () => {
-    setLoading(true)
+  const signOut = async () => {
     try {
+      setIsRedirecting(true)
+      console.log('🚪 Cerrando sesión...')
       await supabase.auth.signOut()
+      
+      // Limpiar el estado inmediatamente
       setUser(null)
       setSession(null)
+      
       router.push("/login")
       toast({ title: "Sesión cerrada correctamente" })
     } catch (error) {
+      console.error('❌ Error al cerrar sesión:', error)
       toast({
         title: "Error al cerrar sesión",
         description: error instanceof Error ? error.message : "Error desconocido",
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const register = async (email: string, password: string, name: string, role: string) => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.auth.signUp({ email, password })
-      if (error) throw error
-
-      await supabase.from("users").insert({
-        id: data.user.id,
-        email,
-        name,
-        role,
-        status: "active",
-      })
-
-      toast({
-        title: "Registro exitoso",
-        description: "Ya puedes iniciar sesión.",
-      })
-      router.push("/login")
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error desconocido"
-      toast({ title: "Error de registro", description: message, variant: "destructive" })
-    } finally {
-      setLoading(false)
+      setIsRedirecting(false)
     }
   }
 
   return (
-    <AuthContext.Provider
-      value={{ user, session, loading, error, login, logout, register, refreshSession }}
-    >
+    <AuthContext.Provider value={{ user, session, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

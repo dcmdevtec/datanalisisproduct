@@ -14,6 +14,16 @@ export const SUPABASE_CONFIG = {
     
     // Configuración de sesión
     sessionExpiryMargin: 300, // Margen de 5 minutos para expiración de sesión
+    
+    // Configuración para SSR
+    cookieOptions: {
+      name: 'supabase-auth-token',
+      lifetime: 60 * 60 * 24 * 7, // 7 días
+      domain: process.env.NODE_ENV === 'production' ? '.tu-dominio.com' : 'localhost',
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
   },
   
   // Configuración de base de datos
@@ -141,6 +151,69 @@ export const SUPABASE_CONFIG = {
     // Logs detallados
     verboseLogging: true,
   },
+  
+  // Configuración de SSR
+  ssr: {
+    // Habilitar SSR completo
+    enabled: true,
+    
+    // Configuración de cookies para SSR
+    cookies: {
+      // Nombre de la cookie de sesión
+      sessionName: 'supabase-auth-token',
+      // Tiempo de vida de la cookie (7 días)
+      maxAge: 60 * 60 * 24 * 7,
+      // Dominio de la cookie
+      domain: process.env.NODE_ENV === 'production' ? '.tu-dominio.com' : 'localhost',
+      // Ruta de la cookie
+      path: '/',
+      // Política de SameSite
+      sameSite: 'lax',
+      // Solo HTTPS en producción
+      secure: process.env.NODE_ENV === 'production',
+      // HttpOnly para mayor seguridad
+      httpOnly: true,
+    },
+    
+    // Configuración de middleware
+    middleware: {
+      // Habilitar verificación de autenticación en middleware
+      enableAuthCheck: true,
+      // Habilitar refresh automático de tokens
+      enableTokenRefresh: true,
+      // Tiempo antes de expirar para refrescar token (5 minutos)
+      tokenRefreshThreshold: 300,
+      // Rutas protegidas
+      protectedRoutes: [
+        '/dashboard',
+        '/projects',
+        '/surveys',
+        '/users',
+        '/zones',
+        '/reports',
+        '/settings',
+        '/preview',
+      ],
+      // Rutas de autenticación
+      authRoutes: [
+        '/login',
+        '/register',
+        '/forgot-password',
+      ],
+    },
+    
+    // Configuración de sincronización cliente-servidor
+    sync: {
+      // Habilitar sincronización automática
+      enabled: true,
+      // Intervalo de sincronización (30 segundos)
+      interval: 30000,
+      // Sincronizar en cambios de visibilidad de página
+      onVisibilityChange: true,
+      // Sincronizar en cambios de estado de red
+      onNetworkChange: true,
+    },
+  },
 }
 
 // Configuración específica para diferentes entornos
@@ -175,6 +248,14 @@ export const getEnvironmentConfig = () => {
         cache: {
           ...SUPABASE_CONFIG.cache,
           defaultTTL: 600000, // 10 minutos en producción
+        },
+        ssr: {
+          ...SUPABASE_CONFIG.ssr,
+          cookies: {
+            ...SUPABASE_CONFIG.ssr.cookies,
+            secure: true, // Solo HTTPS en producción
+            domain: '.tu-dominio.com', // Ajustar según tu dominio
+          },
         },
       }
     
