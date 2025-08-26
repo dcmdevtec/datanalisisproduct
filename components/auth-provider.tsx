@@ -1,56 +1,44 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useToast } from "@/components/ui/use-toast"
-import type { Session, User } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
-import { useRedirectDebug } from "@/hooks/use-redirect-debug"
-import { getRedirectRoute } from "@/lib/middleware/config"
+import { createContext, useContext, useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
 
-type AuthContextType = {
+interface AuthContextType {
   user: User | null
-  session: Session | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  signIn: async () => {},
+  signOut: async () => {},
+})
 
-export const useAuth = () => {
-  const context = useContext(AuthContext)
-  if (!context) throw new Error("useAuth must be used within AuthProvider")
-  return context
+export function useAuth() {
+  return useContext(AuthContext)
 }
 
-export default function AuthProvider({ children }: { children: ReactNode }) {
+export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isRedirecting, setIsRedirecting] = useState(false)
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const { toast } = useToast()
   const supabase = createClient()
-  
-  // Debug de redirecciones
-  useRedirectDebug()
 
   useEffect(() => {
-    // Obtener sesión inicial
+    // Get initial session
     const getInitialSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
         if (error) {
           console.error('Error getting session:', error)
-        } else {
-          console.log('🔄 Sesión inicial obtenida:', session ? 'Sí' : 'No')
-          setSession(session)
-          setUser(session?.user ?? null)
         }
+        console.log('🔄 Initial session:', session?.user?.email || 'No user')
+        setUser(session?.user ?? null)
       } catch (error) {
-        console.error('Auth initialization error:', error)
+        console.error('Error in getInitialSession:', error)
       } finally {
         setLoading(false)
       }
@@ -58,73 +46,44 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
     getInitialSession()
 
-    // Listener de cambios de autenticación
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 Auth state changed:', event, session?.user?.email)
-        setSession(session)
+        console.log('🔄 Auth state changed:', event, session?.user?.email || 'No user')
         setUser(session?.user ?? null)
         setLoading(false)
-
-        // Solo redirigir en eventos específicos y evitar bucles
-        if (event === 'SIGNED_IN' && session && !isRedirecting) {
-          setIsRedirecting(true)
-          
-          // Obtener el rol del usuario
-          const userRole = session.user.user_metadata?.role || session.user.app_metadata?.role
-          
-          // Verificar si hay una redirección pendiente
-          const redirectedFrom = searchParams.get('redirectedFrom')
-          const targetRoute = redirectedFrom || getRedirectRoute(userRole)
-          
-          console.log('✅ Usuario autenticado:', {
-            email: session.user.email,
-            role: userRole,
-            redirectedFrom,
-            targetRoute
-          })
-          
-          toast({
-            title: "Inicio de sesión exitoso",
-            description: `Bienvenido, ${session.user.email}`,
-          })
-          
-          // Usar router.replace en lugar de push para evitar bucles
-          console.log('🚀 Redirigiendo a:', targetRoute)
-          router.replace(targetRoute)
-          
-          // Reset flag después de un momento
-          setTimeout(() => setIsRedirecting(false), 2000)
+        
+        // El middleware se encargará de la redirección automática
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('✅ Login exitoso - El middleware manejará la redirección')
         }
-
-        // Manejar logout
+        
         if (event === 'SIGNED_OUT') {
-          setIsRedirecting(false)
-          console.log('👋 Usuario desconectado')
+          console.log('👋 Sesión cerrada - El middleware manejará la redirección')
         }
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [supabase, router, searchParams, toast, isRedirecting])
+  }, [supabase])
 
   const signIn = async (email: string, password: string) => {
     try {
+      console.log('🔐 Attempting sign in for:', email)
       setLoading(true)
-      console.log('🔐 Iniciando login para:', email)
-      
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-
-      console.log('✅ Login exitoso')
       
-      // NO redirigir aquí, dejar que onAuthStateChange maneje todo
-      console.log('⏳ Esperando que onAuthStateChange maneje la redirección...')
+      console.log('✅ Sign in successful:', data.user?.email)
       
+      // El usuario se establecerá automáticamente a través de onAuthStateChange
+      // El middleware se encargará de la redirección
+      if (data.user) {
+        setUser(data.user)
+        console.log('👤 User state updated:', data.user.email)
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al iniciar sesión"
-      console.error('❌ Error en login:', message)
-      toast({ title: "Error", description: message, variant: "destructive" })
+      console.error('❌ Error signing in:', error)
       throw error
     } finally {
       setLoading(false)
@@ -132,31 +91,11 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    try {
-      setIsRedirecting(true)
-      console.log('🚪 Cerrando sesión...')
-      await supabase.auth.signOut()
-      
-      // Limpiar el estado inmediatamente
-      setUser(null)
-      setSession(null)
-      
-      router.push("/login")
-      toast({ title: "Sesión cerrada correctamente" })
-    } catch (error) {
-      console.error('❌ Error al cerrar sesión:', error)
-      toast({
-        title: "Error al cerrar sesión",
-        description: error instanceof Error ? error.message : "Error desconocido",
-        variant: "destructive",
-      })
-    } finally {
-      setIsRedirecting(false)
-    }
+    await supabase.auth.signOut()
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

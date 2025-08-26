@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { 
-  MIDDLEWARE_CONFIG,
-  isProtectedRoute,
-  isAuthRoute,
-  shouldIgnoreRoute,
-  getRedirectRoute 
-} from '@/lib/middleware/config' // Ajusta la ruta según tu estructura
 
 export async function middleware(request: NextRequest) {
-  const path = request.nextUrl.pathname
-
-  // Ignorar rutas que no necesitan procesamiento
-  if (shouldIgnoreRoute(path)) {
-    return NextResponse.next()
-  }
-
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -69,71 +55,55 @@ export async function middleware(request: NextRequest) {
   )
 
   try {
-    // Verificar el usuario autenticado
+    // Refresh session if expired - required for Server Components
+    // https://supabase.com/docs/guides/auth/auth-helpers/nextjs#managing-refresh-token-rotation
     const { data: { user }, error } = await supabase.auth.getUser()
 
-    if (MIDDLEWARE_CONFIG.LOGGING.ENABLE_VERBOSE) {
-      console.log('🔒 Middleware ejecutándose en:', path)
-      console.log('🔑 Estado de usuario:', {
-        authenticated: !!user,
-        hasError: !!error,
-        userId: MIDDLEWARE_CONFIG.LOGGING.SHOW_SENSITIVE_INFO ? user?.id : '***'
-      })
+    // If there's no user and the request is for a protected route, redirect to login
+    if (!user && isProtectedRoute(request.nextUrl.pathname)) {
+      const redirectUrl = new URL('/login', request.url)
+      redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
     }
 
-    // Manejar rutas protegidas
-    if (isProtectedRoute(path)) {
-      if (!user || error) {
-        const loginUrl = new URL(MIDDLEWARE_CONFIG.REDIRECTS.DEFAULT_UNAUTHENTICATED, request.url)
-        loginUrl.searchParams.set('redirectedFrom', path)
-        
-        if (MIDDLEWARE_CONFIG.LOGGING.ENABLE_VERBOSE) {
-          console.log('🛡️ Acceso denegado - Redirigiendo a login desde:', path)
-        }
-        
-        return NextResponse.redirect(loginUrl)
-      }
-
-      // Usuario autenticado - obtener rol si está disponible
-      const userRole = user.user_metadata?.role || user.app_metadata?.role
-      
-      if (MIDDLEWARE_CONFIG.LOGGING.ENABLE_VERBOSE) {
-        console.log('✅ Acceso permitido a ruta protegida:', path)
-        console.log('👤 Rol de usuario:', userRole || 'Sin rol definido')
-      }
-    }
-
-    // Manejar rutas de autenticación (evitar acceso si ya está logueado)
-    if (isAuthRoute(path) && user && !error) {
-      const userRole = user.user_metadata?.role || user.app_metadata?.role
-      const redirectRoute = getRedirectRoute(userRole)
-      
-      if (MIDDLEWARE_CONFIG.LOGGING.ENABLE_VERBOSE) {
-        console.log('🔄 Usuario ya autenticado - Redirigiendo desde:', path, 'hacia:', redirectRoute)
-      }
-      
-      return NextResponse.redirect(new URL(redirectRoute, request.url))
+    // If there's a user and the request is for an auth route, redirect to dashboard
+    if (user && isAuthRoute(request.nextUrl.pathname)) {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
     return response
-
   } catch (error) {
-    if (MIDDLEWARE_CONFIG.LOGGING.ENABLE_VERBOSE) {
-      console.error('❌ Error en middleware:', error)
+    console.error('Middleware error:', error)
+    // If there's an error and it's a protected route, redirect to login
+    if (isProtectedRoute(request.nextUrl.pathname)) {
+      return NextResponse.redirect(new URL('/login', request.url))
     }
-
-    // Si hay error y es una ruta protegida, redirigir a login
-    if (isProtectedRoute(path)) {
-      const loginUrl = new URL(MIDDLEWARE_CONFIG.REDIRECTS.DEFAULT_UNAUTHENTICATED, request.url)
-      loginUrl.searchParams.set('redirectedFrom', path)
-      return NextResponse.redirect(loginUrl)
-    }
-
-    // Para otras rutas, continuar normalmente
     return response
   }
 }
 
+// Helper functions
+function isProtectedRoute(pathname: string): boolean {
+  const protectedRoutes = [
+    '/dashboard',
+    '/projects',
+    '/surveys',
+    '/users',
+    '/zones',
+    '/reports',
+    '/settings',
+  ]
+  return protectedRoutes.some(route => 
+    pathname === route || pathname.startsWith(route + '/')
+  )
+}
+
+function isAuthRoute(pathname: string): boolean {
+  const authRoutes = ['/login', '/register', '/forgot-password']
+  return authRoutes.some(route => 
+    pathname === route || pathname.startsWith(route + '/')
+  )
+}
 
 export const config = {
   matcher: [

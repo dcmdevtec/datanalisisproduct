@@ -354,14 +354,14 @@ function SurveysPageContent() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 sm:p-8 bg-[#f7faf9] min-h-screen">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+      <div className="p-4 sm:p-6 lg:p-8 bg-[#f7faf9] min-h-screen">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 lg:mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#18b0a4]">
-              <FileText className="inline-block mr-2 h-8 w-8 text-[#18b0a4]" />
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#18b0a4]">
+              <FileText className="inline-block mr-2 h-6 w-6 sm:h-8 sm:w-8 text-[#18b0a4]" />
               Encuestas
             </h1>
-            <p className="mt-2 text-gray-500">Gestiona todas las encuestas de la plataforma.</p>
+            <p className="mt-2 text-sm sm:text-base text-gray-500">Gestiona todas las encuestas de la plataforma.</p>
           </div>
           <Button
             onClick={() => {
@@ -369,15 +369,15 @@ function SurveysPageContent() {
               setModalSelectedProjectId(null)
               setIsCreateSurveyModalOpen(true)
             }}
-            className="bg-[#18b0a4] hover:bg-[#18b0a4]/90"
+            className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto"
           >
             <Plus className="h-4 w-4 mr-2" /> Nueva Encuesta
           </Button>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
+        <div className="flex flex-col gap-4 mb-6 lg:mb-8">
           <Input
-            className="w-full sm:w-80 px-4 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-0 focus-visible:ring-0 !focus:ring-0 !focus-visible:ring-0 focus:outline-none text-gray-900 placeholder:text-gray-400 shadow-sm transition"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-0 focus-visible:ring-0 !focus:ring-0 !focus-visible:ring-0 focus:outline-none text-gray-900 placeholder:text-gray-400 shadow-sm transition"
             type="text"
             placeholder="🔍 Buscar por título, proyecto o empresa..."
             value={search}
@@ -386,60 +386,62 @@ function SurveysPageContent() {
               setPage(1)
             }}
           />
-          <Combobox
-            options={companyOptions}
-            value={
-              filterProjectId ? projects.find((p) => p.id === filterProjectId)?.company_id || "" : filterCompanyId || ""
-            }
-            onValueChange={(value) => {
-              setFilterCompanyId(value)
-              setFilterProjectId(null) // Reset project filter when company filter changes
-              setPage(1)
-
-              // Update URL search params
-              const newSearchParams = new URLSearchParams(searchParams.toString())
-              if (value) {
-                newSearchParams.set("companyId", value)
-              } else {
-                newSearchParams.delete("companyId")
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Combobox
+              options={companyOptions}
+              value={
+                filterProjectId ? projects.find((p) => p.id === filterProjectId)?.company_id || "" : filterCompanyId || ""
               }
-              newSearchParams.delete("projectId") // Always clear project when company changes
-              router.replace(`?${newSearchParams.toString()}`)
-            }}
-            placeholder="Filtrar por empresa..."
-            searchPlaceholder="Buscar empresa..."
-            emptyMessage="No se encontraron empresas."
-          />
-          <Combobox
-            options={projects
-              .filter((p) => (filterCompanyId ? p.company_id === filterCompanyId : true))
-              .map((p) => ({ label: p.name, value: p.id }))}
-            value={filterProjectId || ""}
-            onValueChange={(value) => {
-              setFilterProjectId(value)
-              setPage(1)
+              onValueChange={(value) => {
+                setFilterCompanyId(value)
+                setFilterProjectId(null) // Reset project filter when company filter changes
+                setPage(1)
 
-              // Update URL search params
-              const newSearchParams = new URLSearchParams(searchParams.toString())
-              if (value) {
-                newSearchParams.set("projectId", value)
-                // If a project is selected, ensure its company is also in the URL
-                const selectedProject = projects.find((p) => p.id === value)
-                if (selectedProject && selectedProject.company_id) {
-                  newSearchParams.set("companyId", selectedProject.company_id)
+                // Update URL search params
+                const newSearchParams = new URLSearchParams(searchParams.toString())
+                if (value) {
+                  newSearchParams.set("companyId", value)
+                } else {
+                  newSearchParams.delete("companyId")
                 }
-              } else {
-                newSearchParams.delete("projectId")
+                newSearchParams.delete("projectId") // Always clear project when company changes
+                router.replace(`?${newSearchParams.toString()}`)
+              }}
+              placeholder="Filtrar por empresa..."
+              searchPlaceholder="Buscar empresa..."
+              emptyMessage="No se encontraron empresas."
+            />
+            <Combobox
+              options={projects
+                .filter((p) => (filterCompanyId ? p.company_id === filterCompanyId : true))
+                .map((p) => ({ label: p.name, value: p.id }))}
+              value={filterProjectId || ""}
+              onValueChange={(value) => {
+                setFilterProjectId(value)
+                setPage(1)
+
+                // Update URL search params
+                const newSearchParams = new URLSearchParams(searchParams.toString())
+                if (value) {
+                  newSearchParams.set("projectId", value)
+                  // If a project is selected, ensure its company is also in the URL
+                  const selectedProject = projects.find((p) => p.id === value)
+                  if (selectedProject && selectedProject.company_id) {
+                    newSearchParams.set("companyId", selectedProject.company_id)
+                  }
+                } else {
+                  newSearchParams.delete("projectId")
+                }
+                router.replace(`?${newSearchParams.toString()}`)
+              }}
+              placeholder="Filtrar por proyecto..."
+              searchPlaceholder="Buscar proyecto..."
+              emptyMessage={
+                filterCompanyId ? "No se encontraron proyectos para esta empresa." : "Selecciona una empresa primero."
               }
-              router.replace(`?${newSearchParams.toString()}`)
-            }}
-            placeholder="Filtrar por proyecto..."
-            searchPlaceholder="Buscar proyecto..."
-            emptyMessage={
-              filterCompanyId ? "No se encontraron proyectos para esta empresa." : "Selecciona una empresa primero."
-            }
-            disabled={!filterCompanyId} // Disable if no company is selected for filtering
-          />
+              disabled={!filterCompanyId} // Disable if no company is selected for filtering
+            />
+          </div>
         </div>
 
         {error && (
@@ -454,15 +456,16 @@ function SurveysPageContent() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : filteredSurveys.length === 0 ? (
-          <div className="text-center p-8 border rounded-lg bg-muted/50">
-            <h3 className="text-lg font-medium mb-2">No hay encuestas disponibles</h3>
-            <p className="text-muted-foreground mb-4">No se encontraron encuestas para mostrar.</p>
+          <div className="text-center p-6 sm:p-8 border rounded-lg bg-muted/50">
+            <h3 className="text-lg sm:text-xl font-medium mb-2">No hay encuestas disponibles</h3>
+            <p className="text-sm sm:text-base text-muted-foreground mb-4">No se encontraron encuestas para mostrar.</p>
             <Button
               onClick={() => {
                 setModalSelectedCompanyId(null)
                 setModalSelectedProjectId(null)
                 setIsCreateSurveyModalOpen(true)
               }}
+              className="w-full sm:w-auto"
             >
               <Plus className="h-4 w-4 mr-2" /> Crear tu primera encuesta
             </Button>
@@ -470,73 +473,91 @@ function SurveysPageContent() {
         ) : (
           <>
             <div className="overflow-x-auto rounded-xl shadow border border-[#18b0a4]/20 bg-white">
-              <Table className="min-w-[1000px]">
+              <Table className="w-full">
                 <TableHeader className="bg-[#18b0a4]/10">
                   <TableRow>
-                    <TableHead className="text-[#18b0a4] font-bold">Título</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Proyecto</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Empresa</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Estado</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold text-center">Respuestas</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Fecha Creación</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold text-center">Acciones</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Título</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden sm:table-cell">Proyecto</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden lg:table-cell">Empresa</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Estado</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Respuestas</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden md:table-cell">Fecha Creación</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedSurveys.map((survey) => (
                     <TableRow key={survey.id} className="hover:bg-[#18b0a4]/5 transition group">
-                      <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4]">
-                        {survey.title}
+                      <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4] px-2 sm:px-4">
+                        <div className="truncate max-w-[120px] sm:max-w-[150px] lg:max-w-[200px]" title={survey.title}>
+                          {survey.title}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-gray-700">{survey.projects?.name || "N/A"}</TableCell>
-                      <TableCell className="text-gray-700">{survey.projects?.companies?.name || "N/A"}</TableCell>
-                      <TableCell className="text-gray-700 capitalize">{survey.status}</TableCell>
-                      <TableCell className="text-center text-gray-700">{survey.responses_count ?? 0}</TableCell>
-                      <TableCell className="text-gray-700">
-                        {new Date(survey.created_at).toLocaleDateString()}
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden sm:table-cell">
+                        <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.name || "N/A"}>
+                          {survey.projects?.name || "N/A"}
+                        </div>
                       </TableCell>
-                      <TableCell className="flex items-center justify-center gap-2">
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden lg:table-cell">
+                        <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.companies?.name || "N/A"}>
+                          {survey.projects?.companies?.name || "N/A"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-gray-700 capitalize px-2 sm:px-4">
+                        <div className="truncate max-w-[60px] sm:max-w-[80px]">
+                          {survey.status}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center text-gray-700 px-2 sm:px-4">
+                        {survey.responses_count ?? 0}
+                      </TableCell>
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden md:table-cell">
+                        <div className="truncate max-w-[80px] lg:max-w-[120px]">
+                          {new Date(survey.created_at).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                      <TableCell className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                           onClick={() => router.push(`/surveys/${survey.id}`)}
                           title="Ver Encuesta"
                         >
                           <span className="sr-only">Ver Encuesta</span>
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                           onClick={() =>
                             router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
                           }
                           title="Editar Encuesta"
                         >
                           <span className="sr-only">Editar Encuesta</span>
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-blue-500 hover:bg-blue-500/10"
+                          className="text-blue-500 hover:bg-blue-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                           onClick={() => handleDuplicateSurvey(survey.id)}
                           title="Duplicar Encuesta"
                         >
                           <span className="sr-only">Duplicar Encuesta</span>
-                          <Copy className="h-4 w-4" />
+                          <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-red-500 hover:bg-red-500/10"
+                          className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                           onClick={() => handleDeleteClick(survey.id)}
                           title="Eliminar Encuesta"
                         >
                           <span className="sr-only">Eliminar Encuesta</span>
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -545,8 +566,8 @@ function SurveysPageContent() {
               </Table>
             </div>
             {/* Paginación */}
-            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-2">
-              <div className="text-sm text-gray-500">
+            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4">
+              <div className="text-sm text-gray-500 text-center sm:text-left">
                 Página <span className="font-semibold text-[#18b0a4]">{page}</span> de{" "}
                 <span className="font-semibold text-[#18b0a4]">{totalPages}</span>{" "}
                 <span className="ml-2">({filteredSurveys.length} resultados)</span>
@@ -555,13 +576,13 @@ function SurveysPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(1)}
                   disabled={page === 1}
                   aria-label="Primera"
                 >
                   <span className="sr-only">Primera</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M13 16L7 10L13 4"
                       stroke="#18b0a4"
@@ -574,13 +595,13 @@ function SurveysPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
                   aria-label="Anterior"
                 >
                   <span className="sr-only">Anterior</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M12 16L6 10L12 4"
                       stroke="#18b0a4"
@@ -593,13 +614,13 @@ function SurveysPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(page + 1)}
                   disabled={page === totalPages}
                   aria-label="Siguiente"
                 >
                   <span className="sr-only">Siguiente</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M8 4L14 10L8 16"
                       stroke="#18b0a4"
@@ -612,13 +633,13 @@ function SurveysPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(totalPages)}
                   disabled={page === totalPages}
                   aria-label="Última"
                 >
                   <span className="sr-only">Última</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M7 4L13 10L7 16"
                       stroke="#18b0a4"

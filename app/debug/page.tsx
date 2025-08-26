@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase/client"
 import DebugSupabase from "@/components/debug-supabase"
-import { SupabaseDebug } from "@/components/supabase-debug"
+// import { SupabaseDebug } from "@/components/supabase-debug"
 import { Loader2, Bug, Database, Shield } from "lucide-react"
 
 export default function DebugPage() {
@@ -305,7 +305,7 @@ export default function DebugPage() {
                 <CardDescription>Diagnóstico completo de la conexión y configuración de Supabase</CardDescription>
               </CardHeader>
               <CardContent>
-                <SupabaseDebug />
+                {/* <SupabaseDebug /> */}
               </CardContent>
             </Card>
           </TabsContent>

@@ -23,7 +23,6 @@ import {
   Users,
 } from "lucide-react"
 import SyncStatus from "@/components/sync-status"
-import ThemeToggle from "@/components/ui/theme-toggle"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth()
@@ -94,13 +93,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Theme toggle top right */}
-      <div className="fixed top-4 right-6 z-50">
-        <ThemeToggle />
-      </div>
-      
       {/* Sidebar for desktop */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-10">
+      <div className="hidden md:flex md:w-64 lg:w-72 md:flex-col md:fixed md:inset-y-0 z-10">
         <div className="flex flex-col flex-grow border-r bg-white pt-5">
           <div className="flex items-center gap-3 px-4 pb-5 border-b border-[#18b0a4]/30">
             <div className="h-10 w-10 flex items-center justify-center bg-[#18b0a4] rounded shadow-sm overflow-hidden">
@@ -112,7 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 draggable={false}
               />
             </div>
-            <span className="font-extrabold text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
+            <span className="font-extrabold text-xl lg:text-2xl tracking-tight text-[#18b0a4]">Datanálisis</span>
           </div>
           <div className="flex-grow flex flex-col justify-between">
             <nav className="flex-1 px-2 py-4 space-y-1">
@@ -123,7 +117,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     key={item.name}
                     href={item.href}
                     className={`
-                      flex items-center px-3 py-2 text-sm font-semibold rounded-lg transition-colors
+                      flex items-center px-3 py-3 text-sm font-semibold rounded-lg transition-colors
                       ${isActive
                         ? "bg-[#18b0a4] text-white shadow"
                         : "text-gray-700 hover:bg-[#18b0a4]/10 hover:text-[#18b0a4]"}
@@ -165,7 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-2">
             <Globe className="h-6 w-6 text-[#18b0a4]" />
-            <span className="font-extrabold text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
+            <span className="font-extrabold text-lg sm:text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
           </div>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -173,11 +167,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Menu className="h-6 w-6" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0 bg-white text-[#18b0a4]">
+            <SheetContent side="left" className="w-72 sm:w-80 p-0 bg-white text-[#18b0a4]">
               <div className="flex flex-col h-full">
                 <div className="flex items-center gap-2 p-4 border-b border-[#18b0a4]/30">
                   <Globe className="h-6 w-6 text-[#18b0a4]" />
-                  <span className="font-extrabold text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
+                  <span className="font-extrabold text-lg sm:text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
                 </div>
                 <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
                   {navigation.map((item) => {
@@ -187,7 +181,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         key={item.name}
                         href={item.href}
                         className={`
-                          flex items-center px-3 py-2 text-sm font-semibold rounded-lg transition-colors
+                          flex items-center px-3 py-3 text-sm font-semibold rounded-lg transition-colors
                           ${isActive
                             ? "bg-[#18b0a4] text-white shadow"
                             : "text-[#18b0a4] hover:bg-[#18b0a4]/10 hover:text-[#18b0a4]"}
@@ -220,7 +214,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         handleLogout()
                       }}
                     >
-                      <LogOut className="h-6 w-6" />
+                      <LogOut className="h-5 w-5" />
                     </Button>
                   </div>
                 </div>
@@ -231,8 +225,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* Main content */}
-      <div className="md:pl-64 flex flex-col flex-1">
-        <main className="flex-1 overflow-y-auto pt-16 md:pt-0">{children}</main>
+      <div className="md:pl-64 lg:pl-72 flex flex-col flex-1">
+        <main className="flex-1 overflow-y-auto pt-16 md:pt-0 px-4 md:px-6">{children}</main>
       </div>
 
       {/* Sync status indicator */}

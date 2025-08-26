@@ -43,6 +43,7 @@ interface Question {
       enabled: boolean
       conditions: Array<{
         questionId: string
+        questionText?: string // Agregar campo para reconciliación automática
         operator: string
         value: string
       }>
@@ -140,7 +141,27 @@ function PreviewSurveyPageContent() {
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
   const [skipLogicNotification, setSkipLogicNotification] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Estado para mostrar cuando se está ejecutando la reconciliación automática
+  const [isReconciling, setIsReconciling] = useState(false)
+  const [hasReconciled, setHasReconciled] = useState(false)
 
+
+  // Efecto para manejar la reconciliación automática
+  useEffect(() => {
+    if (surveyData && !hasReconciled) {
+      const hasDisplayLogic = surveyData.sections.some(section => 
+        section.questions.some(q => q.config?.displayLogic?.enabled)
+      )
+      
+      if (hasDisplayLogic) {
+        setIsReconciling(true)
+        setHasReconciled(true)
+        
+        // Ocultar después de un breve delay
+        setTimeout(() => setIsReconciling(false), 2000)
+      }
+    }
+  }, [surveyData, hasReconciled])
 
   useEffect(() => {
     const storedData = localStorage.getItem("surveyPreviewData")
@@ -214,6 +235,8 @@ function PreviewSurveyPageContent() {
       return true
     }
 
+    // La reconciliación automática se maneja en un efecto separado
+
     // Debug: Mostrar información de la lógica de visualización
     console.log(`🔍 Evaluando lógica de visualización para pregunta "${question.text}":`)
     console.log(`   Condiciones:`, conditions)
@@ -222,13 +245,60 @@ function PreviewSurveyPageContent() {
     // Evaluar cada condición
     for (const condition of conditions) {
       const { questionId, operator, value } = condition
-      const answer = answers[questionId]
       
-      console.log(`   Evaluando condición: ${questionId} ${operator} ${value}`)
+      // RECONCILIACIÓN AUTOMÁTICA: Si el questionId no se encuentra, intentar por texto
+      let actualQuestionId = questionId
+      let answer = answers[questionId]
+      
+      // Si no hay respuesta para este ID, intentar reconciliación automática
+      if (answer === undefined || answer === null || answer === "") {
+        console.log(`   🔄 Intentando reconciliación automática para condición: ${questionId}`)
+        
+        // Buscar la pregunta por texto en todas las secciones
+        let foundQuestion: Question | null = null
+        for (const section of surveyData?.sections || []) {
+          const found = section.questions.find(q => q.text === condition.questionText)
+          if (found) {
+            foundQuestion = found
+            console.log(`   ✅ Pregunta encontrada por texto: "${condition.questionText}" → ID: ${foundQuestion.id}`)
+            actualQuestionId = foundQuestion.id
+            answer = answers[foundQuestion.id]
+            break
+          }
+        }
+        
+        // Si aún no se encuentra, intentar por ID similar o buscar en respuestas existentes
+        if (!foundQuestion) {
+          console.log(`   🔍 Buscando pregunta por ID similar o en respuestas existentes...`)
+          
+          // Buscar en las respuestas existentes para encontrar la pregunta correcta
+          for (const [responseId, responseValue] of Object.entries(answers)) {
+            // Buscar la pregunta que corresponde a esta respuesta
+            for (const section of surveyData?.sections || []) {
+              const responseQuestion = section.questions.find(q => q.id === responseId)
+              if (responseQuestion && responseQuestion.text === condition.questionText) {
+                console.log(`   ✅ Pregunta encontrada por respuesta existente: ${responseId} → "${responseQuestion.text}"`)
+                actualQuestionId = responseId
+                answer = responseValue
+                foundQuestion = responseQuestion
+                break
+              }
+            }
+            if (foundQuestion) break
+          }
+        }
+        
+        if (!foundQuestion) {
+          console.log(`   ❌ No se pudo reconciliar la pregunta "${condition.questionText}", ocultando pregunta`)
+          return false
+        }
+      }
+      
+      console.log(`   Evaluando condición: ${actualQuestionId} ${operator} ${value}`)
       console.log(`   Respuesta encontrada:`, answer)
       
       if (answer === undefined || answer === null || answer === "") {
-        console.log(`   ❌ No hay respuesta para ${questionId}, ocultando pregunta`)
+        console.log(`   ❌ No hay respuesta para ${actualQuestionId}, ocultando pregunta`)
         return false // Si no hay respuesta, no mostrar la pregunta
       }
 
@@ -275,7 +345,7 @@ function PreviewSurveyPageContent() {
     console.log(`   ✅ Todas las condiciones cumplidas, mostrando pregunta`)
     // Si todas las condiciones se cumplen, mostrar la pregunta
     return true
-  }, [answers])
+  }, [answers, surveyData])
 
   const handleAnswerChange = useCallback((questionId: string, value: any) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }))
@@ -1057,6 +1127,19 @@ function PreviewSurveyPageContent() {
                       </div>
                     ))}
                 </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Indicador de reconciliación automática */}
+          {isReconciling && (
+            <Alert className="mb-4 border-green-200 bg-green-50">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-green-800 font-medium">Reconciliando IDs automáticamente...</span>
+              </div>
+              <AlertDescription className="text-green-700 text-sm mt-1">
+                El sistema está verificando y corrigiendo automáticamente las referencias de preguntas en la lógica de visualización.
               </AlertDescription>
             </Alert>
           )}

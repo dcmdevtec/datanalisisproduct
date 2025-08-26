@@ -194,24 +194,24 @@ function ProjectsPageContent() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 sm:p-8 bg-[#f7faf9] min-h-screen">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+      <div className="p-4 sm:p-6 lg:p-8 bg-[#f7faf9] min-h-screen">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 lg:mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#18b0a4]">
-              <FolderKanban className="inline-block mr-2 h-8 w-8 text-[#18b0a4]" />
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#18b0a4]">
+              <FolderKanban className="inline-block mr-2 h-6 w-6 sm:h-8 sm:w-8 text-[#18b0a4]" />
               Proyectos
             </h1>
-            <p className="mt-2 text-gray-500">Gestiona los proyectos de la plataforma</p>
+            <p className="mt-2 text-sm sm:text-base text-gray-500">Gestiona los proyectos de la plataforma</p>
           </div>
           {(isAdmin || isSupervisor) && (
-            <Button onClick={handleOpenCreateModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90">
+            <Button onClick={handleOpenCreateModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" /> Crear Proyecto
             </Button>
           )}
         </div>
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
+        <div className="flex flex-col gap-4 mb-6 lg:mb-8">
           <Input
-            className="w-full sm:w-80"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-0 focus-visible:ring-0 !focus:ring-0 !focus-visible:ring-0 focus:outline-none text-gray-900 placeholder:text-gray-400 shadow-sm transition"
             type="text"
             placeholder="🔍 Buscar por nombre, empresa o descripción..."
             value={search}
@@ -230,7 +230,6 @@ function ProjectsPageContent() {
             placeholder="Filtrar por empresa..."
             searchPlaceholder="Buscar empresa..."
             emptyMessage="No se encontraron empresas."
-            className="w-full sm:w-60"
           />
         </div>
         {error && (
@@ -244,11 +243,11 @@ function ProjectsPageContent() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="text-center p-8 border rounded-lg bg-muted/50">
-            <h3 className="text-lg font-medium mb-2">No hay proyectos disponibles</h3>
-            <p className="text-muted-foreground mb-4">No se encontraron proyectos para mostrar.</p>
+          <div className="text-center p-6 sm:p-8 border rounded-lg bg-muted/50">
+            <h3 className="text-lg sm:text-xl font-medium mb-2">No hay proyectos disponibles</h3>
+            <p className="text-sm sm:text-base text-muted-foreground mb-4">No se encontraron proyectos para mostrar.</p>
             {(isAdmin || isSupervisor) && (
-              <Button onClick={handleOpenCreateModal}>
+              <Button onClick={handleOpenCreateModal} className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" /> Crear tu primer proyecto
               </Button>
             )}
@@ -256,28 +255,28 @@ function ProjectsPageContent() {
         ) : (
           <>
             <div className="overflow-x-auto rounded-xl shadow border border-[#18b0a4]/20 bg-white">
-              <Table className="min-w-[900px]">
+              <Table className="w-full">
                 <TableHeader className="bg-[#18b0a4]/10">
                   <TableRow>
-                    <TableHead className="text-[#18b0a4] font-bold">Logo</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Nombre</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Empresa</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Descripción</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Objetivo</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Logo</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Nombre</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden sm:table-cell">Empresa</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden lg:table-cell">Descripción</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden lg:table-cell">Objetivo</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">
                       <div className="flex items-center gap-1">
                         <LayoutList className="h-4 w-4" />
-                        <span>Encuestas</span>
+                        <span className="hidden sm:inline">Encuestas</span>
                       </div>
                     </TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold">Creado</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold text-center">Acciones</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden md:table-cell">Creado</TableHead>
+                    <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedProjects.map((project) => (
                     <TableRow key={project.id} className="hover:bg-[#18b0a4]/5 transition group">
-                      <TableCell>
+                      <TableCell className="px-2 sm:px-4">
                         {project.logo ? (
                           <Image
                             src={project.logo || "/placeholder.svg"}
@@ -292,53 +291,69 @@ function ProjectsPageContent() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4]">
-                        {project.name}
+                      <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4] px-2 sm:px-4">
+                        <div className="truncate max-w-[100px] sm:max-w-[120px] lg:max-w-[150px]" title={project.name}>
+                          {project.name}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-gray-700">{project.company_name}</TableCell>
-                      <TableCell className="text-gray-700">{project.description || "-"}</TableCell>
-                      <TableCell className="text-gray-700">{project.objective || "-"}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden sm:table-cell">
+                        <div className="truncate max-w-[80px] lg:max-w-[120px]" title={project.company_name}>
+                          {project.company_name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden lg:table-cell">
+                        <div className="truncate max-w-[100px] lg:max-w-[150px]" title={project.description || "-"}>
+                          {project.description || "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden lg:table-cell">
+                        <div className="truncate max-w-[100px] lg:max-w-[150px]" title={project.objective || "-"}>
+                          {project.objective || "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4">
                         <div className="flex items-center gap-1">
                           <LayoutList className="h-4 w-4 text-[#18b0a4]" />
                           <span>{project.surveys_count ?? 0}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-gray-700">
-                        {new Date(project.created_at).toLocaleDateString()}
+                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden md:table-cell">
+                        <div className="truncate max-w-[60px] lg:max-w-[100px]">
+                          {new Date(project.created_at).toLocaleDateString()}
+                        </div>
                       </TableCell>
-                      <TableCell className="flex justify-center items-center gap-2">
+                      <TableCell className="flex justify-center items-center gap-1 sm:gap-2 px-2 sm:px-4">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                           onClick={() => router.push(`/surveys?projectId=${project.id}`)}
                           title="Ver Encuestas"
                         >
                           <span className="sr-only">Ver Encuestas</span>
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
                         {(isAdmin || isSupervisor) && (
                           <>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                               onClick={() => handleOpenEditModal(project)}
                               title="Editar Proyecto"
                             >
                               <span className="sr-only">Editar Proyecto</span>
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="text-red-500 hover:bg-red-500/10"
+                              className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
                               onClick={() => handleDeleteClick(project.id)}
                               title="Eliminar Proyecto"
                             >
                               <span className="sr-only">Eliminar Proyecto</span>
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                             </Button>
                           </>
                         )}
@@ -349,8 +364,8 @@ function ProjectsPageContent() {
               </Table>
             </div>
             {/* Paginación */}
-            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-2">
-              <div className="text-sm text-gray-500">
+            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4">
+              <div className="text-sm text-gray-500 text-center sm:text-left">
                 Página <span className="font-semibold text-[#18b0a4]">{page}</span> de{" "}
                 <span className="font-semibold text-[#18b0a4]">{totalPages}</span>{" "}
                 <span className="ml-2">({filteredProjects.length} resultados)</span>
@@ -359,13 +374,13 @@ function ProjectsPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(1)}
                   disabled={page === 1}
                   aria-label="Primera"
                 >
                   <span className="sr-only">Primera</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M13 16L7 10L13 4"
                       stroke="#18b0a4"
@@ -378,13 +393,13 @@ function ProjectsPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
                   aria-label="Anterior"
                 >
                   <span className="sr-only">Anterior</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M12 16L6 10L12 4"
                       stroke="#18b0a4"
@@ -397,13 +412,13 @@ function ProjectsPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(page + 1)}
                   disabled={page === totalPages}
                   aria-label="Siguiente"
                 >
                   <span className="sr-only">Siguiente</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M8 4L14 10L8 16"
                       stroke="#18b0a4"
@@ -416,13 +431,13 @@ function ProjectsPageContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
+                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 ${page === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#18b0a4]/10"}`}
                   onClick={() => setPage(totalPages)}
                   disabled={page === totalPages}
                   aria-label="Última"
                 >
                   <span className="sr-only">Última</span>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 20 20">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 20 20" className="h-4 w-4 sm:h-5 sm:w-5">
                     <path
                       d="M7 4L13 10L7 16"
                       stroke="#18b0a4"

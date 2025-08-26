@@ -4,7 +4,6 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
-import { CookieDebug } from "@/components/cookie-debug"
 import ClientLayout from "../client-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,24 +31,24 @@ function LoginPageContent() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-sm sm:max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-2">
             <Globe className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl font-bold">Iniciar sesión en Datanalisis</CardTitle>
-          <CardDescription>Ingresa tu correo y contraseña para acceder a tu cuenta</CardDescription>
+          <CardTitle className="text-xl sm:text-2xl font-bold">Iniciar sesión en Datanalisis</CardTitle>
+          <CardDescription className="text-sm sm:text-base">Ingresa tu correo y contraseña para acceder a tu cuenta</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
               <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="text-sm">{error}</AlertDescription>
               </Alert>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Correo electrónico</Label>
+              <Label htmlFor="email" className="text-sm sm:text-base">Correo electrónico</Label>
               <Input
                 id="email"
                 type="email"
@@ -57,12 +56,13 @@ function LoginPageContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="text-sm sm:text-base"
               />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password">Contraseña</Label>
-                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                <Label htmlFor="password" className="text-sm sm:text-base">Contraseña</Label>
+                <Link href="/forgot-password" className="text-xs sm:text-sm text-primary hover:underline">
                   ¿Olvidaste tu contraseña?
                 </Link>
               </div>
@@ -72,14 +72,15 @@ function LoginPageContent() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="text-sm sm:text-base"
               />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col">
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full text-sm sm:text-base" disabled={loading}>
               {loading ? "Iniciando sesión..." : "Iniciar sesión"}
             </Button>
-            <p className="mt-4 text-center text-sm text-muted-foreground">
+            <p className="mt-4 text-center text-xs sm:text-sm text-muted-foreground">
               ¿No tienes una cuenta?{" "}
               <Link href="/register" className="text-primary hover:underline">
                 Regístrate
@@ -96,7 +97,6 @@ export default function LoginPage() {
   return (
     <ClientLayout>
       <LoginPageContent />
-      <CookieDebug />
     </ClientLayout>
   )
 }

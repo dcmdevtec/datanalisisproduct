@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient, createAdminSupabaseClient } from "@/lib/supabase/server" // Import both clients
+import { createClient, createAdminClient } from "@/lib/supabase/server" // Import both clients
 import { cookies } from "next/headers"
 import type { Database } from "@/types/supabase"
 
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabaseAdmin = createAdminSupabaseClient() // Use admin client for POST
+  const supabaseAdmin = createAdminClient() // Use admin client for POST
   const { name, email, phone_number, password } = (await request.json()) as SurveyorInsert & { password?: string }
 
   if (!name || !email || !password) {
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const supabaseAdmin = createAdminSupabaseClient() // Use admin client for PUT
+  const supabaseAdmin = createAdminClient() // Use admin client for PUT
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id") // This is the surveyor's ID (which is also the auth user ID)
   const { name, email, phone_number, password } = await request.json()
