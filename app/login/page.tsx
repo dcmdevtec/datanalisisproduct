@@ -1,32 +1,74 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
+import { useAuthRedirect } from "@/lib/hooks/use-auth-redirect"
+import { useRouter } from "next/navigation"
 import ClientLayout from "../client-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Globe } from "lucide-react"
+import { Globe, Loader2 } from "lucide-react"
 
 function LoginPageContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const { signIn, loading } = useAuth()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { signIn, loading: authLoading } = useAuth()
+  const { user, loading: redirectLoading } = useAuthRedirect()
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+
+  // Debug: mostrar estado actual
+  useEffect(() => {
+    console.log('🔍 LoginPage - Estado actual:', { user: !!user, loading: redirectLoading, pathname: window.location.pathname })
+  }, [user, redirectLoading])
+
+  // El hook useAuthRedirect se encarga de la redirección automática
+  // No necesitamos el useEffect manual aquí
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setIsSubmitting(true)
     
     try {
+  
       await signIn(email, password)
+      
+      
+      // Mostrar mensaje de éxito
+      setError(null)
+      
+      // El hook useAuthRedirect se encargará de la redirección
+      // No necesitamos el setTimeout manual
+      
     } catch (error) {
+      console.error('❌ Error en login:', error)
       setError(error instanceof Error ? error.message : "Error al iniciar sesión")
+    } finally {
+      setIsSubmitting(false)
     }
+  }
+
+  // Mostrar loading si está autenticando o redirigiendo
+  if (authLoading || redirectLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
+        <Card className="w-full max-w-sm sm:max-w-md">
+          <CardContent className="flex flex-col items-center justify-center p-8 space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-center text-muted-foreground">
+              {authLoading ? "Verificando sesión..." : "Redirigiendo..."}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -56,6 +98,7 @@ function LoginPageContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={isSubmitting}
                 className="text-sm sm:text-base"
               />
             </div>
@@ -72,13 +115,25 @@ function LoginPageContent() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={isSubmitting}
                 className="text-sm sm:text-base"
               />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col">
-            <Button type="submit" className="w-full text-sm sm:text-base" disabled={loading}>
-              {loading ? "Iniciando sesión..." : "Iniciar sesión"}
+            <Button 
+              type="submit" 
+              className="w-full text-sm sm:text-base" 
+              disabled={isSubmitting || authLoading}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Iniciando sesión...
+                </>
+              ) : (
+                "Iniciar sesión"
+              )}
             </Button>
             <p className="mt-4 text-center text-xs sm:text-sm text-muted-foreground">
               ¿No tienes una cuenta?{" "}

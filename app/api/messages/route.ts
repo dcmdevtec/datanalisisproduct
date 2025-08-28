@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
     // En una aplicación real, validarías los datos y los guardarías en la base de datos
     const newMessage = {
-      id: `${messages.length + 1}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de contador numérico
       ...messageData,
       timestamp: new Date().toISOString(),
       read: false,

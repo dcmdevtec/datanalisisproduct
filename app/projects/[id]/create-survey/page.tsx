@@ -115,16 +115,16 @@ interface Question {
         value: string
       }>
     }
-            skipLogic?: {
-          enabled: boolean
-          rules: Array<{
-            condition: string // e.g., "answer === 'Yes'" or "answer.includes('Option A')"
-            targetSectionId: string // ID of the section to jump to
-            targetQuestionId?: string // ID of the question to jump to (optional)
-            targetQuestionText?: string // Text of the question to jump to (optional)
-            enabled?: boolean // Whether this rule is enabled
-          }>
-        }
+    skipLogic?: {
+      enabled: boolean
+      rules: Array<{
+        condition: string // e.g., "answer === 'Yes'" or "answer.includes('Option A')"
+        targetSectionId: string // ID of the section to jump to
+        targetQuestionId?: string // ID of the question to jump to (optional)
+        targetQuestionText?: string // Text of the question to jump to (optional)
+        enabled?: boolean // Whether this rule is enabled
+      }>
+    }
     validation?: {
       required?: boolean
       minLength?: number
@@ -280,11 +280,11 @@ function SortableSection({
                   onClick={() => {
                     const newSection = {
                       ...section,
-                      id: `section_${Date.now()}`,
+                      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
                       title: `${section.title} (Copia)`,
                       questions: section.questions.map((q) => ({
                         ...q,
-                        id: `question_${Date.now()}_${Math.random()}`,
+                        id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
                       })),
                     }
                     setSections([...sections, newSection])
@@ -827,6 +827,8 @@ function CreateSurveyForProjectPageContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  
+
 
   const projectId = params.id as string
   const surveyId = searchParams.get("surveyId")
@@ -844,6 +846,7 @@ function CreateSurveyForProjectPageContent() {
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
+
   const [settings, setSettings] = useState<SurveySettings>({
     collectLocation: true,
     allowAudio: false,
@@ -909,7 +912,7 @@ function CreateSurveyForProjectPageContent() {
 
   const addQuestionToSection = (sectionId: string): void => {
     const newQuestion: Question = {
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       type: "text",
       text: "",
       options: [],
@@ -1006,6 +1009,12 @@ function CreateSurveyForProjectPageContent() {
       [zoneId]: newAssignedSurveyorIds,
     }))
   }, [])
+
+
+
+
+
+
 
   const handlePreview = () => {
     const sectionsWithSkipLogic = sections.map((section) => ({
@@ -1973,6 +1982,8 @@ function CreateSurveyForProjectPageContent() {
       const validatedSections = validateAndFixSkipLogicReferences(formattedSections)
       
       setSections(validatedSections)
+      
+
     } catch (err: any) {
       console.error("Error fetching survey for edit:", err)
       setError(err.message || "No se pudo cargar la encuesta para editar.")
@@ -2041,9 +2052,13 @@ function CreateSurveyForProjectPageContent() {
     }
   }, [authLoading, user, projectId, surveyId, fetchSurveyForEdit])
 
+
+
+
+
   const addSection = (): void => {
     const newSection: SurveySection = {
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       title: `Nueva Sección ${sections.length + 1}`,
       description: "",
       order_num: sections.length,
@@ -2054,100 +2069,143 @@ function CreateSurveyForProjectPageContent() {
 
   const removeSection = async (sectionId: string) => {
     try {
-      // Si estamos en modo edición y la sección tiene un ID válido en la base de datos
-      if (isEditMode && sectionId && sectionId !== '' && sectionId !== 'temp-id') {
-        console.log(`🗑️ Eliminando sección "${sectionId}" de la base de datos...`)
-        
-        // ANTES de eliminar, actualizar todas las referencias en la lógica de salto
-        console.log("🔄 Actualizando referencias en la lógica de salto...")
-        
-        // 1. Actualizar referencias en otras secciones
-        const updatedSections = sections.map(section => {
-          if (section.id !== sectionId && section.skipLogic?.enabled) {
-            let updatedSkipLogic = { ...section.skipLogic }
-            
-            // Si la sección eliminada era el destino, resetear la lógica
-            if (section.skipLogic.targetSectionId === sectionId) {
-              console.log(`⚠️ Sección "${section.title}" tenía como destino la sección a eliminar, reseteando lógica...`)
-              updatedSkipLogic = {
-                enabled: false,
-                action: "next_section" as const
-              }
-            }
-            
-            // Si la sección eliminada era el destino de una pregunta específica, resetear
-            if (section.skipLogic.targetQuestionId && section.questions.some(q => q.id === sectionId)) {
-              console.log(`⚠️ Sección "${section.title}" tenía pregunta específica en sección a eliminar, reseteando lógica...`)
-              updatedSkipLogic = {
-                enabled: false,
-                action: "next_section" as const
-              }
-            }
-            
-            return { ...section, skipLogic: updatedSkipLogic }
-          }
-          return section
+      console.log(`🗑️ Iniciando eliminación de sección "${sectionId}"...`)
+      
+      // Validar que el sectionId sea un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      
+      if (!uuidRegex.test(sectionId)) {
+        console.error("❌ Error: sectionId no es un UUID válido:", sectionId)
+        toast({
+          title: "Error de formato",
+          description: "El ID de la sección no tiene el formato correcto. Contacta al administrador.",
+          variant: "destructive",
         })
+        return
+      }
+      
+      // Si estamos en modo edición y la sección tiene un ID válido en la base de datos
+      if (isEditMode && sectionId && sectionId !== '' && sectionId !== 'temp-id' && surveyId) {
         
-        // 2. Actualizar referencias en preguntas
-        const sectionsWithUpdatedQuestions = updatedSections.map(section => ({
-          ...section,
-          questions: section.questions.map(question => {
-            if (question.config?.skipLogic?.enabled) {
-              let updatedSkipLogic = { ...question.config.skipLogic }
+        console.log("🔄 PASO 1: Limpiando referencias en la lógica de salto...")
+        
+        // Limpiar referencias en secciones existentes (usando el estado local)
+        for (const section of sections) {
+          if (section.id !== sectionId && section.skipLogic?.enabled && section.skipLogic.targetSectionId === sectionId) {
+            console.log(`⚠️ Limpiando referencia en sección "${section.title}"`)
+            
+            // Validar que el ID de la sección sea un UUID válido antes de actualizar
+            if (uuidRegex.test(section.id)) {
+              // Actualizar en la base de datos
+              const { error: updateError } = await supabase
+                .from("survey_sections")
+                .update({ 
+                  skip_logic: { enabled: false, action: "next_section" }
+                })
+                .eq("id", section.id)
               
-              // Verificar si alguna regla apunta a la sección que se va a eliminar
-              const hasInvalidReferences = question.config.skipLogic.rules.some(rule => {
-                // Buscar en targetSectionId o targetQuestionId
-                const targetSection = sections.find(s => 
-                  s.questions.some(q => q.id === rule.targetQuestionId)
-                )
-                return targetSection?.id === sectionId
-              })
-              
-              if (hasInvalidReferences) {
-                console.log(`⚠️ Pregunta "${question.text.substring(0, 50)}..." tenía referencias a sección a eliminar, reseteando lógica...`)
-                updatedSkipLogic = {
-                  enabled: false,
-                  rules: []
-                }
+              if (updateError) {
+                console.error("❌ Error al limpiar lógica de sección:", updateError)
               }
-              
-              return {
-                ...question,
-                config: {
-                  ...question.config,
-                  skipLogic: updatedSkipLogic
-                }
-              }
+            } else {
+              console.warn("⚠️ Sección con ID inválido encontrada:", section.id)
             }
-            return question
-          })
-        }))
-        
-        // 3. Actualizar el estado local ANTES de eliminar de la BD
-        setSections(sectionsWithUpdatedQuestions)
-        
-        // 4. Ahora eliminar de la base de datos
-        console.log("🗑️ Eliminando preguntas de la sección...")
-        const { error: deleteQuestionsError } = await supabase
-          .from("questions")
-          .delete()
-          .eq("section_id", sectionId)
-        
-        if (deleteQuestionsError) {
-          console.error("❌ Error al eliminar preguntas de la sección:", deleteQuestionsError)
-          toast({
-            title: "Error",
-            description: "No se pudieron eliminar las preguntas de la sección",
-            variant: "destructive",
-          })
-          return
+          }
         }
         
-        console.log("✅ Preguntas de la sección eliminadas de la base de datos")
+        // Limpiar referencias en preguntas existentes (usando el estado local)
+        for (const section of sections) {
+          if (section.id !== sectionId) {
+            for (const question of section.questions) {
+              if (question.config?.skipLogic?.enabled && question.config.skipLogic.rules) {
+                const hasInvalidReferences = question.config.skipLogic.rules.some((rule: any) => {
+                  return rule.targetSectionId === sectionId || 
+                         (rule.targetQuestionId && sections.find(s => 
+                           s.id === sectionId && s.questions.some(q => q.id === rule.targetQuestionId)
+                         ))
+                })
+                
+                if (hasInvalidReferences) {
+                  console.log(`⚠️ Limpiando lógica de pregunta "${question.text.substring(0, 50)}..."`)
+                  
+                  // Validar que el ID de la pregunta sea un UUID válido antes de actualizar
+                  if (uuidRegex.test(question.id)) {
+                    const { error: updateError } = await supabase
+                      .from("questions")
+                      .update({ 
+                        question_config: {
+                          ...question.config,
+                          skipLogic: { enabled: false, rules: [] }
+                        }
+                      })
+                      .eq("id", question.id)
+                    
+                    if (updateError) {
+                      console.error("❌ Error al limpiar lógica de pregunta:", updateError)
+                    }
+                  } else {
+                    console.warn("⚠️ Pregunta con ID inválido encontrada:", question.id)
+                  }
+                }
+              }
+            }
+          }
+        }
         
-        console.log("🗑️ Eliminando sección...")
+        console.log("✅ Referencias limpiadas exitosamente")
+        
+        // PASO 2: Eliminar preguntas de la sección
+        console.log("🗑️ PASO 2: Eliminando preguntas de la sección...")
+        
+        // Primero verificar si hay preguntas en la sección
+        const { data: questionsInSection, error: checkError } = await supabase
+          .from("questions")
+          .select("id, text")
+          .eq("section_id", sectionId)
+        
+        if (checkError) {
+          console.error("❌ Error al verificar preguntas de la sección:", checkError)
+          throw new Error(`Error al verificar preguntas: ${checkError.message}`)
+        }
+        
+        console.log(`📊 Sección tiene ${questionsInSection?.length || 0} preguntas`)
+        
+        if (questionsInSection && questionsInSection.length > 0) {
+          // Intentar eliminar las preguntas
+          const { error: deleteQuestionsError } = await supabase
+            .from("questions")
+            .delete()
+            .eq("section_id", sectionId)
+          
+          if (deleteQuestionsError) {
+            console.error("❌ Error al eliminar preguntas:", deleteQuestionsError)
+            console.error("❌ Detalles del error:", {
+              code: deleteQuestionsError.code,
+              message: deleteQuestionsError.message,
+              details: deleteQuestionsError.details,
+              hint: deleteQuestionsError.hint
+            })
+            
+            // Intentar obtener más información sobre el error
+            if (deleteQuestionsError.code === '23503') {
+              throw new Error("No se pueden eliminar las preguntas porque están referenciadas por otras partes del sistema (restricción de clave foránea)")
+            } else if (deleteQuestionsError.code === '42501') {
+              throw new Error("No tienes permisos para eliminar preguntas en esta encuesta")
+            } else if (deleteQuestionsError.code === '22P02') {
+              throw new Error("Error de formato: Los IDs de las preguntas no tienen el formato correcto (UUID)")
+            } else {
+              throw new Error(`Error al eliminar preguntas: ${deleteQuestionsError.message}`)
+            }
+          }
+          
+          console.log("✅ Preguntas eliminadas exitosamente")
+        } else {
+          console.log("ℹ️ No hay preguntas que eliminar en esta sección")
+        }
+        
+        // PASO 3: Eliminar la sección
+        console.log("🗑️ PASO 3: Eliminando sección...")
+        
         const { error: deleteSectionError } = await supabase
           .from("survey_sections")
           .delete()
@@ -2155,34 +2213,38 @@ function CreateSurveyForProjectPageContent() {
         
         if (deleteSectionError) {
           console.error("❌ Error al eliminar sección:", deleteSectionError)
-          toast({
-            title: "Error",
-            description: "No se pudo eliminar la sección",
-            variant: "destructive",
-          })
-          return
+          throw new Error(`Error al eliminar sección: ${deleteSectionError.message}`)
         }
         
-        console.log("✅ Sección eliminada de la base de datos")
+        console.log("✅ Sección eliminada exitosamente")
         
-        // 5. Finalmente, remover la sección del estado local
+        // PASO 4: Actualizar estado local
+        console.log("🔄 PASO 4: Actualizando estado local...")
         setSections(prevSections => prevSections.filter((s) => s.id !== sectionId))
         
       } else {
         // Modo creación o sección temporal - solo actualizar estado local
+        console.log("📝 Modo creación - eliminando solo del estado local")
         setSections(sections.filter((s) => s.id !== sectionId))
       }
       
+      console.log("🎉 Eliminación completada exitosamente")
+      
       toast({
         title: "Sección eliminada",
-        description: "La sección y sus preguntas han sido eliminadas exitosamente. Las referencias en la lógica de salto han sido actualizadas.",
+        description: "La sección y sus preguntas han sido eliminadas exitosamente. Todas las referencias en la lógica de salto han sido limpiadas.",
+        variant: "default",
       })
       
     } catch (error) {
-      console.error("❌ Error al eliminar sección:", error)
+      console.error("❌ Error crítico al eliminar sección:", error)
+      
+      // Mostrar error específico al usuario
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+      
       toast({
-        title: "Error",
-        description: "No se pudo eliminar la sección",
+        title: "Error al eliminar sección",
+        description: `No se pudo eliminar la sección: ${errorMessage}`,
         variant: "destructive",
       })
     }
@@ -2196,7 +2258,7 @@ function CreateSurveyForProjectPageContent() {
           if (questionToDuplicate) {
             const newQuestion = {
               ...questionToDuplicate,
-              id: `${Date.now()}`,
+              id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
               text: `${questionToDuplicate.text} (Copia)`,
             }
             const questionIndex = s.questions.findIndex((q) => q.id === questionId)
@@ -2224,6 +2286,13 @@ function CreateSurveyForProjectPageContent() {
     setSections(newSections)
   }
 
+  // Redirect to login if no user
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login")
+    }
+  }, [user, authLoading, router])
+
   if (authLoading || projectLoading || surveyorsLoading || zonesLoading || initialLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -2233,8 +2302,11 @@ function CreateSurveyForProjectPageContent() {
   }
 
   if (!user) {
-    router.push("/login")
-    return null
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -2281,6 +2353,8 @@ function CreateSurveyForProjectPageContent() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          
 
           <div className="flex-1 space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -2696,7 +2770,7 @@ function CreateSurveyForProjectPageContent() {
                               initialGeometry={displayedZoneGeometry}
                               onGeometryChange={() => {}}
                               readOnly={true}
-                              key={`zone-preview-${selectedZoneForPreview}-${Date.now()}`}
+                              key={`zone-preview-${selectedZoneForPreview}-${crypto.randomUUID()}`}
                             />
                           </div>
                         </CardContent>
@@ -2799,7 +2873,7 @@ function CreateSurveyForProjectPageContent() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Marca (Branding)</CardTitle>
-                    <CardDescription>Personaliza la apariencia de tu encuesta.</CardDescription>
+                    <CardDescription>Personaliza la apariencia de tu encuesta</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
@@ -2811,7 +2885,7 @@ function CreateSurveyForProjectPageContent() {
                         onChange={(value) => handleBrandingChange("logo", value)}
                       />
                       <p className="text-sm text-muted-foreground">
-                        Sube un logo para tu encuesta. Se mostrará en la parte superior.
+                        Sube un logo para tu encuesta
                       </p>
                     </div>
                     <div className="flex items-center justify-between">
@@ -2904,3 +2978,4 @@ export default function CreateSurveyForProjectPage() {
     </ClientLayout>
   )
 }
+

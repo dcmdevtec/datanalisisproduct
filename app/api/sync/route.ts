@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     // En una aplicación real, aquí procesaríamos los datos
     // y los guardaríamos en la base de datos
 
-    console.log("Datos recibidos para sincronización:", syncData)
+
 
     // Simular procesamiento
     await new Promise((resolve) => setTimeout(resolve, 1000))

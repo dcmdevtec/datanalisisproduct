@@ -2,7 +2,7 @@ import type React from "react"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { MantineProvider } from '@mantine/core';
+import { MantineProvider } from '@mantine/core'
 import { Toaster } from "@/components/ui/toaster"
 import AuthProvider from "@/components/auth-provider"
 import ClientLayout from "@/app/client-layout"
@@ -12,7 +12,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata = {
   title: "Datanalisis",
   description: "A comprehensive survey platform for data collection and analysis",
-  generator: 'v0.dev'
+  generator: 'v0.dev',
 }
 
 export default function RootLayout({

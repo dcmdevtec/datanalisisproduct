@@ -1,27 +1,22 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase-browser"
+import { NextRequest, NextResponse } from "next/server"
+import { createServerSupabase } from "@/lib/supabase-server"
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("GET /api/responses - Obteniendo respuestas")
+    const supabase = await createServerSupabase()
+    const { searchParams } = new URL(request.url)
+    const surveyId = searchParams.get("survey_id")
 
-    // Obtener parámetros de consulta
-    const url = new URL(request.url)
-    const surveyId = url.searchParams.get("surveyId")
-
-    // Obtener la sesión del usuario para verificar autenticación
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (!session) {
-      console.error("No hay sesión activa")
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-    }
-
-    // Construir consulta base
-    let query = supabase.from("responses").select(`
-        *,
+    let query = supabase
+      .from("responses")
+      .select(`
+        id,
+        survey_id,
+        user_id,
+        location,
+        device_info,
+        status,
+        created_at,
         survey:survey_id (title),
         answer_data:response_answers (*)
       `)
@@ -39,7 +34,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log(`GET /api/responses - Se obtuvieron ${data?.length || 0} respuestas`)
     return NextResponse.json(data)
   } catch (error) {
     console.error("Error al obtener respuestas:", error)
@@ -49,7 +43,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("POST /api/responses - Guardando respuesta")
+    const supabase = await createServerSupabase()
     const body = await request.json()
     const { survey_id, answers, location, device_info } = body
 
@@ -60,13 +54,6 @@ export async function POST(request: NextRequest) {
     if (!answers || !Array.isArray(answers) || answers.length === 0) {
       return NextResponse.json({ error: "Se requieren respuestas" }, { status: 400 })
     }
-
-    console.log("Datos recibidos:", {
-      survey_id,
-      answersCount: answers?.length || 0,
-      location: location ? "Proporcionada" : "No proporcionada",
-      device_info: device_info ? "Proporcionada" : "No proporcionada",
-    })
 
     // Obtener usuario actual
     const {
@@ -91,8 +78,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: responseError.message }, { status: 500 })
     }
 
-    console.log("Respuesta creada:", responseData.id)
-
     // Crear respuestas individuales
     const answersToInsert = answers.map((answer) => ({
       response_id: responseData.id,
@@ -110,7 +95,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: answersError.message }, { status: 500 })
     }
 
-    console.log("Respuestas guardadas correctamente")
     return NextResponse.json({
       success: true,
       message: "Respuesta guardada correctamente",

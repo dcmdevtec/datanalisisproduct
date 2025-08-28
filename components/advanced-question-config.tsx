@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertCircle, Eye, ArrowRight, Settings, ArrowDown, CheckCircle } from "lucide-react"
+import { Plus, Trash2, AlertCircle, Eye, ArrowRight, Settings, ArrowDown, CheckCircle, Sliders } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -302,7 +302,7 @@ function SkipLogicVisualizer({
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-3">
-                  <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-full text-sm font-bold">
+                  <div className="flex items-center justify-center w-8 h-8 bg-emerald-200 text-emerald-700 rounded-full text-sm font-bold">
                     {index + 1}
                   </div>
                   Regla {index + 1}
@@ -327,7 +327,7 @@ function SkipLogicVisualizer({
               {/* Question Preview - Enhanced */}
               <div className="bg-gradient-to-r from-green-100 to-green-50 p-4 rounded-xl border-2 border-green-300 relative">
                 <div className="absolute top-2 right-2">
-                  <div className="flex items-center gap-1 bg-green-500 text-white px-2 py-1 rounded-full text-xs">
+                  <div className="flex items-center gap-1 bg-green-200 text-green-700 px-2 py-1 rounded-full text-xs">
                     <CheckCircle className="h-3 w-3" />
                     Condición cumplida
                   </div>
@@ -363,8 +363,8 @@ function SkipLogicVisualizer({
 
               {/* Flow Arrow */}
               <div className="flex items-center justify-center">
-                <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center">
-                  <ArrowDown className="h-5 w-5 text-white" />
+                <div className="w-8 h-8 bg-green-200 text-green-700 rounded-full flex items-center justify-center">
+                  <ArrowDown className="h-5 w-5" />
                 </div>
               </div>
 
@@ -496,7 +496,7 @@ function SkipLogicVisualizer({
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-emerald-700">Pregunta específica (opcional):</label>
                       <Select 
-                        value={rule.targetSectionId || "section_start"} 
+                        value={rule.targetQuestionId || "section_start"} 
                         onValueChange={(value) => {
                           // Si se selecciona "section_start", guardar undefined para indicar inicio de sección
                           const actualValue = value === "section_start" ? undefined : value
@@ -519,16 +519,28 @@ function SkipLogicVisualizer({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="section_start">Ir al inicio de la sección</SelectItem>
-                          {rule.targetSectionId && allQuestions
-                            .filter(q => {
-                              const section = allSections.find(s => s.id === rule.targetSectionId)
-                              return section && section.questions.some(sq => sq.id === q.id)
-                            })
-                            .map((question) => (
+                          {rule.targetSectionId && (() => {
+                            // Encontrar la sección objetivo
+                            const targetSection = allSections.find(s => s.id === rule.targetSectionId)
+                            console.log(`🔍 Buscando sección con ID: ${rule.targetSectionId}`)
+                            console.log(`🔍 Sección encontrada:`, targetSection)
+                            
+                            if (!targetSection) {
+                              console.log(`⚠️ No se encontró la sección con ID: ${rule.targetSectionId}`)
+                              console.log(`🔍 Secciones disponibles:`, allSections.map(s => ({ id: s.id, title: s.title })))
+                              return null
+                            }
+                            
+                            // Obtener las preguntas de esa sección específica
+                            const sectionQuestions = targetSection.questions || []
+                            console.log(`🔍 Preguntas en la sección "${targetSection.title}":`, sectionQuestions.map(q => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
+                            
+                            return sectionQuestions.map((question) => (
                               <SelectItem key={question.id} value={question.id}>
                                 {question.text.length > 50 ? `${question.text.substring(0, 50)}...` : question.text}
                               </SelectItem>
-                            ))}
+                            ))
+                          })()}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1055,7 +1067,7 @@ export function AdvancedQuestionConfig({
                       variant="outline"
                       size="sm"
                       onClick={addDisplayCondition}
-                      className="bg-green-500 text-white hover:bg-green-600 border-green-500"
+                      className="bg-green-100 text-green-700 hover:bg-green-200 border-green-300 hover:border-green-400"
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Agregar Condición
@@ -1069,7 +1081,7 @@ export function AdvancedQuestionConfig({
                       {isReconciling && (
                         <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                          Reconciliando IDs...
+                          Reconciliando IDs..
                         </div>
                       )}
                     </div>
@@ -1089,7 +1101,7 @@ export function AdvancedQuestionConfig({
                               {/* Header de la condición */}
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                                  <div className="w-8 h-8 bg-green-200 text-green-700 rounded-full flex items-center justify-center text-sm font-bold">
                                     {index + 1}
                                   </div>
                                   <span className="text-lg font-semibold text-green-800">Condición {index + 1}</span>
@@ -1276,7 +1288,7 @@ export function AdvancedQuestionConfig({
                       variant="outline"
                       size="sm"
                       onClick={addSkipRule}
-                      className="bg-emerald-500 text-white hover:bg-emerald-600 border-emerald-500"
+                      className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-emerald-300 hover:border-emerald-400"
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Agregar Regla
@@ -1296,7 +1308,7 @@ export function AdvancedQuestionConfig({
                     {(config.skipLogic?.rules || []).map((rule, index) => (
                       <div key={index} className="flex flex-col items-center p-4 bg-gradient-to-br from-red-50 to-pink-50 rounded-xl border-2 border-red-200 hover:border-red-300 transition-all duration-200">
                         <div className="text-center mb-3">
-                          <div className="w-8 h-8 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-2">
+                          <div className="w-8 h-8 bg-red-200 text-red-700 rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-2">
                             {index + 1}
                           </div>
                           <span className="text-sm font-medium text-red-800">Regla {index + 1}</span>
@@ -1305,7 +1317,7 @@ export function AdvancedQuestionConfig({
                           variant="outline"
                           size="sm"
                           onClick={() => removeSkipRule(index)}
-                          className="w-full bg-gradient-to-r from-red-500 to-pink-600 text-white hover:from-red-600 hover:to-pink-700 border-red-500 hover:border-red-600 transition-all duration-200"
+                          className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-300 hover:border-red-400 transition-all duration-200"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Eliminar Regla
@@ -1402,6 +1414,318 @@ export function AdvancedQuestionConfig({
                       className="bg-white border-teal-300 focus:border-teal-500"
                       rows={2}
                     />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      id: "likert",
+      label: "Escala Likert",
+      icon: Sliders,
+      content: (
+        <div className="space-y-6 h-[500px] overflow-y-auto">
+          <Card className="border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/50 to-indigo-100/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-800">
+                <Sliders className="h-5 w-5 text-blue-600" />
+                Configuración de Escala Likert
+              </CardTitle>
+              <CardDescription className="text-blue-700">
+                Configura completamente tu escala Likert según los requerimientos del MÓDULO 2
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Configuración Básica de la Escala */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-blue-800">Configuración Básica de la Escala</h4>
+                <p className="text-sm text-blue-700">Define el rango y comportamiento básico de tu escala Likert</p>
+                
+                {/* Escalas Predefinidas */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium text-blue-800">Escalas Predefinidas</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { name: "Escala 1-5", min: 1, max: 5, description: "Escala estándar de 5 puntos" },
+                      { name: "Escala 1-7", min: 1, max: 7, description: "Escala de 7 puntos (Likert extendida)" },
+                      { name: "Escala 1-10", min: 1, max: 10, description: "Escala de 10 puntos" },
+                      { name: "Escala 1-100", min: 1, max: 100, description: "Escala de 100 puntos (control deslizante)" },
+                    ].map((scale) => (
+                      <Button
+                        key={scale.name}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const updatedConfig = {
+                            ...config,
+                            likertScale: {
+                              min: scale.min,
+                              max: scale.max,
+                              step: 1,
+                              startPosition: 'left'
+                            }
+                          }
+                          setConfig(updatedConfig)
+                        }}
+                        className={`border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 ${
+                          config.likertScale?.min === scale.min && config.likertScale?.max === scale.max 
+                            ? 'bg-blue-100 border-blue-500' 
+                            : ''
+                        }`}
+                      >
+                        <div className="text-left">
+                          <div className="font-medium">{scale.name}</div>
+                          <div className="text-xs text-blue-600">{scale.description}</div>
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Configuración Manual */}
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium text-blue-800">Configuración Manual</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Valor mínimo</Label>
+                      <Input
+                        type="number"
+                        value={config.likertScale?.min || 1}
+                        onChange={(e) => {
+                          const updatedConfig = {
+                            ...config,
+                            likertScale: {
+                              ...config.likertScale,
+                              min: parseInt(e.target.value) || 1
+                            }
+                          }
+                          setConfig(updatedConfig)
+                        }}
+                        min={1}
+                        className="bg-white border-blue-300 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-blue-600">Siempre debe ser 1 según requerimientos</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Valor máximo</Label>
+                      <Input
+                        type="number"
+                        value={config.likertScale?.max || 5}
+                        onChange={(e) => {
+                          const updatedConfig = {
+                            ...config,
+                            likertScale: {
+                              ...config.likertScale,
+                              max: parseInt(e.target.value) || 5
+                            }
+                          }
+                          setConfig(updatedConfig)
+                        }}
+                        min={2}
+                        className="bg-white border-blue-300 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-blue-600">Puede ser 5, 7, 10, 100, etc.</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Tamaño del paso</Label>
+                      <Input
+                        type="number"
+                        value={config.likertScale?.step || 1}
+                        onChange={(e) => {
+                          const updatedConfig = {
+                            ...config,
+                            likertScale: {
+                              ...config.likertScale,
+                              step: parseInt(e.target.value) || 1
+                            }
+                          }
+                          setConfig(updatedConfig)
+                        }}
+                        min={1}
+                        className="bg-white border-blue-300 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-blue-600">Siempre debe ser 1 según requerimientos</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Etiquetas Personalizables */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-blue-800">Etiquetas Personalizables</h4>
+                <p className="text-sm text-blue-700">Personaliza las etiquetas de texto para los extremos y centro de tu escala</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium text-blue-800">Lado Izquierdo</Label>
+                    <Input
+                      value={config.likertScale?.labels?.left || ""}
+                      onChange={(e) => {
+                        const updatedConfig = {
+                          ...config,
+                          likertScale: {
+                            ...config.likertScale,
+                            labels: {
+                              ...config.likertScale?.labels,
+                              left: e.target.value
+                            }
+                          }
+                        }
+                        setConfig(updatedConfig)
+                      }}
+                      placeholder="Ej: Muy Insatisfecho"
+                      className="bg-white border-blue-300 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-blue-600">Etiqueta para el valor mínimo</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium text-blue-800">Centro (Opcional)</Label>
+                    <Input
+                      value={config.likertScale?.labels?.center || ""}
+                      onChange={(e) => {
+                        const updatedConfig = {
+                          ...config,
+                          likertScale: {
+                            ...config.likertScale,
+                            labels: {
+                              ...config.likertScale?.labels,
+                              center: e.target.value
+                            }
+                          }
+                        }
+                        setConfig(updatedConfig)
+                      }}
+                      placeholder="Ingresar una etiqueta (opcional)"
+                      className="bg-white border-blue-300 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-blue-600">Etiqueta para el centro de la escala</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium text-blue-800">Lado Derecho</Label>
+                    <Input
+                      value={config.likertScale?.labels?.right || ""}
+                      onChange={(e) => {
+                        const updatedConfig = {
+                          ...config,
+                          likertScale: {
+                            ...config.likertScale,
+                            labels: {
+                              ...config.likertScale?.labels,
+                              right: e.target.value
+                            }
+                          }
+                        }
+                        setConfig(updatedConfig)
+                      }}
+                      placeholder="Ej: Muy Satisfecho"
+                      className="bg-white border-blue-300 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-blue-600">Etiqueta para el valor máximo</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Opción "0 = No Sabe / No Responde" */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-blue-800">Opción "No Sabe / No Responde"</h4>
+                <p className="text-sm text-blue-700">Incluye una opción adicional para respuestas no informativas</p>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <Checkbox
+                      id="showZero"
+                      checked={config.likertScale?.showZero || false}
+                      onCheckedChange={(checked) => {
+                        const updatedConfig = {
+                          ...config,
+                          likertScale: {
+                            ...config.likertScale,
+                            showZero: checked
+                          }
+                        }
+                        setConfig(updatedConfig)
+                      }}
+                      className="data-[state=checked]:bg-blue-500"
+                    />
+                    <Label htmlFor="showZero" className="font-medium text-blue-800">
+                      Incluir opción "0 = No Sabe / No Responde"
+                    </Label>
+                  </div>
+                  
+                  {config.likertScale?.showZero && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-blue-800">Texto de la etiqueta</Label>
+                      <Input
+                        value={config.likertScale?.zeroLabel || "No Sabe / No Responde"}
+                        onChange={(e) => {
+                          const updatedConfig = {
+                            ...config,
+                            likertScale: {
+                              ...config.likertScale,
+                              zeroLabel: e.target.value
+                            }
+                          }
+                          setConfig(updatedConfig)
+                        }}
+                        placeholder="No Sabe / No Responde"
+                        className="bg-white border-blue-300 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-blue-600">Esta opción aparecerá como "0 = [tu texto]" en la escala</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Configuración de Posición y Apariencia */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-blue-800">Apariencia y Comportamiento</h4>
+                <p className="text-sm text-blue-700">Personaliza la apariencia visual y el comportamiento de tu escala</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-blue-800">Posición Inicial</Label>
+                      <Select
+                        value={config.likertScale?.startPosition || 'left'}
+                        onValueChange={(value) => {
+                          const updatedConfig = {
+                            ...config,
+                            likertScale: {
+                              ...config.likertScale,
+                              startPosition: value
+                            }
+                          }
+                          setConfig(updatedConfig)
+                        }}
+                      >
+                        <SelectTrigger className="bg-white border-blue-300 focus:border-blue-500">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="left">Lado izquierdo</SelectItem>
+                          <SelectItem value="center">Centro</SelectItem>
+                          <SelectItem value="right">Lado derecho</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-blue-600">Posición inicial del control deslizante</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-blue-800">Tipo de Control</Label>
+                      <div className="text-sm text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                        <strong>Control Deslizante (Slider)</strong><br/>
+                        Esta escala Likert se renderizará como un control deslizante para una experiencia de usuario óptima.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1529,8 +1853,8 @@ export function AdvancedQuestionConfig({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 whitespace-nowrap ${
                     activeTab === tab.id
-                      ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg"
-                      : "text-gray-600 hover:text-gray-800 hover:bg-green-50/50"
+                      ? "bg-white text-black shadow-lg border border-gray-200"
+                      : "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
                   }`}
                 >
                   <tab.icon className="h-4 w-4" />
@@ -1550,7 +1874,7 @@ export function AdvancedQuestionConfig({
             <Button variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200">
+            <Button onClick={handleSave} className="bg-white text-black border border-gray-200 shadow-lg hover:shadow-xl hover:bg-gray-50 transition-all duration-200">
               Guardar Cambios
             </Button>
           </div>

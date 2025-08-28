@@ -28,8 +28,7 @@ const actionTypes = {
 let count = 0
 
 function genId() {
-  count = (count + 1) % Number.MAX_SAFE_INTEGER
-  return count.toString()
+  return crypto.randomUUID() // ✅ UUID real en lugar de contador numérico
 }
 
 type ActionType = typeof actionTypes

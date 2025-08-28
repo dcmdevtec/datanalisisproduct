@@ -167,19 +167,17 @@ function PreviewSurveyPageContent() {
     const storedData = localStorage.getItem("surveyPreviewData")
     if (storedData) {
             const parsedData = JSON.parse(storedData)
-      console.log("🔍 Datos cargados del preview:", parsedData)
+  
       
       // Debug: Verificar estructura de skip logic
       if (parsedData.sections) {
-        console.log("🔍 Verificando estructura de skip logic en secciones:")
+
         parsedData.sections.forEach((section: any, sectionIndex: number) => {
-          console.log(`  Sección ${sectionIndex + 1}: "${section.title}"`)
+          
           if (section.questions) {
             section.questions.forEach((question: any, questionIndex: number) => {
               if (question.config?.skipLogic?.enabled) {
-                console.log(`    Pregunta ${questionIndex + 1}: "${question.text}"`)
-                console.log(`      Skip Logic:`, question.config.skipLogic)
-                console.log(`      Reglas:`, question.config.skipLogic.rules)
+
               }
             })
           }
@@ -200,7 +198,7 @@ function PreviewSurveyPageContent() {
       if (storedAnswers) {
         try {
           const parsedAnswers = JSON.parse(storedAnswers)
-          console.log("🔄 Respuestas cargadas del localStorage:", parsedAnswers)
+  
           setAnswers(parsedAnswers)
         } catch (error) {
           console.error("❌ Error cargando respuestas guardadas:", error)
@@ -214,7 +212,7 @@ function PreviewSurveyPageContent() {
     if (surveyData && Object.keys(answers).length > 0) {
       try {
         localStorage.setItem("surveyPreviewAnswers", JSON.stringify(answers))
-        console.log("💾 Respuestas guardadas en localStorage:", answers)
+
       } catch (error) {
         console.error("❌ Error guardando respuestas:", error)
       }
@@ -238,9 +236,7 @@ function PreviewSurveyPageContent() {
     // La reconciliación automática se maneja en un efecto separado
 
     // Debug: Mostrar información de la lógica de visualización
-    console.log(`🔍 Evaluando lógica de visualización para pregunta "${question.text}":`)
-    console.log(`   Condiciones:`, conditions)
-    console.log(`   Respuestas actuales:`, answers)
+    
 
     // Evaluar cada condición
     for (const condition of conditions) {
@@ -252,7 +248,7 @@ function PreviewSurveyPageContent() {
       
       // Si no hay respuesta para este ID, intentar reconciliación automática
       if (answer === undefined || answer === null || answer === "") {
-        console.log(`   🔄 Intentando reconciliación automática para condición: ${questionId}`)
+
         
         // Buscar la pregunta por texto en todas las secciones
         let foundQuestion: Question | null = null
@@ -260,7 +256,7 @@ function PreviewSurveyPageContent() {
           const found = section.questions.find(q => q.text === condition.questionText)
           if (found) {
             foundQuestion = found
-            console.log(`   ✅ Pregunta encontrada por texto: "${condition.questionText}" → ID: ${foundQuestion.id}`)
+    
             actualQuestionId = foundQuestion.id
             answer = answers[foundQuestion.id]
             break
@@ -269,7 +265,7 @@ function PreviewSurveyPageContent() {
         
         // Si aún no se encuentra, intentar por ID similar o buscar en respuestas existentes
         if (!foundQuestion) {
-          console.log(`   🔍 Buscando pregunta por ID similar o en respuestas existentes...`)
+  
           
           // Buscar en las respuestas existentes para encontrar la pregunta correcta
           for (const [responseId, responseValue] of Object.entries(answers)) {
@@ -277,7 +273,7 @@ function PreviewSurveyPageContent() {
             for (const section of surveyData?.sections || []) {
               const responseQuestion = section.questions.find(q => q.id === responseId)
               if (responseQuestion && responseQuestion.text === condition.questionText) {
-                console.log(`   ✅ Pregunta encontrada por respuesta existente: ${responseId} → "${responseQuestion.text}"`)
+        
                 actualQuestionId = responseId
                 answer = responseValue
                 foundQuestion = responseQuestion
@@ -289,16 +285,15 @@ function PreviewSurveyPageContent() {
         }
         
         if (!foundQuestion) {
-          console.log(`   ❌ No se pudo reconciliar la pregunta "${condition.questionText}", ocultando pregunta`)
+  
           return false
         }
       }
       
-      console.log(`   Evaluando condición: ${actualQuestionId} ${operator} ${value}`)
-      console.log(`   Respuesta encontrada:`, answer)
+      
       
       if (answer === undefined || answer === null || answer === "") {
-        console.log(`   ❌ No hay respuesta para ${actualQuestionId}, ocultando pregunta`)
+
         return false // Si no hay respuesta, no mostrar la pregunta
       }
 

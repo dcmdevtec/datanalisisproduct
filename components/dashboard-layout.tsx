@@ -2,9 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -27,10 +27,11 @@ import SyncStatus from "@/components/sync-status"
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth()
   const pathname = usePathname()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
 
   // Menú simplificado sin permisos - todas las opciones visibles
-  const navigation = [
+  const navigation = useMemo(() => [
     { 
       name: "Dashboard", 
       href: "/dashboard", 
@@ -81,15 +82,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       href: "/settings", 
       icon: Settings
     },
-  ]
+  ], [])
 
-  const handleLogout = async () => {
+  // Prefetch de rutas comunes para mejorar la navegación
+  useEffect(() => {
+    // Prefetch de rutas principales
+    router.prefetch('/dashboard')
+    router.prefetch('/projects')
+    router.prefetch('/surveys')
+    router.prefetch('/companies')
+    router.prefetch('/users')
+    router.prefetch('/zones')
+  }, [router])
+
+  // Memoizar la función de logout para evitar recreaciones
+  const handleLogout = useCallback(async () => {
     try {
       await signOut()
     } catch (error) {
       console.error('Error al cerrar sesión:', error)
     }
-  }
+  }, [signOut])
+
+  // Memoizar la función de toggle del sidebar móvil
+  const toggleSidebar = useCallback(() => {
+    setOpen(prev => !prev)
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -98,139 +116,144 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex flex-col flex-grow border-r bg-white pt-5">
           <div className="flex items-center gap-3 px-4 pb-5 border-b border-[#18b0a4]/30">
             <div className="h-10 w-10 flex items-center justify-center bg-[#18b0a4] rounded shadow-sm overflow-hidden">
-              <img
-                src="/logo-datanalisis.png"
-                alt="Logo Datanálisis"
-                className="h-8 w-8 object-contain"
-                onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.innerHTML = '<span class=\'text-white font-bold text-lg\'>D</span>'; }}
-                draggable={false}
-              />
+              <Globe className="h-6 w-6 text-white" />
             </div>
-            <span className="font-extrabold text-xl lg:text-2xl tracking-tight text-[#18b0a4]">Datanálisis</span>
+            <div className="flex-1">
+              <h1 className="text-lg font-semibold text-gray-900">Datanalisis</h1>
+              <p className="text-xs text-gray-500">Survey Platform</p>
+            </div>
           </div>
-          <div className="flex-grow flex flex-col justify-between">
-            <nav className="flex-1 px-2 py-4 space-y-1">
+
+          {/* Navigation */}
+          <nav className="flex-1 px-4 py-6 space-y-2">
+            {navigation.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isActive
+                      ? "bg-[#18b0a4] text-white shadow-sm"
+                      : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.name}
+                </Link>
+              )
+            })}
+          </nav>
+
+          {/* User section */}
+          <div className="border-t border-gray-200 p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                <span className="text-sm font-medium text-gray-700">
+                  {user?.email?.charAt(0).toUpperCase() || "U"}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.email || "Usuario"}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile sidebar */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="left" className="w-80 p-0">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-3 px-4 py-5 border-b border-[#18b0a4]/30">
+              <div className="h-10 w-10 flex items-center justify-center bg-[#18b0a4] rounded shadow-sm overflow-hidden">
+                <Globe className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-lg font-semibold text-gray-900">Datanalisis</h1>
+                <p className="text-xs text-gray-500">Survey Platform</p>
+              </div>
+            </div>
+
+            <nav className="flex-1 px-4 py-6 space-y-2">
               {navigation.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 return (
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`
-                      flex items-center px-3 py-3 text-sm font-semibold rounded-lg transition-colors
-                      ${isActive
-                        ? "bg-[#18b0a4] text-white shadow"
-                        : "text-gray-700 hover:bg-[#18b0a4]/10 hover:text-[#18b0a4]"}
-                    `}
+                    onClick={toggleSidebar}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      isActive
+                        ? "bg-[#18b0a4] text-white shadow-sm"
+                        : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
                   >
-                    <item.icon className={`mr-3 h-5 w-5 ${isActive ? 'text-white' : 'text-[#18b0a4]'}`} />
+                    <item.icon className="h-5 w-5" />
                     {item.name}
                   </Link>
-                );
+                )
               })}
             </nav>
-            <div className="p-4 border-t border-[#18b0a4]/30">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-[#18b0a4] flex items-center justify-center border border-[#18b0a4]">
-                    <span className="text-white font-bold">{user?.email?.charAt(0).toUpperCase() || "U"}</span>
-                  </div>
+
+            <div className="border-t border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                  <span className="text-sm font-medium text-gray-700">
+                    {user?.email?.charAt(0).toUpperCase() || "U"}
+                  </span>
                 </div>
-                <div className="ml-3 overflow-hidden">
-                  <p className="text-sm font-semibold text-[#18b0a4] truncate">{user?.email}</p>
-                  <p className="text-xs text-gray-500 capitalize truncate">Usuario</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {user?.email || "Usuario"}
+                  </p>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="ml-auto text-[#18b0a4] hover:bg-[#18b0a4]/10" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={handleLogout}
+                  className="text-gray-500 hover:text-gray-700"
                 >
-                  <LogOut className="h-5 w-5" />
+                  <LogOut className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Mobile menu */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-10 bg-white border-b border-[#18b0a4]/30">
-        <div className="flex items-center justify-between h-16 px-4">
-          <div className="flex items-center gap-2">
-            <Globe className="h-6 w-6 text-[#18b0a4]" />
-            <span className="font-extrabold text-lg sm:text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
-          </div>
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-[#18b0a4]">
-                <Menu className="h-6 w-6" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 sm:w-80 p-0 bg-white text-[#18b0a4]">
-              <div className="flex flex-col h-full">
-                <div className="flex items-center gap-2 p-4 border-b border-[#18b0a4]/30">
-                  <Globe className="h-6 w-6 text-[#18b0a4]" />
-                  <span className="font-extrabold text-lg sm:text-xl tracking-tight text-[#18b0a4]">Datanálisis</span>
-                </div>
-                <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-                  {navigation.map((item) => {
-                    const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
-                    return (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        className={`
-                          flex items-center px-3 py-3 text-sm font-semibold rounded-lg transition-colors
-                          ${isActive
-                            ? "bg-[#18b0a4] text-white shadow"
-                            : "text-[#18b0a4] hover:bg-[#18b0a4]/10 hover:text-[#18b0a4]"}
-                        `}
-                        onClick={() => setOpen(false)}
-                      >
-                        <item.icon className={`mr-3 h-5 w-5 ${isActive ? 'text-white' : 'text-[#18b0a4]'}`} />
-                        {item.name}
-                      </Link>
-                    );
-                  })}
-                </nav>
-                <div className="p-4 border-t border-[#18b0a4]/30">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <div className="h-8 w-8 rounded-full bg-[#18b0a4] flex items-center justify-center border border-[#18b0a4]">
-                        <span className="text-white font-bold">{user?.email?.charAt(0).toUpperCase() || "U"}</span>
-                      </div>
-                    </div>
-                    <div className="ml-3 overflow-hidden">
-                      <p className="text-sm font-semibold text-[#18b0a4] truncate">{user?.email}</p>
-                      <p className="text-xs text-gray-500 capitalize truncate">Usuario</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-auto text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                      onClick={() => {
-                        setOpen(false)
-                        handleLogout()
-                      }}
-                    >
-                      <LogOut className="h-5 w-5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </div>
+        </SheetContent>
+        
+        {/* SheetTrigger debe estar dentro de Sheet */}
+        <SheetTrigger asChild>
+          <Button variant="ghost" size="sm" className="md:hidden">
+            <Menu className="h-5 w-5" />
+          </Button>
+        </SheetTrigger>
+      </Sheet>
 
       {/* Main content */}
-      <div className="md:pl-64 lg:pl-72 flex flex-col flex-1">
-        <main className="flex-1 overflow-y-auto pt-16 md:pt-0 px-4 md:px-6">{children}</main>
-      </div>
+      <div className="flex-1 md:ml-64 lg:ml-72 flex flex-col">
+        {/* Top bar */}
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Removido SheetTrigger de aquí ya que está dentro de Sheet */}
+            <SyncStatus />
+          </div>
+        </div>
 
-      {/* Sync status indicator */}
-      <SyncStatus />
+        {/* Page content */}
+        <main className="flex-1 overflow-auto bg-gray-50">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }

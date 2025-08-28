@@ -1,120 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-        },
-      },
-    }
-  )
+  const { pathname } = request.nextUrl
+  
+  // Solo logging en desarrollo para no afectar producción
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 Middleware - Ruta:', pathname)
+  }
 
   try {
-    // Refresh session if expired - required for Server Components
-    // https://supabase.com/docs/guides/auth/auth-helpers/nextjs#managing-refresh-token-rotation
-    const { data: { user }, error } = await supabase.auth.getUser()
-
-    // If there's no user and the request is for a protected route, redirect to login
-    if (!user && isProtectedRoute(request.nextUrl.pathname)) {
-      const redirectUrl = new URL('/login', request.url)
-      redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
-      return NextResponse.redirect(redirectUrl)
+    // IMPORTANTE: Solo proteger la ruta de login para evitar que usuarios autenticados vuelvan ahí
+    if (pathname === '/login') {
+      // Verificación ultra-rápida de cookies de Supabase
+      const cookies = request.cookies.getAll()
+      const hasSupabaseCookies = cookies.some(cookie => 
+        cookie.name.startsWith('sb-') && cookie.name.includes('access_token')
+      )
+      
+      if (hasSupabaseCookies) {
+        // Si hay cookies de Supabase, redirigir al dashboard (evitar que usuarios logueados vayan a login)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ Middleware - Usuario ya autenticado, redirigiendo desde login a dashboard')
+        }
+        return NextResponse.redirect(new URL('/dashboard', request.url))
+      }
+      
+      // Si no hay cookies de Supabase, permitir acceso a login
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Middleware - Usuario no autenticado, permitiendo acceso a login')
+      }
+      return NextResponse.next()
     }
 
-    // If there's a user and the request is for an auth route, redirect to dashboard
-    if (user && isAuthRoute(request.nextUrl.pathname)) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+    // Para TODAS las demás rutas: ACCESO LIBRE INMEDIATO
+    // No validar cookies, no verificar sesión, permitir navegación libre
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ Middleware - Ruta libre, permitiendo acceso sin validación')
     }
-
-    return response
+    
+    return NextResponse.next()
+    
   } catch (error) {
-    console.error('Middleware error:', error)
-    // If there's an error and it's a protected route, redirect to login
-    if (isProtectedRoute(request.nextUrl.pathname)) {
-      return NextResponse.redirect(new URL('/login', request.url))
+    // En caso de error, solo log en desarrollo
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ Middleware error:', error)
     }
-    return response
+    
+    // Si hay error, permitir acceso (no bloquear)
+    return NextResponse.next()
   }
 }
 
-// Helper functions
-function isProtectedRoute(pathname: string): boolean {
-  const protectedRoutes = [
-    '/dashboard',
-    '/projects',
-    '/surveys',
-    '/users',
-    '/zones',
-    '/reports',
-    '/settings',
-  ]
-  return protectedRoutes.some(route => 
-    pathname === route || pathname.startsWith(route + '/')
-  )
-}
-
-function isAuthRoute(pathname: string): boolean {
-  const authRoutes = ['/login', '/register', '/forgot-password']
-  return authRoutes.some(route => 
-    pathname === route || pathname.startsWith(route + '/')
-  )
-}
-
+// Configuración optimizada del middleware
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder files
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)',
+    // Solo interceptar rutas que realmente necesiten middleware
+    '/login',
+    '/dashboard/:path*',
+    '/projects/:path*',
+    '/create-survey',
+    '/preview/:path*',
+    '/settings/:path*',
+    '/users/:path*',
+    '/zones/:path*',
+    '/surveyors/:path*',
+    '/reports/:path*',
+    '/companies/:path*',
+    '/contact',
+    '/terms',
+    '/forgot-password',
+    '/register'
   ],
 }

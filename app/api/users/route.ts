@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
     // En una aplicación real, validarías los datos y los guardarías en la base de datos
     const newUser = {
-      id: `${users.length + 1}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de contador numérico
       ...userData,
       status: "active",
       lastActive: new Date().toISOString(),

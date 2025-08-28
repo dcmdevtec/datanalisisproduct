@@ -314,7 +314,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
                 mapMode === "neighborhoods" ? (
                   <MapWithChoropleth
                     ref={mapRef}
-                    key={`choropleth-map-${initialZone?.id || "new"}-${Date.now()}`}
+                    key={`choropleth-map-${initialZone?.id || "new"}-${crypto.randomUUID()}`}
                     initialGeometry={geometry}
                     onGeometryChange={setGeometry}
                     zoneColor={zoneColor}
@@ -324,7 +324,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
                 ) : (
                   <MapWithDrawing
                     ref={mapRef}
-                    key={`manual-map-${initialZone?.id || "new"}-${Date.now()}`}
+                    key={`manual-map-${initialZone?.id || "new"}-${crypto.randomUUID()}`}
                     initialGeometry={geometry}
                     onGeometryChange={setGeometry}
                   />

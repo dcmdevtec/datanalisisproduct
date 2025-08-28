@@ -24,7 +24,7 @@ export default function PaginaDashboard() {
   
   // Solo mostrar información de debug en desarrollo
   if (process.env.NODE_ENV === 'development') {
-    console.log('👤 Usuario en dashboard:', {
+    console.log('🔍 Debug - Usuario:', {
       email: user.email,
       role: userRole,
       user_metadata: user.user_metadata,
@@ -121,7 +121,7 @@ export default function PaginaDashboard() {
                 ].map((actividad, i) => (
                   <div key={i} className="flex items-start gap-4 pb-4 border-b last:border-0">
                     <div className="rounded-full bg-primary/10 p-2">
-                      <Users className="h-4 w-4 " />
+                      <Users className="h-4 w-4 text-primary" />
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm font-medium">{actividad.user}</p>

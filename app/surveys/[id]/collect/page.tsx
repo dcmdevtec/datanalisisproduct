@@ -238,7 +238,7 @@ export default function CollectDataPage() {
       // En modo offline, guardar localmente
       if (isOffline) {
         // Simulación de guardado local
-        localStorage.setItem(`survey_response_${Date.now()}`, JSON.stringify(responseData))
+        localStorage.setItem(`survey_response_${crypto.randomUUID()}`, JSON.stringify(responseData))
 
         toast({
           title: "Respuesta guardada localmente",

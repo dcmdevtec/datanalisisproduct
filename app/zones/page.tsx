@@ -39,7 +39,7 @@ export default function ZonesPage() {
   const mapRefs = useRef<{ [key: string]: any }>({})
 
   const fetchZones = async () => {
-    console.log("Fetching zones...")
+
 
     try {
       const response = await fetch("/api/zones")
@@ -51,7 +51,7 @@ export default function ZonesPage() {
       }
 
       const data = await response.json()
-      console.log("Zones fetched successfully:", data.length, "zones")
+      
       setZones(data)
     } catch (error: any) {
       console.error("Error fetching zones:", error.message)

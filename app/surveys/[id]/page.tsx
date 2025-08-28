@@ -142,7 +142,7 @@ export default function SurveyDetailsPage() {
           const zone = zonesData.find((z) => z.id === firstZoneId)
           if (zone && zone.geometry) {
             setSelectedZoneGeometry(zone.geometry)
-            setMapKey(`zone-${firstZoneId}-${Date.now()}`)
+            setMapKey(`zone-${firstZoneId}-${crypto.randomUUID()}`)
           }
         }
       } catch (err: any) {
@@ -215,7 +215,7 @@ export default function SurveyDetailsPage() {
     const zone = allZones.find((z) => z.id === zoneId)
     if (zone && zone.geometry) {
       setSelectedZoneGeometry(zone.geometry)
-      setMapKey(`zone-${zoneId}-${Date.now()}`)
+              setMapKey(`zone-${zoneId}-${crypto.randomUUID()}`)
     } else {
       setSelectedZoneGeometry(null)
       setMapKey("")

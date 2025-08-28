@@ -57,7 +57,7 @@ export default function CreateSurveyPage() {
 
   const addQuestion = () => {
     const newQuestion = {
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       type: "text",
       text: "",
       options: [],
@@ -179,7 +179,7 @@ export default function CreateSurveyPage() {
         })),
       }
 
-      console.log("Guardando encuesta:", surveyData)
+      
 
       // Enviar a la API
       const response = await fetch("/api/surveys", {

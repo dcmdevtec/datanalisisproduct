@@ -300,12 +300,12 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
   const handleDuplicate = (section: SurveySection) => {
     const newSection: SurveySection = {
       ...section,
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       title: `${section.title} (Copia)`,
       order_num: localSections.length,
       questions: section.questions.map((q) => ({
         ...q,
-        id: `${Date.now()}_${Math.random()}`,
+        id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       })),
     }
     setLocalSections([...localSections, newSection])
@@ -331,7 +331,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   const handleAddSection = () => {
     const newSection: SurveySection = {
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       title: `Nueva Sección ${localSections.length + 1}`,
       description: "",
       order_num: localSections.length,

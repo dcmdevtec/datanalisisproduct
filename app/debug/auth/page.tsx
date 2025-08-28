@@ -71,7 +71,7 @@ export default function AuthDebugPage() {
       const { data: surveyData, error: surveyError } = await supabase.from("surveys").select("id, title").limit(1)
 
       // Test 2: Intentar crear una encuesta de prueba
-      const testId = `test-${Date.now()}`
+      const testId = `test-${crypto.randomUUID()}`
       const { data: createData, error: createError } = await supabase
         .from("surveys")
         .insert({

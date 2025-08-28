@@ -112,7 +112,7 @@ export default function EditSurveyPage() {
 
   const addQuestion = (): void => {
     const newQuestion: Question = {
-      id: `${Date.now()}`,
+      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
       type: "text",
       text: "",
       options: [],

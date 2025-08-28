@@ -15,7 +15,7 @@ let offlineStore: SyncItem[] = []
 export const offlineSync = {
   // Guardar un elemento para sincronización posterior
   saveForSync: (type: "response" | "audio" | "image", data: any): string => {
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const id = crypto.randomUUID() // ✅ UUID real en lugar de timestamp
     const item: SyncItem = {
       id,
       type,

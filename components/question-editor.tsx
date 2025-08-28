@@ -17,64 +17,11 @@ import { Badge } from "@/components/ui/badge"
 import { useDebounce } from "use-debounce"
 import { useToast } from "@/components/ui/use-toast"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
+import type { Question, SurveySection } from "@/types-updated"
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
 })
-
-interface Question {
-  id: string
-  type: string
-  text: string
-  options: string[]
-  required: boolean
-  image?: string | null
-  matrixRows?: string[]
-  matrixCols?: string[]
-  ratingScale?: number
-  config?: {
-    dropdownMulti?: boolean
-    matrixCellType?: string
-    scaleMin?: number
-    scaleMax?: number
-    scaleLabels?: string[]
-    allowOther?: boolean
-    otherText?: string
-    randomizeOptions?: boolean
-    ratingEmojis?: boolean
-    displayLogic?: {
-      enabled: boolean
-      conditions: Array<{
-        questionId: string
-        operator: string
-        value: string
-      }>
-    }
-    skipLogic?: {
-      enabled: boolean
-      rules: Array<{
-        condition: string // e.g., "answer === 'Yes'" or "answer.includes('Option A')"
-        targetSectionId: string // ID of the section to jump to
-      }>
-    }
-    validation?: {
-      required?: boolean
-      minLength?: number
-      maxLength?: number
-      pattern?: string
-      customMessage?: string
-    }
-    [key: string]: any
-  }
-}
-
-interface SurveySection {
-  id: string
-  title: string
-  description?: string
-  order_num: number
-  questions: Question[]
-}
 
 interface QuestionEditorProps {
   question: Question
@@ -175,37 +122,42 @@ export function QuestionEditor({
                 <SelectValue placeholder="Tipo de pregunta" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">📝 Texto corto</SelectItem>
-                <SelectItem value="textarea">📄 Texto largo</SelectItem>
-                <SelectItem value="multiple_choice">🔘 Opción múltiple</SelectItem>
-                <SelectItem value="checkbox">☑️ Casillas de verificación</SelectItem>
-                <SelectItem value="dropdown">📋 Lista desplegable</SelectItem>
-                <SelectItem value="scale">📊 Escala de calificación</SelectItem>
+                <SelectItem value="text">📝 Texto corto *</SelectItem>
+                <SelectItem value="textarea">📄 Texto largo *</SelectItem>
+                <SelectItem value="multiple_choice">🔘 Opción múltiple *</SelectItem>
+                <SelectItem value="checkbox">☑️ Casillas de verificación *</SelectItem>
+                <SelectItem value="dropdown">📋 Lista desplegable *</SelectItem>
+                <SelectItem value="scale">📊 Escala de calificación *</SelectItem>
                 <SelectItem value="matrix">📋 Matriz/Tabla</SelectItem>
                 <SelectItem value="ranking">🔢 Clasificación</SelectItem>
-                <SelectItem value="date">📅 Fecha</SelectItem>
-                <SelectItem value="time">🕐 Hora</SelectItem>
-                <SelectItem value="email">📧 Email</SelectItem>
-                <SelectItem value="phone">📞 Teléfono</SelectItem>
-                <SelectItem value="number">🔢 Número</SelectItem>
-                <SelectItem value="rating">⭐ Valoración</SelectItem>
-                <SelectItem value="file">📎 Archivo</SelectItem>
-                <SelectItem value="image_upload">🖼️ Subir imagen</SelectItem>
-                <SelectItem value="signature">✍️ Firma</SelectItem>
+                <SelectItem value="date">📅 Fecha *</SelectItem>
+                <SelectItem value="time">🕐 Hora *</SelectItem>
+                <SelectItem value="email">📧 Email *</SelectItem>
+                <SelectItem value="phone">📞 Teléfono *</SelectItem>
+                <SelectItem value="number">🔢 Número *</SelectItem>
+                <SelectItem value="rating">⭐ Valoración *</SelectItem>
+                <SelectItem value="file">📎 Archivo *</SelectItem>
+                <SelectItem value="image_upload">🖼️ Subir imagen *</SelectItem>
+                <SelectItem value="signature">✍️ Firma *</SelectItem>
                 <SelectItem value="likert">📈 Escala Likert</SelectItem>
-                <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
-                <SelectItem value="slider">🎚️ Control deslizante</SelectItem>
-                <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
-                <SelectItem value="star_rating">⭐ Calificación con estrellas</SelectItem>
-                <SelectItem value="demographic">👤 Demográfica</SelectItem>
-                <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
-                <SelectItem value="single_textbox">📝 Una sola caja de texto</SelectItem>
-                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
+                <SelectItem value="net_promoter">📊 Net Promoter Score *</SelectItem>
+                <SelectItem value="slider">🎚️ Control deslizante *</SelectItem>
+                <SelectItem value="comment_box">💬 Caja de comentarios *</SelectItem>
+                <SelectItem value="star_rating">⭐ Calificación con estrellas *</SelectItem>
+                <SelectItem value="demographic">👤 Demográfica *</SelectItem>
+                <SelectItem value="contact_info">📧 Información de contacto *</SelectItem>
+                <SelectItem value="single_textbox">📝 Una sola caja de texto *</SelectItem>
+                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto *</SelectItem>
               </SelectContent>
             </Select>
             <Badge variant={question.required ? "destructive" : "secondary"}>
               {question.required ? "Obligatorio" : "Opcional"}
             </Badge>
+          </div>
+          
+          {/* Nota explicativa sobre el asterisco */}
+          <div className="text-xs text-muted-foreground mt-1">
+            <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={toggleQuestionExpansion}>
@@ -757,17 +709,17 @@ export function QuestionEditor({
               <Label className="font-medium">Vista previa</Label>
               <div className="flex items-center gap-2 mt-2 p-4 border rounded-lg bg-muted/20">
                 <span className="text-sm">{question.config?.scaleLabels?.[0] || question.config?.scaleMin || 1}</span>
-                {Array.from(
-                  { length: (question.config?.scaleMax || 5) - (question.config?.scaleMin || 1) + 1 },
-                  (_, i) => (
-                    <button
-                      key={i}
-                      className="w-8 h-8 rounded border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors text-sm"
-                    >
-                      {(question.config?.scaleMin || 1) + i}
-                    </button>
-                  ),
-                )}
+                                    {Array.from(
+                      { length: (question.config?.scaleMax || 5) - (question.config?.scaleMin || 1) + 1 },
+                      (_: any, i: number) => (
+                        <button
+                          key={i}
+                          className="w-8 h-8 rounded border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors text-sm"
+                        >
+                          {(question.config?.scaleMin || 1) + i}
+                        </button>
+                      ),
+                    )}
                 <span className="text-sm">{question.config?.scaleLabels?.[1] || question.config?.scaleMax || 5}</span>
               </div>
             </div>
@@ -775,177 +727,126 @@ export function QuestionEditor({
         )}
 
         {question.type === "likert" && (
-          <div className="space-y-4 p-4 border rounded-lg">
-            <Label className="text-lg font-semibold">Configuración de Escala Likert</Label>
+          <div className="space-y-4 p-4 border rounded-lg bg-gradient-to-br from-blue-50/50 to-indigo-100/50 border-blue-200">
+            <div className="flex items-center justify-between">
+              <Label className="text-lg font-semibold text-blue-800">📈 Escala Likert - Configuración</Label>
+              <Badge variant="outline" className="border-blue-300 text-blue-700">
+                Configura en "Configuración Avanzada"
+              </Badge>
+            </div>
+            
+                         {/* Debug info */}
+             <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+               <p className="text-sm text-yellow-700">
+                 🔍 <strong>Debug:</strong> Configuración actual: {JSON.stringify(question.config?.likertScale || 'No configurada')}
+               </p>
+             </div>
+            
             <div className="space-y-4">
-              <div>
-                <Label>Tipo de escala Likert</Label>
-                <Select
-                  value={question.config?.likertType || "agreement"}
-                  onValueChange={(value) =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      likertType: value,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="agreement">Acuerdo/Desacuerdo</SelectItem>
-                    <SelectItem value="satisfaction">Satisfacción</SelectItem>
-                    <SelectItem value="frequency">Frecuencia</SelectItem>
-                    <SelectItem value="importance">Importancia</SelectItem>
-                    <SelectItem value="quality">Calidad</SelectItem>
-                    <SelectItem value="likelihood">Probabilidad</SelectItem>
-                    <SelectItem value="custom">Personalizada</SelectItem>
-                  </SelectContent>
-                </Select>
+                             {/* Información de la configuración actual */}
+               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                 <h4 className="font-medium text-blue-800 mb-2">Configuración Actual:</h4>
+                 <div className="grid grid-cols-2 gap-4 text-sm">
+                   <div>
+                     <span className="font-medium text-blue-700">Rango:</span>
+                     <span className="ml-2 text-blue-600">
+                       {question.config?.likertScale?.min || 1} - {question.config?.likertScale?.max || 5}
+                     </span>
+                   </div>
+                   <div>
+                     <span className="font-medium text-blue-700">Paso:</span>
+                     <span className="ml-2 text-blue-600">
+                       {question.config?.likertScale?.step || 1}
+                     </span>
+                   </div>
+                   <div>
+                     <span className="font-medium text-blue-700">Posición inicial:</span>
+                     <span className="ml-2 text-blue-600">
+                       {question.config?.likertScale?.startPosition === 'left' ? 'Izquierda' : 
+                        question.config?.likertScale?.startPosition === 'center' ? 'Centro' : 'Derecha'}
+                     </span>
+                   </div>
+                   <div>
+                     <span className="font-medium text-blue-700">Opción "0":</span>
+                     <span className="ml-2 text-blue-600">
+                       {question.config?.likertScale?.showZero ? 'Sí' : 'No'}
+                     </span>
+                   </div>
+                 </div>
+               </div>
+
+                             {/* Etiquetas configuradas */}
+               {(question.config?.likertScale?.labels?.left || question.config?.likertScale?.labels?.right) && (
+                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                   <h4 className="font-medium text-blue-800 mb-2">Etiquetas Configuradas:</h4>
+                   <div className="grid grid-cols-3 gap-4 text-sm">
+                     <div className="text-center">
+                       <div className="font-medium text-blue-700">Izquierda</div>
+                       <div className="text-blue-600">{question.config?.likertScale?.labels?.left || 'No configurada'}</div>
+                     </div>
+                     <div className="text-center">
+                       <div className="font-medium text-blue-700">Centro</div>
+                       <div className="text-blue-600">{question.config?.likertScale?.labels?.center || 'No configurada'}</div>
+                     </div>
+                     <div className="text-center">
+                       <div className="font-medium text-blue-700">Derecha</div>
+                       <div className="text-blue-600">{question.config?.likertScale?.labels?.right || 'No configurada'}</div>
+                     </div>
+                   </div>
+                 </div>
+               )}
+
+              {/* Vista previa del control deslizante */}
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
+                <h4 className="font-medium text-blue-800 mb-3">Vista Previa del Control Deslizante:</h4>
+                <div className="space-y-4">
+                                     <div className="px-2">
+                     <Slider
+                       defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
+                       min={question.config?.likertScale?.showZero ? 0 : (question.config?.likertScale?.min || 1)}
+                       max={question.config?.likertScale?.max || 5}
+                       step={question.config?.likertScale?.step || 1}
+                       disabled
+                       className="w-full"
+                     />
+                   </div>
+                   <div className="flex justify-between text-xs text-blue-600 px-2">
+                     {question.config?.likertScale?.showZero && (
+                       <span className="text-center">
+                         <div className="font-medium">0</div>
+                         <div className="text-xs">{question.config?.likertScale?.zeroLabel || 'No Sabe / No Responde'}</div>
+                       </span>
+                     )}
+                     <span className="text-center">
+                       <div className="font-medium">{question.config?.likertScale?.min || 1}</div>
+                       <div className="text-xs">{question.config?.likertScale?.labels?.left || 'Mínimo'}</div>
+                     </span>
+                     <span className="text-center font-medium">
+                       Valor: {Math.ceil((question.config?.likertScale?.max || 5) / 2)}
+                     </span>
+                     <span className="text-center">
+                       <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
+                       <div className="text-xs">{question.config?.likertScale?.labels?.right || 'Máximo'}</div>
+                     </span>
+                   </div>
+                </div>
+                
+                                 {/* Mensaje si no hay configuración */}
+                 {!question.config?.likertScale && (
+                   <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                     <p className="text-sm text-yellow-700">
+                       ⚠️ <strong>No hay configuración de escala Likert.</strong> Ve a "Configuración Avanzada" → "Escala Likert" para configurar tu escala.
+                     </p>
+                   </div>
+                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Número de puntos en la escala</Label>
-                  <Select
-                    value={question.config?.likertScale?.toString() || "5"}
-                    onValueChange={(value) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        likertScale: Number.parseInt(value),
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="3">3 puntos</SelectItem>
-                      <SelectItem value="4">4 puntos</SelectItem>
-                      <SelectItem value="5">5 puntos</SelectItem>
-                      <SelectItem value="7">7 puntos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Estilo de presentación</Label>
-                  <Select
-                    value={question.config?.likertStyle || "radio"}
-                    onValueChange={(value) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        likertStyle: value,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="radio">Botones de radio</SelectItem>
-                      <SelectItem value="slider">Barra deslizable</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {question.config?.likertType === "custom" && (
-                <div className="space-y-2">
-                  <Label>Etiquetas personalizadas (separadas por coma)</Label>
-                  <Input
-                    value={question.config?.customLabels || ""}
-                    onChange={(e) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        customLabels: e.target.value,
-                      })
-                    }
-                    placeholder="Totalmente en desacuerdo, En desacuerdo, Neutral, De acuerdo, Totalmente de acuerdo"
-                  />
-                </div>
-              )}
-
-              <div className="mt-4">
-                <Label className="font-medium">Vista previa</Label>
-                <div className="mt-2 p-4 border rounded-lg bg-muted/20">
-                  {(() => {
-                    const scale = question.config?.likertScale || 5
-                    const type = question.config?.likertType || "agreement"
-
-                    const presetLabels = {
-                      agreement: [
-                        "Totalmente en desacuerdo",
-                        "En desacuerdo",
-                        "Neutral",
-                        "De acuerdo",
-                        "Totalmente de acuerdo",
-                      ],
-                      satisfaction: ["Muy insatisfecho", "Insatisfecho", "Neutral", "Satisfecho", "Muy satisfecho"],
-                      frequency: ["Nunca", "Raramente", "A veces", "Frecuentemente", "Siempre"],
-                      importance: ["Sin importancia", "Poco importante", "Neutral", "Importante", "Muy importante"],
-                      quality: ["Muy mala", "Mala", "Regular", "Buena", "Excelente"],
-                      likelihood: ["Muy improbable", "Improbable", "Neutral", "Probable", "Muy probable"],
-                    }
-
-                    let labels = []
-                    if (type === "custom" && question.config?.customLabels) {
-                      labels = question.config.customLabels.split(",").map((l) => l.trim())
-                    } else {
-                      labels = presetLabels[type as keyof typeof presetLabels] || presetLabels.agreement
-                    }
-
-                    if (scale === 3) {
-                      labels = [labels[0], labels[2], labels[4]]
-                    } else if (scale === 4) {
-                      labels = [labels[0], labels[1], labels[3], labels[4]]
-                    } else if (scale === 7) {
-                      labels = [
-                        labels[0],
-                        labels[1],
-                        "Ligeramente en desacuerdo",
-                        labels[2],
-                        "Ligeramente de acuerdo",
-                        labels[3],
-                        labels[4],
-                      ]
-                    }
-
-                    const isSlider = question.config?.likertStyle === "slider"
-
-                    if (isSlider) {
-                      return (
-                        <div className="space-y-4">
-                          <div className="px-2">
-                            <Slider
-                              defaultValue={[Math.ceil(scale / 2)]}
-                              min={1}
-                              max={scale}
-                              step={1}
-                              disabled
-                              className="w-full"
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-muted-foreground px-2">
-                            <span>{labels[0]}</span>
-                            <span className="font-medium">Valor: {Math.ceil(scale / 2)}</span>
-                            <span>{labels[labels.length - 1]}</span>
-                          </div>
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div className="space-y-2">
-                        {labels.slice(0, scale).map((label, i) => (
-                          <div key={i} className="flex items-center gap-3">
-                            <input type="radio" disabled className="cursor-not-allowed" />
-                            <span className="text-sm">{label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  })()}
-                </div>
+              {/* Mensaje de ayuda */}
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-700">
+                  💡 <strong>Para configurar completamente tu escala Likert:</strong> Ve a la pestaña "Configuración Avanzada" 
+                  y selecciona "Escala Likert". Allí podrás definir rangos, etiquetas y opciones avanzadas.
+                </p>
               </div>
             </div>
           </div>

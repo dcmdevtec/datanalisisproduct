@@ -44,7 +44,7 @@ export default function DebugSupabase() {
       }
 
       // Intentar crear un registro de prueba
-      const testId = `test-${Date.now()}`
+      const testId = crypto.randomUUID() // ✅ UUID real en lugar de timestamp
       const { data: insertData, error: insertError } = await supabase
         .from("sync_records")
         .insert({

@@ -38,7 +38,7 @@ const checkUserPermissions = async () => {
     const { data: surveyData, error: surveyError } = await supabase.from("surveys").select("id").limit(1)
 
     // Verificar si el usuario puede crear encuestas
-    const testId = `test-${Date.now()}`
+    const testId = `test-${crypto.randomUUID()}`
     const { data: insertData, error: insertError } = await supabase
       .from("surveys")
       .insert({

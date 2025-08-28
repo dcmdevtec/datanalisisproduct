@@ -38,7 +38,7 @@ export default function SupabaseConnectionTest() {
         setUser(session.user)
 
         // Probar inserción de datos
-        const testId = `test-${Date.now()}`
+        const testId = `test-${crypto.randomUUID()}`
         const { error: insertError } = await supabase.from("sync_records").insert({
           id: testId,
           user_id: session.user.id,

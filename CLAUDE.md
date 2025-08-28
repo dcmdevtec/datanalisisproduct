@@ -1,1 +1,0 @@
-quiero que agregues los componentes que estan en el select para escoger el tipo de pregunta creo que falta agregar la escala de likert y tambien quitar ese focus azul cuando me ubico en un input o cuadro de texto o select aparte que agregues cosas que tiene survey monkey aqui que no veas en mi proyecto 

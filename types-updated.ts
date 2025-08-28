@@ -7,21 +7,44 @@
 // =====================================================
 
 export interface ScaleConfig {
-  min: number
-  max: number
-  step: number
+  // Configuración básica de la escala
+  min: number                    // Valor mínimo (siempre 1 según requerimientos)
+  max: number                    // Valor máximo (5, 7, 10, 100, etc.)
+  step: number                   // Tamaño del paso (siempre 1 según requerimientos)
+  
+  // Posición inicial del control deslizante
   startPosition: 'left' | 'center' | 'right'
+  
+  // Etiquetas personalizables
   labels: {
-    left: string
-    center?: string
-    right: string
+    left: string                 // Etiqueta del lado izquierdo (valor mínimo)
+    center?: string              // Etiqueta del centro (opcional)
+    right: string               // Etiqueta del lado derecho (valor máximo)
   }
-  showZero: boolean
-  zeroLabel: string
-  customSteps?: number[]
-  showLabels: boolean
-  showNumbers: boolean
-  orientation: 'horizontal' | 'vertical'
+  
+  // Opción "0 = No Sabe / No Responde"
+  showZero: boolean             // Mostrar opción cero
+  zeroLabel: string             // Texto de la etiqueta cero
+  
+  // Configuración visual
+  showNumbers: boolean          // Mostrar números en la escala
+  showLabels: boolean           // Mostrar etiquetas de texto
+  orientation: 'horizontal' | 'vertical'  // Orientación del control
+  
+  // Validación
+  validation: {
+    requireAnswer: boolean       // Requerir respuesta
+    allowZero: boolean          // Permitir selección de cero
+    customMessage?: string      // Mensaje de error personalizado
+  }
+  
+  // Apariencia
+  appearance: {
+    size: 'small' | 'medium' | 'large'
+    color: string               // Color del control
+    showTicks: boolean          // Mostrar marcas en la escala
+    showValue: boolean          // Mostrar valor seleccionado
+  }
 }
 
 // =====================================================
@@ -527,9 +550,19 @@ export const DEFAULT_SCALE_CONFIG: ScaleConfig = {
   },
   showZero: false,
   zeroLabel: 'No Sabe / No Responde',
-  showLabels: true,
   showNumbers: true,
-  orientation: 'horizontal'
+  showLabels: true,
+  orientation: 'horizontal',
+  validation: {
+    requireAnswer: true,
+    allowZero: true,
+  },
+  appearance: {
+    size: 'medium',
+    color: '#4CAF50',
+    showTicks: true,
+    showValue: true,
+  }
 }
 
 export const DEFAULT_RICH_TEXT_CONFIG: RichTextConfig = {
