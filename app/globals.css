@@ -1,3 +1,5 @@
+
+@import 'leaflet/dist/leaflet.css';
 /* Botones institucionales globales */
 .btn-primary,
 .bg-primary,
@@ -46,7 +48,7 @@ h1 {
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import 'leaflet/dist/leaflet.css';
+
 
 @layer base {
   :root {

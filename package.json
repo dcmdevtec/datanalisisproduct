@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
+    "dev:turbopack": "next dev --turbopack",
     "dev:fast": "next dev --turbo",
     "dev:minimal": "NEXT_TURBO=1 next dev --turbo --no-lint",
     "dev:ultra": "cross-env NEXT_CONFIG_FILE=next.config.dev.mjs next dev",
