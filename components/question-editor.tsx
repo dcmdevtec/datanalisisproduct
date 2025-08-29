@@ -49,12 +49,17 @@ export function QuestionEditor({
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
   const [isEditingText, setIsEditingText] = useState<boolean>(false)
   const [localQuestionText, setLocalQuestionText] = useState<string>(question.text.replace(/<[^>]*>/g, ""))
+  const [isQuestionTextValid, setIsQuestionTextValid] = useState<boolean>(true)
 
   const [debouncedLocalQuestionText] = useDebounce(localQuestionText, 300)
 
   useEffect(() => {
     // Ensure debouncedLocalQuestionText is a string before calling trim()
     const currentDebouncedText = debouncedLocalQuestionText || ""
+
+    // Validate question text
+    const isValid = currentDebouncedText.trim().length > 0
+    setIsQuestionTextValid(isValid)
 
     // Only update the parent state if the debounced text is different from the actual question text
     // and not empty (to avoid clearing text while typing)
@@ -65,7 +70,9 @@ export function QuestionEditor({
 
   // Update local text if parent question text changes (e.g., on initial load or duplicate)
   useEffect(() => {
-    setLocalQuestionText(question.text.replace(/<[^>]*>/g, ""))
+    const cleanText = question.text.replace(/<[^>]*>/g, "")
+    setLocalQuestionText(cleanText)
+    setIsQuestionTextValid(cleanText.trim().length > 0)
   }, [question.text])
 
   const toggleQuestionExpansion = () => {
@@ -194,12 +201,17 @@ export function QuestionEditor({
             </div>
 
             {!isEditingText ? (
-              <Input
-                value={localQuestionText}
-                onChange={(e) => setLocalQuestionText(e.target.value)}
-                placeholder="Escribe tu pregunta aquí..."
-                className="text-lg"
-              />
+              <div className="space-y-2">
+                <Input
+                  value={localQuestionText}
+                  onChange={(e) => setLocalQuestionText(e.target.value)}
+                  placeholder="Escribe tu pregunta aquí..."
+                  className={`text-lg ${!isQuestionTextValid ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                />
+                {!isQuestionTextValid && (
+                  <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>
+                )}
+              </div>
             ) : (
               <div className="flex gap-2 items-center">
                 <div className="flex-1">

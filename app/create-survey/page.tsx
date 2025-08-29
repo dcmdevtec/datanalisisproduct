@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { ArrowLeft, ArrowRight, Grip, Plus, Save, Trash2, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { generateUUID } from "@/lib/utils"
 
 export default function CreateSurveyPage() {
   const { user, loading } = useAuth()
@@ -57,7 +58,7 @@ export default function CreateSurveyPage() {
 
   const addQuestion = () => {
     const newQuestion = {
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(), // ✅ UUID real en lugar de timestamp
       type: "text",
       text: "",
       options: [],

@@ -47,6 +47,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase-browser"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { generateUUID } from "@/lib/utils"
 import { AssignSurveyorsModal } from "@/components/assign-surveyors-modal"
 import { EditSurveySettingsModal } from "@/components/edit-survey-settings-modal"
 import { MultiSelectZones } from "@/components/multi-select-zones"
@@ -280,11 +281,11 @@ function SortableSection({
                   onClick={() => {
                     const newSection = {
                       ...section,
-                      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+                      id: generateUUID(), // ✅ UUID real en lugar de timestamp
                       title: `${section.title} (Copia)`,
                       questions: section.questions.map((q) => ({
                         ...q,
-                        id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+                        id: generateUUID(), // ✅ UUID real en lugar de timestamp
                       })),
                     }
                     setSections([...sections, newSection])
@@ -912,7 +913,7 @@ function CreateSurveyForProjectPageContent() {
 
   const addQuestionToSection = (sectionId: string): void => {
     const newQuestion: Question = {
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(), // ✅ UUID real en lugar de timestamp
       type: "text",
       text: "",
       options: [],
@@ -2058,7 +2059,7 @@ function CreateSurveyForProjectPageContent() {
 
   const addSection = (): void => {
     const newSection: SurveySection = {
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(), // ✅ UUID real en lugar de timestamp
       title: `Nueva Sección ${sections.length + 1}`,
       description: "",
       order_num: sections.length,
@@ -2258,7 +2259,7 @@ function CreateSurveyForProjectPageContent() {
           if (questionToDuplicate) {
             const newQuestion = {
               ...questionToDuplicate,
-              id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+              id: generateUUID(), // ✅ UUID real en lugar de timestamp
               text: `${questionToDuplicate.text} (Copia)`,
             }
             const questionIndex = s.questions.findIndex((q) => q.id === questionId)
@@ -2770,7 +2771,7 @@ function CreateSurveyForProjectPageContent() {
                               initialGeometry={displayedZoneGeometry}
                               onGeometryChange={() => {}}
                               readOnly={true}
-                              key={`zone-preview-${selectedZoneForPreview}-${crypto.randomUUID()}`}
+                              key={`zone-preview-${selectedZoneForPreview}-${generateUUID()}`}
                             />
                           </div>
                         </CardContent>

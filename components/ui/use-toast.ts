@@ -7,6 +7,7 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+import { generateUUID } from "@/lib/utils"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
@@ -28,7 +29,7 @@ const actionTypes = {
 let count = 0
 
 function genId() {
-  return crypto.randomUUID() // ✅ UUID real en lugar de contador numérico
+  return generateUUID() // ✅ UUID real en lugar de contador numérico
 }
 
 type ActionType = typeof actionTypes

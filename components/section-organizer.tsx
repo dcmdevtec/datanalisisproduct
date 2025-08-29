@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { generateUUID } from "@/lib/utils"
 
 interface Question {
   id: string
@@ -300,12 +301,12 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
   const handleDuplicate = (section: SurveySection) => {
     const newSection: SurveySection = {
       ...section,
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(), // ✅ UUID real en lugar de timestamp
       title: `${section.title} (Copia)`,
       order_num: localSections.length,
       questions: section.questions.map((q) => ({
         ...q,
-        id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+        id: generateUUID(), // ✅ UUID real en lugar de timestamp
       })),
     }
     setLocalSections([...localSections, newSection])
@@ -331,7 +332,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   const handleAddSection = () => {
     const newSection: SurveySection = {
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(), // ✅ UUID real en lugar de timestamp
       title: `Nueva Sección ${localSections.length + 1}`,
       description: "",
       order_num: localSections.length,

@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase-browser"
 import FullTiptapEditor from "@/components/ui/FullTiptapEditor"
+import { generateUUID } from "@/lib/utils"
 
 import { Dialog } from "@/components/ui/dialog"
 import dynamic from "next/dynamic"
@@ -63,6 +64,23 @@ export default function EditSurveyPage() {
   })
   const [showQuill, setShowQuill] = useState<{ [id: string]: boolean }>({})
   const [showConfig, setShowConfig] = useState<{ [id: string]: boolean }>({})
+
+  // Funciones para manejar el estado de los modales de manera segura
+  const openQuillEditor = (questionId: string) => {
+    setShowQuill(prev => ({ ...prev, [questionId]: true }))
+  }
+
+  const closeQuillEditor = (questionId: string) => {
+    setShowQuill(prev => ({ ...prev, [questionId]: false }))
+  }
+
+  const openConfigEditor = (questionId: string) => {
+    setShowConfig(prev => ({ ...prev, [questionId]: true }))
+  }
+
+  const closeConfigEditor = (questionId: string) => {
+    setShowConfig(prev => ({ ...prev, [questionId]: false }))
+  }
 
   useEffect(() => {
     const fetchSurvey = async () => {
@@ -112,7 +130,7 @@ export default function EditSurveyPage() {
 
   const addQuestion = (): void => {
     const newQuestion: Question = {
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(), // ✅ UUID real en lugar de timestamp
       type: "text",
       text: "",
       options: [],
@@ -313,10 +331,12 @@ export default function EditSurveyPage() {
               <div className="flex-1">
                 <div className="border rounded p-2 bg-background text-foreground min-h-[48px]" dangerouslySetInnerHTML={{ __html: question.text || '<span class="text-muted-foreground">Haz click en editar formato</span>' }} />
               </div>
-              <Button size="sm" variant="outline" onClick={() => setShowQuill(prev => ({ ...prev, [question.id]: true }))}>Editar formato</Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowConfig(prev => ({ ...prev, [question.id]: true }))}>Configuración avanzada</Button>
+                             <Button size="sm" variant="outline" onClick={() => openQuillEditor(question.id)}>Editar formato</Button>
+               <Button size="sm" variant="secondary" onClick={() => openConfigEditor(question.id)}>Configuración avanzada</Button>
             </div>
-            <Dialog open={!!showQuill[question.id]} onOpenChange={open => setShowQuill(prev => ({ ...prev, [question.id]: open }))}>
+                         <Dialog open={!!showQuill[question.id]} onOpenChange={open => {
+               if (!open) closeQuillEditor(question.id)
+             }}>
               {showQuill[question.id] && (
                 <div className="fixed inset-0 bg-black/40 dark:bg-black/60 z-50 flex items-center justify-center">
                   <div className="rounded-lg shadow-lg p-6 w-full max-w-2xl bg-background text-foreground">
@@ -328,14 +348,16 @@ export default function EditSurveyPage() {
                       onChange={html => updateQuestion(question.id, "text", html)}
                       autofocus
                     />
-                    <div className="flex justify-end mt-4">
-                      <Button onClick={() => setShowQuill(prev => ({ ...prev, [question.id]: false }))}>Cerrar</Button>
-                    </div>
+                                         <div className="flex justify-end mt-4">
+                       <Button onClick={() => closeQuillEditor(question.id)}>Cerrar</Button>
+                     </div>
                   </div>
                 </div>
               )}
             </Dialog>
-            <Dialog open={!!showConfig[question.id]} onOpenChange={open => setShowConfig(prev => ({ ...prev, [question.id]: open }))}>
+                         <Dialog open={!!showConfig[question.id]} onOpenChange={open => {
+               if (!open) closeConfigEditor(question.id)
+             }}>
               {showConfig[question.id] && (
                 <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center">
                   <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg">
@@ -381,9 +403,9 @@ export default function EditSurveyPage() {
                       </div>
                     )}
                     {/* Aquí puedes agregar más configuraciones para otros tipos */}
-                    <div className="flex justify-end mt-4">
-                      <Button onClick={() => setShowConfig(prev => ({ ...prev, [question.id]: false }))}>Cerrar</Button>
-                    </div>
+                                         <div className="flex justify-end mt-4">
+                       <Button onClick={() => closeConfigEditor(question.id)}>Cerrar</Button>
+                     </div>
                   </div>
                 </div>
               )}
