@@ -64,6 +64,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // Establecer el usuario inmediatamente para que el hook de redirección funcione
       if (data.user) {
         setUser(data.user)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('👤 Usuario establecido en estado:', data.user.email)
+        }
         // No esperar - el hook useAuthRedirect se encargará de la redirección
       }
     } catch (error) {
@@ -107,16 +110,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         // El middleware se encargará de la redirección automática
         if (event === 'SIGNED_IN' && session?.user) {
           if (process.env.NODE_ENV === 'development') {
-            console.log('✅ Login exitoso - El middleware manejará la redirección')
+            console.log('✅ Login exitoso - Usuario autenticado, permitiendo redirección natural')
           }
         }
         
         if (event === 'SIGNED_OUT') {
           if (process.env.NODE_ENV === 'development') {
-            console.log('👋 Sesión cerrada - El middleware manejará la redirección')
+            console.log('👋 Sesión cerrada - Redirigiendo al login')
           }
           // Limpiar todos los datos de sesión cuando se cierra sesión
           clearAllSessionData()
+          
+          // Redirigir al login después del logout
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login'
+          }
         }
       }
     )

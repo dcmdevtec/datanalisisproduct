@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Globe, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
+import { Logo } from "@/components/ui/logo"
 
 function LoginPageContent() {
   const [email, setEmail] = useState("")
@@ -29,6 +30,7 @@ function LoginPageContent() {
   // Si ya hay usuario autenticado, redirigir al dashboard
   useEffect(() => {
     if (user && !authLoading) {
+      console.log('🚀 LoginPage - Usuario autenticado, redirigiendo a dashboard')
       router.push('/dashboard')
     }
   }, [user, authLoading, router])
@@ -78,7 +80,7 @@ function LoginPageContent() {
       <Card className="w-full max-w-sm sm:max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-2">
-            <Globe className="h-8 w-8 text-primary" />
+            <Logo size="lg" showText={false} />
           </div>
           <CardTitle className="text-xl sm:text-2xl font-bold">Iniciar sesión en Datanalisis</CardTitle>
           <CardDescription className="text-sm sm:text-base">Ingresa tu correo y contraseña para acceder a tu cuenta</CardDescription>
@@ -137,18 +139,21 @@ function LoginPageContent() {
                 "Iniciar sesión"
               )}
             </Button>
-            <p className="mt-4 text-center text-xs sm:text-sm text-muted-foreground">
-              ¿No tienes una cuenta?{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                Regístrate
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
-  )
-}
+                         <p className="mt-4 text-center text-xs sm:text-sm text-muted-foreground">
+               ¿No tienes una cuenta?{" "}
+               <Link href="/register" className="text-primary hover:underline">
+                 Regístrate
+               </Link>
+             </p>
+             <div className="mt-2 text-center">
+               <p className="text-xs text-muted-foreground">Versión 1.0.0</p>
+             </div>
+           </CardFooter>
+         </form>
+       </Card>
+     </div>
+   )
+ }
 
 export default function LoginPage() {
   return (

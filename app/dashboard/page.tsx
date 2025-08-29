@@ -39,11 +39,16 @@ export default function PaginaDashboard() {
       <div className="p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
           <h1 className="text-2xl md:text-3xl font-bold">Panel de Control</h1>
-          {process.env.NODE_ENV === 'development' && (
+          <div className="flex items-center gap-2">
+            {process.env.NODE_ENV === 'development' && (
+              <div className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded">
+                Rol: {userRole || 'Sin rol'}
+              </div>
+            )}
             <div className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded">
-              Rol: {userRole || 'Sin rol'}
+              Usuario: {user?.email}
             </div>
-          )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">

@@ -34,6 +34,7 @@ export async function middleware(request: NextRequest) {
 
     // Para TODAS las demás rutas: ACCESO LIBRE INMEDIATO
     // No validar cookies, no verificar sesión, permitir navegación libre
+    // Esto evita conflictos con el flujo de login
     if (process.env.NODE_ENV === 'development') {
       console.log('✅ Middleware - Ruta libre, permitiendo acceso sin validación')
     }
@@ -54,21 +55,7 @@ export async function middleware(request: NextRequest) {
 // Configuración optimizada del middleware
 export const config = {
   matcher: [
-    // Solo interceptar rutas que realmente necesiten middleware
-    '/login',
-    '/dashboard/:path*',
-    '/projects/:path*',
-    '/create-survey',
-    '/preview/:path*',
-    '/settings/:path*',
-    '/users/:path*',
-    '/zones/:path*',
-    '/surveyors/:path*',
-    '/reports/:path*',
-    '/companies/:path*',
-    '/contact',
-    '/terms',
-    '/forgot-password',
-    '/register'
+    // Solo interceptar la ruta de login para evitar conflictos
+    '/login'
   ],
 }
