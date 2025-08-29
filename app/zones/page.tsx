@@ -221,9 +221,7 @@ export default function ZonesPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  if (!["admin", "supervisor"].includes(user.role)) {
-    return null
-  }
+ 
 
   return (
     <DashboardLayout>
