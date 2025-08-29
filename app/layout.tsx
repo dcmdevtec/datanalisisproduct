@@ -13,6 +13,14 @@ export const metadata = {
   title: "Datanalisis",
   description: "A comprehensive survey platform for data collection and analysis",
   generator: 'v0.dev',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/logo.png', type: 'image/png' }
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/logo.png',
+  },
 }
 
 export default function RootLayout({
