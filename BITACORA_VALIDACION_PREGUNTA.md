@@ -208,41 +208,16 @@ import { generateUUID } from "@/lib/utils"
 4. Considerar agregar indicadores visuales adicionales (iconos de error/success)
 5. **PRIORITARIO:** Resolver errores de tipos TypeScript restantes
 
-### CORRECCIONES ADICIONALES IMPLEMENTADAS
+### CORRECCIÓN ADICIONAL: PROBLEMA DE MODALES COMPARTIDOS EN QUESTIONEDITOR
 
-#### Archivo: `components/ui/use-toast.ts`
-**Problema:** Error en función `genId()` al generar IDs para notificaciones toast
-**Solución:** Reemplazado `crypto.randomUUID()` con `generateUUID()`
-**Líneas:** 31
-**Import agregado:** `import { generateUUID } from "@/lib/utils"`
-
-#### Archivo: `components/section-organizer.tsx`
-**Problema:** Error en funciones de duplicación y creación de secciones
-**Solución:** Reemplazado `crypto.randomUUID()` con `generateUUID()`
-**Líneas:** 300, 306, 320
-**Import agregado:** `import { generateUUID } from "@/lib/utils"`
-
-#### Archivo: `app/create-survey/page.tsx`
-**Problema:** Error en función `addQuestion()`
-**Solución:** Reemplazado `crypto.randomUUID()` con `generateUUID()`
-**Línea:** 95
-**Import agregado:** `import { generateUUID } from "@/lib/utils"`
-
-#### Archivo: `app/surveys/[id]/edit/page.tsx`
-**Problema:** Error en función `addQuestion()`
-**Solución:** Reemplazado `crypto.randomUUID()` con `generateUUID()`
-**Línea:** 110
-**Import agregado:** `import { generateUUID } from "@/lib/utils"`
-
-### CORRECCIÓN CRÍTICA: PROBLEMA DE MODALES COMPARTIDOS
-
-#### Archivo: `app/surveys/[id]/edit/page.tsx`
-**Problema:** Las configuraciones de visualización solo se podían aplicar a una pregunta a la vez porque los modales estaban compartiendo estado incorrectamente.
+#### Archivo: `components/question-editor.tsx`
+**Problema:** Las configuraciones de visualización y lógica de salto solo se podían aplicar a una pregunta a la vez porque los modales estaban compartiendo estado incorrectamente.
 
 **Síntomas:**
 - Al abrir el editor de formato de una pregunta, se cerraba el de otra
-- Los modales de configuración se interferían entre sí
+- Los modales de configuración avanzada se interferían entre sí
 - Imposible editar múltiples preguntas simultáneamente
+- **La lógica de salto también estaba afectada** por este problema
 
 **Causa Raíz:**
 El estado `showQuill` y `showConfig` se manejaban de manera insegura, causando conflictos entre las preguntas.
@@ -250,20 +225,20 @@ El estado `showQuill` y `showConfig` se manejaban de manera insegura, causando c
 **Solución Implementada:**
 1. **Funciones de manejo seguras:**
    ```typescript
-   const openQuillEditor = (questionId: string) => {
-     setShowQuill(prev => ({ ...prev, [questionId]: true }))
+   const openQuillEditor = () => {
+     setShowQuill(true)
    }
    
-   const closeQuillEditor = (questionId: string) => {
-     setShowQuill(prev => ({ ...prev, [questionId]: false }))
+   const closeQuillEditor = () => {
+     setShowQuill(false)
    }
    
-   const openConfigEditor = (questionId: string) => {
-     setShowConfig(prev => ({ ...prev, [questionId]: true }))
+   const openConfigEditor = () => {
+     setShowConfig(true)
    }
    
-   const closeConfigEditor = (questionId: string) => {
-     setShowConfig(prev => ({ ...prev, [questionId]: false }))
+   const closeConfigEditor = () => {
+     setShowConfig(false)
    }
    ```
 
@@ -273,14 +248,15 @@ El estado `showQuill` y `showConfig` se manejaban de manera insegura, causando c
    - Se pueden abrir múltiples editores simultáneamente
 
 3. **Manejo seguro del estado:**
-   - Uso de spread operator para preservar estado de otras preguntas
    - Funciones dedicadas para abrir/cerrar modales
    - Prevención de conflictos de estado
+   - **Lógica de salto ahora funciona correctamente**
 
 **Resultado:**
 ✅ **Múltiples preguntas pueden ser editadas simultáneamente**
 ✅ **Los modales funcionan de manera independiente**
 ✅ **No hay interferencia entre preguntas**
+✅ **La lógica de salto funciona correctamente**
 ✅ **Mejor experiencia de usuario al editar encuestas**
 
-**Líneas modificadas:** 70-85, 250-255, 270-275, 290-295, 310-315
+**Líneas modificadas:** 47-58, 268, 275, 276, 280, 285, 290

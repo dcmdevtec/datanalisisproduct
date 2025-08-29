@@ -46,6 +46,23 @@ export function QuestionEditor({
 
   const [showQuill, setShowQuill] = useState<boolean>(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
+
+  // Funciones para manejar el estado de los modales de manera segura
+  const openQuillEditor = () => {
+    setShowQuill(true)
+  }
+
+  const closeQuillEditor = () => {
+    setShowQuill(false)
+  }
+
+  const openConfigEditor = () => {
+    setShowConfig(true)
+  }
+
+  const closeConfigEditor = () => {
+    setShowConfig(false)
+  }
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
   const [isEditingText, setIsEditingText] = useState<boolean>(false)
   const [localQuestionText, setLocalQuestionText] = useState<string>(question.text.replace(/<[^>]*>/g, ""))
@@ -246,10 +263,10 @@ export function QuestionEditor({
                     autofocus
                   />
                   <div className="flex justify-end mt-4 gap-2">
-                    <Button variant="outline" onClick={() => setShowQuill(false)}>
+                    <Button variant="outline" onClick={closeQuillEditor}>
                       Cancelar
                     </Button>
-                    <Button onClick={() => setShowQuill(false)}>Guardar</Button>
+                    <Button onClick={closeQuillEditor}>Guardar</Button>
                   </div>
                 </div>
               </div>
@@ -266,7 +283,7 @@ export function QuestionEditor({
 
             <Label htmlFor={`required-${question.id}`}>Pregunta obligatoria</Label>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowConfig(true)}>
+          <Button variant="outline" size="sm" onClick={openConfigEditor}>
             <Settings className="h-4 w-4 mr-2" />
             Configuración avanzada
           </Button>
@@ -274,7 +291,7 @@ export function QuestionEditor({
 
         <AdvancedQuestionConfig
           isOpen={showConfig}
-          onClose={() => setShowConfig(false)}
+          onClose={closeConfigEditor}
           question={question}
           allSections={allSections}
           allQuestions={allSections.flatMap((s) => s.questions)}
