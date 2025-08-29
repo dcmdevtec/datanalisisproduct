@@ -139,16 +139,26 @@ function LoginPageContent() {
                 "Iniciar sesión"
               )}
             </Button>
-                         <p className="mt-4 text-center text-xs sm:text-sm text-muted-foreground">
-               ¿No tienes una cuenta?{" "}
-               <Link href="/register" className="text-primary hover:underline">
-                 Regístrate
-               </Link>
-             </p>
-             <div className="mt-2 text-center">
-               <p className="text-xs text-muted-foreground">Versión 1.0.0</p>
-             </div>
-           </CardFooter>
+            
+            <div className="mt-4 text-center space-y-2">
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                ¿No tienes una cuenta?{" "}
+                <Link href="/register" className="text-primary hover:underline">
+                  Regístrate
+                </Link>
+              </p>
+                             <div className="flex justify-center">
+                 <Link 
+                   href="/" 
+                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 rounded-lg transition-all duration-200 border border-transparent hover:border-muted-foreground/20"
+                 >
+                   <span className="text-lg">←</span>
+                   Volver a la página principal
+                 </Link>
+               </div>
+              <p className="text-xs text-muted-foreground">Versión 1.0.0</p>
+            </div>
+          </CardFooter>
          </form>
        </Card>
      </div>
