@@ -4,7 +4,6 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
-import { useAuthRedirect } from "@/lib/hooks/use-auth-redirect"
 import { useRouter } from "next/navigation"
 import ClientLayout from "../client-layout"
 import { Button } from "@/components/ui/button"
@@ -18,18 +17,21 @@ function LoginPageContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { signIn, loading: authLoading } = useAuth()
-  const { user, loading: redirectLoading } = useAuthRedirect()
+  const { signIn, loading: authLoading, user } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   // Debug: mostrar estado actual
   useEffect(() => {
-    console.log('🔍 LoginPage - Estado actual:', { user: !!user, loading: redirectLoading, pathname: window.location.pathname })
-  }, [user, redirectLoading])
+    console.log('🔍 LoginPage - Estado actual:', { user: !!user, loading: authLoading, pathname: window.location.pathname })
+  }, [user, authLoading])
 
-  // El hook useAuthRedirect se encarga de la redirección automática
-  // No necesitamos el useEffect manual aquí
+  // Si ya hay usuario autenticado, redirigir al dashboard
+  useEffect(() => {
+    if (user && !authLoading) {
+      router.push('/dashboard')
+    }
+  }, [user, authLoading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,14 +58,14 @@ function LoginPageContent() {
   }
 
   // Mostrar loading si está autenticando o redirigiendo
-  if (authLoading || redirectLoading) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
         <Card className="w-full max-w-sm sm:max-w-md">
           <CardContent className="flex flex-col items-center justify-center p-8 space-y-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-center text-muted-foreground">
-              {authLoading ? "Verificando sesión..." : "Redirigiendo..."}
+              Verificando sesión...
             </p>
           </CardContent>
         </Card>
@@ -124,7 +126,7 @@ function LoginPageContent() {
             <Button 
               type="submit" 
               className="w-full text-sm sm:text-base" 
-              disabled={isSubmitting || authLoading}
+              disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <>

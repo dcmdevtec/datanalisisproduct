@@ -47,11 +47,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error al obtener rol" }, { status: 500 })
   }
 
-  let query = supabase.from("surveys").select("*, questions(*)").order("created_at", { ascending: false })
-
-  if (!["admin", "supervisor"].includes(userInfo.role)) {
-    query = query.eq("created_by", user.id)
-  }
+  const query = supabase.from("surveys").select("*, questions(*)").order("created_at", { ascending: false })
 
   const { data, error } = await query
 
@@ -177,12 +173,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Encuesta no encontrada" }, { status: 404 })
   }
 
-  const isOwner = existingSurvey.created_by === user.id
-  const isAdmin = ["admin", "supervisor"].includes(userInfo.role)
 
-  if (!isOwner && !isAdmin) {
-    return NextResponse.json({ error: "No tienes permiso para modificar esta encuesta" }, { status: 403 })
-  }
 
   const logo = settings?.branding?.logo || null
 

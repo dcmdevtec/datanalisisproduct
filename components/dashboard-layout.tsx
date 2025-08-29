@@ -69,7 +69,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { 
       name: "Usuarios", 
       href: "/users", 
-      icon: Users
+      icon: Users,
+      disabled: true
     },
     { 
       name: "Zonas", 
@@ -151,7 +152,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 >
                   <item.icon className={`h-5 w-5 ${item.disabled ? "opacity-50" : ""}`} />
                   {item.name}
-                  {item.disabled && <span className="text-xs text-gray-400 ml-auto">(Próximamente)</span>}
+                  {item.disabled && (
+                    <span className="text-xs text-gray-400 ml-auto">
+                      {item.name === "Configuración" ? "(No permitido)" : "(Próximamente)"}
+                    </span>
+                  )}
                 </Link>
               )
             })}
@@ -213,7 +218,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   >
                     <item.icon className={`h-5 w-5 ${item.disabled ? "opacity-50" : ""}`} />
                     {item.name}
-                    {item.disabled && <span className="text-xs text-gray-400 ml-auto">(Próximamente)</span>}
+                    {item.disabled && (
+                      <span className="text-xs text-gray-400 ml-auto">
+                        {item.name === "Configuración" ? "(No permitido)" : "(Próximamente)"}
+                      </span>
+                    )}
                   </Link>
                 )
               })}

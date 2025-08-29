@@ -134,8 +134,7 @@ export default function ProjectDetailPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  const isAdmin = user.role === "admin"
-  const isSupervisor = user.role === "supervisor"
+
 
   // Filters and search
   const filteredSurveys = surveys.filter((survey: any) => {
@@ -203,11 +202,9 @@ export default function ProjectDetailPage() {
               <div className="text-center p-8 border rounded-lg bg-muted/50">
                 <h3 className="text-lg font-medium mb-2">No hay encuestas disponibles</h3>
                 <p className="text-muted-foreground mb-4">No se encontraron encuestas para este proyecto.</p>
-                {(isAdmin || isSupervisor) && (
-                  <Button onClick={() => router.push(`/projects/${params.id}/create-survey`)}>
-                    <Plus className="h-4 w-4 mr-2" /> Crear tu primera encuesta
-                  </Button>
-                )}
+                <Button onClick={() => router.push(`/projects/${params.id}/create-survey`)}>
+                  <Plus className="h-4 w-4 mr-2" /> Crear tu primera encuesta
+                </Button>
               </div>
             ) : (
               <>
@@ -267,17 +264,15 @@ export default function ProjectDetailPage() {
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              {(isAdmin || isSupervisor) && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-[#18b0a4] hover:bg-[#18b0a4]/10 flex items-center gap-1"
-                                  onClick={() => router.push(`/projects/${survey.id}/create-survey`)}
-                                  
-                                >
-                                  <Pencil className="w-4 h-4 cursor-pointer" />
-                                </Button>
-                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-[#18b0a4] hover:bg-[#18b0a4]/10 flex items-center gap-1"
+                                onClick={() => router.push(`/projects/${survey.id}/create-survey`)}
+                                
+                              >
+                                <Pencil className="w-4 h-4 cursor-pointer" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"

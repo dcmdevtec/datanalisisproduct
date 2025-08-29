@@ -59,20 +59,6 @@ export function isAuthRoute(pathname: string): boolean {
 
 // Función para verificar si un usuario puede acceder a una ruta específica
 export function canAccessRoute(userRole: string, pathname: string): boolean {
-  // Los administradores y supervisores pueden acceder a todas las rutas
-  if (userRole === 'admin' || userRole === 'supervisor') {
-    return true
-  }
-  
-  // Los encuestadores solo pueden acceder a surveys y resultados
-  if (userRole === 'surveyor') {
-    return pathname.startsWith('/surveys') || pathname.startsWith('/results')
-  }
-  
-  // Los usuarios regulares solo pueden acceder a resultados
-  if (userRole === 'user') {
-    return pathname.startsWith('/results')
-  }
-  
-  return false
+  // Todos los usuarios pueden acceder a todas las rutas
+  return true
 }

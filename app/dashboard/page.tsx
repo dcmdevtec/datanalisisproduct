@@ -16,7 +16,7 @@ export default function PaginaDashboard() {
   // Si no hay usuario, el middleware se encargará de la redirección
   // No necesitamos manejar redirecciones aquí
   if (!user) {
-    return <div className="flex h-screen items-center justify-center">Redirigiendo...</div>
+    return null
   }
 
   // Obtener el rol correctamente
@@ -32,19 +32,7 @@ export default function PaginaDashboard() {
     })
   }
 
-  // Verificar permisos para esta página específica
-  // Si el usuario no tiene permisos, mostrar un mensaje
-  if (userRole && !["admin", "supervisor"].includes(userRole)) {
-    return (
-      <DashboardLayout>
-        <div className="flex h-screen items-center justify-center flex-col gap-4">
-          <h2 className="text-2xl font-bold">Acceso Restringido</h2>
-          <p className="text-muted-foreground">No tienes permisos para acceder al dashboard administrativo.</p>
-          <p className="text-sm text-muted-foreground">Serás redirigido automáticamente...</p>
-        </div>
-      </DashboardLayout>
-    )
-  }
+
 
   return (
     <DashboardLayout>

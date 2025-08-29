@@ -25,15 +25,8 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login")
-    } else if (!authLoading && user && user.role !== "admin") {
-      router.push("/dashboard")
-      toast({
-        title: "Acceso restringido",
-        description: "No tienes permisos para acceder a esta página",
-        variant: "destructive",
-      })
     }
-  }, [user, authLoading, router, toast])
+  }, [user, authLoading, router])
 
   const handleSave = () => {
     setLoading(true)
@@ -50,9 +43,7 @@ export default function SettingsPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  if (user.role !== "admin") {
-    return null
-  }
+
 
   return (
     <DashboardLayout>

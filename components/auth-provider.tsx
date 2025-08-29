@@ -29,12 +29,18 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const supabase = createClient()
   const { clearAllSessionData } = useCleanup()
 
-  // Memoizar la función de limpieza para evitar recreaciones
+  // Memoizar la función de sign out
   const handleSignOut = useCallback(async () => {
     try {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('👋 Signing out...')
+      }
       await supabase.auth.signOut()
       setUser(null)
       clearAllSessionData()
+      
+      // El middleware y el sistema de autenticación se encargarán de la redirección
+      // No forzar redirección aquí para evitar conflictos
     } catch (error) {
       console.error('Error signing out:', error)
     }

@@ -391,7 +391,7 @@ export default function MessagesPage() {
               <div className="max-w-2xl mx-auto space-y-4">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-bold">Anuncios</h2>
-                  {user.role === "admin" && <Button>Nuevo Anuncio</Button>}
+                  <Button>Nuevo Anuncio</Button>
                 </div>
 
                 {loading ? (

@@ -55,15 +55,8 @@ export default function CollectDataPage() {
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login")
-    } else if (!authLoading && user && user.role !== "surveyor" && user.role !== "admin") {
-      router.push("/surveys")
-      toast({
-        title: "Acceso restringid",
-        description: "Solo los encuestadores pueden recolectar datos",
-        variant: "destructive",
-      })
     }
-  }, [user, authLoading, router, toast])
+  }, [user, authLoading, router])
 
   useEffect(() => {
     const fetchSurvey = async () => {

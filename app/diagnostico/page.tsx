@@ -173,14 +173,7 @@ export default function DiagnosticoPage() {
               <CardDescription>Verifica las políticas de seguridad (RLS) configuradas en Supabase</CardDescription>
             </CardHeader>
             <CardContent>
-              {!user || user.role !== "admin" ? (
-                <Alert>
-                  <AlertTitle>Permisos insuficientes</AlertTitle>
-                  <AlertDescription>
-                    Necesitas ser administrador para verificar las políticas de seguridad.
-                  </AlertDescription>
-                </Alert>
-              ) : isLoading ? (
+              {isLoading ? (
                 <div className="flex items-center justify-center p-4">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
                   <span>Verificando políticas...</span>
