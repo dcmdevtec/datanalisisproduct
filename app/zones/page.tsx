@@ -62,18 +62,9 @@ export default function ZonesPage() {
   }
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    } else if (!authLoading && user && !["admin", "supervisor"].includes(user.role)) {
-      router.push("/dashboard")
-      toast({
-        title: "Acceso restringido",
-        description: "No tienes permisos para acceder a esta página",
-        variant: "destructive",
-      })
-    } else if (user && ["admin", "supervisor"].includes(user.role)) {
+    
       fetchZones()
-    }
+    
   }, [user, authLoading, router, toast])
 
   // Invalidate map sizes when modal closes or zones update
@@ -217,9 +208,7 @@ export default function ZonesPage() {
       zone.description?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  if (authLoading || !user) {
-    return <div className="flex h-screen items-center justify-center">Cargando...</div>
-  }
+  
 
  
 
