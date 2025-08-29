@@ -23,6 +23,7 @@ import {
   Users,
 } from "lucide-react"
 import SyncStatus from "@/components/sync-status"
+import { Logo } from "@/components/ui/logo"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth()
@@ -30,8 +31,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const [open, setOpen] = useState(false)
 
+  // Definir la interfaz para los elementos del menú
+  interface NavigationItem {
+    name: string
+    href: string
+    icon: React.ElementType
+    disabled?: boolean
+  }
+
   // Menú simplificado sin permisos - todas las opciones visibles
-  const navigation = useMemo(() => [
+  const navigation: NavigationItem[] = useMemo(() => [
     { 
       name: "Dashboard", 
       href: "/dashboard", 
@@ -80,7 +89,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { 
       name: "Configuración", 
       href: "/settings", 
-      icon: Settings
+      icon: Settings,
+      disabled: true
     },
   ], [])
 
@@ -115,12 +125,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="hidden md:flex md:w-64 lg:w-72 md:flex-col md:fixed md:inset-y-0 z-10">
         <div className="flex flex-col flex-grow border-r bg-white pt-5">
           <div className="flex items-center gap-3 px-4 pb-5 border-b border-[#18b0a4]/30">
-            <div className="h-10 w-10 flex items-center justify-center bg-[#18b0a4] rounded shadow-sm overflow-hidden">
-              <Globe className="h-6 w-6 text-white" />
-            </div>
+            <Logo size="lg" showText={false} />
             <div className="flex-1">
               <h1 className="text-lg font-semibold text-gray-900">Datanalisis</h1>
-              <p className="text-xs text-gray-500">Survey Platform</p>
+           
             </div>
           </div>
 
@@ -131,15 +139,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               return (
                 <Link
                   key={item.name}
-                  href={item.href}
+                  href={item.disabled ? "#" : item.href}
+                  onClick={item.disabled ? (e) => e.preventDefault() : undefined}
                   className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    isActive
+                    item.disabled
+                      ? "text-gray-400 cursor-not-allowed opacity-50"
+                      : isActive
                       ? "bg-[#18b0a4] text-white shadow-sm"
                       : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
                 >
-                  <item.icon className="h-5 w-5" />
+                  <item.icon className={`h-5 w-5 ${item.disabled ? "opacity-50" : ""}`} />
                   {item.name}
+                  {item.disabled && <span className="text-xs text-gray-400 ml-auto">(Próximamente)</span>}
                 </Link>
               )
             })}
@@ -176,12 +188,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <SheetContent side="left" className="w-80 p-0">
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-3 px-4 py-5 border-b border-[#18b0a4]/30">
-              <div className="h-10 w-10 flex items-center justify-center bg-[#18b0a4] rounded shadow-sm overflow-hidden">
-                <Globe className="h-6 w-6 text-white" />
-              </div>
+              <Logo size="lg" showText={false} />
               <div className="flex-1">
                 <h1 className="text-lg font-semibold text-gray-900">Datanalisis</h1>
-                <p className="text-xs text-gray-500">Survey Platform</p>
+             
               </div>
             </div>
 
@@ -191,16 +201,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 return (
                   <Link
                     key={item.name}
-                    href={item.href}
-                    onClick={toggleSidebar}
+                    href={item.disabled ? "#" : item.href}
+                    onClick={item.disabled ? (e) => e.preventDefault() : toggleSidebar}
                     className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                      isActive
+                      item.disabled
+                        ? "text-gray-400 cursor-not-allowed opacity-50"
+                        : isActive
                         ? "bg-[#18b0a4] text-white shadow-sm"
                         : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                     }`}
                   >
-                    <item.icon className="h-5 w-5" />
+                    <item.icon className={`h-5 w-5 ${item.disabled ? "opacity-50" : ""}`} />
                     {item.name}
+                    {item.disabled && <span className="text-xs text-gray-400 ml-auto">(Próximamente)</span>}
                   </Link>
                 )
               })}

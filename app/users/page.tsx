@@ -39,15 +39,8 @@ export default function UsersPage() {
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login")
-    } else if (!authLoading && user && user.role !== "admin") {
-      router.push("/dashboard")
-      toast({
-        title: "Acceso restringido",
-        description: "No tienes permisos para acceder a esta página",
-        variant: "destructive",
-      })
     }
-  }, [user, authLoading, router, toast])
+  }, [user, authLoading, router])
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -70,7 +63,7 @@ export default function UsersPage() {
       }
     }
 
-    if (user && user.role === "admin") {
+    if (user) {
       fetchUsers()
     }
   }, [user, toast])
@@ -112,9 +105,7 @@ export default function UsersPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  if (user.role !== "admin") {
-    return null
-  }
+
 
   return (
     <DashboardLayout>

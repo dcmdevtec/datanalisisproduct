@@ -43,15 +43,8 @@ export default function SurveyorsPage() {
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login")
-    } else if (!authLoading && user && user.role !== "admin") {
-      router.push("/dashboard")
-      toast({
-        title: "Acceso restringido",
-        description: "No tienes permisos para acceder a esta página",
-        variant: "destructive",
-      })
     }
-  }, [user, authLoading, router, toast])
+  }, [user, authLoading, router])
 
   const fetchSurveyors = async () => {
     setLoading(true)
@@ -75,7 +68,7 @@ export default function SurveyorsPage() {
   }
 
   useEffect(() => {
-    if (user?.role === "admin") {
+    if (user) {
       fetchSurveyors()
     }
   }, [user])
@@ -208,7 +201,7 @@ export default function SurveyorsPage() {
       surveyor.email.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  if (authLoading || !user || user.role !== "admin") {
+  if (authLoading || !user) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

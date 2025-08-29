@@ -1,23 +1,14 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, BarChart3, Globe, Users } from "lucide-react"
-import Image from "next/image"
+import { Logo } from "@/components/ui/logo"
+
 export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
       <header className="border-b">
         <div className="max-w-screen-xl mx-auto px-4 flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-xl">
-            {/* <CHANGE> Reemplazando logo con imagen personalizada */}
-            <Image 
-  src="/logo.png" 
-  alt="Logo Datanálisis" 
-  width={32} 
-  height={32} 
-  className="object-contain"
-/>
-            <span>Datanálisis</span>
-          </div>
+          <Logo size="md" />
           <nav className="hidden md:flex gap-6">
             <Link href="#features" className="text-sm font-medium hover:underline">
               Características
