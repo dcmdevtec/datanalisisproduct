@@ -1,6 +1,37 @@
 "use client"
 
-import { useState, useEffect } from "react"
+// MatrixOptionInput for matrix column options (debounced, allows empty string)
+type MatrixOptionInputProps = {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+};
+const MatrixOptionInput: React.FC<MatrixOptionInputProps> = ({ value, onChange, placeholder }) => {
+  const [localValue, setLocalValue] = useState(value);
+  const timeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setLocalValue(e.target.value);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => {
+      onChange(e.target.value);
+    }, 200);
+  }
+
+  return (
+    <Input
+      value={localValue}
+      onChange={handleChange}
+      placeholder={placeholder}
+    />
+  );
+};
+
+import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -486,19 +517,22 @@ export function QuestionEditor({
                     </Button>
                   </div>
                 ))}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 bg-transparent"
-                  onClick={() => {
-                    onUpdateQuestion(sectionId, question.id, "matrixCols", [
-                      ...matrixCols,
-                      `Columna ${matrixCols.length + 1}`,
-                    ])
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> Agregar columna
-                </Button>
+                {/* Hide add column button if cell type is 'ranking' */}
+                {question.config?.matrixCellType !== "ranking" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 bg-transparent"
+                    onClick={() => {
+                      onUpdateQuestion(sectionId, question.id, "matrixCols", [
+                        ...matrixCols,
+                        `Columna ${matrixCols.length + 1}`,
+                      ])
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" /> Agregar columna
+                  </Button>
+                )}
               </div>
             </div>
             {/* Configuración del tipo de celda */}
@@ -531,53 +565,116 @@ export function QuestionEditor({
               </p>
             </div>
 
-            {/* Opciones para celdas tipo 'select' */}
+            {/* Opciones para celdas tipo 'select' - per-column options */}
             {question.config?.matrixCellType === "select" && (
               <div className="space-y-2 mt-4">
-                <Label className="font-medium">Opciones para las celdas</Label>
-                {(question.config?.matrixCellOptions || ["Opción 1"]).map((option: string, index: number) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Input
-                      value={option}
-                      onChange={(e) => {
-                        const newOptions = [...(question.config?.matrixCellOptions || [])]
-                        newOptions[index] = e.target.value
-                        onUpdateQuestion(sectionId, question.id, "config", {
-                          ...question.config,
-                          matrixCellOptions: newOptions,
-                        })
-                      }}
-                      placeholder={`Opción ${index + 1}`}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const newOptions = (question.config?.matrixCellOptions || []).filter((_, i) => i !== index)
-                        onUpdateQuestion(sectionId, question.id, "config", {
-                          ...question.config,
-                          matrixCellOptions: newOptions.length > 0 ? newOptions : ["Opción 1"],
-                        })
-                      }}
-                      disabled={(question.config?.matrixCellOptions || []).length <= 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const currentOptions = question.config?.matrixCellOptions || ["Opción 1"]
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      matrixCellOptions: [...currentOptions, `Opción ${currentOptions.length + 1}`],
-                    })
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> Agregar opción
-                </Button>
+                <Label className="font-medium">Opciones para cada columna</Label>
+                {matrixCols.map((col, colIdx) => {
+                  // Memoize unique option sets for reuse
+                  const allColOptions = question.config?.matrixColOptions || [];
+                  const uniqueOptionSets = allColOptions
+                    .map((opts: string[], idx: number) => ({ opts, idx }))
+                    .filter((item: { opts: string[]; idx: number }, idx: number, arr: { opts: string[]; idx: number }[]) =>
+                      arr.findIndex((x: { opts: string[]; idx: number }) => JSON.stringify(x.opts) === JSON.stringify(item.opts)) === idx
+                    );
+                  const colOptions = allColOptions[colIdx] || ["Opción 1"];
+                  const isDefault = colOptions.length === 1 && colOptions[0] === "Opción 1";
+                  return (
+                    <div key={colIdx} className="mb-2">
+                      <div className="font-medium mb-1">{col}</div>
+                      {/* Selector para reutilizar opciones */}
+                      {uniqueOptionSets.length > 1 && (
+                        <div className="mb-2">
+                          <Label>Usar opciones de otra columna:</Label>
+                          <Select
+                            value={uniqueOptionSets.find((u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions))?.idx?.toString() ?? ""}
+                            onValueChange={val => {
+                              const idx = parseInt(val, 10);
+                              if (!isNaN(idx)) {
+                                const newColOptions = [...allColOptions];
+                                newColOptions[colIdx] = [...(allColOptions[idx] || ["Opción 1"])]
+                                onUpdateQuestion(sectionId, question.id, "config", {
+                                  ...question.config,
+                                  matrixColOptions: newColOptions,
+                                });
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Seleccionar set de opciones..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueOptionSets.map((set: { opts: string[]; idx: number }, idx: number) => (
+                                <SelectItem key={idx} value={set.idx.toString()}>{`Set ${set.idx + 1}: ${set.opts.filter(Boolean).join(", ")}`}</SelectItem>
+                              ))}
+                              <SelectItem value="new">Crear nuevo set</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      {/* Edición de opciones */}
+                      {(!uniqueOptionSets.length || uniqueOptionSets.find((u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions))?.idx === colIdx || isDefault) && (
+                        <>
+                          {colOptions.map((option: string, optIdx: number) => (
+                            <div key={optIdx} className="flex items-center gap-2 mb-1">
+
+                              <MatrixOptionInput
+                                value={option}
+                                onChange={val => {
+                                  const newColOptions = allColOptions ? [...allColOptions] : [];
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                                  const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
+                                  opts[optIdx] = val;
+                                  newColOptions[colIdx] = opts;
+                                  onUpdateQuestion(sectionId, question.id, "config", {
+                                    ...question.config,
+                                    matrixColOptions: newColOptions,
+                                  });
+                                }}
+                                placeholder={`Opción ${optIdx + 1}`}
+                              />
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const newColOptions = allColOptions ? [...allColOptions] : [];
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                                  const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
+                                  opts.splice(optIdx, 1);
+                                  newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"];
+                                  onUpdateQuestion(sectionId, question.id, "config", {
+                                    ...question.config,
+                                    matrixColOptions: newColOptions,
+                                  });
+                                }}
+                                disabled={colOptions.length <= 1}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const newColOptions = allColOptions ? [...allColOptions] : [];
+                              while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                              const opts = [...(newColOptions[colIdx] || ["Opción 1"]), `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`];
+                              newColOptions[colIdx] = opts;
+                              onUpdateQuestion(sectionId, question.id, "config", {
+                                ...question.config,
+                                matrixColOptions: newColOptions,
+                              });
+                            }}
+                          >
+                            <Plus className="h-4 w-4 mr-2" /> Agregar opción
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -660,14 +757,24 @@ export function QuestionEditor({
                                   return <Input disabled className="w-full" placeholder="Texto..." />
                                 case "number":
                                   return <Input type="number" disabled className="w-full" placeholder="0" />
-                                case "select":
+                                case "select": {
+                                  // Use per-column options if available
+                                  const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"];
                                   return (
                                     <Select disabled>
                                       <SelectTrigger className="w-full">
                                         <SelectValue placeholder="Seleccionar..." />
                                       </SelectTrigger>
+                                      <SelectContent>
+                                        {colOptions.map((opt: string, i: number) => (
+                                          <SelectItem key={i} value={opt && opt.trim() !== "" ? opt : `__empty_${i}`}>
+                                            {opt && opt.trim() !== "" ? opt : <span className="text-muted-foreground italic">(vacío)</span>}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
                                     </Select>
-                                  )
+                                  );
+                                }
                                 case "rating":
                                   return (
                                     <div className="flex justify-center gap-1">
@@ -1384,7 +1491,7 @@ export function QuestionEditor({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        const newLabels = (question.config?.textboxLabels || []).filter((_, i) => i !== index)
+                        const newLabels = (question.config?.textboxLabels || []).filter((_: string, i: number) => i !== index)
                         onUpdateQuestion(sectionId, question.id, "config", {
                           ...question.config,
                           textboxLabels: newLabels.length > 0 ? newLabels : ["Etiqueta 1"],

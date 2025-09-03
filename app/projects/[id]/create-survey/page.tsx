@@ -1381,7 +1381,6 @@ function CreateSurveyForProjectPageContent() {
               
               // Campo settings - incluye todas las configuraciones
               settings: {
-                // Configuración existente
                 allowOther: questionConfig.allowOther || false,
                 randomizeOptions: questionConfig.randomizeOptions || false,
                 ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
@@ -1391,9 +1390,13 @@ function CreateSurveyForProjectPageContent() {
                 scaleLabels: questionConfig.scaleLabels || [],
                 otherText: questionConfig.otherText || "",
                 dropdownMulti: questionConfig.dropdownMulti || false,
-
-                // Añadir configuración Likert en settings
                 likertScale: questionConfig.likertScale || null,
+                // MATRIZ: guardar todas las configuraciones relevantes
+                matrixColOptions: questionConfig.matrixColOptions || [],
+                matrixRows: q.matrixRows || [],
+                matrixCols: q.matrixCols || [],
+                matrixRatingScale: questionConfig.matrixRatingScale || null,
+                matrix: questionConfig.matrix || null,
               },
               
               // Campos específicos de la base de datos

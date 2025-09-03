@@ -908,7 +908,14 @@ function PreviewSurveyPageContent() {
                 ))}
               </div>
             )
-          case "matrix":
+          case "matrix": {
+            // Soporte para cargar datos desde settings/config si no están en la raíz
+            const config = question.config || question.settings || {};
+            const matrixRows = question.matrixRows || config.matrixRows || [];
+            const matrixCols = question.matrixCols || config.matrixCols || [];
+            const matrixColOptions = config.matrixColOptions || [];
+            const cellType = config.matrixCellType || "radio";
+            const matrixRatingScale = config.matrixRatingScale || 5;
             return (
               <div className="space-y-4">
                 <div className="overflow-x-auto">
@@ -916,7 +923,7 @@ function PreviewSurveyPageContent() {
                     <thead>
                       <tr>
                         <th className="border p-2 bg-muted"></th>
-                        {(question.matrixCols || []).map((col, idx) => (
+                        {matrixCols.map((col, idx) => (
                           <th key={idx} className="border p-2 bg-muted text-center">
                             {col}
                           </th>
@@ -924,18 +931,61 @@ function PreviewSurveyPageContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(question.matrixRows || []).map((row, rowIdx) => (
+                      {matrixRows.map((row, rowIdx) => (
                         <tr key={rowIdx}>
                           <td className="border p-2 bg-muted font-medium">{row}</td>
-                          {(question.matrixCols || []).map((col, colIdx) => (
+                          {matrixCols.map((col, colIdx) => (
                             <td key={colIdx} className="border p-2 text-center">
-                              <input
-                                type="radio"
-                                name={`matrix-${question.id}-${rowIdx}`}
-                                value={`${row}-${col}`}
-                                onChange={(e) => handleAnswerChange(question.id, { ...answers[question.id], [row]: col })}
-                                className="mr-2"
-                              />
+                              {(() => {
+                                switch (cellType) {
+                                  case "checkbox":
+                                    return <input type="checkbox" disabled className="cursor-not-allowed" />;
+                                  case "text":
+                                    return <Input disabled className="w-full" placeholder="Texto..." />;
+                                  case "number":
+                                    return <Input type="number" disabled className="w-full" placeholder="0" />;
+                                  case "select": {
+                                    const colOptions = matrixColOptions[colIdx] || ["Opción 1"];
+                                    return (
+                                      <Select disabled>
+                                        <SelectTrigger className="w-full">
+                                          <SelectValue placeholder="Seleccionar..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {colOptions.map((opt, i) => {
+                                            const cleanOpt = typeof opt === 'string' ? opt.trim() : '';
+                                            return (
+                                              <SelectItem key={i} value={cleanOpt}>{cleanOpt || <span className="text-gray-400">(vacío)</span>}</SelectItem>
+                                            );
+                                          })}
+                                        </SelectContent>
+                                      </Select>
+                                    );
+                                  }
+                                  case "rating": {
+                                    const stars = Number(matrixRatingScale);
+                                    return (
+                                      <div className="flex justify-center gap-1">
+                                        {Array.from({ length: stars }, (_, i) => (
+                                          <span key={i} className="text-yellow-400 cursor-not-allowed">★</span>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                  case "ranking":
+                                    return (
+                                      <div className="flex items-center gap-1">
+                                        <div className="w-8 text-center">{rowIdx + 1}</div>
+                                        <div className="flex gap-1">
+                                          <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
+                                          <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
+                                        </div>
+                                      </div>
+                                    );
+                                  default:
+                                    return <input type="radio" disabled className="cursor-not-allowed" />;
+                                }
+                              })()}
                             </td>
                           ))}
                         </tr>
@@ -944,7 +994,8 @@ function PreviewSurveyPageContent() {
                   </table>
                 </div>
               </div>
-            )
+            );
+          }
           case "multiple_textboxes":
             return (
               <div className="space-y-4">

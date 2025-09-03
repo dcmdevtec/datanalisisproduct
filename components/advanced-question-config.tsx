@@ -15,78 +15,9 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 
-interface Question {
-  id: string
-  type: string
-  text: string
-  options: string[]
-  required: boolean
-  config?: {
-    validation?: {
-      required?: boolean
-      minLength?: number
-      maxLength?: number
-      pattern?: string
-      customMessage?: string
-      minValue?: number
-      maxValue?: number
-      allowDecimals?: boolean
-    }
-    displayLogic?: {
-      enabled: boolean
-      conditions: Array<{
-        questionId: string
-        operator: string
-        value: string
-        logicalOperator?: "AND" | "OR"
-      }>
-    }
-    skipLogic?: {
-      enabled: boolean
-      rules: Array<{
-        condition: string
-        operator: string
-        value: string
-        targetSectionId: string
-        targetQuestionId?: string
-      }>
-    }
-    appearance?: {
-      showNumbers?: boolean
-      randomizeOptions?: boolean
-      allowOther?: boolean
-      otherText?: string
-      placeholder?: string
-      helpText?: string
-    }
-    advanced?: {
-      allowMultiple?: boolean
-      maxSelections?: number
-      minSelections?: number
-      showProgressBar?: boolean
-      timeLimit?: number
-      autoAdvance?: boolean
-    }
-    [key: string]: any
-  }
-}
 
-interface SurveySection {
-  id: string
-  title: string
-  description?: string
-  order_num: number
-  questions: Question[]
-}
-
-interface AdvancedQuestionConfigProps {
-  isOpen: boolean
-  onClose: () => void
-  question: Question
-  allSections: SurveySection[]
-  allQuestions: Question[]
-  onSave: (config: any) => void
-}
+// Use imported types for props
+import type { Question, SurveySection } from "@/types-updated"
 
 interface DisplayCondition {
   questionId: string
