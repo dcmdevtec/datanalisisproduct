@@ -654,23 +654,71 @@ function PreviewSurveyPageContent() {
               </div>
             )
           case "likert":
+            const defaultLabels = ["Muy en desacuerdo", "Neutral", "Muy de acuerdo"];
+            const likertScale = question.config?.likertScale || {};
+            const min = typeof likertScale.min === 'number' ? likertScale.min : 1;
+            const max = typeof likertScale.max === 'number' ? likertScale.max : 5;
+            const step = typeof likertScale.step === 'number' ? likertScale.step : 1;
+            let labels = [];
+            // Si labels es un objeto tipo {left, center, right}, mapearlo a un array para el slider
+            if (likertScale.labels && typeof likertScale.labels === 'object' && !Array.isArray(likertScale.labels)) {
+              const totalSteps = Math.floor((max - min) / step) + 1;
+              labels = Array(totalSteps).fill("");
+              // left
+              labels[0] = likertScale.labels.left || "";
+              // right
+              labels[labels.length - 1] = likertScale.labels.right || "";
+              // center (solo si hay un punto medio)
+              if (typeof likertScale.labels.center === 'string' && labels.length % 2 === 1) {
+                const centerIdx = Math.floor(labels.length / 2);
+                labels[centerIdx] = likertScale.labels.center;
+              }
+            } else if (Array.isArray(likertScale.labels)) {
+              labels = likertScale.labels;
+            } else {
+              // fallback
+              labels = defaultLabels;
+            }
+            // Si la cantidad de labels no coincide con el rango, ajustar a default
+            const totalSteps = Math.floor((max - min) / step) + 1;
+            if (labels.length !== totalSteps) {
+              // Si hay 3 labels y muchos pasos, solo poner left/center/right
+              if (labels.length === 3 && totalSteps > 3) {
+                const arr = Array(totalSteps).fill("");
+                arr[0] = labels[0];
+                arr[Math.floor(arr.length / 2)] = labels[1];
+                arr[arr.length - 1] = labels[2];
+                labels = arr;
+              } else {
+                // Si no, rellenar con vacíos
+                labels = Array(totalSteps).fill("");
+                labels[0] = defaultLabels[0];
+                labels[labels.length - 1] = defaultLabels[2];
+                if (labels.length % 2 === 1) {
+                  labels[Math.floor(labels.length / 2)] = defaultLabels[1];
+                }
+              }
+            }
+            const value = answers[question.id] || min;
             return (
               <div className="space-y-4">
-                <div className="grid grid-cols-5 gap-2">
-                  {["Muy en desacuerdo", "En desacuerdo", "Neutral", "De acuerdo", "Muy de acuerdo"].map((option, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleAnswerChange(question.id, option)}
-                      className={`p-3 text-sm rounded-lg transition-colors ${
-                        answers[question.id] === option
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted/80"
-                      }`}
-                    >
-                      {option}
-                    </button>
+                <Slider
+                  value={[value]}
+                  onValueChange={(val) => handleAnswerChange(question.id, val[0])}
+                  max={max}
+                  min={min}
+                  step={step}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                  {labels.map((label, index) => (
+                    <span key={index} className="text-center" style={{ width: `${100 / labels.length}%` }}>{label}</span>
                   ))}
+                </div>
+                <div className="text-center mt-4">
+                  <span className="text-lg font-semibold" style={{ color: themeColors.primary }}>
+                    {labels[Math.floor((value - min) / step)]}
+                  </span>
                 </div>
               </div>
             )

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { LikertScaleRenderer } from "@/components/likert-scale-renderer"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -163,6 +164,164 @@ export default function PreviewPage() {
                       <SelectItem value="tijuana">Tijuana</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* Escala Likert */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-medium">Escala Likert</h3>
+                <div className="space-y-8">
+                  <div className="border p-4 rounded-lg">
+                    <h4 className="font-medium mb-4">Escala Estándar (1-5)</h4>
+                    <LikertScaleRenderer
+                      question={{
+                        id: "likert-standard",
+                        text: "Indica tu nivel de satisfacción:",
+                        required: true,
+                        config: {
+                          scaleConfig: {
+                            min: 1,
+                            max: 5,
+                            step: 1,
+                            labels: {
+                              left: 'Muy en desacuerdo',
+                              center: 'Neutral',
+                              right: 'Muy de acuerdo'
+                            },
+                            showNumbers: true,
+                            showLabels: true,
+                            orientation: 'horizontal',
+                            validation: {
+                              requireAnswer: true,
+                              allowZero: false,
+                            },
+                            appearance: {
+                              size: 'medium',
+                              color: '#4CAF50',
+                              showTicks: true,
+                              showValue: true,
+                            }
+                          }
+                        }
+                      }}
+                      onChange={(value) => console.log('Standard scale value:', value)}
+                    />
+                  </div>
+
+                  <div className="border p-4 rounded-lg">
+                    <h4 className="font-medium mb-4">Escala Extendida (1-7)</h4>
+                    <LikertScaleRenderer
+                      question={{
+                        id: "likert-extended",
+                        text: "Indica tu nivel de acuerdo:",
+                        required: true,
+                        config: {
+                          scaleConfig: {
+                            min: 1,
+                            max: 7,
+                            step: 1,
+                            labels: {
+                              left: 'Totalmente en desacuerdo',
+                              center: 'Neutral',
+                              right: 'Totalmente de acuerdo'
+                            },
+                            showNumbers: true,
+                            showLabels: true,
+                            orientation: 'horizontal',
+                            validation: {
+                              requireAnswer: true,
+                              allowZero: false,
+                            },
+                            appearance: {
+                              size: 'medium',
+                              color: '#4CAF50',
+                              showTicks: true,
+                              showValue: true,
+                            }
+                          }
+                        }
+                      }}
+                      onChange={(value) => console.log('Extended scale value:', value)}
+                    />
+                  </div>
+
+                  <div className="border p-4 rounded-lg">
+                    <h4 className="font-medium mb-4">Escala Personalizada (1-100)</h4>
+                    <LikertScaleRenderer
+                      question={{
+                        id: "likert-custom",
+                        text: "Califica tu nivel de satisfacción:",
+                        required: true,
+                        config: {
+                          scaleConfig: {
+                            min: 1,
+                            max: 100,
+                            step: 1,
+                            labels: {
+                              left: 'muy satisfecho',
+                              right: 'muy satisfecho'
+                            },
+                            showNumbers: true,
+                            showLabels: true,
+                            orientation: 'horizontal',
+                            validation: {
+                              requireAnswer: true,
+                              allowZero: false,
+                            },
+                            appearance: {
+                              size: 'large',
+                              color: '#00A3BF',
+                              showTicks: false,
+                              showValue: true,
+                            }
+                          }
+                        }
+                      }}
+                      onChange={(value) => console.log('Custom scale value:', value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pregunta de Matriz */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-medium">Matriz de Ranking</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse border border-gray-200">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="border border-gray-200 px-4 py-2 text-left">Preguntas</th>
+                        <th className="border border-gray-200 px-4 py-2">Columna 1</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {["pregunta", "Fila 2", "Fila 3", "Fila 4"].map((row, i) => (
+                        <tr key={i}>
+                          <td className="border border-gray-200 px-4 py-2">{row}</td>
+                          <td className="border border-gray-200 px-4 py-2">
+                            <div className="flex items-center justify-between px-4">
+                              <span className="font-medium">{i + 1}</span>
+                              <div className="flex flex-col space-y-1">
+                                <button className="p-1 hover:bg-gray-100 rounded">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="m18 15-6-6-6 6"/>
+                                  </svg>
+                                </button>
+                                <button className="p-1 hover:bg-gray-100 rounded">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="m6 9 6 6 6-6"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-sm text-gray-500 mt-2">
+                  * Configurado como ranking con requerimiento de ranking completo
                 </div>
               </div>
             </CardContent>

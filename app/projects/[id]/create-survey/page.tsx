@@ -923,11 +923,17 @@ function CreateSurveyForProjectPageContent() {
       matrixCols: ["Columna 1"],
       ratingScale: 5,
       config: {
+        // Configuraciones básicas
         allowOther: false,
         randomizeOptions: false,
         ratingEmojis: true,
         scaleMin: 1,
         scaleMax: 5,
+
+        // Configuración Likert inicializada como null
+        likertScale: null,
+
+        // Lógica de visualización y salto
         displayLogic: { enabled: false, conditions: [] },
         skipLogic: { enabled: false, rules: [] },
         validation: { required: false },
@@ -1346,7 +1352,7 @@ function CreateSurveyForProjectPageContent() {
             section.id = newSection.id
           }
 
-          // Validar y preparar preguntas para inserción
+              // Validar y preparar preguntas para inserción
           console.log(`❓ Procesando ${section.questions.length} preguntas de la sección "${section.title}"...`)
           
           for (const [qIndex, q] of section.questions.entries()) {
@@ -1358,10 +1364,12 @@ function CreateSurveyForProjectPageContent() {
             // Guardar el ID antiguo para el mapeo
             const oldQuestionId = q.id
 
-            // Extraer la configuración de la pregunta
-            const questionConfig = q.config || {}
-            
-            // Preparar los datos para la base de datos
+            // Extraer la configuración de la pregunta y mantener las configuraciones existentes
+            const questionConfig = {
+              ...(q.config || {}),
+              // Preservar la configuración Likert si existe
+              likertScale: q.config?.likertScale || (q.config?.settings?.likertScale) || null
+            }            // Preparar los datos para la base de datos
             const questionData = {
               survey_id: surveyId,
               section_id: newSection.id,
@@ -1371,8 +1379,9 @@ function CreateSurveyForProjectPageContent() {
               required: q.required === true,
               order_num: qIndex,
               
-              // Campo settings - solo configuraciones generales
+              // Campo settings - incluye todas las configuraciones
               settings: {
+                // Configuración existente
                 allowOther: questionConfig.allowOther || false,
                 randomizeOptions: questionConfig.randomizeOptions || false,
                 ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
@@ -1382,6 +1391,9 @@ function CreateSurveyForProjectPageContent() {
                 scaleLabels: questionConfig.scaleLabels || [],
                 otherText: questionConfig.otherText || "",
                 dropdownMulti: questionConfig.dropdownMulti || false,
+
+                // Añadir configuración Likert en settings
+                likertScale: questionConfig.likertScale || null,
               },
               
               // Campos específicos de la base de datos
@@ -1550,8 +1562,9 @@ function CreateSurveyForProjectPageContent() {
               required: q.required === true,
               order_num: qIndex,
               
-              // Campo settings - solo configuraciones generales
+              // Campo settings - incluye todas las configuraciones
               settings: {
+                ...questionConfig,
                 allowOther: questionConfig.allowOther || false,
                 randomizeOptions: questionConfig.randomizeOptions || false,
                 ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
@@ -1561,6 +1574,7 @@ function CreateSurveyForProjectPageContent() {
                 scaleLabels: questionConfig.scaleLabels || [],
                 otherText: questionConfig.otherText || "",
                 dropdownMulti: questionConfig.dropdownMulti || false,
+                likertScale: questionConfig.likertScale || null,  // Preservar configuración Likert
               },
               
               // Campos específicos de la base de datos
@@ -1926,6 +1940,9 @@ function CreateSurveyForProjectPageContent() {
                     // Configuraciones generales del campo settings
                     ...q.settings,
                     
+                    // Preservar configuración Likert si existe
+                    likertScale: q.settings?.likertScale || null,
+                    
                     // Configuraciones específicas de la pregunta
                     matrixRows: q.matrix_rows || [],
                     matrixCols: q.matrix_cols || [],
@@ -1958,6 +1975,13 @@ function CreateSurveyForProjectPageContent() {
                     scaleMin: q.settings?.scaleMin || 1,
                     scaleMax: q.settings?.scaleMax || 5,
                   }
+                  
+                  // Depuración de configuración
+                  console.log(`📝 Configuración cargada para pregunta "${q.text.substring(0, 30)}...":`, {
+                    id: q.id,
+                    likertScale: questionConfig.likertScale,
+                    settings: q.settings
+                  })
                   
                   console.log(`🔧 Configuración avanzada para pregunta "${q.text}":`, questionConfig)
                   
@@ -2064,6 +2088,7 @@ function CreateSurveyForProjectPageContent() {
       description: "",
       order_num: sections.length,
       questions: [],
+      skipLogic: undefined,
     }
     setSections([...sections, newSection])
   }
@@ -2369,7 +2394,9 @@ function CreateSurveyForProjectPageContent() {
               <TabsContent value="details" className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">Información básica de la encuesta</CardTitle>
+                    <CardTitle className="flex items-center gap-2">Información básica de la encuesta
+                      
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="space-y-2">

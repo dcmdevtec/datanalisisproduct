@@ -233,6 +233,28 @@ export interface MatrixConfig {
     alternateRowColors: boolean
     compactMode: boolean
     showHeaders: boolean
+    showRowNumbers: boolean
+    fontSize: 'small' | 'medium' | 'large'
+  }
+  cellConfig?: {
+    rating?: {
+      scale: number
+      useEmoji: boolean
+      labels?: [string, string]
+    }
+    dropdown?: {
+      options: string[]
+      allowMultiple: boolean
+    }
+    text?: {
+      maxLength?: number
+      placeholder?: string
+    }
+    number?: {
+      min?: number
+      max?: number
+      step?: number
+    }
   }
 }
 

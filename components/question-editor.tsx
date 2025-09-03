@@ -298,6 +298,124 @@ export function QuestionEditor({
           onSave={handleAdvancedConfigSave}
         />
 
+        {question.type === "ranking" && (
+          <div className="space-y-4 p-4 border rounded-lg">
+            <Label className="text-lg font-semibold">Opciones para Rankear</Label>
+            <div className="space-y-4">
+              <div>
+                <Label className="font-medium">Opciones</Label>
+                {(question.options || ['Opción 1']).map((option, idx) => (
+                  <div key={idx} className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center justify-center gap-1 w-16">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (idx > 0) {
+                            const newOptions = [...question.options]
+                            const temp = newOptions[idx]
+                            newOptions[idx] = newOptions[idx - 1]
+                            newOptions[idx - 1] = temp
+                            onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                          }
+                        }}
+                        disabled={idx === 0}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (idx < question.options.length - 1) {
+                            const newOptions = [...question.options]
+                            const temp = newOptions[idx]
+                            newOptions[idx] = newOptions[idx + 1]
+                            newOptions[idx + 1] = temp
+                            onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                          }
+                        }}
+                        disabled={idx === question.options.length - 1}
+                      >
+                        ↓
+                      </Button>
+                    </div>
+                    <div className="w-8 text-center">{idx + 1}</div>
+                    <Input
+                      value={option}
+                      onChange={(e) => {
+                        const newOptions = [...question.options]
+                        newOptions[idx] = e.target.value
+                        onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                      }}
+                      placeholder={`Opción ${idx + 1}`}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const newOptions = question.options.filter((_, i) => i !== idx)
+                        onUpdateQuestion(sectionId, question.id, "options", newOptions.length > 0 ? newOptions : ['Opción 1'])
+                      }}
+                      disabled={question.options.length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => {
+                    const newOptions = [...(question.options || []), `Opción ${(question.options || []).length + 1}`]
+                    onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Agregar opción
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={question.config?.rankingRequireAll !== false}
+                    onCheckedChange={(checked) =>
+                      onUpdateQuestion(sectionId, question.id, "config", {
+                        ...question.config,
+                        rankingRequireAll: checked,
+                      })
+                    }
+                  />
+                  <Label>Requerir ranking completo</Label>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {question.config?.rankingRequireAll !== false
+                    ? "El usuario debe ordenar todas las opciones"
+                    : "El usuario puede dejar opciones sin ordenar"}
+                </p>
+              </div>
+
+              <div className="mt-4">
+                <Label className="font-medium">Vista previa</Label>
+                <div className="mt-2 p-4 border rounded-lg bg-muted/20">
+                  {(question.options || ['Opción 1']).map((option, idx) => (
+                    <div key={idx} className="flex items-center gap-2 py-2 border-b last:border-b-0">
+                      <div className="w-8 text-center font-medium">{idx + 1}</div>
+                      <div className="flex-1">{option}</div>
+                      <div className="flex gap-1">
+                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
+                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {question.type === "matrix" && (
           <div className="space-y-4 p-4 border rounded-lg">
             <Label className="text-lg font-semibold">Configuración de Matriz</Label>
@@ -383,6 +501,137 @@ export function QuestionEditor({
                 </Button>
               </div>
             </div>
+            {/* Configuración del tipo de celda */}
+            <div className="space-y-2">
+              <Label className="font-medium">Tipo de celda</Label>
+              <Select
+                value={question.config?.matrixCellType || "radio"}
+                onValueChange={(value) =>
+                  onUpdateQuestion(sectionId, question.id, "config", {
+                    ...question.config,
+                    matrixCellType: value,
+                  })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccione el tipo de celda" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="radio">🔘 Opción única (Radio)</SelectItem>
+                  <SelectItem value="checkbox">☑️ Casilla de verificación</SelectItem>
+                  <SelectItem value="text">📝 Texto corto</SelectItem>
+                  <SelectItem value="number">🔢 Número</SelectItem>
+                  <SelectItem value="select">📋 Lista desplegable</SelectItem>
+                  <SelectItem value="rating">⭐ Valoración</SelectItem>
+                  <SelectItem value="ranking">🔢 Ranking</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Selecciona cómo los usuarios responderán en cada celda de la matriz
+              </p>
+            </div>
+
+            {/* Opciones para celdas tipo 'select' */}
+            {question.config?.matrixCellType === "select" && (
+              <div className="space-y-2 mt-4">
+                <Label className="font-medium">Opciones para las celdas</Label>
+                {(question.config?.matrixCellOptions || ["Opción 1"]).map((option: string, index: number) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      value={option}
+                      onChange={(e) => {
+                        const newOptions = [...(question.config?.matrixCellOptions || [])]
+                        newOptions[index] = e.target.value
+                        onUpdateQuestion(sectionId, question.id, "config", {
+                          ...question.config,
+                          matrixCellOptions: newOptions,
+                        })
+                      }}
+                      placeholder={`Opción ${index + 1}`}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const newOptions = (question.config?.matrixCellOptions || []).filter((_, i) => i !== index)
+                        onUpdateQuestion(sectionId, question.id, "config", {
+                          ...question.config,
+                          matrixCellOptions: newOptions.length > 0 ? newOptions : ["Opción 1"],
+                        })
+                      }}
+                      disabled={(question.config?.matrixCellOptions || []).length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const currentOptions = question.config?.matrixCellOptions || ["Opción 1"]
+                    onUpdateQuestion(sectionId, question.id, "config", {
+                      ...question.config,
+                      matrixCellOptions: [...currentOptions, `Opción ${currentOptions.length + 1}`],
+                    })
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Agregar opción
+                </Button>
+              </div>
+            )}
+
+            {/* Opciones para celdas tipo 'rating' */}
+            {question.config?.matrixCellType === "rating" && (
+              <div className="space-y-2 mt-4">
+                <Label className="font-medium">Configuración de valoración</Label>
+                <Select
+                  value={question.config?.matrixRatingScale?.toString() || "5"}
+                  onValueChange={(value) =>
+                    onUpdateQuestion(sectionId, question.id, "config", {
+                      ...question.config,
+                      matrixRatingScale: Number(value),
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3">1 a 3 estrellas</SelectItem>
+                    <SelectItem value="5">1 a 5 estrellas</SelectItem>
+                    <SelectItem value="10">1 a 10 estrellas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Opciones para celdas tipo 'ranking' */}
+            {question.config?.matrixCellType === "ranking" && (
+              <div className="space-y-2 mt-4">
+                <Label className="font-medium">Configuración de ranking</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      checked={question.config?.rankingRequireAll !== false}
+                      onCheckedChange={(checked) =>
+                        onUpdateQuestion(sectionId, question.id, "config", {
+                          ...question.config,
+                          rankingRequireAll: checked,
+                        })
+                      }
+                    />
+                    <Label>Requerir ranking completo</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {question.config?.rankingRequireAll !== false
+                      ? "El usuario debe asignar un ranking a todas las opciones"
+                      : "El usuario puede dejar opciones sin rankear"}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="mt-4">
               <Label className="font-medium">Vista previa</Label>
               <div className="mt-2 overflow-x-auto">
@@ -403,7 +652,49 @@ export function QuestionEditor({
                         <td className="border p-2 font-medium">{row}</td>
                         {matrixCols.map((_, cIdx) => (
                           <td key={cIdx} className="border p-2 text-center">
-                            <input type="radio" disabled className="cursor-not-allowed" />
+                            {(() => {
+                              switch (question.config?.matrixCellType) {
+                                case "checkbox":
+                                  return <input type="checkbox" disabled className="cursor-not-allowed" />
+                                case "text":
+                                  return <Input disabled className="w-full" placeholder="Texto..." />
+                                case "number":
+                                  return <Input type="number" disabled className="w-full" placeholder="0" />
+                                case "select":
+                                  return (
+                                    <Select disabled>
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Seleccionar..." />
+                                      </SelectTrigger>
+                                    </Select>
+                                  )
+                                case "rating":
+                                  return (
+                                    <div className="flex justify-center gap-1">
+                                      {Array.from(
+                                        { length: Number(question.config?.matrixRatingScale || 5) },
+                                        (_, i) => (
+                                          <span key={i} className="text-yellow-400 cursor-not-allowed">
+                                            ★
+                                          </span>
+                                        )
+                                      )}
+                                    </div>
+                                  )
+                                case "ranking":
+                                  return (
+                                    <div className="flex items-center gap-1">
+                                      <div className="w-8 text-center">{rIdx + 1}</div>
+                                      <div className="flex gap-1">
+                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
+                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
+                                      </div>
+                                    </div>
+                                  )
+                                default: // radio
+                                  return <input type="radio" disabled className="cursor-not-allowed" />
+                              }
+                            })()}
                           </td>
                         ))}
                       </tr>
@@ -763,118 +1054,96 @@ export function QuestionEditor({
                 Configura en "Configuración Avanzada"
               </Badge>
             </div>
-            
-                         {/* Debug info */}
-             <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-               <p className="text-sm text-yellow-700">
-                 🔍 <strong>Debug:</strong> Configuración actual: {JSON.stringify(question.config?.likertScale || 'No configurada')}
-               </p>
-             </div>
-            
+
+            {/* Debug info */}
+         
+
             <div className="space-y-4">
-                             {/* Información de la configuración actual */}
-               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                 <h4 className="font-medium text-blue-800 mb-2">Configuración Actual:</h4>
-                 <div className="grid grid-cols-2 gap-4 text-sm">
-                   <div>
-                     <span className="font-medium text-blue-700">Rango:</span>
-                     <span className="ml-2 text-blue-600">
-                       {question.config?.likertScale?.min || 1} - {question.config?.likertScale?.max || 5}
-                     </span>
-                   </div>
-                   <div>
-                     <span className="font-medium text-blue-700">Paso:</span>
-                     <span className="ml-2 text-blue-600">
-                       {question.config?.likertScale?.step || 1}
-                     </span>
-                   </div>
-                   <div>
-                     <span className="font-medium text-blue-700">Posición inicial:</span>
-                     <span className="ml-2 text-blue-600">
-                       {question.config?.likertScale?.startPosition === 'left' ? 'Izquierda' : 
-                        question.config?.likertScale?.startPosition === 'center' ? 'Centro' : 'Derecha'}
-                     </span>
-                   </div>
-                   <div>
-                     <span className="font-medium text-blue-700">Opción "0":</span>
-                     <span className="ml-2 text-blue-600">
-                       {question.config?.likertScale?.showZero ? 'Sí' : 'No'}
-                     </span>
-                   </div>
-                 </div>
-               </div>
-
-                             {/* Etiquetas configuradas */}
-               {(question.config?.likertScale?.labels?.left || question.config?.likertScale?.labels?.right) && (
-                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                   <h4 className="font-medium text-blue-800 mb-2">Etiquetas Configuradas:</h4>
-                   <div className="grid grid-cols-3 gap-4 text-sm">
-                     <div className="text-center">
-                       <div className="font-medium text-blue-700">Izquierda</div>
-                       <div className="text-blue-600">{question.config?.likertScale?.labels?.left || 'No configurada'}</div>
-                     </div>
-                     <div className="text-center">
-                       <div className="font-medium text-blue-700">Centro</div>
-                       <div className="text-blue-600">{question.config?.likertScale?.labels?.center || 'No configurada'}</div>
-                     </div>
-                     <div className="text-center">
-                       <div className="font-medium text-blue-700">Derecha</div>
-                       <div className="text-blue-600">{question.config?.likertScale?.labels?.right || 'No configurada'}</div>
-                     </div>
-                   </div>
-                 </div>
-               )}
-
-              {/* Vista previa del control deslizante */}
+              {/* Vista previa rápida */}
               <div className="p-4 bg-white rounded-lg border border-blue-200">
-                <h4 className="font-medium text-blue-800 mb-3">Vista Previa del Control Deslizante:</h4>
+                <h4 className="font-medium text-blue-800 mb-3">Vista Previa Rápida:</h4>
                 <div className="space-y-4">
-                                     <div className="px-2">
-                     <Slider
-                       defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
-                       min={question.config?.likertScale?.showZero ? 0 : (question.config?.likertScale?.min || 1)}
-                       max={question.config?.likertScale?.max || 5}
-                       step={question.config?.likertScale?.step || 1}
-                       disabled
-                       className="w-full"
-                     />
-                   </div>
-                   <div className="flex justify-between text-xs text-blue-600 px-2">
-                     {question.config?.likertScale?.showZero && (
-                       <span className="text-center">
-                         <div className="font-medium">0</div>
-                         <div className="text-xs">{question.config?.likertScale?.zeroLabel || 'No Sabe / No Responde'}</div>
-                       </span>
-                     )}
-                     <span className="text-center">
-                       <div className="font-medium">{question.config?.likertScale?.min || 1}</div>
-                       <div className="text-xs">{question.config?.likertScale?.labels?.left || 'Mínimo'}</div>
-                     </span>
-                     <span className="text-center font-medium">
-                       Valor: {Math.ceil((question.config?.likertScale?.max || 5) / 2)}
-                     </span>
-                     <span className="text-center">
-                       <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
-                       <div className="text-xs">{question.config?.likertScale?.labels?.right || 'Máximo'}</div>
-                     </span>
-                   </div>
+                  <div className="px-2">
+                    <Slider
+                      defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
+                      min={question.config?.likertScale?.showZero ? 0 : (question.config?.likertScale?.min || 1)}
+                      max={question.config?.likertScale?.max || 5}
+                      step={question.config?.likertScale?.step || 1}
+                      disabled
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-blue-600 px-2">
+                    {question.config?.likertScale?.showZero && (
+                      <span className="text-center">
+                        <div className="font-medium">0</div>
+                        <div className="text-xs">{question.config?.likertScale?.zeroLabel || 'No Sabe / No Responde'}</div>
+                      </span>
+                    )}
+                    <span className="text-center">
+                      <div className="font-medium">1</div>
+                      <div className="text-xs">{question.config?.likertScale?.labels?.left || 'Totalmente en desacuerdo'}</div>
+                    </span>
+                    <span className="text-center">
+                      <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
+                      <div className="text-xs">{question.config?.likertScale?.labels?.right || 'Totalmente de acuerdo'}</div>
+                    </span>
+                  </div>
                 </div>
-                
-                                 {/* Mensaje si no hay configuración */}
-                 {!question.config?.likertScale && (
-                   <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                     <p className="text-sm text-yellow-700">
-                       ⚠️ <strong>No hay configuración de escala Likert.</strong> Ve a "Configuración Avanzada" → "Escala Likert" para configurar tu escala.
-                     </p>
-                   </div>
-                 )}
+              </div>
+
+              {/* Botones de acceso rápido */}
+              <div className="grid grid-cols-2 gap-4">
+                <Button 
+                  variant="outline" 
+                  onClick={() => onUpdateQuestion(sectionId, question.id, "config", {
+                    ...question.config,
+                    likertScale: {
+                      min: 1,
+                      max: 5,
+                      step: 1,
+                      labels: {
+                        left: "Totalmente en desacuerdo",
+                        right: "Totalmente de acuerdo"
+                      },
+                      showZero: true,
+                      zeroLabel: "No Sabe / No Responde",
+                      startPosition: "left"
+                    }
+                  })}
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                >
+                  🎯 Usar Escala Estándar (1-5)
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => onUpdateQuestion(sectionId, question.id, "config", {
+                    ...question.config,
+                    likertScale: {
+                      min: 1,
+                      max: 7,
+                      step: 1,
+                      labels: {
+                        left: "Completamente en desacuerdo",
+                        center: "Neutral",
+                        right: "Completamente de acuerdo"
+                      },
+                      showZero: true,
+                      zeroLabel: "No Sabe / No Responde",
+                      startPosition: "center"
+                    }
+                  })}
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                >
+                  🎯 Usar Escala Extendida (1-7)
+                </Button>
               </div>
 
               {/* Mensaje de ayuda */}
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-700">
-                  💡 <strong>Para configurar completamente tu escala Likert:</strong> Ve a la pestaña "Configuración Avanzada" 
-                  y selecciona "Escala Likert". Allí podrás definir rangos, etiquetas y opciones avanzadas.
+                  💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba 
+                  y selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.
                 </p>
               </div>
             </div>
