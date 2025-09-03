@@ -656,7 +656,9 @@ function PreviewSurveyPageContent() {
           case "likert":
             const defaultLabels = ["Muy en desacuerdo", "Neutral", "Muy de acuerdo"];
             const likertScale = question.config?.likertScale || {};
-            const min = typeof likertScale.min === 'number' ? likertScale.min : 1;
+            const showZero = !!likertScale.showZero;
+            const zeroLabel = likertScale.zeroLabel || 'No Sabe / No Responde';
+            const min = showZero ? 0 : (typeof likertScale.min === 'number' ? likertScale.min : 1);
             const max = typeof likertScale.max === 'number' ? likertScale.max : 5;
             const step = typeof likertScale.step === 'number' ? likertScale.step : 1;
             let labels = [];
@@ -665,7 +667,7 @@ function PreviewSurveyPageContent() {
               const totalSteps = Math.floor((max - min) / step) + 1;
               labels = Array(totalSteps).fill("");
               // left
-              labels[0] = likertScale.labels.left || "";
+              labels[showZero ? 1 : 0] = likertScale.labels.left || "";
               // right
               labels[labels.length - 1] = likertScale.labels.right || "";
               // center (solo si hay un punto medio)
@@ -685,21 +687,22 @@ function PreviewSurveyPageContent() {
               // Si hay 3 labels y muchos pasos, solo poner left/center/right
               if (labels.length === 3 && totalSteps > 3) {
                 const arr = Array(totalSteps).fill("");
-                arr[0] = labels[0];
+                arr[showZero ? 1 : 0] = labels[0];
                 arr[Math.floor(arr.length / 2)] = labels[1];
                 arr[arr.length - 1] = labels[2];
                 labels = arr;
               } else {
                 // Si no, rellenar con vacíos
                 labels = Array(totalSteps).fill("");
-                labels[0] = defaultLabels[0];
+                labels[showZero ? 1 : 0] = defaultLabels[0];
                 labels[labels.length - 1] = defaultLabels[2];
                 if (labels.length % 2 === 1) {
                   labels[Math.floor(labels.length / 2)] = defaultLabels[1];
                 }
               }
             }
-            const value = answers[question.id] || min;
+            // Si showZero, agregar el label de 0 al inicio visualmente
+            const value = answers[question.id] !== undefined ? answers[question.id] : min;
             return (
               <div className="space-y-4">
                 <Slider
@@ -711,13 +714,21 @@ function PreviewSurveyPageContent() {
                   className="w-full"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                  {showZero && (
+                    <span className="text-center" style={{ width: `${100 / (labels.length + 1)}%` }}>
+                      <div className="font-medium">0</div>
+                      <div className="text-xs">{zeroLabel}</div>
+                    </span>
+                  )}
                   {labels.map((label, index) => (
-                    <span key={index} className="text-center" style={{ width: `${100 / labels.length}%` }}>{label}</span>
+                    <span key={index} className="text-center" style={{ width: `${100 / (labels.length + (showZero ? 1 : 0))}%` }}>{label}</span>
                   ))}
                 </div>
                 <div className="text-center mt-4">
                   <span className="text-lg font-semibold" style={{ color: themeColors.primary }}>
-                    {labels[Math.floor((value - min) / step)]}
+                    {showZero && value === 0
+                      ? zeroLabel
+                      : labels[Math.floor((value - min) / step) - (showZero ? 0 : 0)]}
                   </span>
                 </div>
               </div>
