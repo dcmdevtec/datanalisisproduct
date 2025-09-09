@@ -72,10 +72,8 @@ export default function ReportsPage() {
                     <li>Interfaz principal del sistema</li>
                     <li>Menú de opciones principal</li>
                   </ul>
-                  <li>Tipos de Preguntas Habilitadas:</li>
-                  <ul className="list-disc ml-8">
-                    <li>[Listar los tipos marcados con *]</li>
-                  </ul>
+                  
+                 
                 </ul>
               </div>
               <div>
