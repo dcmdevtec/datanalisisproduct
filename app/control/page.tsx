@@ -85,9 +85,11 @@ export default function ReportsPage() {
                 <ul className="list-disc ml-6 text-gray-700 mb-2">
                   <li>Tipos de Preguntas:</li>
                   <ul className="list-disc ml-8">
+                    <li>Vista del logo en vista previa de la encuenta - <b>Reciente</b>  </li>
+                    <li>Vista en Cuadricula - <b>Reciente</b></li>
                     <li>Escala Likert</li>
                     <li>Preguntas tipo Matriz</li>
-                    <li>Vista en Cuadricula</li>
+                    
                   </ul>
                 </ul>
                 <h3 className="font-bold text-green-700 mb-1">📋 Notas de la Versión:</h3>
@@ -95,6 +97,21 @@ export default function ReportsPage() {
                   <li>Ampliación de opciones para creación de encuestas más complejas</li>
                   <li>Mejora en la versatilidad del sistema de encuestas</li>
                 </ul>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.2 - Expansión de Tipos de Preguntas</h2>
+                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 09 de septiembre del 2025</p>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Revisión avances :</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li>Modulos - Vista previa:</li>
+                  <ul className="list-disc ml-8">
+                    <li>Vista del logo en vista previa de la encuenta - <b>Reciente</b>  </li>
+                    <li>Vista en Cuadricula - <b>Reciente</b></li>
+                    
+                    
+                  </ul>
+                </ul>
+                
               </div>
             </div>
           </CardContent>

@@ -1191,7 +1191,6 @@ function PreviewSurveyPageContent() {
               >
                 <ArrowLeft className="h-5 w-5 mr-2" /> Volver
               </Button>
-              
               {/* Botón para limpiar respuestas (testing) */}
               <Button 
                 variant="outline" 
@@ -1205,49 +1204,177 @@ function PreviewSurveyPageContent() {
                 Limpiar Respuestas
               </Button>
             </div>
-            
-            <div className="text-center">
-              <CardTitle 
-                className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
-                style={{
-                  background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}
-              >
-                {surveyData.title}
-              </CardTitle>
-              {surveyData.description && (
-                <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
-              )}
-              
-              {/* Barra de progreso mejorada */}
-              <div className="mt-8 max-w-2xl mx-auto">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-gray-700">Progreso de la encuesta</span>
-                  <span className="text-sm font-semibold text-gray-700">
-                    {currentSectionIndex + 1} de {totalSections}
-                  </span>
-                </div>
-                <div className="relative">
-                  <Progress 
-                    value={progress} 
-                    className="w-full h-4 rounded-full" 
+            {/* Branding Logo Preview con posición */}
+            {surveyData.settings?.branding?.showLogo && surveyData.settings?.branding?.logo && (
+              (() => {
+                const logo = surveyData.settings.branding.logo;
+                const position = surveyData.settings.branding.logoPosition || "top";
+                const logoImg = (
+                  <img
+                    src={logo}
+                    alt="Logo de la encuesta"
                     style={{
-                      '--progress-background': themeColors.primary
-                    } as React.CSSProperties}
-                  />
-                  <div 
-                    className="absolute inset-0 rounded-full opacity-30"
-                    style={{
-                      background: `linear-gradient(to right, ${themeColors.primary}40, ${themeColors.primary}60)`
+                      maxHeight: 100,
+                      maxWidth: 120,
+                      objectFit: 'contain',
+                      borderRadius: 16,
+                      boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
                     }}
-                  ></div>
-                </div>
-                <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
-                  <span>Inicio</span>
-                  <span>Final</span>
-                </div>
+                  />
+                );
+                if (position === "top") {
+                  return (
+                    <div className="flex flex-col items-center w-full">
+                      <div className="flex w-full mb-6">
+                        <div className="w-full flex justify-center">{logoImg}</div>
+                      </div>
+                      <CardTitle 
+                        className="text-5xl font-bold mb-4 bg-clip-text text-transparent text-center w-full"
+                        style={{
+                          background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent'
+                        }}
+                      >
+                        {surveyData.title}
+                      </CardTitle>
+                      {surveyData.description && (
+                        <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed text-center w-full">{surveyData.description}</p>
+                      )}
+                    </div>
+                  );
+                } else if (position === "bottom") {
+                  return (
+                    <div className="text-center">
+                      <CardTitle 
+                        className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
+                        style={{
+                          background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent'
+                        }}
+                      >
+                        {surveyData.title}
+                      </CardTitle>
+                      {surveyData.description && (
+                        <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
+                      )}
+                      <div className="flex justify-center mt-6">{logoImg}</div>
+                    </div>
+                  );
+                } else if (position === "left") {
+                  return (
+                    <div className="flex flex-col items-start mb-6 w-full">
+                      <div className="flex w-full mb-2">
+                        <div className="flex justify-start w-full">{logoImg}</div>
+                      </div>
+                      <div className="flex flex-col items-center w-full">
+                        <CardTitle 
+                          className="text-5xl font-bold mb-4 bg-clip-text text-transparent text-center w-full"
+                          style={{
+                            background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent'
+                          }}
+                        >
+                          {surveyData.title}
+                        </CardTitle>
+                        {surveyData.description && (
+                          <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed text-center w-full">{surveyData.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                } else if (position === "right") {
+                  return (
+                    <div className="flex flex-col items-end mb-6 w-full">
+                      <div className="flex w-full mb-2">
+                        <div className="flex justify-end w-full">{logoImg}</div>
+                      </div>
+                      <div className="flex flex-col items-center w-full">
+                        <CardTitle 
+                          className="text-5xl font-bold mb-4 bg-clip-text text-transparent text-center w-full"
+                          style={{
+                            background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent'
+                          }}
+                        >
+                          {surveyData.title}
+                        </CardTitle>
+                        {surveyData.description && (
+                          <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed text-center w-full">{surveyData.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                } else {
+                  // fallback top
+                  return (
+                    <div className="text-center">
+                      <div className="flex justify-center mb-6">{logoImg}</div>
+                      <CardTitle 
+                        className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
+                        style={{
+                          background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent'
+                        }}
+                      >
+                        {surveyData.title}
+                      </CardTitle>
+                      {surveyData.description && (
+                        <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
+                      )}
+                    </div>
+                  );
+                }
+              })()
+            )}
+            {/* Si no hay logo, render normal */}
+            {(!surveyData.settings?.branding?.showLogo || !surveyData.settings?.branding?.logo) && (
+              <div className="text-center">
+                <CardTitle 
+                  className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
+                  style={{
+                    background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent'
+                  }}
+                >
+                  {surveyData.title}
+                </CardTitle>
+                {surveyData.description && (
+                  <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
+                )}
+              </div>
+            )}
+            {/* Barra de progreso mejorada */}
+            <div className="mt-8 max-w-2xl mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-gray-700">Progreso de la encuesta</span>
+                <span className="text-sm font-semibold text-gray-700">
+                  {currentSectionIndex + 1} de {totalSections}
+                </span>
+              </div>
+              <div className="relative">
+                <Progress 
+                  value={progress} 
+                  className="w-full h-4 rounded-full" 
+                  style={{
+                    '--progress-background': themeColors.primary
+                  } as React.CSSProperties}
+                />
+                <div 
+                  className="absolute inset-0 rounded-full opacity-30"
+                  style={{
+                    background: `linear-gradient(to right, ${themeColors.primary}40, ${themeColors.primary}60)`
+                  }}
+                ></div>
+              </div>
+              <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
+                <span>Inicio</span>
+                <span>Final</span>
               </div>
             </div>
           </CardHeader>

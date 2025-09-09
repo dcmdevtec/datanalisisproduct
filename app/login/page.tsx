@@ -156,7 +156,7 @@ function LoginPageContent() {
                    Volver a la página principal
                  </Link>
                </div>
-              <p className="text-xs text-muted-foreground">Versión 1.0.1</p>
+              <p className="text-xs text-muted-foreground">Versión 1.0.2</p>
             </div>
           </CardFooter>
          </form>
