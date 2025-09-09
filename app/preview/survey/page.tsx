@@ -909,13 +909,22 @@ function PreviewSurveyPageContent() {
               </div>
             )
           case "matrix": {
-            // Soporte para cargar datos desde settings/config si no están en la raíz
+            // Siempre priorizar config/settings sobre el root
             const config = question.config || question.settings || {};
-            const matrixRows = question.matrixRows || config.matrixRows || [];
-            const matrixCols = question.matrixCols || config.matrixCols || [];
-            const matrixColOptions = config.matrixColOptions || [];
-            const cellType = config.matrixCellType || "radio";
-            const matrixRatingScale = config.matrixRatingScale || 5;
+            const matrixRows = config.matrixRows || question.matrixRows || [];
+            const matrixCols = config.matrixCols || question.matrixCols || [];
+            const matrixColOptions = config.matrixColOptions || question.matrixColOptions || [];
+            const cellType = config.matrixCellType || question.matrixCellType || "radio";
+            const matrixRatingScale = config.matrixRatingScale || question.matrixRatingScale || 5;
+            // Debug: Mostrar configuración de la matriz en consola
+            console.log("[PREVIEW MATRIX CONFIG]", {
+              matrixRows,
+              matrixCols,
+              matrixColOptions,
+              cellType,
+              config,
+              question
+            });
             return (
               <div className="space-y-4">
                 <div className="overflow-x-auto">
@@ -946,8 +955,13 @@ function PreviewSurveyPageContent() {
                                     return <Input type="number" disabled className="w-full" placeholder="0" />;
                                   case "select": {
                                     const colOptions = matrixColOptions[colIdx] || ["Opción 1"];
+                                    // Generar una key única para cada celda: question.id + rowIdx + colIdx
+                                    const cellKey = `${question.id}_${rowIdx}_${colIdx}`;
                                     return (
-                                      <Select disabled>
+                                      <Select
+                                        value={answers[cellKey] || ""}
+                                        onValueChange={(value) => handleAnswerChange(cellKey, value)}
+                                      >
                                         <SelectTrigger className="w-full">
                                           <SelectValue placeholder="Seleccionar..." />
                                         </SelectTrigger>

@@ -93,6 +93,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       icon: Settings,
       disabled: true
     },
+    { 
+      name: "Control de Versiones", 
+      href: "/control", 
+      icon: Settings,
+      disabled: false
+    },
   ], [])
 
   // Prefetch de rutas comunes para mejorar la navegación
@@ -104,6 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.prefetch('/companies')
     router.prefetch('/users')
     router.prefetch('/zones')
+    router.prefetch('/control')
   }, [router])
 
   // Memoizar la función de logout para evitar recreaciones
