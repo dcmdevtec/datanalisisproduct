@@ -85,8 +85,7 @@ export default function ReportsPage() {
                 <ul className="list-disc ml-6 text-gray-700 mb-2">
                   <li>Tipos de Preguntas:</li>
                   <ul className="list-disc ml-8">
-                    <li>Vista del logo en vista previa de la encuenta - <b>Reciente</b>  </li>
-                    <li>Vista en Cuadricula - <b>Reciente</b></li>
+                  
                     <li>Escala Likert</li>
                     <li>Preguntas tipo Matriz</li>
                     
