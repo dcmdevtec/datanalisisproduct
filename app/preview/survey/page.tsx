@@ -946,17 +946,38 @@ function PreviewSurveyPageContent() {
                           {matrixCols.map((col, colIdx) => (
                             <td key={colIdx} className="border p-2 text-center">
                               {(() => {
+                                const cellKey = `${question.id}_${rowIdx}_${colIdx}`;
                                 switch (cellType) {
                                   case "checkbox":
-                                    return <input type="checkbox" disabled className="cursor-not-allowed" />;
+                                    return (
+                                      <input
+                                        type="checkbox"
+                                        checked={!!answers[cellKey]}
+                                        onChange={(e) => handleAnswerChange(cellKey, e.target.checked)}
+                                        className="cursor-pointer"
+                                      />
+                                    );
                                   case "text":
-                                    return <Input disabled className="w-full" placeholder="Texto..." />;
+                                    return (
+                                      <Input
+                                        value={answers[cellKey] || ""}
+                                        onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
+                                        className="w-full"
+                                        placeholder="Texto..."
+                                      />
+                                    );
                                   case "number":
-                                    return <Input type="number" disabled className="w-full" placeholder="0" />;
+                                    return (
+                                      <Input
+                                        type="number"
+                                        value={answers[cellKey] || ""}
+                                        onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
+                                        className="w-full"
+                                        placeholder="0"
+                                      />
+                                    );
                                   case "select": {
                                     const colOptions = matrixColOptions[colIdx] || ["Opción 1"];
-                                    // Generar una key única para cada celda: question.id + rowIdx + colIdx
-                                    const cellKey = `${question.id}_${rowIdx}_${colIdx}`;
                                     return (
                                       <Select
                                         value={answers[cellKey] || ""}
@@ -981,23 +1002,47 @@ function PreviewSurveyPageContent() {
                                     return (
                                       <div className="flex justify-center gap-1">
                                         {Array.from({ length: stars }, (_, i) => (
-                                          <span key={i} className="text-yellow-400 cursor-not-allowed">★</span>
+                                          <button
+                                            key={i}
+                                            type="button"
+                                            className={`text-yellow-400 text-lg ${answers[cellKey] === i + 1 ? "font-bold" : "opacity-50"}`}
+                                            onClick={() => handleAnswerChange(cellKey, i + 1)}
+                                          >
+                                            ★
+                                          </button>
                                         ))}
                                       </div>
                                     );
                                   }
                                   case "ranking":
+                                    // Simulación simple: input para posición
                                     return (
-                                      <div className="flex items-center gap-1">
-                                        <div className="w-8 text-center">{rowIdx + 1}</div>
-                                        <div className="flex gap-1">
-                                          <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
-                                          <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
-                                        </div>
-                                      </div>
+                                      <Input
+                                        type="number"
+                                        min={1}
+                                        max={matrixRows.length}
+                                        value={answers[cellKey] || ""}
+                                        onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
+                                        className="w-16 text-center"
+                                        placeholder={`#`}
+                                      />
                                     );
+                                  case "radio": {
+                                    // Cada fila debe tener un grupo de radios, cada celda es una opción
+                                    const radioKey = `${question.id}_${rowIdx}`;
+                                    return (
+                                      <input
+                                        type="radio"
+                                        name={radioKey}
+                                        value={col}
+                                        checked={answers[radioKey] === col}
+                                        onChange={() => handleAnswerChange(radioKey, col)}
+                                        className="cursor-pointer"
+                                      />
+                                    );
+                                  }
                                   default:
-                                    return <input type="radio" disabled className="cursor-not-allowed" />;
+                                    return <Input disabled className="w-full" placeholder={`Tipo ${cellType} no soportado`} />;
                                 }
                               })()}
                             </td>

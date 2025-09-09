@@ -87,6 +87,8 @@ function SurveysPageContent() {
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const pageSize = 10
+  // Vista cards/tabla
+  const [viewType, setViewType] = useState<'table' | 'cards'>('table')
 
   // Sin permisos - todos los usuarios pueden hacer todo
   // const isAdmin = user?.role === "admin"
@@ -374,7 +376,11 @@ function SurveysPageContent() {
             <Plus className="h-4 w-4 mr-2" /> Nueva Encuesta
           </Button>
         </div>
-
+        {/* Botones para alternar vista */}
+        <div className="flex gap-2 mb-4">
+          <Button variant={viewType === 'table' ? 'default' : 'outline'} onClick={() => setViewType('table')}>Tabla</Button>
+          <Button variant={viewType === 'cards' ? 'default' : 'outline'} onClick={() => setViewType('cards')}>Cards</Button>
+        </div>
         <div className="flex flex-col gap-4 mb-6 lg:mb-8">
           <Input
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-0 focus-visible:ring-0 !focus:ring-0 !focus-visible:ring-0 focus:outline-none text-gray-900 placeholder:text-gray-400 shadow-sm transition"
@@ -472,99 +478,131 @@ function SurveysPageContent() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl shadow border border-[#18b0a4]/20 bg-white">
-              <Table className="w-full">
-                <TableHeader className="bg-[#18b0a4]/10">
-                  <TableRow>
-                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Título</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden sm:table-cell">Proyecto</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden lg:table-cell">Empresa</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Estado</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Respuestas</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden md:table-cell">Fecha Creación</TableHead>
-                    <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedSurveys.map((survey) => (
-                    <TableRow key={survey.id} className="hover:bg-[#18b0a4]/5 transition group">
-                      <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4] px-2 sm:px-4">
-                        <div className="truncate max-w-[120px] sm:max-w-[150px] lg:max-w-[200px]" title={survey.title}>
-                          {survey.title}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden sm:table-cell">
-                        <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.name || "N/A"}>
-                          {survey.projects?.name || "N/A"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden lg:table-cell">
-                        <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.companies?.name || "N/A"}>
-                          {survey.projects?.companies?.name || "N/A"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-gray-700 capitalize px-2 sm:px-4">
-                        <div className="truncate max-w-[60px] sm:max-w-[80px]">
-                          {survey.status}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center text-gray-700 px-2 sm:px-4">
-                        {survey.responses_count ?? 0}
-                      </TableCell>
-                      <TableCell className="text-gray-700 px-2 sm:px-4 hidden md:table-cell">
-                        <div className="truncate max-w-[80px] lg:max-w-[120px]">
-                          {new Date(survey.created_at).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                          onClick={() => router.push(`/surveys/${survey.id}`)}
-                          title="Ver Encuesta"
-                        >
-                          <span className="sr-only">Ver Encuesta</span>
-                          <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                          onClick={() =>
-                            router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
-                          }
-                          title="Editar Encuesta"
-                        >
-                          <span className="sr-only">Editar Encuesta</span>
-                          <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-blue-500 hover:bg-blue-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                          onClick={() => handleDuplicateSurvey(survey.id)}
-                          title="Duplicar Encuesta"
-                        >
-                          <span className="sr-only">Duplicar Encuesta</span>
-                          <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                          onClick={() => handleDeleteClick(survey.id)}
-                          title="Eliminar Encuesta"
-                        >
-                          <span className="sr-only">Eliminar Encuesta</span>
-                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                      </TableCell>
+            {viewType === 'table' ? (
+              <div className="overflow-x-auto rounded-xl shadow border border-[#18b0a4]/20 bg-white">
+                <Table className="w-full">
+                  <TableHeader className="bg-[#18b0a4]/10">
+                    <TableRow>
+                      <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Título</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden sm:table-cell">Proyecto</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden lg:table-cell">Empresa</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4">Estado</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Respuestas</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden md:table-cell">Fecha Creación</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Acciones</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedSurveys.map((survey) => (
+                      <TableRow key={survey.id} className="hover:bg-[#18b0a4]/5 transition group">
+                        <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4] px-2 sm:px-4">
+                          <div className="truncate max-w-[120px] sm:max-w-[150px] lg:max-w-[200px]" title={survey.title}>
+                            {survey.title}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-gray-700 px-2 sm:px-4 hidden sm:table-cell">
+                          <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.name || "N/A"}>
+                            {survey.projects?.name || "N/A"}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-gray-700 px-2 sm:px-4 hidden lg:table-cell">
+                          <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.companies?.name || "N/A"}>
+                            {survey.projects?.companies?.name || "N/A"}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-gray-700 capitalize px-2 sm:px-4">
+                          <div className="truncate max-w-[60px] sm:max-w-[80px]">
+                            {survey.status}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center text-gray-700 px-2 sm:px-4">
+                          {survey.responses_count ?? 0}
+                        </TableCell>
+                        <TableCell className="text-gray-700 px-2 sm:px-4 hidden md:table-cell">
+                          <div className="truncate max-w-[80px] lg:max-w-[120px]">
+                            {new Date(survey.created_at).toLocaleDateString()}
+                          </div>
+                        </TableCell>
+                        <TableCell className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
+                            onClick={() => router.push(`/surveys/${survey.id}`)}
+                            title="Ver Encuesta"
+                          >
+                            <span className="sr-only">Ver Encuesta</span>
+                            <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
+                            onClick={() =>
+                              router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
+                            }
+                            title="Editar Encuesta"
+                          >
+                            <span className="sr-only">Editar Encuesta</span>
+                            <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-blue-500 hover:bg-blue-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
+                            onClick={() => handleDuplicateSurvey(survey.id)}
+                            title="Duplicar Encuesta"
+                          >
+                            <span className="sr-only">Duplicar Encuesta</span>
+                            <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
+                            onClick={() => handleDeleteClick(survey.id)}
+                            title="Eliminar Encuesta"
+                          >
+                            <span className="sr-only">Eliminar Encuesta</span>
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {paginatedSurveys.map((survey) => (
+                  <div key={survey.id} className="bg-white rounded-xl shadow border border-[#18b0a4]/20 p-4 flex flex-col gap-2">
+                    <div className="font-bold text-[#18b0a4] text-lg truncate mb-1" title={survey.title}>{survey.title}</div>
+                    <div className="text-sm text-gray-500 truncate mb-1" title={survey.projects?.name || 'N/A'}><span className="font-semibold">Proyecto:</span> {survey.projects?.name || 'N/A'}</div>
+                    <div className="text-sm text-gray-500 truncate mb-1" title={survey.projects?.companies?.name || 'N/A'}><span className="font-semibold">Empresa:</span> {survey.projects?.companies?.name || 'N/A'}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Descripción:</span> {survey.description || '-'}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Estado:</span> {survey.status}</div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
+                      <span className="font-semibold">Respuestas:</span> {survey.responses_count ?? 0}
+                    </div>
+                    <div className="text-xs text-gray-400 mb-2">Creado: {new Date(survey.created_at).toLocaleDateString()}</div>
+                    <div className="flex gap-2 mt-auto">
+                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => router.push(`/surveys/${survey.id}`)} title="Ver Encuesta">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)} title="Editar Encuesta">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-blue-500 hover:bg-blue-500/10" onClick={() => handleDuplicateSurvey(survey.id)} title="Duplicar Encuesta">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-500/10" onClick={() => handleDeleteClick(survey.id)} title="Eliminar Encuesta">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Paginación */}
             <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4">
               <div className="text-sm text-gray-500 text-center sm:text-left">
