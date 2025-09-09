@@ -379,7 +379,7 @@ function SurveysPageContent() {
         {/* Botones para alternar vista */}
         <div className="flex gap-2 mb-4">
           <Button variant={viewType === 'table' ? 'default' : 'outline'} onClick={() => setViewType('table')}>Tabla</Button>
-          <Button variant={viewType === 'cards' ? 'default' : 'outline'} onClick={() => setViewType('cards')}>Cards</Button>
+          <Button variant={viewType === 'cards' ? 'default' : 'outline'} onClick={() => setViewType('cards')}>  Cuadricula</Button>
         </div>
         <div className="flex flex-col gap-4 mb-6 lg:mb-8">
           <Input

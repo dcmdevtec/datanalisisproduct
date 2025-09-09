@@ -285,14 +285,16 @@ export default function CompaniesPage() {
               Empresas
             </h1>
             <p className="mt-2 text-gray-500">Gestiona las empresas de la plataforma</p>
+            <div className="flex gap-2 mt-4">
+              <Button variant={viewMode === 'table' ? 'default' : 'outline'} onClick={() => setViewMode('table')}>
+                Tabla
+              </Button>
+              <Button variant={viewMode === 'card' ? 'default' : 'outline'} onClick={() => setViewMode('card')}>
+                Cuadricula
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant={viewMode === 'table' ? 'default' : 'outline'} onClick={() => setViewMode('table')}>
-              Tabla
-            </Button>
-            <Button variant={viewMode === 'card' ? 'default' : 'outline'} onClick={() => setViewMode('card')}>
-              Cards
-            </Button>
+          <div>
             <Button onClick={handleOpenCreateCompanyModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" /> Nueva Empresa
             </Button>

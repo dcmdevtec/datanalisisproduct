@@ -87,6 +87,7 @@ export default function ReportsPage() {
                   <ul className="list-disc ml-8">
                     <li>Escala Likert</li>
                     <li>Preguntas tipo Matriz</li>
+                    <li>Vista en Cuadricula</li>
                   </ul>
                 </ul>
                 <h3 className="font-bold text-green-700 mb-1">📋 Notas de la Versión:</h3>
