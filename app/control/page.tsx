@@ -72,7 +72,10 @@ export default function ReportsPage() {
                     <li>Interfaz principal del sistema</li>
                     <li>Menú de opciones principal</li>
                   </ul>
-                  
+                  <li>Se agregaron varios tipos de preguntas:</li>
+                  <ul className="list-disc ml-8">
+                    <li>Revisar preguntas que contenga el *</li>
+                  </ul>
                  
                 </ul>
               </div>
@@ -96,9 +99,9 @@ export default function ReportsPage() {
                 </ul>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.2 - Expansión de Tipos de Preguntas</h2>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.2 - Revisión avances</h2>
                 <p className="text-gray-700 mb-2">📅 Fecha de liberación: 09 de septiembre del 2025</p>
-                <h3 className="font-bold text-green-700 mb-1">🆕 Revisión avances :</h3>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Revisión avances 1 :</h3>
                 <ul className="list-disc ml-6 text-gray-700 mb-2">
                   <li>Modulos - Vista previa:</li>
                   <ul className="list-disc ml-8">
