@@ -864,8 +864,117 @@ function CreateSurveyForProjectPageContent() {
   const [startDate, setStartDate] = useState<string>("")
   const [deadline, setDeadline] = useState<string>("")
   const [isSaving, setIsSaving] = useState<boolean>(false)
+  const [isSavingSection, setIsSavingSection] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
+  const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: 'saved' | 'not-saved' | 'error' }>({})
+
+  // Función para guardar una sección individual
+  const handleSaveSection = async (sectionId: string) => {
+    if (!sections.length || !sectionId) return;
+    
+    setIsSavingSection(true);
+    try {
+      // Si no hay surveyId, necesitamos crear primero la encuesta
+      if (!surveyId) {
+        const surveyData = {
+          title: surveyTitle || "Encuesta sin título",
+          description: surveyDescription,
+          project_id: projectId,
+          created_by: user?.id,
+          status: "draft",
+          settings: settings
+        };
+
+        const { data: newSurvey, error: surveyError } = await supabase
+          .from("surveys")
+          .insert([surveyData])
+          .select()
+          .single();
+
+        if (surveyError) throw surveyError;
+        surveyId = newSurvey.id;
+      }
+
+      const section = sections.find(s => s.id === sectionId);
+      if (!section) throw new Error("Sección no encontrada");
+
+      // Guardar la sección
+      const sectionData = {
+        id: section.id,
+        survey_id: surveyId,
+        title: section.title,
+        description: section.description,
+        order_num: section.order_num,
+        skip_logic: section.skipLogic
+      };
+
+      const { data: savedSection, error: sectionError } = await supabase
+        .from("survey_sections")
+        .upsert([sectionData])
+        .select()
+        .single();
+
+      if (sectionError) throw sectionError;
+
+      // Guardar las preguntas de la sección
+      const questionsToUpsert = section.questions.map((q, index) => ({
+        survey_id: surveyId,
+        section_id: savedSection.id,
+        type: q.type,
+        text: q.text,
+        options: q.options,
+        required: q.required,
+        order_num: index,
+        settings: {
+          ...q.config,
+          matrixRows: q.matrixRows,
+          matrixCols: q.matrixCols,
+          ratingScale: q.ratingScale
+        },
+        matrix_rows: q.matrixRows,
+        matrix_cols: q.matrixCols,
+        rating_scale: q.ratingScale,
+        file_url: q.image,
+        skip_logic: q.config?.skipLogic,
+        display_logic: q.config?.displayLogic,
+        validation_rules: q.config?.validation
+      }));
+
+      if (questionsToUpsert.length > 0) {
+        const { error: questionsError } = await supabase
+          .from("questions")
+          .upsert(questionsToUpsert);
+
+        if (questionsError) throw questionsError;
+      }
+
+      // Actualizar estado de guardado
+      setSectionSaveStates(prev => ({
+        ...prev,
+        [sectionId]: 'saved'
+      }));
+
+      toast({
+        title: "Sección guardada",
+        description: "Los cambios han sido guardados exitosamente",
+      });
+
+    } catch (error: any) {
+      console.error("Error al guardar la sección:", error);
+      setSectionSaveStates(prev => ({
+        ...prev,
+        [sectionId]: 'error'
+      }));
+      toast({
+        title: "Error al guardar",
+        description: error.message || "No se pudo guardar la sección",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingSection(false);
+    }
+  };
 
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
@@ -929,7 +1038,12 @@ function CreateSurveyForProjectPageContent() {
   }
 
   const updateSection = useCallback((sectionId: string, field: keyof SurveySection, value: any): void => {
-    setSections((prevSections) => prevSections.map((s) => (s.id === sectionId ? { ...s, [field]: value } : s)))
+    setSections((prevSections) => prevSections.map((s) => (s.id === sectionId ? { ...s, [field]: value } : s)));
+    // Marcar la sección como no guardada cuando se realiza un cambio
+    setSectionSaveStates(prev => ({
+      ...prev,
+      [sectionId]: 'not-saved'
+    }));
   }, [])
 
   const addQuestionToSection = (sectionId: string): void => {
@@ -2563,6 +2677,16 @@ function CreateSurveyForProjectPageContent() {
                                           ({section.questions.length} pregunta
                                           {section.questions.length !== 1 ? "s" : ""})
                                         </span>
+                                        {sectionSaveStates[section.id] && (
+                                          <Badge 
+                                            variant={sectionSaveStates[section.id] === 'saved' ? 'default' : 'destructive'}
+                                            className="ml-2 text-xs"
+                                          >
+                                            {sectionSaveStates[section.id] === 'saved' ? 'Guardado' : 
+                                             sectionSaveStates[section.id] === 'error' ? 'Error' : 
+                                             'Sin guardar'}
+                                          </Badge>
+                                        )}
                                       </div>
                                     </SelectItem>
                                   ))}
@@ -2570,25 +2694,45 @@ function CreateSurveyForProjectPageContent() {
                               </Select>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const newSection: SurveySection = {
-                                    id: generateUUID(),
-                                    title: `Nueva Sección ${sections.length + 1}`,
-                                    description: "",
-                                    order_num: sections.length,
-                                    questions: [],
-                                    skipLogic: undefined,
-                                  }
-                                  setSections([...sections, newSection])
-                                  setActiveSectionIndex(sections.length) // Cambiar a la nueva sección
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Nueva Sección
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleSaveSection(sections[activeSectionIndex].id)}
+                                  disabled={isSavingSection}
+                                >
+                                  {isSavingSection ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                      Guardando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="h-4 w-4 mr-1" />
+                                      Guardar Sección
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newSection: SurveySection = {
+                                      id: generateUUID(),
+                                      title: `Nueva Sección ${sections.length + 1}`,
+                                      description: "",
+                                      order_num: sections.length,
+                                      questions: [],
+                                      skipLogic: undefined,
+                                    }
+                                    setSections([...sections, newSection])
+                                    setActiveSectionIndex(sections.length) // Cambiar a la nueva sección
+                                  }}
+                                >
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Nueva Sección
+                                </Button>
+                              </div>
                             </div>
                           </div>
 
