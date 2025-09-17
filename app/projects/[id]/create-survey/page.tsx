@@ -36,8 +36,8 @@ import {
   Eye,
   X,
   Copy,
-  Edit,
   BarChart3,
+  Edit,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -49,7 +49,6 @@ import { AssignSurveyorsModal } from "@/components/assign-surveyors-modal"
 import { EditSurveySettingsModal } from "@/components/edit-survey-settings-modal"
 import { MultiSelectZones } from "@/components/multi-select-zones"
 import { ZoneSurveyorAssignment } from "@/components/zone-surveyor-assignment"
-import { SurveyLogoUpload } from "@/components/ui/survey-logo-upload" // Import the logo upload component
 import type { Zone } from "@/types/zone"
 import type { Surveyor } from "@/types/surveyor"
 import type { GeoJSON } from "geojson"
@@ -68,8 +67,6 @@ import { useState, useEffect, useCallback } from "react"
 import { QuestionEditor } from "@/components/question-editor"
 import { arrayMove } from "@dnd-kit/sortable"
 
-
-
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,6 +78,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { SurveyLogoUpload } from "@/components/ui/survey-logo-upload"
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
@@ -851,12 +849,13 @@ function CreateSurveyForProjectPageContent() {
   const { toast } = useToast()
 
   const projectId = params.id as string
-  const surveyId = searchParams.get("surveyId")
+  const surveyIdParam = searchParams.get("surveyId")
 
   const [projectData, setProjectData] = useState<any>(null)
   const [projectLoading, setProjectLoading] = useState<boolean>(true)
   const [initialLoading, setInitialLoading] = useState<boolean>(true)
-  const [isEditMode, setIsEditMode] = useState(!!surveyId)
+  const [isEditMode, setIsEditMode] = useState(!!surveyIdParam)
+  const [currentSurveyId, setCurrentSurveyId] = useState<string | null>(surveyIdParam)
 
   const [activeTab, setActiveTab] = useState<string>("details")
   const [surveyTitle, setSurveyTitle] = useState<string>("")
@@ -867,114 +866,167 @@ function CreateSurveyForProjectPageContent() {
   const [isSavingSection, setIsSavingSection] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
-  const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: 'saved' | 'not-saved' | 'error' }>({})
+  const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: "saved" | "not-saved" | "error" }>({})
 
-  // Función para guardar una sección individual
   const handleSaveSection = async (sectionId: string) => {
-    if (!sections.length || !sectionId) return;
-    
-    setIsSavingSection(true);
+    if (!sections.length || !sectionId) return
+
+    setIsSavingSection(true)
     try {
+      let workingSurveyId = currentSurveyId
+
       // Si no hay surveyId, necesitamos crear primero la encuesta
-      if (!surveyId) {
+      if (!workingSurveyId) {
+        console.log("🆕 Creando encuesta antes de guardar sección...")
+
+        if (!surveyTitle.trim()) {
+          throw new Error("El título de la encuesta es obligatorio para guardar secciones")
+        }
+
         const surveyData = {
-          title: surveyTitle || "Encuesta sin título",
+          title: surveyTitle,
           description: surveyDescription,
           project_id: projectId,
           created_by: user?.id,
           status: "draft",
-          settings: settings
-        };
+          settings: settings || {
+            collectLocation: true,
+            allowAudio: false,
+            offlineMode: true,
+            distributionMethods: ["app"],
+          },
+        }
 
         const { data: newSurvey, error: surveyError } = await supabase
           .from("surveys")
           .insert([surveyData])
           .select()
-          .single();
+          .single()
 
-        if (surveyError) throw surveyError;
-        surveyId = newSurvey.id;
+        if (surveyError) throw surveyError
+
+        workingSurveyId = newSurvey.id
+        setCurrentSurveyId(workingSurveyId)
+        setIsEditMode(true)
+
+        console.log("✅ Encuesta creada con ID:", workingSurveyId)
       }
 
-      const section = sections.find(s => s.id === sectionId);
-      if (!section) throw new Error("Sección no encontrada");
+      const section = sections.find((s) => s.id === sectionId)
+      if (!section) throw new Error("Sección no encontrada")
 
-      // Guardar la sección
       const sectionData = {
-        id: section.id,
-        survey_id: surveyId,
-        title: section.title,
-        description: section.description,
-        order_num: section.order_num,
-        skip_logic: section.skipLogic
-      };
+        survey_id: workingSurveyId,
+        title: section.title.trim(),
+        description: section.description || "",
+        order_num: sections.findIndex((s) => s.id === sectionId),
+        skip_logic: section.skipLogic || null,
+      }
 
-      const { data: savedSection, error: sectionError } = await supabase
-        .from("survey_sections")
-        .upsert([sectionData])
-        .select()
-        .single();
+      let savedSection
 
-      if (sectionError) throw sectionError;
+      if (
+        section.id &&
+        section.id !== "temp-id" &&
+        section.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+      ) {
+        // Valid UUID - try to update existing section
+        const { data, error: updateError } = await supabase
+          .from("survey_sections")
+          .update(sectionData)
+          .eq("id", section.id)
+          .select()
+          .single()
 
-      // Guardar las preguntas de la sección
-      const questionsToUpsert = section.questions.map((q, index) => ({
-        survey_id: surveyId,
-        section_id: savedSection.id,
-        type: q.type,
-        text: q.text,
-        options: q.options,
-        required: q.required,
-        order_num: index,
-        settings: {
-          ...q.config,
-          matrixRows: q.matrixRows,
-          matrixCols: q.matrixCols,
-          ratingScale: q.ratingScale
-        },
-        matrix_rows: q.matrixRows,
-        matrix_cols: q.matrixCols,
-        rating_scale: q.ratingScale,
-        file_url: q.image,
-        skip_logic: q.config?.skipLogic,
-        display_logic: q.config?.displayLogic,
-        validation_rules: q.config?.validation
-      }));
+        if (updateError) {
+          // If update fails, try insert with new ID
+          console.log("⚠️ Update failed, creating new section:", updateError.message)
+          const { data: insertData, error: insertError } = await supabase
+            .from("survey_sections")
+            .insert([sectionData])
+            .select()
+            .single()
 
-      if (questionsToUpsert.length > 0) {
-        const { error: questionsError } = await supabase
-          .from("questions")
-          .upsert(questionsToUpsert);
+          if (insertError) throw insertError
+          savedSection = insertData
 
-        if (questionsError) throw questionsError;
+          // Update section ID in local state
+          setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)))
+        } else {
+          savedSection = data
+        }
+      } else {
+        // No valid ID - create new section
+        const { data: insertData, error: insertError } = await supabase
+          .from("survey_sections")
+          .insert([sectionData])
+          .select()
+          .single()
+
+        if (insertError) throw insertError
+        savedSection = insertData
+
+        // Update section ID in local state
+        setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)))
+      }
+
+      if (section.questions.length > 0) {
+        // Delete existing questions for this section to avoid duplicates
+        await supabase.from("questions").delete().eq("section_id", savedSection.id)
+
+        const questionsToInsert = section.questions.map((q, index) => ({
+          survey_id: workingSurveyId,
+          section_id: savedSection.id,
+          type: q.type,
+          text: q.text.trim(),
+          options: q.options || [],
+          required: q.required || false,
+          order_num: index,
+          settings: {
+            ...q.config,
+            matrixRows: q.matrixRows,
+            matrixCols: q.matrixCols,
+            ratingScale: q.ratingScale,
+          },
+          matrix_rows: q.matrixRows || [],
+          matrix_cols: q.matrixCols || [],
+          rating_scale: q.ratingScale || null,
+          file_url: q.image || null,
+          skip_logic: q.config?.skipLogic || null,
+          display_logic: q.config?.displayLogic || null,
+          validation_rules: q.config?.validation || null,
+        }))
+
+        const { error: questionsError } = await supabase.from("questions").insert(questionsToInsert)
+
+        if (questionsError) throw questionsError
       }
 
       // Actualizar estado de guardado
-      setSectionSaveStates(prev => ({
+      setSectionSaveStates((prev) => ({
         ...prev,
-        [sectionId]: 'saved'
-      }));
+        [savedSection.id]: "saved",
+      }))
 
       toast({
         title: "Sección guardada",
         description: "Los cambios han sido guardados exitosamente",
-      });
-
+      })
     } catch (error: any) {
-      console.error("Error al guardar la sección:", error);
-      setSectionSaveStates(prev => ({
+      console.error("Error al guardar la sección:", error)
+      setSectionSaveStates((prev) => ({
         ...prev,
-        [sectionId]: 'error'
-      }));
+        [sectionId]: "error",
+      }))
       toast({
         title: "Error al guardar",
-        description: error.message || "No se pudo guardar la sección",
-        variant: "destructive"
-      });
+        description: error.message || "Ocurrió un error al guardar la sección",
+        variant: "destructive",
+      })
     } finally {
-      setIsSavingSection(false);
+      setIsSavingSection(false)
     }
-  };
+  }
 
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
@@ -1038,12 +1090,12 @@ function CreateSurveyForProjectPageContent() {
   }
 
   const updateSection = useCallback((sectionId: string, field: keyof SurveySection, value: any): void => {
-    setSections((prevSections) => prevSections.map((s) => (s.id === sectionId ? { ...s, [field]: value } : s)));
+    setSections((prevSections) => prevSections.map((s) => (s.id === sectionId ? { ...s, [field]: value } : s)))
     // Marcar la sección como no guardada cuando se realiza un cambio
-    setSectionSaveStates(prev => ({
+    setSectionSaveStates((prev) => ({
       ...prev,
-      [sectionId]: 'not-saved'
-    }));
+      [sectionId]: "not-saved",
+    }))
   }, [])
 
   const addQuestionToSection = (sectionId: string): void => {
@@ -1295,12 +1347,12 @@ function CreateSurveyForProjectPageContent() {
       }
 
       let surveyResult
-      if (isEditMode && surveyId) {
+      if (isEditMode && currentSurveyId) {
         console.log("✏️ Modo edición - Actualizando encuesta existente...")
         const { data, error: surveyError } = await supabase
           .from("surveys")
           .update(surveyData)
-          .eq("id", surveyId)
+          .eq("id", currentSurveyId)
           .select()
           .single()
         if (surveyError) {
@@ -1314,7 +1366,10 @@ function CreateSurveyForProjectPageContent() {
         console.log("🔄 Implementando lógica de upsert inteligente para preservar IDs...")
 
         // Eliminar preguntas existentes (esto se mantiene igual)
-        const { error: deleteQuestionsError } = await supabase.from("questions").delete().eq("survey_id", surveyId)
+        const { error: deleteQuestionsError } = await supabase
+          .from("questions")
+          .delete()
+          .eq("survey_id", currentSurveyId)
         if (deleteQuestionsError) {
           console.error("❌ Error al eliminar preguntas existentes:", deleteQuestionsError)
           throw deleteQuestionsError
@@ -1329,7 +1384,7 @@ function CreateSurveyForProjectPageContent() {
         const { data: existingSections } = await supabase
           .from("survey_sections")
           .select("id, title")
-          .eq("survey_id", surveyId)
+          .eq("survey_id", currentSurveyId)
 
         if (existingSections) {
           existingSections.forEach((section) => {
@@ -1361,7 +1416,7 @@ function CreateSurveyForProjectPageContent() {
 
           // Preparar datos de la sección
           const sectionData = {
-            survey_id: surveyId,
+            survey_id: currentSurveyId,
             title: section.title.trim(),
             description: section.description || "",
             order_num: secIndex,
@@ -1393,7 +1448,7 @@ function CreateSurveyForProjectPageContent() {
                   const { data: existingSection } = await supabase
                     .from("survey_sections")
                     .select("id, title")
-                    .eq("survey_id", surveyId)
+                    .eq("survey_id", currentSurveyId)
                     .eq("title", section.title.trim())
                     .single()
 
@@ -1427,7 +1482,7 @@ function CreateSurveyForProjectPageContent() {
             const { data: existingSection } = await supabase
               .from("survey_sections")
               .select("id, title")
-              .eq("survey_id", surveyId)
+              .eq("survey_id", currentSurveyId)
               .eq("title", section.title.trim())
               .single()
 
@@ -1505,7 +1560,7 @@ function CreateSurveyForProjectPageContent() {
               likertScale: q.config?.likertScale || q.config?.settings?.likertScale || null,
             } // Preparar los datos para la base de datos
             const questionData = {
-              survey_id: surveyId,
+              survey_id: currentSurveyId,
               section_id: newSection.id,
               type: q.type || "text",
               text: q.text.trim(),
@@ -1627,7 +1682,7 @@ function CreateSurveyForProjectPageContent() {
         const { error: deleteAssignmentsError } = await supabase
           .from("survey_surveyor_zones")
           .delete()
-          .eq("survey_id", surveyId)
+          .eq("survey_id", currentSurveyId)
         if (deleteAssignmentsError) {
           console.error("❌ Error al eliminar asignaciones existentes:", deleteAssignmentsError)
           throw deleteAssignmentsError
@@ -1848,7 +1903,7 @@ function CreateSurveyForProjectPageContent() {
   }
 
   const fetchSurveyForEdit = useCallback(async () => {
-    if (!surveyId) {
+    if (!currentSurveyId) {
       setInitialLoading(false)
       return
     }
@@ -1887,7 +1942,7 @@ function CreateSurveyForProjectPageContent() {
           )
         `,
         )
-        .eq("id", surveyId)
+        .eq("id", currentSurveyId)
         .single()
 
       if (surveyError) throw surveyError
@@ -1947,7 +2002,7 @@ function CreateSurveyForProjectPageContent() {
       const { data: surveyorZoneData, error: surveyorZoneError } = await supabase
         .from("survey_surveyor_zones")
         .select("surveyor_id, zone_id")
-        .eq("survey_id", surveyId)
+        .eq("survey_id", currentSurveyId)
 
       if (surveyorZoneError) throw surveyorZoneError
 
@@ -1978,7 +2033,7 @@ function CreateSurveyForProjectPageContent() {
       }
 
       // Fetch sections and their questions
-      console.log("🔍 Buscando secciones para survey_id:", surveyId)
+      console.log("🔍 Buscando secciones para survey_id:", currentSurveyId)
 
       const { data: sectionsData, error: sectionsError } = await supabase
         .from("survey_sections")
@@ -2012,7 +2067,7 @@ function CreateSurveyForProjectPageContent() {
          )
        `,
         )
-        .eq("survey_id", surveyId)
+        .eq("survey_id", currentSurveyId)
         .order("order_num", { ascending: true })
 
       if (sectionsError) {
@@ -2155,7 +2210,7 @@ function CreateSurveyForProjectPageContent() {
     } finally {
       setInitialLoading(false)
     }
-  }, [surveyId, toast])
+  }, [currentSurveyId, toast])
 
   useEffect(() => {
     async function fetchProject() {
@@ -2204,13 +2259,13 @@ function CreateSurveyForProjectPageContent() {
 
   useEffect(() => {
     if (!authLoading && user && projectId) {
-      if (surveyId) {
+      if (currentSurveyId) {
         fetchSurveyForEdit()
       } else {
         setInitialLoading(false)
       }
     }
-  }, [authLoading, user, projectId, surveyId, fetchSurveyForEdit])
+  }, [authLoading, user, projectId, currentSurveyId, fetchSurveyForEdit])
 
   const addSection = (): void => {
     const newSection: SurveySection = {
@@ -2242,7 +2297,7 @@ function CreateSurveyForProjectPageContent() {
       }
 
       // Si estamos en modo edición y la sección tiene un ID válido en la base de datos
-      if (isEditMode && sectionId && sectionId !== "" && sectionId !== "temp-id" && surveyId) {
+      if (isEditMode && sectionId && sectionId !== "" && sectionId !== "temp-id" && currentSurveyId) {
         console.log("🔄 PASO 1: Limpiando referencias en la lógica de salto...")
 
         // Limpiar referencias en secciones existentes (usando el estado local)
@@ -2516,14 +2571,17 @@ function CreateSurveyForProjectPageContent() {
             <SectionOrganizer
               sections={sections}
               onSectionsChange={(newSections) => {
-                setSections(newSections);
+                setSections(newSections)
                 // Marcar todas las secciones como no guardadas después de reorganizar
-                const newSaveStates = newSections.reduce((acc, section) => ({
-                  ...acc,
-                  [section.id]: 'not-saved'
-                }), {});
-                setSectionSaveStates(newSaveStates);
-                setShowSectionOrganizer(false);
+                const newSaveStates = newSections.reduce(
+                  (acc, section) => ({
+                    ...acc,
+                    [section.id]: "not-saved",
+                  }),
+                  {},
+                )
+                setSectionSaveStates(newSaveStates)
+                setShowSectionOrganizer(false)
               }}
               onClose={() => setShowSectionOrganizer(false)}
             />
@@ -2694,13 +2752,17 @@ function CreateSurveyForProjectPageContent() {
                                           {section.questions.length !== 1 ? "s" : ""})
                                         </span>
                                         {sectionSaveStates[section.id] && (
-                                          <Badge 
-                                            variant={sectionSaveStates[section.id] === 'saved' ? 'default' : 'destructive'}
+                                          <Badge
+                                            variant={
+                                              sectionSaveStates[section.id] === "saved" ? "default" : "destructive"
+                                            }
                                             className="ml-2 text-xs"
                                           >
-                                            {sectionSaveStates[section.id] === 'saved' ? 'Guardado' : 
-                                             sectionSaveStates[section.id] === 'error' ? 'Error' : 
-                                             'Sin guardar'}
+                                            {sectionSaveStates[section.id] === "saved"
+                                              ? "Guardado"
+                                              : sectionSaveStates[section.id] === "error"
+                                                ? "Error"
+                                                : "Sin guardar"}
                                           </Badge>
                                         )}
                                       </div>
@@ -2842,9 +2904,7 @@ function CreateSurveyForProjectPageContent() {
                   </CardContent>
                 </Card>
               </TabsContent>
-
-              {/* ... existing assignment and settings tabs ... */}
-              <TabsContent value="assignment" className="space-y-6">
+<TabsContent value="assignment" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 space-y-4">
                     <Card>
@@ -3253,15 +3313,15 @@ function CreateSurveyForProjectPageContent() {
               const updatedSections = newSections.map((s, index) => ({
                 ...s,
                 order_num: index,
-              }));
-              setSections(updatedSections);
+              }))
+              setSections(updatedSections)
               // Marcar todas las secciones como no guardadas
-              const newSaveStates: { [key: string]: 'saved' | 'not-saved' | 'error' } = {};
+              const newSaveStates: { [key: string]: "saved" | "not-saved" | "error" } = {}
               newSections.forEach((section) => {
-                newSaveStates[section.id] = 'not-saved';
-              });
-              setSectionSaveStates(prev => ({ ...prev, ...newSaveStates }));
-              setShowSectionOrganizer(false);
+                newSaveStates[section.id] = "not-saved"
+              })
+              setSectionSaveStates((prev) => ({ ...prev, ...newSaveStates }))
+              setShowSectionOrganizer(false)
             }}
             onClose={() => setShowSectionOrganizer(false)}
           />
@@ -3271,4 +3331,6 @@ function CreateSurveyForProjectPageContent() {
   )
 }
 
-export default CreateSurveyForProjectPageContent
+export default function CreateSurveyForProjectPage() {
+  return <CreateSurveyForProjectPageContent />
+}
