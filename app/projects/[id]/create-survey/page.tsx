@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
+import * as LucideIcons from "lucide-react"
+const {
   ArrowLeft,
   ArrowRight,
   Grip,
@@ -27,18 +28,18 @@ import {
   FolderOpen,
   Users,
   MapPin,
-  SheetIcon as Section,
   ArrowUpDown,
   MessageSquare,
   MessageSquareText,
   MoreHorizontal,
-  Map,
+  Map: MapIcon,
   Eye,
   X,
   Copy,
   Edit,
   BarChart3,
-} from "lucide-react"
+} = LucideIcons
+const Section = LucideIcons.FileText
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase-browser"
@@ -67,8 +68,6 @@ import { CSS } from "@dnd-kit/utilities"
 import { useState, useEffect, useCallback } from "react"
 import { QuestionEditor } from "@/components/question-editor"
 import { arrayMove } from "@dnd-kit/sortable"
-
-
 
 import {
   DropdownMenu,
@@ -867,135 +866,43 @@ function CreateSurveyForProjectPageContent() {
   const [isSavingSection, setIsSavingSection] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
-  const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: 'saved' | 'not-saved' | 'error' }>({})
+  const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: "saved" | "not-saved" | "error" }>({})
+  const [originalIds, setOriginalIds] = useState<{ [key: string]: string }>({})
+  const [currentSurveyId, setCurrentSurveyId] = useState<string | null>(surveyId)
 
-  // Función para guardar una sección individual
-  const handleSaveSection = async (sectionId: string) => {
-    if (!sections.length || !sectionId) return;
-    
-    setIsSavingSection(true);
-    try {
-      // Si no hay surveyId, necesitamos crear primero la encuesta
-      if (!surveyId) {
-        const surveyData = {
-          title: surveyTitle || "Encuesta sin título",
-          description: surveyDescription,
-          project_id: projectId,
-          created_by: user?.id,
-          status: "draft",
-          settings: settings
-        };
-
-        const { data: newSurvey, error: surveyError } = await supabase
-          .from("surveys")
-          .insert([surveyData])
-          .select()
-          .single();
-
-        if (surveyError) throw surveyError;
-        surveyId = newSurvey.id;
-      }
-
-      const section = sections.find(s => s.id === sectionId);
-      if (!section) throw new Error("Sección no encontrada");
-
-      // Guardar la sección
-      const sectionData = {
-        id: section.id,
-        survey_id: surveyId,
-        title: section.title,
-        description: section.description,
-        order_num: section.order_num,
-        skip_logic: section.skipLogic
-      };
-
-      const { data: savedSection, error: sectionError } = await supabase
-        .from("survey_sections")
-        .upsert([sectionData])
-        .select()
-        .single();
-
-      if (sectionError) throw sectionError;
-
-      // Guardar las preguntas de la sección
-      const questionsToUpsert = section.questions.map((q, index) => ({
-        survey_id: surveyId,
-        section_id: savedSection.id,
-        type: q.type,
-        text: q.text,
-        options: q.options,
-        required: q.required,
-        order_num: index,
-        settings: {
-          ...q.config,
-          matrixRows: q.matrixRows,
-          matrixCols: q.matrixCols,
-          ratingScale: q.ratingScale
-        },
-        matrix_rows: q.matrixRows,
-        matrix_cols: q.matrixCols,
-        rating_scale: q.ratingScale,
-        file_url: q.image,
-        skip_logic: q.config?.skipLogic,
-        display_logic: q.config?.displayLogic,
-        validation_rules: q.config?.validation
-      }));
-
-      if (questionsToUpsert.length > 0) {
-        const { error: questionsError } = await supabase
-          .from("questions")
-          .upsert(questionsToUpsert);
-
-        if (questionsError) throw questionsError;
-      }
-
-      // Actualizar estado de guardado
-      setSectionSaveStates(prev => ({
-        ...prev,
-        [sectionId]: 'saved'
-      }));
-
-      toast({
-        title: "Sección guardada",
-        description: "Los cambios han sido guardados exitosamente",
-      });
-
-    } catch (error: any) {
-      console.error("Error al guardar la sección:", error);
-      setSectionSaveStates(prev => ({
-        ...prev,
-        [sectionId]: 'error'
-      }));
-      toast({
-        title: "Error al guardar",
-        description: error.message || "No se pudo guardar la sección",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSavingSection(false);
-    }
-  };
-
+  // State variables for assignment and settings modals
+  const [showAssignSurveyorsModal, setShowAssignSurveyorsModal] = useState<boolean>(false)
+  const [showEditSettingsModal, setShowEditSettingsModal] = useState<boolean>(false)
+  const [assignedZoneSurveyors, setAssignedZoneSurveyors] = useState<{ [zoneId: string]: string[] }>({})
+  const [allSurveyors, setAllSurveyors] = useState<Surveyor[]>([])
+  const [allZones, setAllZones] = useState<Zone[]>([])
+  const [displayedZoneGeometry, setDisplayedZoneGeometry] = useState<GeoJSON | null>(null)
+  const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
+  const [surveyStatus, setSurveyStatus] = useState<string>("draft")
+  const [surveyorsLoading, setSurveyorsLoading] = useState<boolean>(true)
+  const [zonesLoading, setZonesLoading] = useState<boolean>(true)
+  const [showSectionOrganizer, setShowSectionOrganizer] = useState<boolean>(false)
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
   const [settings, setSettings] = useState<SurveySettings>({
-    collectLocation: true,
+    collectLocation: false,
     allowAudio: false,
-    offlineMode: true,
-    distributionMethods: ["app"],
+    offlineMode: false,
+    distributionMethods: [],
     theme: {
       primaryColor: "#18b0a4",
-      backgroundColor: "#ffffff",
-      textColor: "#1f2937",
+      backgroundColor: "#f9fafb",
+      textColor: "#374151",
     },
     branding: {
-      showLogo: true,
+      showLogo: false,
       logoPosition: "top",
-      logo: null, // Initialize logo as null
+      logo: null,
     },
     security: {
       passwordProtected: false,
-      preventMultipleSubmissions: true,
+      password: "",
+      preventMultipleSubmissions: false,
     },
     notifications: {
       emailOnSubmission: false,
@@ -1003,79 +910,26 @@ function CreateSurveyForProjectPageContent() {
     assignedUsers: [],
     assignedZones: [],
   })
-  const [surveyStatus, setSurveyStatus] = useState<string>("draft")
-
-  const [allSurveyors, setAllSurveyors] = useState<Surveyor[]>([])
-  const [allZones, setAllZones] = useState<Zone[]>([])
-  const [surveyorsLoading, setSurveyorsLoading] = useState<boolean>(true)
-  const [zonesLoading, setZonesLoading] = useState<boolean>(true)
-  const [showAssignSurveyorsModal, setShowAssignSurveyorsModal] = useState(false)
-  const [showEditSettingsModal, setShowEditSettingsModal] = useState(false)
-  const [displayedZoneGeometry, setDisplayedZoneGeometry] = useState<GeoJSON | null>(null)
-
-  // New state to manage surveyor assignments per zone
-  const [assignedZoneSurveyors, setAssignedZoneSurveyors] = useState<{ [zoneId: string]: string[] }>({})
-
-  const [showSectionOrganizer, setShowSectionOrganizer] = useState(false)
-
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
-
-  const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
-
-  const handleDragEnd = (event: any) => {
-    const { active, over } = event
-
-    if (active.id !== over.id) {
-      const oldIndex = sections.findIndex((s) => s.id === active.id)
-      const newIndex = sections.findIndex((s) => s.id === over.id)
-
-      const newOrder = arrayMove(sections, oldIndex, newIndex)
-      newOrder.forEach((s, idx) => {
-        s.order_num = idx
-      })
-      setSections(newOrder)
-    }
-  }
-
-  const updateSection = useCallback((sectionId: string, field: keyof SurveySection, value: any): void => {
-    setSections((prevSections) => prevSections.map((s) => (s.id === sectionId ? { ...s, [field]: value } : s)));
-    // Marcar la sección como no guardada cuando se realiza un cambio
-    setSectionSaveStates(prev => ({
-      ...prev,
-      [sectionId]: 'not-saved'
-    }));
-  }, [])
 
   const addQuestionToSection = (sectionId: string): void => {
-    const newQuestion: Question = {
-      id: generateUUID(), // ✅ UUID real en lugar de timestamp
-      type: "text",
-      text: "",
-      options: [],
-      required: false,
-      image: null,
-      matrixRows: ["Fila 1"],
-      matrixCols: ["Columna 1"],
-      ratingScale: 5,
-      config: {
-        // Configuraciones básicas
-        allowOther: false,
-        randomizeOptions: false,
-        ratingEmojis: true,
-        scaleMin: 1,
-        scaleMax: 5,
-
-        // Configuración Likert inicializada como null
-        likertScale: null,
-
-        // Lógica de visualización y salto
-        displayLogic: { enabled: false, conditions: [] },
-        skipLogic: { enabled: false, rules: [] },
-        validation: { required: false },
-      },
-    }
     setSections((prevSections) =>
-      prevSections.map((s) => (s.id === sectionId ? { ...s, questions: [...s.questions, newQuestion] } : s)),
+      prevSections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              questions: [
+                ...s.questions,
+                {
+                  id: generateUUID(), // ✅ UUID real en lugar de timestamp
+                  type: "text",
+                  text: "Nueva Pregunta",
+                  options: [],
+                  required: false,
+                },
+              ],
+            }
+          : s,
+      ),
     )
   }
 
@@ -1085,6 +939,312 @@ function CreateSurveyForProjectPageContent() {
         s.id === sectionId ? { ...s, questions: s.questions.filter((q) => q.id !== questionId) } : s,
       ),
     )
+  }
+
+  const updateSection = (sectionId: string, field: keyof SurveySection, value: any): void => {
+    setSections((prevSections) => prevSections.map((s) => (s.id === sectionId ? { ...s, [field]: value } : s)))
+  }
+
+  // Función para guardar una sección individual
+  const handleSaveSection = async (sectionId: string): Promise<void> => {
+    if (!sections.length || !sectionId) {
+      toast({
+        title: "Error de validación",
+        description: "No se encontró la sección para guardar",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSavingSection(true)
+    setError(null)
+
+    console.log("🚀 Iniciando proceso de guardado de sección...")
+    try {
+      // Validar que el usuario está autenticado
+      if (!user?.id) {
+        console.error("❌ Error: Usuario no autenticado")
+        throw new Error("Usuario no autenticado")
+      }
+      console.log("👤 Usuario autenticado:", user.email)
+
+      // Si no hay surveyId, crear la encuesta primero
+      let surveyIdToUse = currentSurveyId
+      if (!surveyIdToUse) {
+        console.log("🆕 Creando nueva encuesta...")
+        const surveyData = {
+          title: surveyTitle || "Encuesta sin título",
+          description: surveyDescription,
+          project_id: projectId,
+          created_by: user?.id,
+          status: "draft",
+          settings: settings,
+        }
+
+        const { data: newSurvey, error: surveyError } = await supabase
+          .from("surveys")
+          .insert([surveyData])
+          .select()
+          .single()
+
+        if (surveyError) {
+          throw surveyError
+        }
+        surveyIdToUse = newSurvey.id
+        setCurrentSurveyId(surveyIdToUse)
+      }
+      console.log("✅ ID de encuesta validado:", surveyIdToUse)
+
+      // Obtener la sección actual
+      const currentSection = sections.find((s) => s.id === sectionId)
+      if (!currentSection) {
+        throw new Error("Sección no encontrada")
+      }
+
+      // Validaciones adicionales de los datos de la sección
+      if (!currentSection.title?.trim()) {
+        throw new Error("El título de la sección es obligatorio")
+      }
+
+      if (currentSection.questions?.length === 0) {
+        throw new Error("La sección debe tener al menos una pregunta")
+      }
+
+      // Validar que todas las preguntas tengan datos válidos
+      const invalidQuestion = currentSection.questions.find((q) => !q.text?.trim())
+      if (invalidQuestion) {
+        throw new Error("Todas las preguntas deben tener un texto")
+      }
+
+      console.log("🔍 Verificando existencia de sección...")
+
+      // Verificar si la sección ya existe en la base de datos
+      const { data: existingSection, error: checkError } = await supabase
+        .from("survey_sections")
+        .select("id, title, questions(id)")
+        .eq("survey_id", surveyIdToUse)
+        .eq("id", sectionId)
+        .maybeSingle()
+
+      let sectionToUse
+
+      console.log("📝 Preparando datos para guardar la sección...")
+      console.log("🔑 ID de la encuesta:", surveyIdToUse)
+      console.log("📋 Datos de la sección actual:", {
+        id: currentSection.id,
+        title: currentSection.title,
+        questionsCount: currentSection.questions.length,
+      })
+
+      // Preparar datos de la sección
+      const sectionToSave = {
+        survey_id: surveyIdToUse,
+        title: currentSection.title.trim(),
+        description: currentSection.description || "",
+        order_num: sections.indexOf(currentSection),
+        skip_logic: currentSection.skipLogic || null,
+      }
+
+      console.log("🔧 Datos preparados para guardar:", sectionToSave)
+
+      if (existingSection) {
+        console.log(`📝 Actualizando sección existente con ID: ${existingSection.id}`)
+
+        // Actualizar sección existente
+        const { data: updatedSection, error: updateError } = await supabase
+          .from("survey_sections")
+          .update(sectionToSave)
+          .eq("id", existingSection.id)
+          .select("id, title")
+          .single()
+
+        if (updateError) throw updateError
+        sectionToUse = updatedSection
+      } else {
+        console.log("🆕 Creando nueva sección...")
+
+        // Insertar nueva sección
+        const { data: newSection, error: insertError } = await supabase
+          .from("survey_sections")
+          .insert(sectionToSave)
+          .select("id, title")
+          .single()
+
+        if (insertError) throw insertError
+        sectionToUse = newSection
+      }
+
+      console.log("📝 Procesando preguntas...")
+      await handleQuestions(currentSection.questions, sectionToUse.id)
+
+      // Actualizar el estado local con el nuevo ID de sección si cambió
+      if (sectionToUse.id !== currentSection.id) {
+        setSections((prevSections) =>
+          prevSections.map((s) => (s.id === currentSection.id ? { ...s, id: sectionToUse.id } : s)),
+        )
+      }
+
+      // Actualizar estado de guardado
+      setSectionSaveStates((prev) => ({
+        ...prev,
+        [sectionToUse.id]: "saved",
+      }))
+
+      // Mostrar mensaje de éxito
+      toast({
+        title: "Guardado exitoso",
+        description: "La sección y sus preguntas han sido guardadas correctamente.",
+      })
+    } catch (error: any) {
+      console.error("Error al guardar la sección:", error)
+
+      // Manejo detallado de errores
+      let errorMessage = "Error al guardar la sección"
+
+      if (error?.code) {
+        switch (error.code) {
+          case "23505": // Unique constraint violation
+            errorMessage = "Ya existe una sección con este título"
+            break
+          case "23503": // Foreign key violation
+            errorMessage = "Error de referencia: la encuesta o sección padre no existe"
+            break
+          case "42P01": // Undefined table
+            errorMessage = "Error de base de datos: tabla no encontrada"
+            break
+          default:
+            errorMessage = `Error ${error.code}: ${error.message || "Error desconocido"}`
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      setSectionSaveStates((prev) => ({
+        ...prev,
+        [sectionId]: "error",
+      }))
+
+      setError(errorMessage)
+
+      toast({
+        title: "Error al guardar",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingSection(false)
+    }
+  }
+
+  const handleQuestions = async (questions: Question[], sectionId: string) => {
+    console.log(`📝 Procesando ${questions.length} preguntas para la sección ${sectionId}...`)
+
+    const currentSurveyId = surveyId
+    if (!currentSurveyId) {
+      throw new Error("No se puede guardar preguntas sin ID de encuesta")
+    }
+
+    // Obtener preguntas existentes de la sección
+    const { data: existingQuestions, error: fetchError } = await supabase
+      .from("questions")
+      .select("id, text")
+      .eq("section_id", sectionId)
+
+    if (fetchError) throw fetchError
+
+    // Crear un mapa de preguntas existentes por texto para comparación
+    const existingQuestionsMap = new Map((existingQuestions || []).map((q) => [q.text, q.id]))
+
+    // Procesar cada pregunta
+    for (const question of questions) {
+      console.log(`🔧 Preparando datos para pregunta "${question.text.substring(0, 50)}..."`)
+
+      const questionConfig = question.config || {}
+
+      const questionData = {
+        survey_id: currentSurveyId,
+        section_id: sectionId,
+        type: question.type,
+        text: question.text,
+        options: question.options || [],
+        required: question.required || false,
+        order_num: questions.indexOf(question),
+
+        // Campos específicos según el schema
+        settings: {
+          allowOther: questionConfig.allowOther || false,
+          randomizeOptions: questionConfig.randomizeOptions || false,
+          ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
+          scaleMin: questionConfig.scaleMin || 1,
+          scaleMax: questionConfig.scaleMax || 5,
+          scaleLabels: questionConfig.scaleLabels || [],
+          otherText: questionConfig.otherText || "",
+          dropdownMulti: questionConfig.dropdownMulti || false,
+          likertScale: questionConfig.likertScale || null,
+        },
+
+        matrix_rows: question.matrixRows || [],
+        matrix_cols: question.matrixCols || [],
+        rating_scale: question.ratingScale || 5,
+        matrix: questionConfig.matrix || [],
+        rating: questionConfig.rating || null,
+        comment_box: questionConfig.commentBox || false,
+        style: questionConfig.style || {},
+        file_url: question.image || null,
+
+        display_logic: questionConfig.displayLogic
+          ? {
+              enabled: questionConfig.displayLogic.enabled || false,
+              conditions: questionConfig.displayLogic.conditions || [],
+            }
+          : null,
+
+        skip_logic: questionConfig.skipLogic
+          ? {
+              enabled: questionConfig.skipLogic.enabled || false,
+              rules: (questionConfig.skipLogic.rules || []).map((rule) => ({
+                condition: rule.condition || "",
+                targetSectionId: rule.targetSectionId || null,
+                targetQuestionId: rule.targetQuestionId || null,
+                enabled: rule.enabled !== false,
+              })),
+            }
+          : null,
+
+        validation_rules: questionConfig.validation
+          ? {
+              required: questionConfig.validation.required || false,
+              minLength: questionConfig.validation.minLength,
+              maxLength: questionConfig.validation.maxLength,
+              pattern: questionConfig.validation.pattern,
+              customMessage: questionConfig.validation.customMessage,
+            }
+          : null,
+
+        question_config: {
+          matrixCellType: questionConfig.matrixCellType || null,
+          matrixRatingScale: questionConfig.matrixRatingScale || null,
+          parentId: questionConfig.parentId || null,
+        },
+      }
+
+      // Verificar si la pregunta ya existe por texto
+      const existingId = existingQuestionsMap.get(question.text)
+
+      if (existingId) {
+        // Actualizar pregunta existente
+        const { error: updateError } = await supabase.from("questions").update(questionData).eq("id", existingId)
+
+        if (updateError) throw updateError
+        console.log(`✅ Pregunta actualizada: ${existingId}`)
+      } else {
+        // Insertar nueva pregunta
+        const { error: insertError } = await supabase.from("questions").insert(questionData)
+
+        if (insertError) throw insertError
+        console.log(`✅ Nueva pregunta insertada`)
+      }
+    }
   }
 
   const updateQuestionInSection = useCallback(
@@ -1385,11 +1545,28 @@ function CreateSurveyForProjectPageContent() {
 
               if (updateError) {
                 console.log(`⚠️ Error en update de sección ${section.id}:`, updateError.message)
-                // Si falla el update, verificar si es por conflicto de título
+
+                // Intentar buscar la sección por el ID original primero
+                const originalId = originalIds[section.id]
+                console.log(`🔍 Buscando sección con ID original: ${originalId}`)
+
+                if (originalId) {
+                  const { data: existingSectionById } = await supabase
+                    .from("survey_sections")
+                    .select("id, title")
+                    .eq("id", originalId)
+                    .single()
+
+                  if (existingSectionById) {
+                    console.log(`✅ Sección encontrada por ID original: ${originalId}`)
+                    return existingSectionById
+                  }
+                }
+
+                // Si no se encuentra por ID original, entonces buscar por título como fallback
                 if (updateError.code === "23505") {
                   // Unique constraint violation
-                  console.log(`🔄 Conflicto de título detectado, buscando sección existente...`)
-                  // Buscar si ya existe una sección con este título
+                  console.log(`🔄 Buscando sección por título...`)
                   const { data: existingSection } = await supabase
                     .from("survey_sections")
                     .select("id, title")
@@ -1513,34 +1690,34 @@ function CreateSurveyForProjectPageContent() {
               required: q.required === true,
               order_num: qIndex,
 
-              // Campo settings - incluye todas las configuraciones
+              // Campo settings para configuraciones generales
               settings: {
                 allowOther: questionConfig.allowOther || false,
                 randomizeOptions: questionConfig.randomizeOptions || false,
                 ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
                 scaleMin: questionConfig.scaleMin || 1,
                 scaleMax: questionConfig.scaleMax || 5,
-                matrixCellType: questionConfig.matrixCellType || null,
                 scaleLabels: questionConfig.scaleLabels || [],
                 otherText: questionConfig.otherText || "",
                 dropdownMulti: questionConfig.dropdownMulti || false,
                 likertScale: questionConfig.likertScale || null,
-                // MATRIZ: guardar todas las configuraciones relevantes
-                matrixColOptions: questionConfig.matrixColOptions || [],
-                matrixRows: q.matrixRows || [],
-                matrixCols: q.matrixCols || [],
-                matrixRatingScale: questionConfig.matrixRatingScale || null,
-                matrix: questionConfig.matrix || null,
               },
 
-              // Campos específicos de la base de datos
+              // Campos específicos según el schema
+              matrix_rows: q.matrixRows || [],
+              matrix_cols: q.matrixCols || [],
+              matrix: questionConfig.matrix || [],
+              rating_scale: q.ratingScale || 5,
+              rating: questionConfig.rating || null,
+              comment_box: questionConfig.commentBox || false,
+              style: questionConfig.style || {}, // Campos específicos de la base de datos
               matrix_rows: q.matrixRows || [],
               matrix_cols: q.matrixCols || [],
               rating_scale: q.ratingScale || null,
               file_url: q.image || null,
 
               // Lógica de visualización - campo específico
-              display_logic: questionConfig.displayLogic || null,
+              display_logic: questionConfig.display_logic || null,
 
               // Lógica de salto - campo específico
               skip_logic: questionConfig.skipLogic || null,
@@ -1718,7 +1895,7 @@ function CreateSurveyForProjectPageContent() {
               file_url: q.image || null,
 
               // Lógica de visualización - campo específico
-              display_logic: questionConfig.displayLogic || null,
+              display_logic: questionConfig.display_logic || null,
 
               // Lógica de salto - campo específico
               skip_logic: questionConfig.skipLogic || null,
@@ -2516,14 +2693,17 @@ function CreateSurveyForProjectPageContent() {
             <SectionOrganizer
               sections={sections}
               onSectionsChange={(newSections) => {
-                setSections(newSections);
+                setSections(newSections)
                 // Marcar todas las secciones como no guardadas después de reorganizar
-                const newSaveStates = newSections.reduce((acc, section) => ({
-                  ...acc,
-                  [section.id]: 'not-saved'
-                }), {});
-                setSectionSaveStates(newSaveStates);
-                setShowSectionOrganizer(false);
+                const newSaveStates = newSections.reduce(
+                  (acc, section) => ({
+                    ...acc,
+                    [section.id]: "not-saved",
+                  }),
+                  {},
+                )
+                setSectionSaveStates(newSaveStates)
+                setShowSectionOrganizer(false)
               }}
               onClose={() => setShowSectionOrganizer(false)}
             />
@@ -2694,13 +2874,17 @@ function CreateSurveyForProjectPageContent() {
                                           {section.questions.length !== 1 ? "s" : ""})
                                         </span>
                                         {sectionSaveStates[section.id] && (
-                                          <Badge 
-                                            variant={sectionSaveStates[section.id] === 'saved' ? 'default' : 'destructive'}
+                                          <Badge
+                                            variant={
+                                              sectionSaveStates[section.id] === "saved" ? "default" : "destructive"
+                                            }
                                             className="ml-2 text-xs"
                                           >
-                                            {sectionSaveStates[section.id] === 'saved' ? 'Guardado' : 
-                                             sectionSaveStates[section.id] === 'error' ? 'Error' : 
-                                             'Sin guardar'}
+                                            {sectionSaveStates[section.id] === "saved"
+                                              ? "Guardado"
+                                              : sectionSaveStates[section.id] === "error"
+                                                ? "Error"
+                                                : "Sin guardar"}
                                           </Badge>
                                         )}
                                       </div>
@@ -3073,7 +3257,7 @@ function CreateSurveyForProjectPageContent() {
                 </div>
               </TabsContent>
 
-               <TabsContent value="settings" className="space-y-6">
+              <TabsContent value="settings" className="space-y-6">
                 <Card>
                   <CardHeader>
                     <CardTitle>Configuración de la Encuesta</CardTitle>
@@ -3168,9 +3352,7 @@ function CreateSurveyForProjectPageContent() {
                         value={settings.branding?.logo || null}
                         onChange={(value) => handleBrandingChange("logo", value)}
                       />
-                      <p className="text-sm text-muted-foreground">
-                        Sube un logo para tu encuesta
-                      </p>
+                      <p className="text-sm text-muted-foreground">Sube un logo para tu encuesta</p>
                     </div>
                     <div className="flex items-center justify-between">
                       <Label htmlFor="show-logo">Mostrar Logo</Label>
@@ -3253,15 +3435,15 @@ function CreateSurveyForProjectPageContent() {
               const updatedSections = newSections.map((s, index) => ({
                 ...s,
                 order_num: index,
-              }));
-              setSections(updatedSections);
+              }))
+              setSections(updatedSections)
               // Marcar todas las secciones como no guardadas
-              const newSaveStates: { [key: string]: 'saved' | 'not-saved' | 'error' } = {};
+              const newSaveStates: { [key: string]: "saved" | "not-saved" | "error" } = {}
               newSections.forEach((section) => {
-                newSaveStates[section.id] = 'not-saved';
-              });
-              setSectionSaveStates(prev => ({ ...prev, ...newSaveStates }));
-              setShowSectionOrganizer(false);
+                newSaveStates[section.id] = "not-saved"
+              })
+              setSectionSaveStates((prev) => ({ ...prev, ...newSaveStates }))
+              setShowSectionOrganizer(false)
             }}
             onClose={() => setShowSectionOrganizer(false)}
           />

@@ -34,7 +34,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, ArrowRight, Grip, Plus, Save, Trash2, Loader2 } from "lucide-react"
+import { ArrowLeft, ArrowRight, ArrowUpDown, Grip, Plus, Save, Trash2, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { generateUUID } from "@/lib/utils"

@@ -1018,58 +1018,208 @@ export function QuestionEditor({
             </div>
 
             {question.type === "checkbox" && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-blue-700">Mínimo de respuestas</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={question.options.length}
-                      value={question.config?.minSelections || 0}
-                      onChange={(e) =>
-                        onUpdateQuestion(sectionId, question.id, "config", {
-                          ...question.config,
-                          minSelections: Number.parseInt(e.target.value) || 0,
-                        })
-                      }
-                      placeholder="0"
-                      className="h-8"
-                    />
+              <div className="space-y-4">
+                {/* Límites de selección con validación mejorada */}
+                <div className="p-4 bg-gradient-to-br from-blue-50/80 to-indigo-50/80 border border-blue-200 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
+                    <Badge variant="outline" className="border-blue-300 text-blue-700">
+                      Configuración de respuestas múltiples
+                    </Badge>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-blue-700">Máximo de respuestas</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max={question.options.length}
-                      value={question.config?.maxSelections || question.options.length}
-                      onChange={(e) =>
-                        onUpdateQuestion(sectionId, question.id, "config", {
-                          ...question.config,
-                          maxSelections: Number.parseInt(e.target.value) || question.options.length,
-                        })
-                      }
-                      placeholder={question.options.length.toString()}
-                      className="h-8"
-                    />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-blue-700">Mínimo de respuestas</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          max={question.options.length}
+                          value={question.config?.minSelections || 0}
+                          onChange={(e) => {
+                            const newMin = Number.parseInt(e.target.value) || 0
+                            const currentMax = question.config?.maxSelections || question.options.length
+                            
+                            // Validar que min no sea mayor que max
+                            const validatedMin = Math.min(newMin, currentMax)
+                            
+                            onUpdateQuestion(sectionId, question.id, "config", {
+                              ...question.config,
+                              minSelections: validatedMin,
+                              validationMessage: `Selecciona ${validatedMin === currentMax ? 'exactamente' : 'al menos'} ${validatedMin} opción${validatedMin !== 1 ? 'es' : ''}`,
+                            })
+                          }}
+                          placeholder="0"
+                          className="h-9 pr-12"
+                        />
+                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-blue-600">
+                          min
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-600">Número mínimo requerido</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs text-blue-700">Máximo de respuestas</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min={Math.max(1, question.config?.minSelections || 0)}
+                          max={question.options.length}
+                          value={question.config?.maxSelections || question.options.length}
+                          onChange={(e) => {
+                            const newMax = Number.parseInt(e.target.value) || question.options.length
+                            const currentMin = question.config?.minSelections || 0
+                            
+                            // Validar que max no sea menor que min
+                            const validatedMax = Math.max(newMax, currentMin)
+                            
+                            onUpdateQuestion(sectionId, question.id, "config", {
+                              ...question.config,
+                              maxSelections: validatedMax,
+                              validationMessage: `Selecciona ${currentMin === validatedMax ? 'exactamente' : 'hasta'} ${validatedMax} opción${validatedMax !== 1 ? 'es' : ''}`,
+                            })
+                          }}
+                          placeholder={question.options.length.toString()}
+                          className="h-9 pr-12"
+                        />
+                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-blue-600">
+                          max
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-600">Límite máximo permitido</p>
+                    </div>
+                  </div>
+
+                  {/* Mensajes de validación y estado */}
+                  <div className="p-3 bg-white/50 rounded-lg border border-blue-100">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge 
+                          variant={question.config?.minSelections <= question.config?.maxSelections ? "success" : "destructive"}
+                          className={`${
+                            question.config?.minSelections <= question.config?.maxSelections 
+                              ? "bg-green-100 text-green-800" 
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {question.config?.minSelections <= question.config?.maxSelections ? "✓ Configuración válida" : "⚠️ Configuración inválida"}
+                        </Badge>
+                      </div>
+                      
+                      <p className="text-sm text-blue-700">
+                        {question.config?.minSelections > 0 && question.config?.maxSelections && (
+                          <>
+                            {question.config.minSelections === question.config.maxSelections ? (
+                              <span>
+                                ⚡ El usuario debe seleccionar <strong>exactamente {question.config.minSelections}</strong> opción{question.config.minSelections > 1 ? "es" : ""}
+                              </span>
+                            ) : (
+                              <span>
+                                ⚡ El usuario debe seleccionar <strong>entre {question.config.minSelections} y {question.config.maxSelections}</strong> opciones
+                              </span>
+                            )}
+                          </>
+                        )}
+                        {question.config?.minSelections === 0 && question.config?.maxSelections && (
+                          <span>
+                            ⚡ El usuario puede seleccionar <strong>hasta {question.config.maxSelections}</strong> opción{question.config.maxSelections > 1 ? "es" : ""}
+                          </span>
+                        )}
+                        {(!question.config?.minSelections || question.config.minSelections === 0) &&
+                          (!question.config?.maxSelections || question.config.maxSelections === question.options.length) && (
+                          <span>
+                            ⚡ Sin límites de selección - el usuario puede seleccionar <strong>cualquier número</strong> de opciones
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Configuración de respuesta "Otro" */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium text-blue-700">Opción "Otro"</Label>
+                      <Switch
+                        checked={question.config?.allowOther || false}
+                        onCheckedChange={(checked) =>
+                          onUpdateQuestion(sectionId, question.id, "config", {
+                            ...question.config,
+                            allowOther: checked,
+                            otherText: checked ? (question.config?.otherText || "Otro (especificar)") : undefined,
+                          })
+                        }
+                        className="data-[state=checked]:bg-blue-600"
+                      />
+                    </div>
+
+                    {question.config?.allowOther && (
+                      <div className="space-y-2">
+                        <Input
+                          value={question.config.otherText || "Otro (especificar)"}
+                          onChange={(e) =>
+                            onUpdateQuestion(sectionId, question.id, "config", {
+                              ...question.config,
+                              otherText: e.target.value,
+                            })
+                          }
+                          placeholder="Texto para opción 'Otro'"
+                          className="h-9"
+                        />
+                        <p className="text-xs text-blue-600">
+                          La opción "Otro" permitirá al usuario ingresar una respuesta personalizada
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="text-xs text-blue-600">
-                  {question.config?.minSelections > 0 && question.config?.maxSelections && (
-                    <>
-                      {question.config.minSelections === question.config.maxSelections
-                        ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
-                        : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`}
-                    </>
-                  )}
-                  {question.config?.minSelections === 0 &&
-                    question.config?.maxSelections &&
-                    `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`}
-                  {(!question.config?.minSelections || question.config.minSelections === 0) &&
-                    (!question.config?.maxSelections || question.config.maxSelections === question.options.length) &&
-                    "Sin límites de selección"}
+
+                {/* Validación de respuestas */}
+                <div className="p-4 bg-gradient-to-br from-green-50/80 to-emerald-50/80 border border-green-200 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium text-green-800">Validación de respuestas</Label>
+                    <Badge variant="outline" className="border-green-300 text-green-700">
+                      Reglas de validación
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={question.config?.validation?.required || false}
+                        onCheckedChange={(checked) =>
+                          onUpdateQuestion(sectionId, question.id, "config", {
+                            ...question.config,
+                            validation: {
+                              ...question.config?.validation,
+                              required: checked,
+                            },
+                          })
+                        }
+                        className="data-[state=checked]:bg-green-600"
+                      />
+                      <Label className="text-sm text-green-700">Respuesta obligatoria</Label>
+                    </div>
+
+                    <Input
+                      value={question.config?.validation?.errorMessage || ""}
+                      onChange={(e) =>
+                        onUpdateQuestion(sectionId, question.id, "config", {
+                          ...question.config,
+                          validation: {
+                            ...question.config?.validation,
+                            errorMessage: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="Mensaje de error personalizado"
+                      className="h-9"
+                    />
+                    <p className="text-xs text-green-600">
+                      Este mensaje se mostrará cuando no se cumplan los requisitos de selección
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -1257,50 +1407,60 @@ export function QuestionEditor({
               </Badge>
             </div>
 
-            {/* Debug info */}
-
             <div className="space-y-4">
-              {/* Vista previa rápida */}
+              {/* Vista previa rápida con mejor visualización */}
               <div className="p-4 bg-white rounded-lg border border-blue-200">
                 <h4 className="font-medium text-blue-800 mb-3">Vista Previa Rápida:</h4>
                 <div className="space-y-4">
-                  <div className="px-2">
+                  <div className="relative px-2">
                     <Slider
                       defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
                       min={question.config?.likertScale?.showZero ? 0 : question.config?.likertScale?.min || 1}
                       max={question.config?.likertScale?.max || 5}
                       step={question.config?.likertScale?.step || 1}
+                      value={[question.config?.likertScale?.currentValue || Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
                       disabled
                       className="w-full"
                     />
-                  </div>
-                  <div className="flex justify-between text-xs text-blue-600 px-2">
-                    {question.config?.likertScale?.showZero && (
-                      <span className="text-center">
-                        <div className="font-medium">0</div>
-                        <div className="text-xs">
-                          {question.config?.likertScale?.zeroLabel || "No Sabe / No Responde"}
-                        </div>
-                      </span>
-                    )}
-                    <span className="text-center">
-                      <div className="font-medium">1</div>
-                      <div className="text-xs">
-                        {question.config?.likertScale?.labels?.left || "Totalmente en desacuerdo"}
+                    <div className="absolute top-full mt-2 w-full">
+                      <div className="flex justify-between text-xs text-blue-600 px-2">
+                        {question.config?.likertScale?.showZero && (
+                          <span className="text-center transform -translate-x-1/2">
+                            <div className="font-medium">0</div>
+                            <div className="text-xs whitespace-nowrap">
+                              {question.config?.likertScale?.zeroLabel || "No Sabe / No Responde"}
+                            </div>
+                          </span>
+                        )}
+                        <span className="text-center transform -translate-x-1/2">
+                          <div className="font-medium">1</div>
+                          <div className="text-xs whitespace-nowrap">
+                            {question.config?.likertScale?.labels?.left || "Totalmente en desacuerdo"}
+                          </div>
+                        </span>
+                        {question.config?.likertScale?.labels?.center && (
+                          <span className="text-center transform -translate-x-1/2">
+                            <div className="font-medium">{Math.ceil((question.config?.likertScale?.max || 5) / 2)}</div>
+                            <div className="text-xs whitespace-nowrap">
+                              {question.config?.likertScale?.labels?.center}
+                            </div>
+                          </span>
+                        )}
+                        <span className="text-center transform -translate-x-1/2">
+                          <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
+                          <div className="text-xs whitespace-nowrap">
+                            {question.config?.likertScale?.labels?.right || "Totalmente de acuerdo"}
+                          </div>
+                        </span>
                       </div>
-                    </span>
-                    <span className="text-center">
-                      <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
-                      <div className="text-xs">
-                        {question.config?.likertScale?.labels?.right || "Totalmente de acuerdo"}
-                      </div>
-                    </span>
+                    </div>
                   </div>
+                  <div className="h-8"></div> {/* Espacio para las etiquetas */}
                 </div>
               </div>
 
-              {/* Botones de acceso rápido */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Configuración rápida con información más clara */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Button
                   variant="outline"
                   onClick={() =>
@@ -1317,12 +1477,29 @@ export function QuestionEditor({
                         showZero: true,
                         zeroLabel: "No Sabe / No Responde",
                         startPosition: "left",
+                        currentValue: 3,
+                        showNumbers: true,
+                        showLabels: true,
+                        orientation: 'horizontal',
+                        validation: {
+                          requireAnswer: true,
+                          allowZero: true,
+                          customMessage: "Por favor, selecciona una opción"
+                        },
+                        appearance: {
+                          size: 'medium',
+                          showTicks: true,
+                          showValue: true
+                        }
                       },
                     })
                   }
                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                 >
-                  🎯 Usar Escala Estándar (1-5)
+                  <div className="text-left">
+                    <div>🎯 Usar Escala Estándar (1-5)</div>
+                    <div className="text-xs text-blue-600 mt-1">Escala básica con opciones comunes</div>
+                  </div>
                 </Button>
                 <Button
                   variant="outline"
@@ -1341,17 +1518,45 @@ export function QuestionEditor({
                         showZero: true,
                         zeroLabel: "No Sabe / No Responde",
                         startPosition: "center",
+                        currentValue: 4,
+                        showNumbers: true,
+                        showLabels: true,
+                        orientation: 'horizontal',
+                        validation: {
+                          requireAnswer: true,
+                          allowZero: true,
+                          customMessage: "Por favor, selecciona una opción"
+                        },
+                        appearance: {
+                          size: 'medium',
+                          showTicks: true,
+                          showValue: true
+                        }
                       },
                     })
                   }
                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                 >
-                  🎯 Usar Escala Extendida (1-7)
+                  <div className="text-left">
+                    <div>🎯 Usar Escala Extendida (1-7)</div>
+                    <div className="text-xs text-blue-600 mt-1">Escala detallada con punto neutro</div>
+                  </div>
                 </Button>
               </div>
 
-              {/* Mensaje de ayuda */}
+              {/* Estado y validación de la configuración */}
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                  {question.config?.likertScale ? (
+                    <Badge variant="success" className="bg-green-100 text-green-800">
+                      ✓ Configuración válida
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="bg-yellow-100 text-yellow-800">
+                      ! Configuración pendiente
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-sm text-blue-700">
                   💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba y
                   selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.

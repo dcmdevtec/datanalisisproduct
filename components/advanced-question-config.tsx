@@ -882,6 +882,7 @@ export function AdvancedQuestionConfig({
     onClose()
   }
 
+  // Filtrar pestañas según el tipo de pregunta
   const tabs = [
     {
       id: "validation",
@@ -1761,6 +1762,14 @@ export function AdvancedQuestionConfig({
     },
   ]
 
+  // Filtrar las pestañas según el tipo de pregunta
+  const filteredTabs = tabs.filter(tab => {
+    if (tab.id === "likert") {
+      return question.type === "likert"
+    }
+    return true
+  })
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
@@ -1778,7 +1787,7 @@ export function AdvancedQuestionConfig({
           {/* Navigation Tabs */}
           <div className="border-b">
             <nav className="flex space-x-1 overflow-x-auto">
-              {tabs.map((tab) => (
+              {filteredTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -1797,7 +1806,7 @@ export function AdvancedQuestionConfig({
 
           {/* Content Area */}
           <div className="flex-1 overflow-y-auto p-6">
-            {tabs.find((tab) => tab.id === activeTab)?.content}
+            {filteredTabs.find((tab) => tab.id === activeTab)?.content}
           </div>
 
           {/* Footer Actions */}
