@@ -3297,12 +3297,13 @@ function CreateSurveyForProjectPageContent() {
 
           {showEditSettingsModal && (
             <EditSurveySettingsModal
-              settings={settings}
+              isOpen={showEditSettingsModal}
+              onClose={() => setShowEditSettingsModal(false)}
+              currentSettings={settings}
               onSave={(newSettings) => {
                 setSettings(newSettings)
                 setShowEditSettingsModal(false)
               }}
-              onCancel={() => setShowEditSettingsModal(false)}
             />
           )}
 

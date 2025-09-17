@@ -54,12 +54,18 @@ interface EditSurveySettingsModalProps {
 }
 
 export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSave }: EditSurveySettingsModalProps) {
-  const [editedSettings, setEditedSettings] = useState<SurveySettings>(currentSettings)
+  // Ensure distributionMethods is always an array
+  const getSafeSettings = (settings: SurveySettings): SurveySettings => ({
+    ...settings,
+    distributionMethods: Array.isArray(settings?.distributionMethods) ? settings.distributionMethods : [],
+  })
+
+  const [editedSettings, setEditedSettings] = useState<SurveySettings>(getSafeSettings(currentSettings))
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
-      setEditedSettings(currentSettings)
+      setEditedSettings(getSafeSettings(currentSettings))
     }
   }, [isOpen, currentSettings])
 
@@ -193,7 +199,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                     <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-blue-200">
                       <Checkbox
                         id="qr_code"
-                        checked={editedSettings.distributionMethods?.includes("qr_code")}
+                        checked={editedSettings.distributionMethods.includes("qr_code")}
                         onCheckedChange={(checked) => handleDistributionMethodChange("qr_code", !!checked)}
                         className="data-[state=checked]:bg-blue-500"
                       />
