@@ -1,38 +1,37 @@
 "use client"
 
+import type React from "react"
+import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
+
 // MatrixOptionInput for matrix column options (debounced, allows empty string)
 type MatrixOptionInputProps = {
-  value: string;
-  onChange: (val: string) => void;
-  placeholder: string;
-};
+  value: string
+  onChange: (val: string) => void
+  placeholder: string
+}
 const MatrixOptionInput: React.FC<MatrixOptionInputProps> = ({ value, onChange, placeholder }) => {
-  const [localValue, setLocalValue] = useState(value);
-  const timeoutRef = useRef<any>(null);
+  const [localValue, setLocalValue] = useState(value)
+  const timeoutRef = useRef<any>(null)
 
   useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
+    setLocalValue(value)
+  }, [value])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setLocalValue(e.target.value);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setLocalValue(e.target.value)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = window.setTimeout(() => {
-      onChange(e.target.value);
-    }, 200);
+      onChange(e.target.value)
+    }, 200)
   }
 
-  return (
-    <Input
-      value={localValue}
-      onChange={handleChange}
-      placeholder={placeholder}
-    />
-  );
-};
+  return <Input value={localValue} onChange={handleChange} placeholder={placeholder} />
+}
 
 import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,8 +59,10 @@ interface QuestionEditorProps {
   onRemoveQuestion: (sectionId: string, questionId: string) => void
   onUpdateQuestion: (sectionId: string, questionId: string, field: keyof Question, value: any) => void
   onDuplicateQuestion: (sectionId: string, questionId: string) => void
+  onMoveQuestion?: (questionId: string, fromSectionId: string, toSectionId: string, newIndex?: number) => void
   allSections: SurveySection[] // For skip logic targets
   qIndex: number // To display question number
+  isDragging?: boolean
 }
 
 export function QuestionEditor({
@@ -74,18 +75,23 @@ export function QuestionEditor({
   qIndex,
 }: QuestionEditorProps) {
   const { toast } = useToast()
-
-  const [showQuill, setShowQuill] = useState<boolean>(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
 
-  // Funciones para manejar el estado de los modales de manera segura
-  const openQuillEditor = () => {
-    setShowQuill(true)
-  }
-
-  const closeQuillEditor = () => {
-    setShowQuill(false)
-  }
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({
+    id: `${sectionId}-${question.id}`,
+    data: {
+      type: 'question',
+      question,
+      sectionId
+    }
+  })
 
   const openConfigEditor = () => {
     setShowConfig(true)
@@ -163,11 +169,42 @@ export function QuestionEditor({
   const matrixRows = question.matrixRows?.length ? question.matrixRows : ["Fila 1"]
   const matrixCols = question.matrixCols?.length ? question.matrixCols : ["Columna 1"]
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
   return (
-    <Card className="mb-6 border-l-4 ">
+    <Card ref={setNodeRef} style={style} className="mb-6 border-l-4">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5 text-muted-foreground"
+              >
+                <circle cx="9" cy="12" r="1"/>
+                <circle cx="9" cy="5" r="1"/>
+                <circle cx="9" cy="19" r="1"/>
+                <circle cx="15" cy="12" r="1"/>
+                <circle cx="15" cy="5" r="1"/>
+                <circle cx="15" cy="19" r="1"/>
+              </svg>
+            </div>
             {/* Grip icon for drag handle - assuming it's handled by parent SortableContext */}
             <Select
               value={question.type}
@@ -209,7 +246,7 @@ export function QuestionEditor({
               {question.required ? "Obligatorio" : "Opcional"}
             </Badge>
           </div>
-          
+
           {/* Nota explicativa sobre el asterisco */}
           <div className="text-xs text-muted-foreground mt-1">
             <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
@@ -254,55 +291,24 @@ export function QuestionEditor({
                   value={localQuestionText}
                   onChange={(e) => setLocalQuestionText(e.target.value)}
                   placeholder="Escribe tu pregunta aquí..."
-                  className={`text-lg ${!isQuestionTextValid ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                  className={`text-lg ${!isQuestionTextValid ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
                 />
-                {!isQuestionTextValid && (
-                  <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>
-                )}
+                {!isQuestionTextValid && <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>}
               </div>
             ) : (
-              <div className="flex gap-2 items-center">
-                <div className="flex-1">
-                  <div
-                    className="border rounded p-3 bg-background text-foreground min-h-[60px]"
-                    dangerouslySetInnerHTML={{
-                      __html:
-                        question.text ||
-                        '<span class="text-muted-foreground">Haz click en "Editar formato" para escribir tu pregunta</span>',
-                    }}
+              <div className="flex-1">
+                <div className="border rounded-lg overflow-hidden">
+                  <AdvancedRichTextEditor
+                    value={question.text}
+                    onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
+                    placeholder="Escribe tu pregunta aquí..."
+                    immediatelyRender={false}
                   />
                 </div>
-                <Button size="sm" variant="outline" onClick={() => setShowQuill(true)}>
-                  Editar formato
-                </Button>
+                {!isQuestionTextValid && <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>}
               </div>
             )}
           </div>
-
-          <Dialog open={showQuill} onOpenChange={setShowQuill}>
-            {showQuill && (
-              <div className="fixed inset-0 bg-black/40 dark:bg-black/60 z-[999] flex items-center justify-center">
-                <div className="rounded-lg shadow-lg p-6 w-full max-w-4xl bg-background text-foreground max-h-[90vh] overflow-y-auto">
-                  <div className=" items-center justify-between mb-20">
-                    <Button variant="ghost" onClick={() => setShowQuill(false)} className="float-right">
-                      ✕
-                    </Button>
-                  </div>
-                  <FullTiptapEditor
-                    value={question.text}
-                    onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
-                    autofocus
-                  />
-                  <div className="flex justify-end mt-4 gap-2">
-                    <Button variant="outline" onClick={closeQuillEditor}>
-                      Cancelar
-                    </Button>
-                    <Button onClick={closeQuillEditor}>Guardar</Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Dialog>
         </div>
 
         <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -335,7 +341,7 @@ export function QuestionEditor({
             <div className="space-y-4">
               <div>
                 <Label className="font-medium">Opciones</Label>
-                {(question.options || ['Opción 1']).map((option, idx) => (
+                {(question.options || ["Opción 1"]).map((option, idx) => (
                   <div key={idx} className="flex items-center gap-2 mt-2">
                     <div className="flex items-center justify-center gap-1 w-16">
                       <Button
@@ -387,7 +393,12 @@ export function QuestionEditor({
                       size="sm"
                       onClick={() => {
                         const newOptions = question.options.filter((_, i) => i !== idx)
-                        onUpdateQuestion(sectionId, question.id, "options", newOptions.length > 0 ? newOptions : ['Opción 1'])
+                        onUpdateQuestion(
+                          sectionId,
+                          question.id,
+                          "options",
+                          newOptions.length > 0 ? newOptions : ["Opción 1"],
+                        )
                       }}
                       disabled={question.options.length <= 1}
                     >
@@ -398,7 +409,7 @@ export function QuestionEditor({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-2"
+                  className="mt-2 bg-transparent"
                   onClick={() => {
                     const newOptions = [...(question.options || []), `Opción ${(question.options || []).length + 1}`]
                     onUpdateQuestion(sectionId, question.id, "options", newOptions)
@@ -431,7 +442,7 @@ export function QuestionEditor({
               <div className="mt-4">
                 <Label className="font-medium">Vista previa</Label>
                 <div className="mt-2 p-4 border rounded-lg bg-muted/20">
-                  {(question.options || ['Opción 1']).map((option, idx) => (
+                  {(question.options || ["Opción 1"]).map((option, idx) => (
                     <div key={idx} className="flex items-center gap-2 py-2 border-b last:border-b-0">
                       <div className="w-8 text-center font-medium">{idx + 1}</div>
                       <div className="flex-1">{option}</div>
@@ -571,14 +582,17 @@ export function QuestionEditor({
                 <Label className="font-medium">Opciones para cada columna</Label>
                 {matrixCols.map((col, colIdx) => {
                   // Memoize unique option sets for reuse
-                  const allColOptions = question.config?.matrixColOptions || [];
+                  const allColOptions = question.config?.matrixColOptions || []
                   const uniqueOptionSets = allColOptions
                     .map((opts: string[], idx: number) => ({ opts, idx }))
-                    .filter((item: { opts: string[]; idx: number }, idx: number, arr: { opts: string[]; idx: number }[]) =>
-                      arr.findIndex((x: { opts: string[]; idx: number }) => JSON.stringify(x.opts) === JSON.stringify(item.opts)) === idx
-                    );
-                  const colOptions = allColOptions[colIdx] || ["Opción 1"];
-                  const isDefault = colOptions.length === 1 && colOptions[0] === "Opción 1";
+                    .filter(
+                      (item: { opts: string[]; idx: number }, idx: number, arr: { opts: string[]; idx: number }[]) =>
+                        arr.findIndex(
+                          (x: { opts: string[]; idx: number }) => JSON.stringify(x.opts) === JSON.stringify(item.opts),
+                        ) === idx,
+                    )
+                  const colOptions = allColOptions[colIdx] || ["Opción 1"]
+                  const isDefault = colOptions.length === 1 && colOptions[0] === "Opción 1"
                   return (
                     <div key={colIdx} className="mb-2">
                       <div className="font-medium mb-1">{col}</div>
@@ -587,16 +601,23 @@ export function QuestionEditor({
                         <div className="mb-2">
                           <Label>Usar opciones de otra columna:</Label>
                           <Select
-                            value={uniqueOptionSets.find((u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions))?.idx?.toString() ?? ""}
-                            onValueChange={val => {
-                              const idx = parseInt(val, 10);
+                            value={
+                              uniqueOptionSets
+                                .find(
+                                  (u: { opts: string[]; idx: number }) =>
+                                    JSON.stringify(u.opts) === JSON.stringify(colOptions),
+                                )
+                                ?.idx?.toString() ?? ""
+                            }
+                            onValueChange={(val) => {
+                              const idx = Number.parseInt(val, 10)
                               if (!isNaN(idx)) {
-                                const newColOptions = [...allColOptions];
+                                const newColOptions = [...allColOptions]
                                 newColOptions[colIdx] = [...(allColOptions[idx] || ["Opción 1"])]
                                 onUpdateQuestion(sectionId, question.id, "config", {
                                   ...question.config,
                                   matrixColOptions: newColOptions,
-                                });
+                                })
                               }
                             }}
                           >
@@ -605,7 +626,10 @@ export function QuestionEditor({
                             </SelectTrigger>
                             <SelectContent>
                               {uniqueOptionSets.map((set: { opts: string[]; idx: number }, idx: number) => (
-                                <SelectItem key={idx} value={set.idx.toString()}>{`Set ${set.idx + 1}: ${set.opts.filter(Boolean).join(", ")}`}</SelectItem>
+                                <SelectItem
+                                  key={idx}
+                                  value={set.idx.toString()}
+                                >{`Set ${set.idx + 1}: ${set.opts.filter(Boolean).join(", ")}`}</SelectItem>
                               ))}
                               <SelectItem value="new">Crear nuevo set</SelectItem>
                             </SelectContent>
@@ -613,23 +637,26 @@ export function QuestionEditor({
                         </div>
                       )}
                       {/* Edición de opciones */}
-                      {(!uniqueOptionSets.length || uniqueOptionSets.find((u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions))?.idx === colIdx || isDefault) && (
+                      {(!uniqueOptionSets.length ||
+                        uniqueOptionSets.find(
+                          (u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions),
+                        )?.idx === colIdx ||
+                        isDefault) && (
                         <>
                           {colOptions.map((option: string, optIdx: number) => (
                             <div key={optIdx} className="flex items-center gap-2 mb-1">
-
                               <MatrixOptionInput
                                 value={option}
-                                onChange={val => {
-                                  const newColOptions = allColOptions ? [...allColOptions] : [];
-                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                                onChange={(val) => {
+                                  const newColOptions = allColOptions ? [...allColOptions] : []
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
                                   const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
-                                  opts[optIdx] = val;
-                                  newColOptions[colIdx] = opts;
+                                  opts[optIdx] = val
+                                  newColOptions[colIdx] = opts
                                   onUpdateQuestion(sectionId, question.id, "config", {
                                     ...question.config,
                                     matrixColOptions: newColOptions,
-                                  });
+                                  })
                                 }}
                                 placeholder={`Opción ${optIdx + 1}`}
                               />
@@ -638,15 +665,15 @@ export function QuestionEditor({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                  const newColOptions = allColOptions ? [...allColOptions] : [];
-                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                                  const newColOptions = allColOptions ? [...allColOptions] : []
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
                                   const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
-                                  opts.splice(optIdx, 1);
-                                  newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"];
+                                  opts.splice(optIdx, 1)
+                                  newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"]
                                   onUpdateQuestion(sectionId, question.id, "config", {
                                     ...question.config,
                                     matrixColOptions: newColOptions,
-                                  });
+                                  })
                                 }}
                                 disabled={colOptions.length <= 1}
                               >
@@ -658,14 +685,17 @@ export function QuestionEditor({
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const newColOptions = allColOptions ? [...allColOptions] : [];
-                              while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
-                              const opts = [...(newColOptions[colIdx] || ["Opción 1"]), `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`];
-                              newColOptions[colIdx] = opts;
+                              const newColOptions = allColOptions ? [...allColOptions] : []
+                              while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                              const opts = [
+                                ...(newColOptions[colIdx] || ["Opción 1"]),
+                                `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`,
+                              ]
+                              newColOptions[colIdx] = opts
                               onUpdateQuestion(sectionId, question.id, "config", {
                                 ...question.config,
                                 matrixColOptions: newColOptions,
-                              });
+                              })
                             }}
                           >
                             <Plus className="h-4 w-4 mr-2" /> Agregar opción
@@ -673,7 +703,7 @@ export function QuestionEditor({
                         </>
                       )}
                     </div>
-                  );
+                  )
                 })}
               </div>
             )}
@@ -759,7 +789,7 @@ export function QuestionEditor({
                                   return <Input type="number" disabled className="w-full" placeholder="0" />
                                 case "select": {
                                   // Use per-column options if available
-                                  const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"];
+                                  const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"]
                                   return (
                                     <Select disabled>
                                       <SelectTrigger className="w-full">
@@ -768,12 +798,16 @@ export function QuestionEditor({
                                       <SelectContent>
                                         {colOptions.map((opt: string, i: number) => (
                                           <SelectItem key={i} value={opt && opt.trim() !== "" ? opt : `__empty_${i}`}>
-                                            {opt && opt.trim() !== "" ? opt : <span className="text-muted-foreground italic">(vacío)</span>}
+                                            {opt && opt.trim() !== "" ? (
+                                              opt
+                                            ) : (
+                                              <span className="text-muted-foreground italic">(vacío)</span>
+                                            )}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
-                                  );
+                                  )
                                 }
                                 case "rating":
                                   return (
@@ -784,7 +818,7 @@ export function QuestionEditor({
                                           <span key={i} className="text-yellow-400 cursor-not-allowed">
                                             ★
                                           </span>
-                                        )
+                                        ),
                                       )}
                                     </div>
                                   )
@@ -793,8 +827,12 @@ export function QuestionEditor({
                                     <div className="flex items-center gap-1">
                                       <div className="w-8 text-center">{rIdx + 1}</div>
                                       <div className="flex gap-1">
-                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
-                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
+                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">
+                                          ↑
+                                        </button>
+                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">
+                                          ↓
+                                        </button>
                                       </div>
                                     </div>
                                   )
@@ -979,6 +1017,63 @@ export function QuestionEditor({
               </div>
             </div>
 
+            {question.type === "checkbox" && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-blue-700">Mínimo de respuestas</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={question.options.length}
+                      value={question.config?.minSelections || 0}
+                      onChange={(e) =>
+                        onUpdateQuestion(sectionId, question.id, "config", {
+                          ...question.config,
+                          minSelections: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      placeholder="0"
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-blue-700">Máximo de respuestas</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max={question.options.length}
+                      value={question.config?.maxSelections || question.options.length}
+                      onChange={(e) =>
+                        onUpdateQuestion(sectionId, question.id, "config", {
+                          ...question.config,
+                          maxSelections: Number.parseInt(e.target.value) || question.options.length,
+                        })
+                      }
+                      placeholder={question.options.length.toString()}
+                      className="h-8"
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-blue-600">
+                  {question.config?.minSelections > 0 && question.config?.maxSelections && (
+                    <>
+                      {question.config.minSelections === question.config.maxSelections
+                        ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
+                        : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`}
+                    </>
+                  )}
+                  {question.config?.minSelections === 0 &&
+                    question.config?.maxSelections &&
+                    `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`}
+                  {(!question.config?.minSelections || question.config.minSelections === 0) &&
+                    (!question.config?.maxSelections || question.config.maxSelections === question.options.length) &&
+                    "Sin límites de selección"}
+                </div>
+              </div>
+            )}
+
             <div className="mb-4">
               <Label className="text-sm font-medium">Pegar opciones (una por línea)</Label>
               <Textarea
@@ -1136,17 +1231,17 @@ export function QuestionEditor({
               <Label className="font-medium">Vista previa</Label>
               <div className="flex items-center gap-2 mt-2 p-4 border rounded-lg bg-muted/20">
                 <span className="text-sm">{question.config?.scaleLabels?.[0] || question.config?.scaleMin || 1}</span>
-                                    {Array.from(
-                      { length: (question.config?.scaleMax || 5) - (question.config?.scaleMin || 1) + 1 },
-                      (_: any, i: number) => (
-                        <button
-                          key={i}
-                          className="w-8 h-8 rounded border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors text-sm"
-                        >
-                          {(question.config?.scaleMin || 1) + i}
-                        </button>
-                      ),
-                    )}
+                {Array.from(
+                  { length: (question.config?.scaleMax || 5) - (question.config?.scaleMin || 1) + 1 },
+                  (_: any, i: number) => (
+                    <button
+                      key={i}
+                      className="w-8 h-8 rounded border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors text-sm"
+                    >
+                      {(question.config?.scaleMin || 1) + i}
+                    </button>
+                  ),
+                )}
                 <span className="text-sm">{question.config?.scaleLabels?.[1] || question.config?.scaleMax || 5}</span>
               </div>
             </div>
@@ -1163,7 +1258,6 @@ export function QuestionEditor({
             </div>
 
             {/* Debug info */}
-         
 
             <div className="space-y-4">
               {/* Vista previa rápida */}
@@ -1173,7 +1267,7 @@ export function QuestionEditor({
                   <div className="px-2">
                     <Slider
                       defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
-                      min={question.config?.likertScale?.showZero ? 0 : (question.config?.likertScale?.min || 1)}
+                      min={question.config?.likertScale?.showZero ? 0 : question.config?.likertScale?.min || 1}
                       max={question.config?.likertScale?.max || 5}
                       step={question.config?.likertScale?.step || 1}
                       disabled
@@ -1184,16 +1278,22 @@ export function QuestionEditor({
                     {question.config?.likertScale?.showZero && (
                       <span className="text-center">
                         <div className="font-medium">0</div>
-                        <div className="text-xs">{question.config?.likertScale?.zeroLabel || 'No Sabe / No Responde'}</div>
+                        <div className="text-xs">
+                          {question.config?.likertScale?.zeroLabel || "No Sabe / No Responde"}
+                        </div>
                       </span>
                     )}
                     <span className="text-center">
                       <div className="font-medium">1</div>
-                      <div className="text-xs">{question.config?.likertScale?.labels?.left || 'Totalmente en desacuerdo'}</div>
+                      <div className="text-xs">
+                        {question.config?.likertScale?.labels?.left || "Totalmente en desacuerdo"}
+                      </div>
                     </span>
                     <span className="text-center">
                       <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
-                      <div className="text-xs">{question.config?.likertScale?.labels?.right || 'Totalmente de acuerdo'}</div>
+                      <div className="text-xs">
+                        {question.config?.likertScale?.labels?.right || "Totalmente de acuerdo"}
+                      </div>
                     </span>
                   </div>
                 </div>
@@ -1201,45 +1301,49 @@ export function QuestionEditor({
 
               {/* Botones de acceso rápido */}
               <div className="grid grid-cols-2 gap-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => onUpdateQuestion(sectionId, question.id, "config", {
-                    ...question.config,
-                    likertScale: {
-                      min: 1,
-                      max: 5,
-                      step: 1,
-                      labels: {
-                        left: "Totalmente en desacuerdo",
-                        right: "Totalmente de acuerdo"
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    onUpdateQuestion(sectionId, question.id, "config", {
+                      ...question.config,
+                      likertScale: {
+                        min: 1,
+                        max: 5,
+                        step: 1,
+                        labels: {
+                          left: "Totalmente en desacuerdo",
+                          right: "Totalmente de acuerdo",
+                        },
+                        showZero: true,
+                        zeroLabel: "No Sabe / No Responde",
+                        startPosition: "left",
                       },
-                      showZero: true,
-                      zeroLabel: "No Sabe / No Responde",
-                      startPosition: "left"
-                    }
-                  })}
+                    })
+                  }
                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                 >
                   🎯 Usar Escala Estándar (1-5)
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
-                  onClick={() => onUpdateQuestion(sectionId, question.id, "config", {
-                    ...question.config,
-                    likertScale: {
-                      min: 1,
-                      max: 7,
-                      step: 1,
-                      labels: {
-                        left: "Completamente en desacuerdo",
-                        center: "Neutral",
-                        right: "Completamente de acuerdo"
+                  onClick={() =>
+                    onUpdateQuestion(sectionId, question.id, "config", {
+                      ...question.config,
+                      likertScale: {
+                        min: 1,
+                        max: 7,
+                        step: 1,
+                        labels: {
+                          left: "Completamente en desacuerdo",
+                          center: "Neutral",
+                          right: "Completamente de acuerdo",
+                        },
+                        showZero: true,
+                        zeroLabel: "No Sabe / No Responde",
+                        startPosition: "center",
                       },
-                      showZero: true,
-                      zeroLabel: "No Sabe / No Responde",
-                      startPosition: "center"
-                    }
-                  })}
+                    })
+                  }
                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                 >
                   🎯 Usar Escala Extendida (1-7)
@@ -1249,8 +1353,8 @@ export function QuestionEditor({
               {/* Mensaje de ayuda */}
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-700">
-                  💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba 
-                  y selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.
+                  💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba y
+                  selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.
                 </p>
               </div>
             </div>
@@ -1491,7 +1595,9 @@ export function QuestionEditor({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        const newLabels = (question.config?.textboxLabels || []).filter((_: string, i: number) => i !== index)
+                        const newLabels = (question.config?.textboxLabels || []).filter(
+                          (_: string, i: number) => i !== index,
+                        )
                         onUpdateQuestion(sectionId, question.id, "config", {
                           ...question.config,
                           textboxLabels: newLabels.length > 0 ? newLabels : ["Etiqueta 1"],

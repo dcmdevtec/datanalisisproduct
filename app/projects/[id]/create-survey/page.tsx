@@ -2512,6 +2512,22 @@ function CreateSurveyForProjectPageContent() {
             </Alert>
           )}
 
+          {showSectionOrganizer && (
+            <SectionOrganizer
+              sections={sections}
+              onSectionsChange={(newSections) => {
+                setSections(newSections);
+                // Marcar todas las secciones como no guardadas después de reorganizar
+                const newSaveStates = newSections.reduce((acc, section) => ({
+                  ...acc,
+                  [section.id]: 'not-saved'
+                }), {});
+                setSectionSaveStates(newSaveStates);
+                setShowSectionOrganizer(false);
+              }}
+              onClose={() => setShowSectionOrganizer(false)}
+            />
+          )}
           <div className="flex-1 space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-4">
@@ -3230,13 +3246,25 @@ function CreateSurveyForProjectPageContent() {
             />
           )}
 
-          {showSectionOrganizer && (
-            <SectionOrganizer
-              sections={sections}
-              onSectionsChange={handleSectionsChange}
-              onClose={() => setShowSectionOrganizer(false)}
-            />
-          )}
+          <SectionOrganizer
+            isOpen={showSectionOrganizer}
+            sections={sections}
+            onSectionsChange={(newSections) => {
+              const updatedSections = newSections.map((s, index) => ({
+                ...s,
+                order_num: index,
+              }));
+              setSections(updatedSections);
+              // Marcar todas las secciones como no guardadas
+              const newSaveStates: { [key: string]: 'saved' | 'not-saved' | 'error' } = {};
+              newSections.forEach((section) => {
+                newSaveStates[section.id] = 'not-saved';
+              });
+              setSectionSaveStates(prev => ({ ...prev, ...newSaveStates }));
+              setShowSectionOrganizer(false);
+            }}
+            onClose={() => setShowSectionOrganizer(false)}
+          />
         </div>
       </DashboardLayout>
     </ClientLayout>

@@ -1,27 +1,15 @@
 "use client"
 
-import { useState } from "react"
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-} from "@dnd-kit/core"
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { generateUUID } from "@/lib/utils"
+import { RichTextEditor } from "@/components/rich-text-editor"
 
 interface Question {
   id: string
@@ -49,6 +37,7 @@ interface SectionOrganizerProps {
   onClose: () => void
   sections: SurveySection[]
   onSectionsChange: (sections: SurveySection[]) => void
+  onMoveQuestion?: (questionId: string, fromSectionId: string, toSectionId: string, newIndex?: number) => void
 }
 
 interface SortableSectionCardProps {
@@ -59,6 +48,9 @@ interface SortableSectionCardProps {
   onDuplicate: (section: SurveySection) => void
   onDelete: (sectionId: string) => void
   onMoveToPosition: (sectionId: string) => void
+  selectedQuestions: Set<string>
+  onQuestionSelect: (e: React.MouseEvent, section: SurveySection, question: Question) => void
+  onQuestionMove: (question: Question, sectionId: string, currentIndex: number) => void
 }
 
 function SortableSectionCard({
@@ -69,15 +61,10 @@ function SortableSectionCard({
   onDuplicate,
   onDelete,
   onMoveToPosition,
+  selectedQuestions,
+  onQuestionSelect,
+  onQuestionMove,
 }: SortableSectionCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
   const getQuestionTypeIcon = (type: string) => {
     const icons: { [key: string]: string } = {
       text: "📝",
@@ -105,18 +92,11 @@ function SortableSectionCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="mb-4">
-      <Card className={`transition-all duration-200 ${isDragging ? "shadow-lg" : "hover:shadow-md"}`}>
+    <div className="mb-4">
+      <Card className="transition-all duration-200 hover:shadow-md">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1">
-              <div
-                {...attributes}
-                {...listeners}
-                className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
-              >
-                <GripVertical className="h-5 w-5 text-muted-foreground" />
-              </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline" className="text-xs">
@@ -130,32 +110,27 @@ function SortableSectionCard({
                 {section.description && <p className="text-sm text-muted-foreground mt-1">{section.description}</p>}
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {totalSections > 5 && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => onMoveToPosition(section.id)} className="gap-1 h-8">
+                <Hash className="h-4 w-4" />
+                <span>Mover</span>
+              </Button>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={() => onEdit(section)} className="h-8 w-8 p-0">
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => onDuplicate(section)} className="h-8 w-8 p-0">
+                  <Copy className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => onMoveToPosition(section.id)}
-                  className="h-8 w-8 p-0"
-                  title="Mover a posición específica"
+                  onClick={() => onDelete(section.id)}
+                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                 >
-                  <Hash className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => onEdit(section)} className="h-8 w-8 p-0">
-                <Edit3 className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onDuplicate(section)} className="h-8 w-8 p-0">
-                <Copy className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDelete(section.id)}
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -163,30 +138,44 @@ function SortableSectionCard({
           {section.questions.length > 0 ? (
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground mb-2">Preguntas:</h4>
-              <div className="grid gap-2">
-                {section.questions.slice(0, 3).map((question, qIndex) => (
-                  <div key={question.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded text-sm">
-                    <span className="text-lg">{getQuestionTypeIcon(question.type)}</span>
-                    <span className="flex-1 truncate">
-                      {question.text.replace(/<[^>]*>/g, "") || `Pregunta ${qIndex + 1}`}
-                    </span>
-                    {question.required && (
-                      <Badge variant="destructive" className="text-xs">
-                        Obligatorio
-                      </Badge>
-                    )}
+              <div className="grid gap-2 p-2 rounded-lg">
+                {section.questions.map((question, qIndex) => (
+                  <div
+                    key={`${section.id}-${question.id}`}
+                    className={`flex items-center gap-2 p-2 bg-white border shadow-sm rounded-lg text-sm transition-all 
+                      ${selectedQuestions.has(`${section.id}-${question.id}`) ? 'bg-blue-50 border-blue-200' : ''}`}
+                    onClick={(e) => onQuestionSelect(e, section, question)}
+                  >
+                    <div className="flex items-center gap-2 w-full">
+                      <span className="text-lg">{getQuestionTypeIcon(question.type)}</span>
+                      <span className="truncate flex-1">
+                        {question.text.replace(/<[^>]*>/g, "") || `Pregunta ${qIndex + 1}`}
+                      </span>
+                      {question.required && (
+                        <Badge variant="destructive" className="text-xs mr-2">
+                          Obligatorio
+                        </Badge>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onQuestionMove(question, section.id, qIndex);
+                        }}
+                        className="gap-1 h-7 px-2"
+                      >
+                        <Hash className="h-3 w-3" />
+                        <span className="text-xs">Mover</span>
+                      </Button>
+                    </div>
                   </div>
                 ))}
-                {section.questions.length > 3 && (
-                  <div className="text-xs text-muted-foreground text-center py-1">
-                    +{section.questions.length - 3} pregunta{section.questions.length - 3 !== 1 ? "s" : ""} más
-                  </div>
-                )}
               </div>
             </div>
           ) : (
-            <div className="text-center py-4 text-muted-foreground">
-              <p className="text-sm">No hay preguntas en esta sección</p>
+            <div className="text-center py-6 border-2 border-dashed rounded-lg border-muted">
+              <p className="text-sm text-muted-foreground">No hay preguntas en esta sección</p>
             </div>
           )}
         </CardContent>
@@ -197,37 +186,30 @@ function SortableSectionCard({
 
 export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }: SectionOrganizerProps) {
   const { toast } = useToast()
-  const [localSections, setLocalSections] = useState<SurveySection[]>(sections)
+  const [localSections, setLocalSections] = useState<SurveySection[]>([])
   const [editingSection, setEditingSection] = useState<SurveySection | null>(null)
   const [editTitle, setEditTitle] = useState("")
+
+  // Actualizar las secciones locales solo cuando se abre el modal
+  useEffect(() => {
+    if (isOpen) {
+      setLocalSections(JSON.parse(JSON.stringify(sections))) // Crear una copia profunda
+    }
+  }, [isOpen, sections])
   const [editDescription, setEditDescription] = useState("")
-  const [activeId, setActiveId] = useState<string | null>(null)
   const [movingSection, setMovingSection] = useState<SurveySection | null>(null)
   const [targetPosition, setTargetPosition] = useState<string>("")
   const [moveMode, setMoveMode] = useState<"before" | "after" | "exact">("exact")
-
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
-
-  const handleDragStart = (event: any) => {
-    setActiveId(event.active.id)
-  }
-
-  const handleDragEnd = (event: any) => {
-    const { active, over } = event
-    setActiveId(null)
-
-    if (active.id !== over?.id) {
-      const oldIndex = localSections.findIndex((section) => section.id === active.id)
-      const newIndex = localSections.findIndex((section) => section.id === over.id)
-
-      const newSections = arrayMove(localSections, oldIndex, newIndex)
-      const updatedSections = newSections.map((section, index) => ({
-        ...section,
-        order_num: index,
-      }))
-      setLocalSections(updatedSections)
-    }
-  }
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set())
+  const [bulkMoveSection, setBulkMoveSection] = useState<{
+    fromSectionId: string;
+    toSectionId: string;
+  } | null>(null)
+  const [movingQuestion, setMovingQuestion] = useState<{
+    question: Question;
+    sectionId: string;
+    currentIndex: number;
+  } | null>(null)
 
   const handleMoveToPosition = (sectionId: string) => {
     const section = localSections.find((s) => s.id === sectionId)
@@ -258,17 +240,21 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     }
 
     if (currentIndex !== newIndex) {
-      const newSections = arrayMove(localSections, currentIndex, newIndex)
+      const newSections = [...localSections];
+      const [movedSection] = newSections.splice(currentIndex, 1);
+      newSections.splice(newIndex, 0, movedSection);
+
       const updatedSections = newSections.map((section, index) => ({
         ...section,
         order_num: index,
-      }))
-      setLocalSections(updatedSections)
+      }));
+
+      setLocalSections(updatedSections);
 
       toast({
         title: "Sección movida",
         description: `La sección se ha movido a la posición ${newIndex + 1}.`,
-      })
+      });
     }
 
     setMovingSection(null)
@@ -299,22 +285,64 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
   }
 
   const handleDuplicate = (section: SurveySection) => {
+    // Create a map to store old question IDs to new IDs
+    const idMap = new Map<string, string>();
+
+    // First pass: Create new IDs for all questions
+    section.questions.forEach(q => {
+      const newId = generateUUID();
+      idMap.set(q.id, newId);
+    });
+
+    // Second pass: Create questions with updated references
+    const newQuestions = section.questions.map(q => {
+      const newId = idMap.get(q.id) || generateUUID();
+      
+      // Create a copy of the question config
+      const newConfig = q.config ? { ...q.config } : undefined;
+
+      // Update references in display logic
+      if (newConfig?.displayLogic?.conditions) {
+        newConfig.displayLogic.conditions = newConfig.displayLogic.conditions.map(condition => ({
+          ...condition,
+          questionId: idMap.get(condition.questionId) || condition.questionId
+        }));
+      }
+
+      // Update references in skip logic
+      if (newConfig?.skipLogic?.rules) {
+        newConfig.skipLogic.rules = newConfig.skipLogic.rules.map(rule => ({
+          ...rule,
+          targetQuestionId: idMap.get(rule.targetQuestionId) || rule.targetQuestionId
+        }));
+      }
+
+      // Create the new question with updated config
+      return {
+        ...q,
+        id: newId,
+        config: {
+          ...newConfig,
+          originalId: q.id // Store the original ID for reference
+        }
+      };
+    });
+
+    // Create the new section
     const newSection: SurveySection = {
       ...section,
-      id: generateUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(),
       title: `${section.title} (Copia)`,
       order_num: localSections.length,
-      questions: section.questions.map((q) => ({
-        ...q,
-        id: generateUUID(), // ✅ UUID real en lugar de timestamp
-      })),
-    }
-    setLocalSections([...localSections, newSection])
+      questions: newQuestions,
+    };
+
+    setLocalSections([...localSections, newSection]);
 
     toast({
       title: "Sección duplicada",
-      description: "Se ha creado una copia de la sección.",
-    })
+      description: "Se ha creado una copia de la sección con referencias actualizadas.",
+    });
   }
 
   const handleDelete = (sectionId: string) => {
@@ -363,8 +391,6 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     onClose()
   }
 
-  const draggedSection = activeId ? localSections.find((section) => section.id === activeId) : null
-
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCancel}>
@@ -396,44 +422,59 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
           )}
 
           <div className="flex-1 overflow-y-auto px-1">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext items={localSections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                {localSections.map((section, index) => (
-                  <SortableSectionCard
-                    key={section.id}
-                    section={section}
-                    index={index}
-                    totalSections={localSections.length}
-                    onEdit={handleEdit}
-                    onDuplicate={handleDuplicate}
-                    onDelete={handleDelete}
-                    onMoveToPosition={handleMoveToPosition}
-                  />
-                ))}
-              </SortableContext>
-              <DragOverlay>
-                {draggedSection && (
-                  <Card className="opacity-90 shadow-lg">
-                    <CardHeader>
-                      <div className="flex items-center gap-3">
-                        <GripVertical className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <h3 className="font-semibold">{draggedSection.title}</h3>
-                          <Badge variant="secondary" className="text-xs">
-                            {draggedSection.questions.length} pregunta{draggedSection.questions.length !== 1 ? "s" : ""}
-                          </Badge>
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                )}
-              </DragOverlay>
-            </DndContext>
+            {localSections.map((section, index) => (
+              <SortableSectionCard
+                key={section.id}
+                section={section}
+                index={index}
+                totalSections={localSections.length}
+                onEdit={handleEdit}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDelete}
+                onMoveToPosition={handleMoveToPosition}
+                selectedQuestions={selectedQuestions}
+                onQuestionSelect={(e, section, question) => {
+                  if (e.ctrlKey || e.metaKey) {
+                    // Toggle individual selection
+                    const questionKey = `${section.id}-${question.id}`;
+                    const newSelected = new Set(selectedQuestions);
+                    if (newSelected.has(questionKey)) {
+                      newSelected.delete(questionKey);
+                    } else {
+                      newSelected.add(questionKey);
+                    }
+                    setSelectedQuestions(newSelected);
+                  } else if (e.shiftKey && selectedQuestions.size > 0) {
+                    // Range selection
+                    const lastSelected = Array.from(selectedQuestions).pop()!;
+                    const [lastSectionId, lastQuestionId] = lastSelected.split('-');
+                    
+                    if (lastSectionId === section.id) {
+                      const questions = section.questions;
+                      const lastIndex = questions.findIndex(q => q.id === lastQuestionId);
+                      const currentIndex = questions.findIndex(q => q.id === question.id);
+                      
+                      const startIndex = Math.min(lastIndex, currentIndex);
+                      const endIndex = Math.max(lastIndex, currentIndex);
+                      
+                      const newSelected = new Set(selectedQuestions);
+                      for (let i = startIndex; i <= endIndex; i++) {
+                        newSelected.add(`${section.id}-${questions[i].id}`);
+                      }
+                      setSelectedQuestions(newSelected);
+                    }
+                  } else {
+                    // Single selection
+                    setSelectedQuestions(new Set([`${section.id}-${question.id}`]));
+                  }
+                }}
+                onQuestionMove={(question, sectionId, currentIndex) => {
+                  setMovingQuestion({ question, sectionId, currentIndex });
+                  setBulkMoveSection(null);
+                  setTargetPosition("");
+                }}
+              />
+            ))}
 
             {localSections.length === 0 && (
               <div className="text-center py-12">
@@ -466,27 +507,31 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
       {/* Edit Section Modal */}
       <Dialog open={!!editingSection} onOpenChange={() => setEditingSection(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Editar Sección</DialogTitle>
-            <DialogDescription>Modifica el título y descripción de la sección.</DialogDescription>
+            <DialogDescription>
+              Modifica el título y descripción de la sección con formato enriquecido.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Título de la sección</label>
-              <Input
+              <RichTextEditor
                 value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
+                onChange={setEditTitle}
                 placeholder="Ej: Datos Personales"
+                compact={true}
+                className="min-h-[60px]"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Descripción (opcional)</label>
-              <Textarea
+              <RichTextEditor
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
+                onChange={setEditDescription}
                 placeholder="Descripción de la sección..."
-                rows={3}
+                className="min-h-[120px]"
               />
             </div>
           </div>
@@ -495,6 +540,116 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
               Cancelar
             </Button>
             <Button onClick={handleSaveEdit}>Guardar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move Question Modal */}
+      <Dialog open={!!movingQuestion} onOpenChange={() => setMovingQuestion(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Hash className="h-5 w-5" />
+              Mover Pregunta
+            </DialogTitle>
+            <DialogDescription>
+              Mover la pregunta a otra sección o posición
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-muted rounded-lg">
+              <h4 className="font-medium mb-2">Pregunta a mover:</h4>
+              <div className="text-sm text-muted-foreground">
+                {movingQuestion?.question.text.replace(/<[^>]*>/g, "") || "Pregunta sin título"}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Sección destino</label>
+              <Select value={bulkMoveSection?.toSectionId ?? movingQuestion?.sectionId} 
+                      onValueChange={(sectionId) => setBulkMoveSection({
+                        fromSectionId: movingQuestion?.sectionId || "",
+                        toSectionId: sectionId
+                      })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona la sección destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {localSections.map((section) => (
+                    <SelectItem key={section.id} value={section.id}>
+                      {section.title || `Sección ${section.order_num + 1}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Posición en la sección</label>
+              <Select value={targetPosition} onValueChange={setTargetPosition}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona la posición" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bulkMoveSection && localSections.find(s => s.id === bulkMoveSection.toSectionId)?.questions.map((_, index) => (
+                    <SelectItem key={index} value={index.toString()}>
+                      Posición {index + 1}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={localSections.find(s => s.id === (bulkMoveSection?.toSectionId || movingQuestion?.sectionId))?.questions.length.toString() || "0"}>
+                    Al final
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => {
+              setMovingQuestion(null);
+              setBulkMoveSection(null);
+              setTargetPosition("");
+            }} variant="outline">
+              Cancelar
+            </Button>
+            <Button onClick={() => {
+              if (!movingQuestion || !bulkMoveSection) return;
+
+              const newSections = localSections.map(section => {
+                // Remove from source section
+                if (section.id === bulkMoveSection.fromSectionId) {
+                  return {
+                    ...section,
+                    questions: section.questions.filter(q => q.id !== movingQuestion.question.id)
+                  };
+                }
+                // Add to target section
+                if (section.id === bulkMoveSection.toSectionId) {
+                  const newQuestions = [...section.questions];
+                  const targetIndex = Number(targetPosition);
+                  newQuestions.splice(targetIndex, 0, movingQuestion.question);
+                  return {
+                    ...section,
+                    questions: newQuestions
+                  };
+                }
+                return section;
+              });
+
+              setLocalSections(newSections);
+              setMovingQuestion(null);
+              setBulkMoveSection(null);
+              setTargetPosition("");
+
+              toast({
+                title: "Pregunta movida",
+                description: "La pregunta se ha movido correctamente.",
+              });
+            }} disabled={!bulkMoveSection || !targetPosition}>
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              Mover Pregunta
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
