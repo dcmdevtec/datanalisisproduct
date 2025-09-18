@@ -2549,15 +2549,7 @@ function CreateSurveyForProjectPageContent() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={handlePreview}
-                className="gap-2 bg-transparent"
-                disabled={sections.length === 0}
-              >
-                <Eye className="h-4 w-4" />
-                Vista Previa
-              </Button>
+              {/* Botón Vista Previa movido al bloque 'Trabajando en:' */}
             </div>
           </div>
 
@@ -2698,15 +2690,7 @@ function CreateSurveyForProjectPageContent() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-2">
-                        <Button
-                          onClick={() => setShowSectionOrganizer(true)}
-                          variant="outline"
-                          size="sm"
-                          disabled={sections.length === 0}
-                        >
-                          <ArrowUpDown className="h-4 w-4 mr-2" />
-                          Organizar
-                        </Button>
+                        {/* Botón Organizar movido al bloque 'Trabajando en:' */}
                       </div>
                     </div>
                   </CardHeader>
@@ -2772,45 +2756,62 @@ function CreateSurveyForProjectPageContent() {
                               </Select>
                             </div>
                             <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleSaveSection(sections[activeSectionIndex].id)}
-                                  disabled={isSavingSection}
-                                >
-                                  {isSavingSection ? (
-                                    <>
-                                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                                      Guardando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Save className="h-4 w-4 mr-1" />
-                                      Guardar Sección
-                                    </>
-                                  )}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    const newSection: SurveySection = {
-                                      id: generateUUID(),
-                                      title: `Nueva Sección ${sections.length + 1}`,
-                                      description: "",
-                                      order_num: sections.length,
-                                      questions: [],
-                                      skipLogic: undefined,
-                                    }
-                                    setSections([...sections, newSection])
-                                    setActiveSectionIndex(sections.length) // Cambiar a la nueva sección
-                                  }}
-                                >
-                                  <Plus className="h-4 w-4 mr-1" />
-                                  Nueva Sección
-                                </Button>
-                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSaveSection(sections[activeSectionIndex].id)}
+                                disabled={isSavingSection}
+                              >
+                                {isSavingSection ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                    Guardando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Save className="h-4 w-4 mr-1" />
+                                    Guardar Sección
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const newSection: SurveySection = {
+                                    id: generateUUID(),
+                                    title: `Nueva Sección ${sections.length + 1}`,
+                                    description: "",
+                                    order_num: sections.length,
+                                    questions: [],
+                                    skipLogic: undefined,
+                                  }
+                                  setSections([...sections, newSection])
+                                  setActiveSectionIndex(sections.length) // Cambiar a la nueva sección
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Nueva Sección
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handlePreview}
+                                className="gap-2 bg-transparent"
+                                disabled={sections.length === 0}
+                              >
+                                <Eye className="h-4 w-4" />
+                                Vista Previa
+                              </Button>
+                              <Button
+                                onClick={() => setShowSectionOrganizer(true)}
+                                variant="outline"
+                                size="sm"
+                                disabled={sections.length === 0}
+                              >
+                                <ArrowUpDown className="h-4 w-4 mr-2" />
+                                Organizar
+                              </Button>
                             </div>
                           </div>
 
