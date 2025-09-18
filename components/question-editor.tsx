@@ -74,6 +74,7 @@ export function QuestionEditor({
   allSections,
   qIndex,
 }: QuestionEditorProps) {
+  const [isEditing, setIsEditing] = useState(false)
   const { toast } = useToast()
   const [showConfig, setShowConfig] = useState<boolean>(false)
 
@@ -101,33 +102,7 @@ export function QuestionEditor({
     setShowConfig(false)
   }
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
-  const [isEditingText, setIsEditingText] = useState<boolean>(false)
-  const [localQuestionText, setLocalQuestionText] = useState<string>(question.text.replace(/<[^>]*>/g, ""))
-  const [isQuestionTextValid, setIsQuestionTextValid] = useState<boolean>(true)
-
-  const [debouncedLocalQuestionText] = useDebounce(localQuestionText, 300)
-
-  useEffect(() => {
-    // Ensure debouncedLocalQuestionText is a string before calling trim()
-    const currentDebouncedText = debouncedLocalQuestionText || ""
-
-    // Validate question text
-    const isValid = currentDebouncedText.trim().length > 0
-    setIsQuestionTextValid(isValid)
-
-    // Only update the parent state if the debounced text is different from the actual question text
-    // and not empty (to avoid clearing text while typing)
-    if (question.text.replace(/<[^>]*>/g, "") !== currentDebouncedText && currentDebouncedText.trim() !== "") {
-      onUpdateQuestion(sectionId, question.id, "text", currentDebouncedText)
-    }
-  }, [debouncedLocalQuestionText, question.id, question.text, onUpdateQuestion, sectionId])
-
-  // Update local text if parent question text changes (e.g., on initial load or duplicate)
-  useEffect(() => {
-    const cleanText = question.text.replace(/<[^>]*>/g, "")
-    setLocalQuestionText(cleanText)
-    setIsQuestionTextValid(cleanText.trim().length > 0)
-  }, [question.text])
+  // Solo editor enriquecido, sin input simple ni debounce
 
   const toggleQuestionExpansion = () => {
     setIsExpanded((prev) => !prev)
@@ -269,43 +244,29 @@ export function QuestionEditor({
         <div className="space-y-2">
           <Label htmlFor={`question-${question.id}`}>Pregunta</Label>
 
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Button
-                variant={!isEditingText ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsEditingText(false)}
-              >
-                <Type className="h-4 w-4 mr-1" />
-                Texto simple
-              </Button>
-              <Button variant={isEditingText ? "default" : "outline"} size="sm" onClick={() => setIsEditingText(true)}>
-                <Palette className="h-4 w-4 mr-1" />
-                Formato avanzado
-              </Button>
-            </div>
-
-            {!isEditingText ? (
-              <div className="space-y-2">
-                <Input
-                  value={localQuestionText}
-                  onChange={(e) => setLocalQuestionText(e.target.value)}
-                  placeholder="Escribe tu pregunta aquí..."
-                  className={`text-lg ${!isQuestionTextValid ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
-                />
-                {!isQuestionTextValid && <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>}
-              </div>
+          <div className="flex-1">
+            {!isEditing ? (
+              <Input
+                readOnly
+                className="text-lg cursor-pointer bg-background border rounded-lg"
+                value={question.text ? question.text.replace(/<[^>]+>/g, "") : ""}
+                placeholder="Escribe tu pregunta aquí..."
+                onClick={() => setIsEditing(true)}
+              />
             ) : (
-              <div className="flex-1">
-                <div className="border rounded-lg overflow-hidden">
-                  <AdvancedRichTextEditor
-                    value={question.text}
-                    onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
-                    placeholder="Escribe tu pregunta aquí..."
-                    immediatelyRender={false}
-                  />
+              <div className="border rounded-lg overflow-hidden p-2 bg-background">
+                <AdvancedRichTextEditor
+                  value={question.text}
+                  onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
+                  placeholder="Escribe tu pregunta aquí..."
+                  immediatelyRender={false}
+                  autoFocus
+                />
+                <div className="flex justify-end mt-2 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
+                    Guardar
+                  </Button>
                 </div>
-                {!isQuestionTextValid && <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>}
               </div>
             )}
           </div>

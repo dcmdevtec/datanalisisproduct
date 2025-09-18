@@ -404,12 +404,9 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
     if (!targetSection) return;
 
-    // Si se mueve dentro de la misma sección, hay que ajustar el índice de inserción
+    // Calculate target position
     let targetIndex: number;
-    const isSameSection = bulkMoveSection.fromSectionId === bulkMoveSection.toSectionId;
-    const sourceSection = localSections.find(s => s.id === bulkMoveSection.fromSectionId);
-    const originalIndex = sourceSection?.questions.findIndex(q => q.id === movingQuestion.question.id) ?? -1;
-
+    
     if (questionMoveMode === "end") {
       targetIndex = targetSection.questions.length;
     } else {
@@ -421,37 +418,19 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
       }
     }
 
-    // Si es la misma sección y la pregunta se mueve hacia adelante, el array ya es más corto
-    if (isSameSection && originalIndex !== -1 && targetIndex > originalIndex) {
-      targetIndex--;
-    }
-
-    // Si el id de la pregunta es temporal (ej: 'temp-id'), regenerar UUID para evitar conflictos
-    let questionToMove = { ...movingQuestion.question };
-    if (questionToMove.id === 'temp-id' || !questionToMove.id.match(/^[0-9a-fA-F-]{36}$/)) {
-      questionToMove.id = generateUUID();
-    }
-
-    // Crear nuevo array de secciones con la pregunta movida
+    // Create new sections array with moved question
     const newSections = localSections.map(section => {
-      if (section.id === bulkMoveSection.fromSectionId && section.id === bulkMoveSection.toSectionId) {
-        // Mover dentro de la misma sección
-        const questions = [...section.questions];
-        const removed = questions.splice(originalIndex, 1)[0];
-        questions.splice(targetIndex, 0, removed);
-        return { ...section, questions };
-      }
-      // Remover de la sección origen
+      // Remove from source section
       if (section.id === bulkMoveSection.fromSectionId) {
         return {
           ...section,
           questions: section.questions.filter(q => q.id !== movingQuestion.question.id)
         };
       }
-      // Agregar a la sección destino
+      // Add to target section
       if (section.id === bulkMoveSection.toSectionId) {
         const newQuestions = [...section.questions];
-        newQuestions.splice(targetIndex, 0, questionToMove);
+        newQuestions.splice(targetIndex, 0, movingQuestion.question);
         return {
           ...section,
           questions: newQuestions
@@ -461,7 +440,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     });
 
     setLocalSections(newSections);
-
+    
     // Reset state
     setMovingQuestion(null);
     setBulkMoveSection(null);
@@ -903,11 +882,36 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
             </div>
             {targetPosition && (
               <div className="p-3 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  {moveMode === "exact" && `La sección se moverá a la posición ${targetPosition}.`}
-                  {moveMode === "before" && `La sección se moverá antes de la posición ${targetPosition}.`}
-                  {moveMode === "after" && `La sección se moverá después de la posición ${targetPosition}.`}
-                </p>
+                <h4 className="font-medium mb-2 text-blue-800">Vista previa del movimiento:</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600">Sección a mover:</span>
+                    <Badge variant="outline">
+                      {movingSection?.title || "Sección sin título"}
+                    </Badge>
+                  </div>
+                  {moveMode !== "exact" && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-600">Referencia:</span>
+                      <Badge variant="default">
+                        {(() => {
+                          const refSection = localSections.filter(s => s.id !== movingSection?.id)[Number(targetPosition) - 1];
+                          return refSection?.title || "Sección de referencia";
+                        })()}
+                      </Badge>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600">Posición:</span>
+                    <Badge variant="secondary">
+                      {moveMode === "exact"
+                        ? "A la posición " + targetPosition
+                        : moveMode === "before"
+                          ? "Antes de la sección " + targetPosition
+                          : "Después de la sección " + targetPosition}
+                    </Badge>
+                  </div>
+                </div>
               </div>
             )}
           </div>
