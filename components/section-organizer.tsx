@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash } from "lucide-react"
+import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash, ArrowDown, ArrowUp } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { generateUUID } from "@/lib/utils"
 import { RichTextEditor } from "@/components/rich-text-editor"
@@ -51,6 +51,7 @@ interface SortableSectionCardProps {
   selectedQuestions: Set<string>
   onQuestionSelect: (e: React.MouseEvent, section: SurveySection, question: Question) => void
   onQuestionMove: (question: Question, sectionId: string, currentIndex: number) => void
+  allSections: SurveySection[]
 }
 
 function SortableSectionCard({
@@ -64,6 +65,7 @@ function SortableSectionCard({
   selectedQuestions,
   onQuestionSelect,
   onQuestionMove,
+  allSections,
 }: SortableSectionCardProps) {
   const getQuestionTypeIcon = (type: string) => {
     const icons: { [key: string]: string } = {
@@ -142,8 +144,8 @@ function SortableSectionCard({
                 {section.questions.map((question, qIndex) => (
                   <div
                     key={`${section.id}-${question.id}`}
-                    className={`flex items-center gap-2 p-2 bg-white border shadow-sm rounded-lg text-sm transition-all 
-                      ${selectedQuestions.has(`${section.id}-${question.id}`) ? 'bg-blue-50 border-blue-200' : ''}`}
+                    className={`flex items-center gap-2 p-2 bg-white border shadow-sm rounded-lg text-sm transition-all cursor-pointer
+                      ${selectedQuestions.has(`${section.id}-${question.id}`) ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
                     onClick={(e) => onQuestionSelect(e, section, question)}
                   >
                     <div className="flex items-center gap-2 w-full">
@@ -196,6 +198,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
       setLocalSections(JSON.parse(JSON.stringify(sections))) // Crear una copia profunda
     }
   }, [isOpen, sections])
+  
   const [editDescription, setEditDescription] = useState("")
   const [movingSection, setMovingSection] = useState<SurveySection | null>(null)
   const [targetPosition, setTargetPosition] = useState<string>("")
@@ -210,6 +213,8 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     sectionId: string;
     currentIndex: number;
   } | null>(null)
+  const [targetQuestionPosition, setTargetQuestionPosition] = useState<string>("")
+  const [questionMoveMode, setQuestionMoveMode] = useState<"before" | "after" | "end">("after")
 
   const handleMoveToPosition = (sectionId: string) => {
     const section = localSections.find((s) => s.id === sectionId)
@@ -360,7 +365,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   const handleAddSection = () => {
     const newSection: SurveySection = {
-      id: generateUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(),
       title: `Nueva Sección ${localSections.length + 1}`,
       description: "",
       order_num: localSections.length,
@@ -388,8 +393,65 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     setLocalSections(sections) // Reset to original
     setEditingSection(null)
     setMovingSection(null)
+    setMovingQuestion(null)
     onClose()
   }
+
+  const handleQuestionMove = () => {
+    if (!movingQuestion || !bulkMoveSection) return;
+
+    // Get target section and its questions
+    const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
+    if (!targetSection) return;
+
+    // Calculate target position
+    let targetIndex: number;
+    
+    if (questionMoveMode === "end") {
+      targetIndex = targetSection.questions.length;
+    } else {
+      const referenceQuestionIndex = Number(targetQuestionPosition);
+      if (questionMoveMode === "before") {
+        targetIndex = referenceQuestionIndex;
+      } else { // after
+        targetIndex = referenceQuestionIndex + 1;
+      }
+    }
+
+    // Create new sections array with moved question
+    const newSections = localSections.map(section => {
+      // Remove from source section
+      if (section.id === bulkMoveSection.fromSectionId) {
+        return {
+          ...section,
+          questions: section.questions.filter(q => q.id !== movingQuestion.question.id)
+        };
+      }
+      // Add to target section
+      if (section.id === bulkMoveSection.toSectionId) {
+        const newQuestions = [...section.questions];
+        newQuestions.splice(targetIndex, 0, movingQuestion.question);
+        return {
+          ...section,
+          questions: newQuestions
+        };
+      }
+      return section;
+    });
+
+    setLocalSections(newSections);
+    
+    // Reset state
+    setMovingQuestion(null);
+    setBulkMoveSection(null);
+    setTargetQuestionPosition("");
+    setQuestionMoveMode("after");
+
+    toast({
+      title: "Pregunta movida",
+      description: "La pregunta se ha movido correctamente a su nueva posición.",
+    });
+  };
 
   return (
     <>
@@ -470,9 +532,14 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                 }}
                 onQuestionMove={(question, sectionId, currentIndex) => {
                   setMovingQuestion({ question, sectionId, currentIndex });
-                  setBulkMoveSection(null);
-                  setTargetPosition("");
+                  setBulkMoveSection({
+                    fromSectionId: sectionId,
+                    toSectionId: sectionId // Default to same section
+                  });
+                  setTargetQuestionPosition("");
+                  setQuestionMoveMode("after");
                 }}
+                allSections={localSections}
               />
             ))}
 
@@ -544,116 +611,220 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
         </DialogContent>
       </Dialog>
 
-      {/* Move Question Modal */}
+      {/* Enhanced Move Question Modal */}
       <Dialog open={!!movingQuestion} onOpenChange={() => setMovingQuestion(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Hash className="h-5 w-5" />
               Mover Pregunta
             </DialogTitle>
             <DialogDescription>
-              Mover la pregunta a otra sección o posición
+              Selecciona la sección destino y la posición específica donde quieres mover la pregunta
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="p-4 bg-muted rounded-lg">
-              <h4 className="font-medium mb-2">Pregunta a mover:</h4>
-              <div className="text-sm text-muted-foreground">
+          <div className="space-y-6 py-4">
+            {/* Question to move preview */}
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium mb-2 flex items-center gap-2">
+                <span className="text-lg">
+                  {(() => {
+                    const icons: { [key: string]: string } = {
+                      text: "📝", textarea: "📄", multiple_choice: "🔘", checkbox: "☑️", 
+                      dropdown: "📋", scale: "📊", matrix: "📋", ranking: "🔢", date: "📅", 
+                      time: "🕐", email: "📧", phone: "📞", number: "🔢", rating: "⭐", 
+                      file: "📎", image_upload: "🖼️", signature: "✍️", likert: "📈", 
+                      net_promoter: "📊", slider: "🎚️",
+                    }
+                    return icons[movingQuestion?.question.type || "text"] || "❓"
+                  })()}
+                </span>
+                Pregunta a mover:
+              </h4>
+              <div className="text-sm text-muted-foreground bg-white p-3 rounded border">
                 {movingQuestion?.question.text.replace(/<[^>]*>/g, "") || "Pregunta sin título"}
+                {movingQuestion?.question.required && (
+                  <Badge variant="destructive" className="text-xs ml-2">
+                    Obligatorio
+                  </Badge>
+                )}
               </div>
             </div>
 
-            <div className="space-y-2">
+            {/* Target section selection */}
+            <div className="space-y-3">
               <label className="text-sm font-medium">Sección destino</label>
-              <Select value={bulkMoveSection?.toSectionId ?? movingQuestion?.sectionId} 
-                      onValueChange={(sectionId) => setBulkMoveSection({
-                        fromSectionId: movingQuestion?.sectionId || "",
-                        toSectionId: sectionId
-                      })}>
+              <Select 
+                value={bulkMoveSection?.toSectionId} 
+                onValueChange={(sectionId) => setBulkMoveSection({
+                  fromSectionId: movingQuestion?.sectionId || "",
+                  toSectionId: sectionId
+                })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona la sección destino" />
                 </SelectTrigger>
                 <SelectContent>
                   {localSections.map((section) => (
                     <SelectItem key={section.id} value={section.id}>
-                      {section.title || `Sección ${section.order_num + 1}`}
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {section.questions.length} preguntas
+                        </Badge>
+                        <span>{section.title || `Sección ${section.order_num + 1}`}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Posición en la sección</label>
-              <Select value={targetPosition} onValueChange={setTargetPosition}>
+            {/* Position selection mode */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Tipo de posicionamiento</label>
+              <Select value={questionMoveMode} onValueChange={(value: "before" | "after" | "end") => setQuestionMoveMode(value)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona la posición" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {bulkMoveSection && localSections.find(s => s.id === bulkMoveSection.toSectionId)?.questions.map((_, index) => (
-                    <SelectItem key={index} value={index.toString()}>
-                      Posición {index + 1}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value={localSections.find(s => s.id === (bulkMoveSection?.toSectionId || movingQuestion?.sectionId))?.questions.length.toString() || "0"}>
-                    Al final
+                  <SelectItem value="before">
+                    <div className="flex items-center gap-2">
+                      <ArrowUp className="h-4 w-4" />
+                      Antes de una pregunta específica
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="after">
+                    <div className="flex items-center gap-2">
+                      <ArrowDown className="h-4 w-4" />
+                      Después de una pregunta específica
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="end">
+                    <div className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Al final de la sección
+                    </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Question position selection (only if not "end") */}
+            {questionMoveMode !== "end" && bulkMoveSection && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium">
+                  Selecciona la pregunta de referencia
+                </label>
+                <Select value={targetQuestionPosition} onValueChange={setTargetQuestionPosition}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una pregunta..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {localSections
+                      .find(s => s.id === bulkMoveSection.toSectionId)
+                      ?.questions.filter(q => q.id !== movingQuestion?.question.id) // Exclude the question being moved
+                      .map((question, index) => (
+                      <SelectItem key={question.id} value={index.toString()}>
+                        <div className="flex items-center gap-2 max-w-[400px]">
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            {index + 1}
+                          </Badge>
+                          <span className="text-lg shrink-0">
+                            {(() => {
+                              const icons: { [key: string]: string } = {
+                                text: "📝", textarea: "📄", multiple_choice: "🔘", checkbox: "☑️", 
+                                dropdown: "📋", scale: "📊", matrix: "📋", ranking: "🔢", date: "📅", 
+                                time: "🕐", email: "📧", phone: "📞", number: "🔢", rating: "⭐", 
+                                file: "📎", image_upload: "🖼️", signature: "✍️", likert: "📈", 
+                                net_promoter: "📊", slider: "🎚️",
+                              }
+                              return icons[question.type] || "❓"
+                            })()}
+                          </span>
+                          <span className="truncate">
+                            {question.text.replace(/<[^>]*>/g, "") || `Pregunta ${index + 1}`}
+                          </span>
+                          {question.required && (
+                            <Badge variant="destructive" className="text-xs shrink-0">
+                              Req
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* Show target section questions count */}
+                <div className="text-xs text-muted-foreground">
+                  {(() => {
+                    const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
+                    const availableQuestions = targetSection?.questions.filter(q => q.id !== movingQuestion?.question.id).length || 0;
+                    return `${availableQuestions} pregunta${availableQuestions !== 1 ? 's' : ''} disponible${availableQuestions !== 1 ? 's' : ''} como referencia`;
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* Preview of the move */}
+            {bulkMoveSection && (questionMoveMode === "end" || targetQuestionPosition !== "") && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium mb-2 text-blue-800">Vista previa del movimiento:</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600">De:</span>
+                    <Badge variant="outline">
+                      {localSections.find(s => s.id === bulkMoveSection.fromSectionId)?.title || "Sección origen"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600">A:</span>
+                    <Badge variant="default">
+                      {localSections.find(s => s.id === bulkMoveSection.toSectionId)?.title || "Sección destino"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600">Posición:</span>
+                    <Badge variant="secondary">
+                      {(() => {
+                        if (questionMoveMode === "end") {
+                          return "Al final de la sección";
+                        }
+                        const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
+                        const referenceQuestion = targetSection?.questions[Number(targetQuestionPosition)];
+                        const referenceText = referenceQuestion?.text.replace(/<[^>]*>/g, "") || `Pregunta ${Number(targetQuestionPosition) + 1}`;
+                        return `${questionMoveMode === "before" ? "Antes" : "Después"} de: ${referenceText.substring(0, 30)}${referenceText.length > 30 ? "..." : ""}`;
+                      })()}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button onClick={() => {
               setMovingQuestion(null);
               setBulkMoveSection(null);
-              setTargetPosition("");
+              setTargetQuestionPosition("");
+              setQuestionMoveMode("after");
             }} variant="outline">
               Cancelar
             </Button>
-            <Button onClick={() => {
-              if (!movingQuestion || !bulkMoveSection) return;
-
-              const newSections = localSections.map(section => {
-                // Remove from source section
-                if (section.id === bulkMoveSection.fromSectionId) {
-                  return {
-                    ...section,
-                    questions: section.questions.filter(q => q.id !== movingQuestion.question.id)
-                  };
-                }
-                // Add to target section
-                if (section.id === bulkMoveSection.toSectionId) {
-                  const newQuestions = [...section.questions];
-                  const targetIndex = Number(targetPosition);
-                  newQuestions.splice(targetIndex, 0, movingQuestion.question);
-                  return {
-                    ...section,
-                    questions: newQuestions
-                  };
-                }
-                return section;
-              });
-
-              setLocalSections(newSections);
-              setMovingQuestion(null);
-              setBulkMoveSection(null);
-              setTargetPosition("");
-
-              toast({
-                title: "Pregunta movida",
-                description: "La pregunta se ha movido correctamente.",
-              });
-            }} disabled={!bulkMoveSection || !targetPosition}>
-              <ArrowUpDown className="h-4 w-4 mr-2" />
+            <Button 
+              onClick={handleQuestionMove}
+              disabled={!bulkMoveSection || (questionMoveMode !== "end" && !targetQuestionPosition)}
+              className="gap-2"
+            >
+              <ArrowUpDown className="h-4 w-4" />
               Mover Pregunta
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Move Section Modal */}
       <Dialog open={!!movingSection} onOpenChange={() => setMovingSection(null)}>
         <DialogContent>
           <DialogHeader>
