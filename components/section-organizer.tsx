@@ -404,9 +404,12 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
     if (!targetSection) return;
 
-    // Calculate target position
+    // Si se mueve dentro de la misma sección, hay que ajustar el índice de inserción
     let targetIndex: number;
-    
+    const isSameSection = bulkMoveSection.fromSectionId === bulkMoveSection.toSectionId;
+    const sourceSection = localSections.find(s => s.id === bulkMoveSection.fromSectionId);
+    const originalIndex = sourceSection?.questions.findIndex(q => q.id === movingQuestion.question.id) ?? -1;
+
     if (questionMoveMode === "end") {
       targetIndex = targetSection.questions.length;
     } else {
@@ -418,19 +421,37 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
       }
     }
 
-    // Create new sections array with moved question
+    // Si es la misma sección y la pregunta se mueve hacia adelante, el array ya es más corto
+    if (isSameSection && originalIndex !== -1 && targetIndex > originalIndex) {
+      targetIndex--;
+    }
+
+    // Si el id de la pregunta es temporal (ej: 'temp-id'), regenerar UUID para evitar conflictos
+    let questionToMove = { ...movingQuestion.question };
+    if (questionToMove.id === 'temp-id' || !questionToMove.id.match(/^[0-9a-fA-F-]{36}$/)) {
+      questionToMove.id = generateUUID();
+    }
+
+    // Crear nuevo array de secciones con la pregunta movida
     const newSections = localSections.map(section => {
-      // Remove from source section
+      if (section.id === bulkMoveSection.fromSectionId && section.id === bulkMoveSection.toSectionId) {
+        // Mover dentro de la misma sección
+        const questions = [...section.questions];
+        const removed = questions.splice(originalIndex, 1)[0];
+        questions.splice(targetIndex, 0, removed);
+        return { ...section, questions };
+      }
+      // Remover de la sección origen
       if (section.id === bulkMoveSection.fromSectionId) {
         return {
           ...section,
           questions: section.questions.filter(q => q.id !== movingQuestion.question.id)
         };
       }
-      // Add to target section
+      // Agregar a la sección destino
       if (section.id === bulkMoveSection.toSectionId) {
         const newQuestions = [...section.questions];
-        newQuestions.splice(targetIndex, 0, movingQuestion.question);
+        newQuestions.splice(targetIndex, 0, questionToMove);
         return {
           ...section,
           questions: newQuestions
@@ -440,7 +461,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     });
 
     setLocalSections(newSections);
-    
+
     // Reset state
     setMovingQuestion(null);
     setBulkMoveSection(null);
