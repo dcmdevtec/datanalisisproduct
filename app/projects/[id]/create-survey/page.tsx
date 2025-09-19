@@ -389,6 +389,11 @@ function SortableSection({
               variant="outline"
               className="h-7 text-xs bg-transparent"
               onClick={() => onAddQuestion(section.id)}
+              disabled={
+                !section.id ||
+                section.id === "temp-id" ||
+                !section.id.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
+              }
             >
               <Plus className="h-3 w-3 mr-1" />
               Agregar pregunta
@@ -435,6 +440,11 @@ function SortableSection({
                       variant="ghost"
                       className="text-muted-foreground hover:text-primary"
                       onClick={() => onAddQuestion(section.id)}
+                      disabled={
+                        !section.id ||
+                        section.id === "temp-id" ||
+                        !section.id.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
+                      }
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Agregar otra pregunta
@@ -446,7 +456,13 @@ function SortableSection({
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <MessageSquare className="h-8 w-8" />
                     <p className="text-sm">Esta sección no tiene preguntas</p>
-                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => onAddQuestion(section.id)}>
+                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => onAddQuestion(section.id)}
+                      disabled={
+                        !section.id ||
+                        section.id === "temp-id" ||
+                        !section.id.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
+                      }
+                    >
                       <Plus className="h-3 w-3 mr-1" />
                       Agregar la primera pregunta
                     </Button>
@@ -913,6 +929,8 @@ function CreateSurveyForProjectPageContent() {
           project_id: projectId,
           created_by: user?.id,
           status: "draft",
+          start_date: startDate || null,
+          deadline: deadline || null,
           settings: settings || {
             collectLocation: true,
             allowAudio: false,
@@ -2679,7 +2697,7 @@ function CreateSurveyForProjectPageContent() {
                           <SelectValue placeholder="Selecciona el estado" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="draft">Borrador</SelectItem>
+                          <SelectItem value="draft">Prueba</SelectItem>
                           <SelectItem value="active">Activa</SelectItem>
                           <SelectItem value="completed">Completada</SelectItem>
                           <SelectItem value="archived">Archivada</SelectItem>

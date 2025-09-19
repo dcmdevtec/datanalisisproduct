@@ -667,6 +667,11 @@ export function QuestionEditor({
                   `Opción ${question.options.length + 1}`,
                 ])
               }
+              disabled={
+                !sectionId ||
+                sectionId === "temp-id" ||
+                !sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
+              }
             >
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
