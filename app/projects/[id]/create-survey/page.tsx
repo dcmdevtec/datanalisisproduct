@@ -1,3 +1,4 @@
+
 "use client"
 
 import { Switch } from "@/components/ui/switch"
@@ -487,7 +488,62 @@ function SortableSection({
     </div>
   )
 }
-
+// --- AUTO SAVE DE PREGUNTAS ---
+/**
+ * Guarda automáticamente una pregunta en Supabase (upsert) si la sección tiene un ID real.
+ * @param {string} sectionId - ID real de la sección
+ * @param {object} question - Objeto pregunta (con id, type, text, etc.)
+ * @param {string} surveyId - ID de la encuesta
+ * @returns {Promise<'saved'|'error'>}
+ */
+async function autoSaveQuestion(sectionId, question, surveyId) {
+  // Validar que la sección tenga un ID real (UUID v4)
+  if (!sectionId || sectionId === 'temp-id' || !sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)) {
+    console.warn('autoSaveQuestion: sección sin ID real, no se guarda');
+    return 'error';
+  }
+  if (!surveyId) {
+    console.warn('autoSaveQuestion: encuesta sin ID, no se guarda');
+    return 'error';
+  }
+  // Preparar datos para upsert
+  const questionData = {
+    id: question.id,
+    survey_id: surveyId,
+    section_id: sectionId,
+    type: question.type,
+    text: question.text.trim(),
+    options: question.options || [],
+    required: question.required || false,
+    order_num: question.order_num || 0,
+    settings: {
+      ...question.config,
+      matrixRows: question.matrixRows,
+      matrixCols: question.matrixCols,
+      ratingScale: question.ratingScale,
+    },
+    matrix_rows: question.matrixRows || [],
+    matrix_cols: question.matrixCols || [],
+    rating_scale: question.ratingScale || null,
+    file_url: question.image || null,
+    skip_logic: question.config?.skipLogic || null,
+    display_logic: question.config?.displayLogic || null,
+    validation_rules: question.config?.validation || null,
+  };
+  try {
+    // Upsert (insert/update) en Supabase
+    const { error } = await supabase.from('questions').upsert([questionData], { onConflict: 'id' });
+    if (error) {
+      console.error('autoSaveQuestion error:', error);
+      return 'error';
+    }
+    console.log('autoSaveQuestion: pregunta guardada', questionData);
+    return 'saved';
+  } catch (err) {
+    console.error('autoSaveQuestion error:', err);
+    return 'error';
+  }
+}
 const updateSectionSkipLogic = (
   sectionId: string,
   skipLogic: SectionSkipLogic,
@@ -1013,35 +1069,34 @@ function CreateSurveyForProjectPageContent() {
       }
 
       if (section.questions.length > 0) {
-        // Delete existing questions for this section to avoid duplicates
-        await supabase.from("questions").delete().eq("section_id", savedSection.id)
-
-        const questionsToInsert = section.questions.map((q, index) => ({
-          survey_id: workingSurveyId,
-          section_id: savedSection.id,
-          type: q.type,
-          text: q.text.trim(),
-          options: q.options || [],
-          required: q.required || false,
-          order_num: index,
-          settings: {
-            ...q.config,
-            matrixRows: q.matrixRows,
-            matrixCols: q.matrixCols,
-            ratingScale: q.ratingScale,
-          },
-          matrix_rows: q.matrixRows || [],
-          matrix_cols: q.matrixCols || [],
-          rating_scale: q.ratingScale || null,
-          file_url: q.image || null,
-          skip_logic: q.config?.skipLogic || null,
-          display_logic: q.config?.displayLogic || null,
-          validation_rules: q.config?.validation || null,
-        }))
-
-        const { error: questionsError } = await supabase.from("questions").insert(questionsToInsert)
-
-        if (questionsError) throw questionsError
+        // Upsert (insert/update) cada pregunta individualmente para compatibilidad con auto-save
+        for (const [index, q] of section.questions.entries()) {
+          const questionData = {
+            id: q.id,
+            survey_id: workingSurveyId,
+            section_id: savedSection.id,
+            type: q.type,
+            text: q.text.trim(),
+            options: q.options || [],
+            required: q.required || false,
+            order_num: index,
+            settings: {
+              ...q.config,
+              matrixRows: q.matrixRows,
+              matrixCols: q.matrixCols,
+              ratingScale: q.ratingScale,
+            },
+            matrix_rows: q.matrixRows || [],
+            matrix_cols: q.matrixCols || [],
+            rating_scale: q.ratingScale || null,
+            file_url: q.image || null,
+            skip_logic: q.config?.skipLogic || null,
+            display_logic: q.config?.displayLogic || null,
+            validation_rules: q.config?.validation || null,
+          };
+          const { error: upsertError } = await supabase.from("questions").upsert([questionData], { onConflict: "id" });
+          if (upsertError) throw upsertError;
+        }
       }
 
       // Actualizar estado de guardado
@@ -1140,9 +1195,9 @@ function CreateSurveyForProjectPageContent() {
     }))
   }, [])
 
-  const addQuestionToSection = (sectionId: string): void => {
+  const addQuestionToSection = async (sectionId: string): Promise<void> => {
     const newQuestion: Question = {
-      id: generateUUID(), // ✅ UUID real en lugar de timestamp
+      id: generateUUID(),
       type: "text",
       text: "",
       options: [],
@@ -1152,25 +1207,71 @@ function CreateSurveyForProjectPageContent() {
       matrixCols: ["Columna 1"],
       ratingScale: 5,
       config: {
-        // Configuraciones básicas
         allowOther: false,
         randomizeOptions: false,
         ratingEmojis: true,
         scaleMin: 1,
         scaleMax: 5,
-
-        // Configuración Likert inicializada como null
         likertScale: null,
-
-        // Lógica de visualización y salto
         displayLogic: { enabled: false, conditions: [] },
         skipLogic: { enabled: false, rules: [] },
         validation: { required: false },
       },
-    }
+    };
+
+    // Actualiza el estado local inmediatamente para mostrar la pregunta
     setSections((prevSections) =>
-      prevSections.map((s) => (s.id === sectionId ? { ...s, questions: [...s.questions, newQuestion] } : s)),
-    )
+      prevSections.map((s) =>
+        s.id === sectionId ? { ...s, questions: [...s.questions, newQuestion] } : s
+      )
+    );
+
+    // Si la sección tiene un ID real y la encuesta también, guarda la pregunta en Supabase y sincroniza el ID
+    if (
+      sectionId &&
+      sectionId !== "temp-id" &&
+      sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i) &&
+      currentSurveyId
+    ) {
+      try {
+        const questionData = {
+          id: newQuestion.id,
+          survey_id: currentSurveyId,
+          section_id: sectionId,
+          type: newQuestion.type,
+          text: newQuestion.text,
+          options: newQuestion.options,
+          required: newQuestion.required,
+          order_num: 0, // Puedes ajustar el orden si es necesario
+          settings: { ...newQuestion.config },
+          matrix_rows: newQuestion.matrixRows,
+          matrix_cols: newQuestion.matrixCols,
+          rating_scale: newQuestion.ratingScale,
+          file_url: newQuestion.image,
+          skip_logic: newQuestion.config?.skipLogic || null,
+          display_logic: newQuestion.config?.displayLogic || null,
+          validation_rules: newQuestion.config?.validation || null,
+        };
+        const { data, error } = await supabase.from("questions").upsert([questionData], { onConflict: "id" }).select().single();
+        if (!error && data && data.id && data.id !== newQuestion.id) {
+          // Si el ID cambia (por triggers o por la BD), actualiza el estado local
+          setSections((prevSections) =>
+            prevSections.map((s) =>
+              s.id === sectionId
+                ? {
+                    ...s,
+                    questions: s.questions.map((q) =>
+                      q.id === newQuestion.id ? { ...q, id: data.id } : q
+                    ),
+                  }
+                : s
+            )
+          );
+        }
+      } catch (err) {
+        console.error("Error al guardar la nueva pregunta:", err);
+      }
+    }
   }
 
   const removeQuestionFromSection = (sectionId: string, questionId: string): void => {
