@@ -64,7 +64,16 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useState, useEffect, useCallback } from "react"
+
+// Utilidad para limpiar etiquetas HTML
+function stripHtml(html: string): string {
+  if (!html) return "";
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || "";
+}
 import { QuestionEditor } from "@/components/question-editor"
+import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
 import { arrayMove } from "@dnd-kit/sortable"
 
 import {
@@ -207,6 +216,19 @@ function SortableSection({
   sections: SurveySection[]
   setSections: React.Dispatch<React.SetStateAction<SurveySection[]>>
 }) {
+  // Estado local para el editor enriquecido del título de la sección
+  const [localSectionTitle, setLocalSectionTitle] = useState(section.title || "");
+
+  // Sincronizar el estado local si cambia el título desde fuera (por ejemplo, al duplicar o cargar)
+  useEffect(() => {
+    setLocalSectionTitle(section.title || "");
+  }, [section.title]);
+
+  // Guardar el valor HTML en el estado global al cambiar
+  const handleSectionTitleChange = (html: string) => {
+    setLocalSectionTitle(html);
+    onUpdateSection(section.id, "title", html);
+  };
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
 
   const style = {
@@ -246,12 +268,14 @@ function SortableSection({
                 </Badge>
               )}
             </div>
-            <Input
-              value={section.title}
-              onChange={(e) => onUpdateSection(section.id, "title", e.target.value)}
-              placeholder="Título de la sección (ej: Datos Personales)"
-              className="text-base font-medium border-none bg-transparent px-0 focus-visible:ring-0 flex-1"
-            />
+            <div className="flex-1 min-w-0">
+              <AdvancedRichTextEditor
+                value={localSectionTitle}
+                onChange={handleSectionTitleChange}
+                placeholder="Título de la sección (ej: Datos Personales)"
+                immediatelyRender={false}
+              />
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <DropdownMenu>
@@ -868,17 +892,21 @@ function CreateSurveyForProjectPageContent() {
   const [sections, setSections] = useState<SurveySection[]>([])
   const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: "saved" | "not-saved" | "error" }>({})
 
-
-  // Guardar una sección
   const handleSaveSection = async (sectionId: string) => {
-    setIsSavingSection(true);
+    if (!sections.length || !sectionId) return
+
+    setIsSavingSection(true)
     try {
-      let workingSurveyId = currentSurveyId;
+      let workingSurveyId = currentSurveyId
+
       // Si no hay surveyId, necesitamos crear primero la encuesta
       if (!workingSurveyId) {
+        console.log("🆕 Creando encuesta antes de guardar sección...")
+
         if (!surveyTitle.trim()) {
-          throw new Error("El título de la encuesta es obligatorio para guardar secciones");
+          throw new Error("El título de la encuesta es obligatorio para guardar secciones")
         }
+
         const surveyData = {
           title: surveyTitle,
           description: surveyDescription,
@@ -891,27 +919,36 @@ function CreateSurveyForProjectPageContent() {
             offlineMode: true,
             distributionMethods: ["app"],
           },
-        };
+        }
+
         const { data: newSurvey, error: surveyError } = await supabase
           .from("surveys")
           .insert([surveyData])
           .select()
-          .single();
-        if (surveyError) throw surveyError;
-        workingSurveyId = newSurvey.id;
-        setCurrentSurveyId(workingSurveyId);
-        setIsEditMode(true);
+          .single()
+
+        if (surveyError) throw surveyError
+
+        workingSurveyId = newSurvey.id
+        setCurrentSurveyId(workingSurveyId)
+        setIsEditMode(true)
+
+        console.log("✅ Encuesta creada con ID:", workingSurveyId)
       }
-      const section = sections.find((s) => s.id === sectionId);
-      if (!section) throw new Error("Sección no encontrada");
+
+      const section = sections.find((s) => s.id === sectionId)
+      if (!section) throw new Error("Sección no encontrada")
+
       const sectionData = {
         survey_id: workingSurveyId,
         title: section.title.trim(),
         description: section.description || "",
         order_num: sections.findIndex((s) => s.id === sectionId),
         skip_logic: section.skipLogic || null,
-      };
-      let savedSection;
+      }
+
+      let savedSection
+
       if (
         section.id &&
         section.id !== "temp-id" &&
@@ -923,19 +960,24 @@ function CreateSurveyForProjectPageContent() {
           .update(sectionData)
           .eq("id", section.id)
           .select()
-          .single();
+          .single()
+
         if (updateError) {
           // If update fails, try insert with new ID
+          console.log("⚠️ Update failed, creating new section:", updateError.message)
           const { data: insertData, error: insertError } = await supabase
             .from("survey_sections")
             .insert([sectionData])
             .select()
-            .single();
-          if (insertError) throw insertError;
-          savedSection = insertData;
-          setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)));
+            .single()
+
+          if (insertError) throw insertError
+          savedSection = insertData
+
+          // Update section ID in local state
+          setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)))
         } else {
-          savedSection = data;
+          savedSection = data
         }
       } else {
         // No valid ID - create new section
@@ -943,14 +985,19 @@ function CreateSurveyForProjectPageContent() {
           .from("survey_sections")
           .insert([sectionData])
           .select()
-          .single();
-        if (insertError) throw insertError;
-        savedSection = insertData;
-        setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)));
+          .single()
+
+        if (insertError) throw insertError
+        savedSection = insertData
+
+        // Update section ID in local state
+        setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)))
       }
+
       if (section.questions.length > 0) {
         // Delete existing questions for this section to avoid duplicates
-        await supabase.from("questions").delete().eq("section_id", savedSection.id);
+        await supabase.from("questions").delete().eq("section_id", savedSection.id)
+
         const questionsToInsert = section.questions.map((q, index) => ({
           survey_id: workingSurveyId,
           section_id: savedSection.id,
@@ -972,56 +1019,38 @@ function CreateSurveyForProjectPageContent() {
           skip_logic: q.config?.skipLogic || null,
           display_logic: q.config?.displayLogic || null,
           validation_rules: q.config?.validation || null,
-        }));
-        const { error: questionsError } = await supabase.from("questions").insert(questionsToInsert);
-        if (questionsError) throw questionsError;
+        }))
+
+        const { error: questionsError } = await supabase.from("questions").insert(questionsToInsert)
+
+        if (questionsError) throw questionsError
       }
+
+      // Actualizar estado de guardado
       setSectionSaveStates((prev) => ({
         ...prev,
         [savedSection.id]: "saved",
-      }));
+      }))
+
       toast({
         title: "Sección guardada",
         description: "Los cambios han sido guardados exitosamente",
-      });
+      })
     } catch (error: any) {
+      console.error("Error al guardar la sección:", error)
       setSectionSaveStates((prev) => ({
         ...prev,
         [sectionId]: "error",
-      }));
+      }))
       toast({
         title: "Error al guardar",
         description: error.message || "Ocurrió un error al guardar la sección",
         variant: "destructive",
-      });
+      })
     } finally {
-      setIsSavingSection(false);
+      setIsSavingSection(false)
     }
-  };
-
-  // Guardar todas las secciones en lote
-  const handleSaveAllSections = async () => {
-    if (!sections.length) return;
-    setIsSavingSection(true);
-    try {
-      for (const section of sections) {
-        await handleSaveSection(section.id);
-      }
-      toast({
-        title: "Todas las secciones guardadas",
-        description: "Se guardaron todas las secciones exitosamente.",
-        variant: "default",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error al guardar secciones",
-        description: error.message || "Ocurrió un error al guardar las secciones.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSavingSection(false);
-    }
-  };
+  }
 
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
@@ -2725,7 +2754,7 @@ function CreateSurveyForProjectPageContent() {
                                         <Badge variant="secondary" className="text-xs">
                                           {index + 1}
                                         </Badge>
-                                        <span>{section.title || `Sección ${index + 1}`}</span>
+                                        <span>{stripHtml(section.title) || `Sección ${index + 1}`}</span>
                                         <span className="text-muted-foreground">
                                           ({section.questions.length} pregunta
                                           {section.questions.length !== 1 ? "s" : ""})
@@ -2772,20 +2801,17 @@ function CreateSurveyForProjectPageContent() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={handleSaveAllSections}
+                                onClick={async () => {
+                                  for (const section of sections) {
+                                    if (sectionSaveStates[section.id] !== "saved") {
+                                      await handleSaveSection(section.id);
+                                    }
+                                  }
+                                }}
                                 disabled={isSavingSection}
                               >
-                                {isSavingSection ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                                    Guardando todo...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Save className="h-4 w-4 mr-1" />
-                                    Guardar Todas
-                                  </>
-                                )}
+                                <Save className="h-4 w-4 mr-1" />
+                                Guardar todas las secciones
                               </Button>
                               <Button
                                 variant="outline"
@@ -3345,6 +3371,7 @@ function CreateSurveyForProjectPageContent() {
     </ClientLayout>
   )
 }
+
 export default function CreateSurveyForProjectPage() {
   return <CreateSurveyForProjectPageContent />
 }

@@ -12,7 +12,15 @@ import TextAlign from '@tiptap/extension-text-align';
 import { RichTextEditor } from '@mantine/tiptap';
 import '@mantine/tiptap/styles.css';
 
-export default function MyEditor() {
+interface MantineRichTextEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  immediatelyRender?: boolean;
+  autoFocus?: boolean;
+}
+
+export default function MyEditor({ value, onChange, placeholder = '', immediatelyRender = false, autoFocus = false }: MantineRichTextEditorProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -28,16 +36,32 @@ export default function MyEditor() {
       CodeBlock,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
     ],
-    content: '<p>Empieza a escribir aquí...</p>',
-    immediatelyRender: false, // 🛠️ Solución al error SSR
-    editorProps: {},
+    content: value || '',
+    onUpdate: ({ editor }) => {
+      onChange(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        placeholder,
+        autofocus: autoFocus ? 'autofocus' : undefined,
+      },
+    },
+    immediatelyRender,
   });
+
+  // Sync editor content if value changes from outside
+  useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value || '', false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   if (!mounted || !editor) return null;
 
   return (
     <>
-      <style global>{`
+  <style jsx global>{`
         /* Forzar fondo y color en el área editable tiptap/ProseMirror en cualquier contexto/modal */
         .tiptap.ProseMirror {
           background-color: var(--background, #18181b) !important;
