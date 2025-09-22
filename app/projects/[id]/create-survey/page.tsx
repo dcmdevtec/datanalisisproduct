@@ -907,7 +907,6 @@ function CreateSurveyForProjectPageContent() {
           throw new Error("El título de la encuesta es obligatorio para guardar secciones")
         }
 
-        // Insert solo con campos seguros
         const surveyData = {
           title: surveyTitle,
           description: surveyDescription,
@@ -933,43 +932,6 @@ function CreateSurveyForProjectPageContent() {
         workingSurveyId = newSurvey.id
         setCurrentSurveyId(workingSurveyId)
         setIsEditMode(true)
-
-
-        // Validar y guardar solo campos permitidos por el schema
-        const allowedStatuses = ["draft", "active", "completed", "archived"];
-        const updateFields = {};
-        // Validar fechas (YYYY-MM-DD o YYYY-MM-DDTHH:mm:ssZ)
-        const dateRegex = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))?)?$/;
-        if (startDate && dateRegex.test(startDate)) updateFields["start_date"] = startDate;
-        if (deadline && dateRegex.test(deadline)) updateFields["deadline"] = deadline;
-        if (allowedStatuses.includes(surveyStatus) && surveyStatus !== "draft") {
-          updateFields["status"] = surveyStatus;
-        }
-        if (Object.keys(updateFields).length > 0) {
-          const { error: updateError } = await supabase.from("surveys").update(updateFields).eq("id", workingSurveyId);
-          if (updateError) {
-            toast({
-              title: "Error al guardar campos de la encuesta",
-              description: updateError.message,
-              variant: "destructive",
-            });
-          }
-        }
-        // Si algún campo no es válido, mostrar advertencia
-        if ((startDate && !dateRegex.test(startDate)) || (deadline && !dateRegex.test(deadline))) {
-          toast({
-            title: "Formato de fecha inválido",
-            description: "Las fechas deben tener formato YYYY-MM-DD o YYYY-MM-DDTHH:mm:ssZ",
-            variant: "destructive",
-          });
-        }
-        if (surveyStatus && !allowedStatuses.includes(surveyStatus)) {
-          toast({
-            title: "Estado no permitido",
-            description: `Solo se permiten: ${allowedStatuses.join(", ")}`,
-            variant: "destructive",
-          });
-        }
 
         console.log("✅ Encuesta creada con ID:", workingSurveyId)
       }
@@ -2721,7 +2683,6 @@ function CreateSurveyForProjectPageContent() {
                           <SelectItem value="active">Activa</SelectItem>
                           <SelectItem value="completed">Completada</SelectItem>
                           <SelectItem value="archived">Archivada</SelectItem>
-                          <SelectItem value="prueba">Prueba</SelectItem>
                         </SelectContent>
                       </Select>
                       <p className="text-sm text-muted-foreground">Define el estado inicial de la encuesta.</p>
