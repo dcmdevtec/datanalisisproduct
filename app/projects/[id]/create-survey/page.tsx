@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import { Switch } from "@/components/ui/switch"
@@ -89,6 +90,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { SurveyLogoUpload } from "@/components/ui/survey-logo-upload"
+import { handleCreateSurveyIfNeeded } from "./handleCreateSurveyIfNeeded"
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
@@ -200,6 +202,8 @@ interface SortableSectionProps {
   onDuplicateQuestion: (sectionId: string, questionId: string) => void
   allSections: SurveySection[] // Pass all sections for skip logic targets
 }
+
+
 
 function SortableSection({
   section,
@@ -432,6 +436,7 @@ function SortableSection({
                         onDuplicateQuestion={onDuplicateQuestion}
                         allSections={sections}
                         qIndex={qIndex}
+                        onSaveSection={onUpdateSection ? (sectionId) => onUpdateSection(sectionId, "questions", section.questions) : undefined}
                       />
                     </div>
                   ))}
@@ -2722,10 +2727,42 @@ function CreateSurveyForProjectPageContent() {
             />
           )}
           <div className="flex-1 space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={async (tab) => {
+                if (tab === "questions" && !currentSurveyId) {
+                  const id = await handleCreateSurveyIfNeeded({
+                    currentSurveyId,
+                    surveyTitle,
+                    surveyDescription,
+                    projectId,
+                    user,
+                    startDate,
+                    deadline,
+                    settings,
+                    setCurrentSurveyId,
+                    setIsEditMode,
+                    setIsSaving,
+                  });
+                  if (id) {
+                    setActiveTab("questions");
+                  } else {
+                    toast({
+                      title: "Debes guardar la encuesta primero",
+                      description: "Completa los datos y guarda antes de agregar preguntas.",
+                      variant: "destructive",
+                    });
+                    setActiveTab("details");
+                  }
+                  return;
+                }
+                setActiveTab(tab);
+              }}
+              className="w-full"
+            >
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="details">Detalles</TabsTrigger>
-                <TabsTrigger value="questions">Preguntas</TabsTrigger>
+                <TabsTrigger value="questions" disabled={!currentSurveyId}>Preguntas</TabsTrigger>
                 <TabsTrigger value="assignment">Asignación</TabsTrigger>
                 <TabsTrigger value="settings">Configuración</TabsTrigger>
               </TabsList>
@@ -2811,7 +2848,35 @@ function CreateSurveyForProjectPageContent() {
                     <Button
                       className="ml-auto gap-2 bg-primary hover:bg-primary/90 text-white rounded-full"
                       style={{ backgroundColor: "#18b0a4" }}
-                      onClick={() => setActiveTab("questions")}
+                      onClick={async () => {
+                        if (!currentSurveyId) {
+                          const id = await handleCreateSurveyIfNeeded({
+                            currentSurveyId,
+                            surveyTitle,
+                            surveyDescription,
+                            projectId,
+                            user,
+                            startDate,
+                            deadline,
+                            settings,
+                            setCurrentSurveyId,
+                            setIsEditMode,
+                            setIsSaving,
+                          });
+                          if (id) {
+                            setActiveTab("questions");
+                          } else {
+                            toast({
+                              title: "Debes guardar la encuesta primero",
+                              description: "Completa los datos y guarda antes de agregar preguntas.",
+                              variant: "destructive",
+                            });
+                            setActiveTab("details");
+                          }
+                        } else {
+                          setActiveTab("questions");
+                        }
+                      }}
                     >
                       Siguiente: Crear preguntas <ArrowRight className="h-4 w-4" />
                     </Button>

@@ -108,21 +108,8 @@ function SortableSectionCard({
                     {section.questions.length} pregunta{section.questions.length !== 1 ? "s" : ""}
                   </Badge>
                 </div>
-                {/* Utilidad robusta para limpiar etiquetas HTML */}
-                {(() => {
-                  function stripHtml(html: string): string {
-                    if (!html) return "";
-                    const tmp = document.createElement("div");
-                    tmp.innerHTML = html;
-                    return tmp.textContent || tmp.innerText || "";
-                  }
-                  return (
-                    <>
-                      <h3 className="font-semibold text-lg">{stripHtml(section.title) || `Sección ${index + 1}`}</h3>
-                      {section.description && <p className="text-sm text-muted-foreground mt-1">{stripHtml(section.description)}</p>}
-                    </>
-                  );
-                })()}
+                <h3 className="font-semibold text-lg">{section.title || `Sección ${index + 1}`}</h3>
+                {section.description && <p className="text-sm text-muted-foreground mt-1">{section.description}</p>}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -154,47 +141,38 @@ function SortableSectionCard({
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground mb-2">Preguntas:</h4>
               <div className="grid gap-2 p-2 rounded-lg">
-                {section.questions.map((question, qIndex) => {
-                  // Utilidad robusta para limpiar etiquetas HTML
-                  function stripHtml(html: string): string {
-                    if (!html) return "";
-                    const tmp = document.createElement("div");
-                    tmp.innerHTML = html;
-                    return tmp.textContent || tmp.innerText || "";
-                  }
-                  return (
-                    <div
-                      key={`${section.id}-${question.id}`}
-                      className={`flex items-center gap-2 p-2 bg-white border shadow-sm rounded-lg text-sm transition-all cursor-pointer
-                        ${selectedQuestions.has(`${section.id}-${question.id}`) ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
-                      onClick={(e) => onQuestionSelect(e, section, question)}
-                    >
-                      <div className="flex items-center gap-2 w-full">
-                        <span className="text-lg">{getQuestionTypeIcon(question.type)}</span>
-                        <span className="truncate flex-1">
-                          {stripHtml(question.text) || `Pregunta ${qIndex + 1}`}
-                        </span>
-                        {question.required && (
-                          <Badge variant="destructive" className="text-xs mr-2">
-                            Obligatorio
-                          </Badge>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onQuestionMove(question, section.id, qIndex);
-                          }}
-                          className="gap-1 h-7 px-2"
-                        >
-                          <Hash className="h-3 w-3" />
-                          <span className="text-xs">Mover</span>
-                        </Button>
-                      </div>
+                {section.questions.map((question, qIndex) => (
+                  <div
+                    key={`${section.id}-${question.id}`}
+                    className={`flex items-center gap-2 p-2 bg-white border shadow-sm rounded-lg text-sm transition-all cursor-pointer
+                      ${selectedQuestions.has(`${section.id}-${question.id}`) ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
+                    onClick={(e) => onQuestionSelect(e, section, question)}
+                  >
+                    <div className="flex items-center gap-2 w-full">
+                      <span className="text-lg">{getQuestionTypeIcon(question.type)}</span>
+                      <span className="truncate flex-1">
+                        {question.text.replace(/<[^>]*>/g, "") || `Pregunta ${qIndex + 1}`}
+                      </span>
+                      {question.required && (
+                        <Badge variant="destructive" className="text-xs mr-2">
+                          Obligatorio
+                        </Badge>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onQuestionMove(question, section.id, qIndex);
+                        }}
+                        className="gap-1 h-7 px-2"
+                      >
+                        <Hash className="h-3 w-3" />
+                        <span className="text-xs">Mover</span>
+                      </Button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </div>
           ) : (

@@ -63,6 +63,7 @@ interface QuestionEditorProps {
   allSections: SurveySection[] // For skip logic targets
   qIndex: number // To display question number
   isDragging?: boolean
+  onSaveSection?: (sectionId: string) => void // Nueva prop opcional
 }
 
 export function QuestionEditor({
@@ -73,6 +74,7 @@ export function QuestionEditor({
   onDuplicateQuestion,
   allSections,
   qIndex,
+  onSaveSection,
 }: QuestionEditorProps) {
   const [isEditing, setIsEditing] = useState(false)
   const { toast } = useToast()
@@ -100,6 +102,10 @@ export function QuestionEditor({
 
   const closeConfigEditor = () => {
     setShowConfig(false)
+    // Guardar la sección al cerrar el modal si la función está disponible
+    if (onSaveSection) {
+      onSaveSection(sectionId)
+    }
   }
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
   // Solo editor enriquecido, sin input simple ni debounce
@@ -139,6 +145,9 @@ export function QuestionEditor({
 
   const handleAdvancedConfigSave = (newConfig: any) => {
     onUpdateQuestion(sectionId, question.id, "config", newConfig)
+    if (onSaveSection) {
+      onSaveSection(sectionId)
+    }
   }
 
   const matrixRows = question.matrixRows?.length ? question.matrixRows : ["Fila 1"]

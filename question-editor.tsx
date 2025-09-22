@@ -1,25 +1,3 @@
-import { useDebounce } from "use-debounce";
-
-// Importar la función autoSaveQuestion desde la página principal
-import { autoSaveQuestion } from "../app/projects/[id]/create-survey/page";
-
-// Custom hook para auto-save de pregunta
-function useAutoSaveQuestion({ question, sectionId, surveyId }) {
-  const [debouncedQuestion] = useDebounce(question, 1000); // 1s debounce
-  React.useEffect(() => {
-    if (
-      debouncedQuestion &&
-      sectionId &&
-      surveyId &&
-      sectionId !== "temp-id" &&
-      sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
-    ) {
-      autoSaveQuestion(sectionId, debouncedQuestion, surveyId).then((result) => {
-        console.log("[autoSave] Estado de guardado pregunta:", result, debouncedQuestion.id);
-      });
-    }
-  }, [debouncedQuestion, sectionId, surveyId]);
-}
 "use client"
 
 import { useState, useEffect } from "react"
@@ -109,15 +87,6 @@ interface QuestionEditorProps {
 }
 
 export function QuestionEditor({
-  // Obtener surveyId desde window.location o prop (ajusta según tu flujo)
-  let surveyId = null;
-  if (typeof window !== "undefined") {
-    const params = new URLSearchParams(window.location.search);
-    surveyId = params.get("surveyId");
-  }
-
-  // Llamar al hook de auto-save cada vez que cambie la pregunta
-  useAutoSaveQuestion({ question, sectionId, surveyId });
   question,
   sectionId,
   onRemoveQuestion,
@@ -126,7 +95,6 @@ export function QuestionEditor({
   allSections,
   qIndex,
 }: QuestionEditorProps) {
-
   const { toast } = useToast()
 
   const [showQuill, setShowQuill] = useState<boolean>(false)
@@ -136,16 +104,6 @@ export function QuestionEditor({
   const [localQuestionText, setLocalQuestionText] = useState<string>(question.text.replace(/<[^>]*>/g, ""))
 
   const [debouncedLocalQuestionText] = useDebounce(localQuestionText, 300)
-
-  // Obtener surveyId desde la URL (ajusta si lo recibes por props)
-  let surveyId = null;
-  if (typeof window !== "undefined") {
-    const params = new URLSearchParams(window.location.search);
-    surveyId = params.get("surveyId");
-  }
-
-  // Llamar al hook de auto-save cada vez que cambie la pregunta
-  useAutoSaveQuestion({ question, sectionId, surveyId });
 
   useEffect(() => {
     // Ensure debouncedLocalQuestionText is a string before calling trim()
