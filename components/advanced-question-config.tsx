@@ -192,316 +192,201 @@ function ValueSelector({
   return <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Valor" className="w-[200px]" />
 }
 
+function stripHtmlTags(text: string | undefined): string {
+  if (!text) return '';
+  return text.replace(/<[^>]*>/g, '').trim();
+}
+
+// ...existing code...
+
 function SkipLogicVisualizer({
   rules,
-  question,
   allSections,
   allQuestions,
-  onUpdateRule,
+  onAddRule,
+  onDeleteRule,
 }: {
-  rules: any[]
-  question: Question
-  allSections: SurveySection[]
-  allQuestions: Question[]
-  onUpdateRule: (index: number, field: string, value: any) => void
+  rules: any[];
+  allSections: SurveySection[];
+  allQuestions: Question[];
+  onAddRule: (rule: any) => void;
+  onDeleteRule: (index: number) => void;
 }) {
+  const [newSectionId, setNewSectionId] = useState("");
+  const [newQuestionId, setNewQuestionId] = useState("");
+  const [conditionOperator, setConditionOperator] = useState("equals");
+  const [conditionValue, setConditionValue] = useState("");
+
+  // Preguntas de la sección seleccionada
+  const sectionQuestions = allSections.find(s => s.id === newSectionId)?.questions || [];
+  // Pregunta destino seleccionada
+  const selectedQuestion = sectionQuestions.find((q: Question) => q.id === newQuestionId) || sectionQuestions[0];
+
+  // Opciones de operadores
+  const operatorOptions = [
+    { value: "equals", label: "es igual a" },
+    { value: "not_equals", label: "no es igual a" },
+    { value: "contains", label: "contiene" },
+    { value: "not_contains", label: "no contiene" },
+    { value: "greater_than", label: "es mayor que" },
+    { value: "less_than", label: "es menor que" },
+    { value: "is_empty", label: "está vacía" },
+    { value: "is_not_empty", label: "no está vacía" },
+  ];
+
+  // Render input dinámico para valor de condición
+  function renderConditionValueInput() {
+    if (!selectedQuestion) return null;
+    if (selectedQuestion.type === "multiple_choice" || selectedQuestion.type === "checkbox") {
+      return (
+        <select
+          className="border rounded px-2 py-1 min-w-[120px]"
+          value={conditionValue}
+          onChange={e => setConditionValue(e.target.value)}
+        >
+          <option value="">Selecciona opción</option>
+          {selectedQuestion.options.map((opt: string, i: number) => (
+            <option key={i} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+    }
+    if (selectedQuestion.type === "number") {
+      return (
+        <input
+          type="number"
+          className="border rounded px-2 py-1 min-w-[80px]"
+          value={conditionValue}
+          onChange={e => setConditionValue(e.target.value)}
+        />
+      );
+    }
+    // text, textarea, etc.
+    return (
+      <input
+        type="text"
+        className="border rounded px-2 py-1 min-w-[120px]"
+        value={conditionValue}
+        onChange={e => setConditionValue(e.target.value)}
+      />
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {rules.map((rule, index) => {
-        const targetSection = allSections.find((s) => {
-          const match = s.id === rule.targetSectionId
-          const matchTrimmed = s.id === rule.targetSectionId?.trim()
-          const matchString = String(s.id) === String(rule.targetSectionId)
-          
-          // Usar la comparación más robusta
-          return match || matchTrimmed || matchString
-        })
-        
-        // Si no se encuentra la sección, crear un objeto temporal con la información guardada
-        const displayTargetSection = targetSection || {
-          id: rule.targetSectionId,
-          title: `⚠️ Sección no encontrada (ID: ${rule.targetSectionId?.substring(0, 8)}...)`,
-          questions: []
-        }
-
-        // Encontrar la pregunta objetivo si existe
-        const targetQuestion = rule.targetQuestionId ? 
-          allQuestions.find(q => q.id === rule.targetQuestionId) : null
-
-        return (
-          <Card key={index} className={`${!targetSection ? 'border-red-300 bg-red-50' : 'border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/50 to-teal-100/50'} shadow-lg hover:shadow-xl transition-all duration-300`}>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-3">
-                  <div className="flex items-center justify-center w-8 h-8 bg-emerald-200 text-emerald-700 rounded-full text-sm font-bold">
-                    {index + 1}
-                  </div>
-                  Regla {index + 1}
-                  {!targetSection && (
-                    <Badge variant="destructive" className="text-xs">
-                      ⚠️ Sección inválida
-                    </Badge>
-                  )}
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={rule.enabled !== false}
-                    onCheckedChange={(checked) => onUpdateRule(index, "enabled", checked)}
-                    className="data-[state=checked]:bg-emerald-500"
-                  />
-                  <span className="text-xs text-muted-foreground">Activa</span>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-6">
-              {/* Question Preview - Enhanced */}
-              <div className="bg-gradient-to-r from-green-100 to-green-50 p-4 rounded-xl border-2 border-green-300 relative">
-                <div className="absolute top-2 right-2">
-                  <div className="flex items-center gap-1 bg-green-200 text-green-700 px-2 py-1 rounded-full text-xs">
-                    <CheckCircle className="h-3 w-3" />
-                    Condición cumplida
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-green-800">{question.text}</h4>
-                  {question.type === "multiple_choice" && (
-                    <div className="space-y-2">
-                      {question.options.map((option, optIndex) => (
-                        <div key={optIndex} className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded-full border-2 ${
-                            rule.value === option ? 'border-green-500 bg-green-500' : 'border-gray-300'
-                          }`}></div>
-                          <span className="text-sm text-green-700">{option}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {question.type === "checkbox" && (
-                    <div className="space-y-2">
-                      {question.options.map((option, optIndex) => (
-                        <div key={optIndex} className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded border-2 ${
-                            (rule.value || "").split(",").includes(option) ? 'border-green-500 bg-green-500' : 'border-gray-300'
-                          }`}></div>
-                          <span className="text-sm text-green-700">{option}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Flow Arrow */}
-              <div className="flex items-center justify-center">
-                <div className="w-8 h-8 bg-green-200 text-green-700 rounded-full flex items-center justify-center">
-                  <ArrowDown className="h-5 w-5" />
-                </div>
-              </div>
-
-              {/* Condition Builder - Enhanced */}
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-xl border-2 border-dashed border-green-300">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-emerald-800">Si la respuesta</span>
-                  </div>
-
-                  <Select value={rule.operator} onValueChange={(value) => {
-                    onUpdateRule(index, "operator", value)
-                  }}>
-                    <SelectTrigger className="w-full bg-white border-emerald-300 focus:border-emerald-500">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="equals">es igual a</SelectItem>
-                      <SelectItem value="not_equals">no es igual a</SelectItem>
-                      <SelectItem value="contains">contiene</SelectItem>
-                      <SelectItem value="not_contains">no contiene</SelectItem>
-                      <SelectItem value="greater_than">es mayor que</SelectItem>
-                      <SelectItem value="less_than">es menor que</SelectItem>
-                      <SelectItem value="is_empty">está vacía</SelectItem>
-                      <SelectItem value="is_not_empty">no está vacía</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {(question.type === "multiple_choice" || question.type === "checkbox") &&
-                    (rule.operator === "equals" || rule.operator === "not_equals") && (
-                      <Select value={rule.value} onValueChange={(value) => {
-                        onUpdateRule(index, "value", value)
-                      }}>
-                        <SelectTrigger className="w-full bg-white border-emerald-300 focus:border-emerald-500">
-                          <SelectValue placeholder="Seleccionar opción" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {question.options.map((option, optIndex) => (
-                            <SelectItem key={optIndex} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                  {question.type === "checkbox" && (rule.operator === "contains" || rule.operator === "not_contains") && (
-                    <div className="col-span-full">
-                      <div className="flex flex-wrap gap-3">
-                        {question.options.map((option, optIndex) => (
-                          <label key={optIndex} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(rule.value || "").split(",").includes(option)}
-                              onChange={(e) => {
-                                const currentValues = (rule.value || "").split(",").filter(Boolean)
-                                const newValues = e.target.checked
-                                  ? [...currentValues, option]
-                                  : currentValues.filter((v: string) => v !== option)
-                                onUpdateRule(index, "value", newValues.join(","))
-                              }}
-                              className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                            />
-                            <span className="text-emerald-700">{option}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(question.type === "text" || question.type === "number") && 
-                   (rule.operator === "equals" || rule.operator === "not_equals" || rule.operator === "contains" || rule.operator === "not_contains") && (
-                    <Input
-                      value={rule.value || ""}
-                      onChange={(e) => onUpdateRule(index, "value", e.target.value)}
-                      placeholder="Valor a comparar"
-                      className="w-full bg-white border-emerald-300 focus:border-emerald-500"
-                    />
-                  )}
-
-                  {(question.type === "number") && 
-                   (rule.operator === "greater_than" || rule.operator === "not_equals") && (
-                    <Input
-                      type="number"
-                      value={rule.value || ""}
-                      onChange={(e) => onUpdateRule(index, "value", e.target.value)}
-                      placeholder="Número"
-                      className="w-full bg-white border-emerald-300 focus:border-emerald-500"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Flow Arrow */}
-              <div className="flex items-center justify-center">
-                <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
-                  <ArrowDown className="h-5 w-5 text-white" />
-                </div>
-              </div>
-
-              {/* Action Block - Enhanced */}
-              <div className="bg-gradient-to-r from-emerald-100 to-green-50 p-6 rounded-xl border-2 border-emerald-300">
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-emerald-800 text-center">Entonces ir a:</h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Target Section Selection */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-emerald-700">Sección:</label>
-                      <Select value={rule.targetSectionId} onValueChange={(value) => {
-                        onUpdateRule(index, "targetSectionId", value)
-                        // Reset target question when section changes
-                        onUpdateRule(index, "targetQuestionId", "")
-                      }}>
-                        <SelectTrigger className="w-full bg-white border-teal-300 focus:border-teal-500">
-                          <SelectValue placeholder="Seleccionar sección" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allSections.map((section) => (
-                            <SelectItem key={section.id} value={section.id}>
-                              {section.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Target Question Selection */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-emerald-700">Pregunta específica (opcional):</label>
-                      <Select 
-                        value={rule.targetQuestionId || "section_start"} 
-                        onValueChange={(value) => {
-                          // Si se selecciona "section_start", guardar undefined para indicar inicio de sección
-                          const actualValue = value === "section_start" ? undefined : value
-                          onUpdateRule(index, "targetQuestionId", actualValue)
-                          // Store question text for reference
-                          if (actualValue) {
-                            const selectedQuestion = allQuestions.find(q => q.id === actualValue)
-                            if (selectedQuestion) {
-                              onUpdateRule(index, "targetQuestionText", selectedQuestion.text)
-                            }
-                          } else {
-                            // Si es inicio de sección, limpiar el texto de pregunta
-                            onUpdateRule(index, "targetQuestionText", undefined)
-                          }
-                        }}
-                        disabled={!rule.targetSectionId}
-                      >
-                        <SelectTrigger className="w-full bg-white border-teal-300 focus:border-teal-500 disabled:bg-gray-100">
-                          <SelectValue placeholder={rule.targetSectionId ? "Seleccionar pregunta o inicio de sección" : "Primero selecciona una sección"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="section_start">Ir al inicio de la sección</SelectItem>
-                          {rule.targetSectionId && (() => {
-                            // Encontrar la sección objetivo
-                            const targetSection = allSections.find(s => s.id === rule.targetSectionId)
-                            console.log(`🔍 Buscando sección con ID: ${rule.targetSectionId}`)
-                            console.log(`🔍 Sección encontrada:`, targetSection)
-                            
-                            if (!targetSection) {
-                              console.log(`⚠️ No se encontró la sección con ID: ${rule.targetSectionId}`)
-                              console.log(`🔍 Secciones disponibles:`, allSections.map(s => ({ id: s.id, title: s.title })))
-                              return null
-                            }
-                            
-                            // Obtener las preguntas de esa sección específica
-                            const sectionQuestions = targetSection.questions || []
-                            console.log(`🔍 Preguntas en la sección "${targetSection.title}":`, sectionQuestions.map(q => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
-                            
-                            return sectionQuestions.map((question) => (
-                              <SelectItem key={question.id} value={question.id}>
-                                {question.text.length > 50 ? `${question.text.substring(0, 50)}...` : question.text}
-                              </SelectItem>
-                            ))
-                          })()}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Visual Flow Preview */}
-                  {rule.targetSectionId && (
-                    <div className="mt-4 p-3 bg-white rounded-lg border border-emerald-200">
-                      <div className="flex items-center gap-2 text-sm text-emerald-700">
-                        <ArrowRight className="h-4 w-4" />
-                        <span>Saltar a: <strong>{displayTargetSection.title}</strong></span>
-                        {rule.targetQuestionId && targetQuestion ? (
-                          <>
-                            <span>→</span>
-                            <span><strong>{targetQuestion.text.length > 30 ? `${targetQuestion.text.substring(0, 30)}...` : targetQuestion.text}</strong></span>
-                          </>
-                        ) : (
-                          <span className="text-emerald-600">(inicio de la sección)</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )
-      })}
+    <div className="overflow-x-auto">
+      {/* Formulario inline para agregar nueva regla */}
+      <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex flex-col md:flex-row gap-3 items-center">
+        {/* Destino: sección y pregunta */}
+        <select
+          className="border rounded px-2 py-1 min-w-[180px]"
+          value={newSectionId}
+          onChange={e => {
+            setNewSectionId(e.target.value);
+            setNewQuestionId("");
+            setConditionValue("");
+          }}
+        >
+          <option value="">Selecciona sección destino</option>
+          {allSections.map(section => (
+            <option key={section.id} value={section.id}>{stripHtmlTags(section.title)}</option>
+          ))}
+        </select>
+        <select
+          className="border rounded px-2 py-1 min-w-[180px]"
+          value={newQuestionId}
+          onChange={e => {
+            setNewQuestionId(e.target.value);
+            setConditionValue("");
+          }}
+          disabled={!newSectionId}
+        >
+          <option value="">{newSectionId ? "Selecciona pregunta destino (opcional)" : "Primero selecciona sección"}</option>
+          <option value="section_start">Ir al inicio de la sección</option>
+          {sectionQuestions.map((q: Question) => (
+            <option key={q.id} value={q.id}>{stripHtmlTags(q.text.length > 50 ? `${q.text.substring(0, 50)}...` : q.text)}</option>
+          ))}
+        </select>
+        {/* Condición lógica */}
+        {newSectionId && newQuestionId && newQuestionId !== "section_start" && selectedQuestion && (
+          <>
+            <select
+              className="border rounded px-2 py-1 min-w-[120px]"
+              value={conditionOperator}
+              onChange={e => setConditionOperator(e.target.value)}
+            >
+              {operatorOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {renderConditionValueInput()}
+          </>
+        )}
+        <button
+          className="bg-emerald-600 text-white px-4 py-1 rounded hover:bg-emerald-700 disabled:bg-emerald-200"
+          disabled={!newSectionId || (newQuestionId && newQuestionId !== "section_start" && (!conditionOperator || (conditionOperator !== 'is_empty' && conditionOperator !== 'is_not_empty' && !conditionValue)))}
+          onClick={() => {
+            onAddRule({
+              condition: newQuestionId && newQuestionId !== "section_start" ? newQuestionId : "",
+              operator: newQuestionId && newQuestionId !== "section_start" ? conditionOperator : "",
+              value: newQuestionId && newQuestionId !== "section_start" ? conditionValue : "",
+              targetSectionId: newSectionId,
+              targetQuestionId: newQuestionId === "section_start" ? '' : newQuestionId,
+              targetQuestionText: newQuestionId ? (sectionQuestions.find((q: Question) => q.id === newQuestionId)?.text || "") : "",
+              enabled: true,
+            });
+            setNewSectionId("");
+            setNewQuestionId("");
+            setConditionOperator("equals");
+            setConditionValue("");
+          }}
+        >Agregar</button>
+      </div>
+      <table className="min-w-full border border-emerald-200 bg-white rounded-lg">
+        <thead className="bg-emerald-50">
+          <tr>
+            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">#</th>
+            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">Sección destino</th>
+            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">Pregunta destino</th>
+            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rules.length === 0 && (
+            <tr>
+              <td colSpan={4} className="text-center text-gray-500 py-4">No hay reglas de salto configuradas.</td>
+            </tr>
+          )}
+          {rules.map((rule, index) => {
+            const targetSection = allSections.find(s => s.id === rule.targetSectionId);
+            const displayTargetSection = targetSection || {
+              id: rule.targetSectionId,
+              title: `⚠️ Sección no encontrada (ID: ${rule.targetSectionId?.substring(0, 8)}...)`,
+              questions: []
+            };
+            const targetQuestion = rule.targetQuestionId ? allQuestions.find((q: Question) => q.id === rule.targetQuestionId) : null;
+            return (
+              <tr key={index} className={targetSection ? '' : 'bg-red-50'}>
+                <td className="px-4 py-2 font-bold text-emerald-700">{index + 1}</td>
+                <td className="px-4 py-2">{stripHtmlTags(displayTargetSection.title)}</td>
+                <td className="px-4 py-2">
+                  {rule.targetQuestionId && targetQuestion
+                    ? stripHtmlTags(targetQuestion.text.length > 50 ? `${targetQuestion.text.substring(0, 50)}...` : targetQuestion.text)
+                    : <span className="text-emerald-600">(inicio de la sección)</span>}
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    className="text-red-600 hover:underline"
+                    title="Eliminar"
+                    onClick={() => onDeleteRule(index)}
+                  >Eliminar</button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
-  )
+  );
 }
 
 export function AdvancedQuestionConfig({
@@ -511,12 +396,19 @@ export function AdvancedQuestionConfig({
   allSections,
   allQuestions,
   onSave,
-}: AdvancedQuestionConfigProps) {
+} : {
+  isOpen: boolean;
+  onClose: () => void;
+  question: Question;
+  allSections: SurveySection[];
+  allQuestions: Question[];
+  onSave: (config: any) => void;
+}) {
   // Log simple para debugging
   console.log(`📋 Secciones disponibles: ${allSections?.length || 0}`)
   console.log(`🔍 Preguntas disponibles: ${allQuestions?.length || 0}`)
   console.log(`📝 Pregunta actual:`, question)
-  console.log(`🔑 IDs de preguntas disponibles:`, allQuestions?.map(q => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
+  console.log(`🔑 IDs de preguntas disponibles:`, allQuestions?.map((q: Question) => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
   
   // Inicializar el estado con la configuración de la pregunta
   const [config, setConfig] = useState<QuestionConfig>(() => {
@@ -574,53 +466,48 @@ export function AdvancedQuestionConfig({
     setIsReconciling(true)
     
     setConfig((prev) => {
-      const updatedConditions = (prev.displayLogic?.conditions || []).map(condition => {
+      const updatedConditions = (prev.displayLogic?.conditions || []).map((condition) => {
         // Si ya tiene un ID válido, no hacer nada
-        if (condition.questionId && allQuestions.find(q => q.id === condition.questionId)) {
-          return condition
+        if (condition.questionId && allQuestions.find((q: Question) => q.id === condition.questionId)) {
+          return condition;
         }
-        
         // Si tiene texto pero no ID válido, intentar encontrar por texto
         if (condition.questionText && !condition.questionId) {
-          const foundQuestion = allQuestions.find(q => q.text === condition.questionText)
+          const foundQuestion = allQuestions.find((q: Question) => q.text === condition.questionText);
           if (foundQuestion) {
-            console.log(`✅ Reconciliación automática: "${condition.questionText}" → ID: ${foundQuestion.id}`)
+            console.log(`✅ Reconciliación automática: "${condition.questionText}" → ID: ${foundQuestion.id}`);
             return {
               ...condition,
-              questionId: foundQuestion.id
-            }
+              questionId: foundQuestion.id,
+            };
           }
         }
-        
         // Si tiene ID pero no se encuentra, intentar por texto
         if (condition.questionId && condition.questionText) {
-          const foundQuestion = allQuestions.find(q => q.text === condition.questionText)
+          const foundQuestion = allQuestions.find((q: Question) => q.text === condition.questionText);
           if (foundQuestion) {
-            console.log(`✅ Reconciliación automática: ID obsoleto ${condition.questionId} → nuevo ID: ${foundQuestion.id}`)
+            console.log(`✅ Reconciliación automática: ID obsoleto ${condition.questionId} → nuevo ID: ${foundQuestion.id}`);
             return {
               ...condition,
-              questionId: foundQuestion.id
-            }
+              questionId: foundQuestion.id,
+            };
           }
         }
-        
-        return condition
-      })
-      
+        return condition;
+      });
       // Solo actualizar si hay cambios
       if (JSON.stringify(updatedConditions) !== JSON.stringify(prev.displayLogic?.conditions)) {
-        console.log("🔄 Condiciones reconciliadas automáticamente")
+        console.log("🔄 Condiciones reconciliadas automáticamente");
         return {
           ...prev,
           displayLogic: {
             ...prev.displayLogic,
-            conditions: updatedConditions
-          }
-        }
+            conditions: updatedConditions,
+          },
+        };
       }
-      
-      return prev
-    })
+      return prev;
+    });
     
     // Ocultar el indicador después de un breve delay
     setTimeout(() => setIsReconciling(false), 1000)
@@ -772,7 +659,7 @@ export function AdvancedQuestionConfig({
             if (i === index) {
               // Si se está actualizando el questionId, también actualizar el questionText
               if (field === "questionId" && value) {
-                const selectedQuestion = allQuestions.find(q => q.id === value)
+                const selectedQuestion = allQuestions.find((q: Question) => q.id === value)
                 if (selectedQuestion) {
                   console.log(`✅ Actualizando questionText para pregunta: ${selectedQuestion.text}`)
                   return {
@@ -856,7 +743,7 @@ export function AdvancedQuestionConfig({
       displayLogic: {
         enabled: config.displayLogic?.enabled || false,
         conditions: (config.displayLogic?.conditions || []).map(condition => {
-          const sourceQuestion = allQuestions.find(q => q.id === condition.questionId)
+          const sourceQuestion = allQuestions.find((q: Question) => q.id === condition.questionId)
           if (!sourceQuestion) {
             console.log(`⚠️ Limpiando condición con ID inválido: ${condition.questionId}`)
             return {
@@ -1019,9 +906,9 @@ export function AdvancedQuestionConfig({
                     
                     {config.displayLogic?.conditions?.map((condition, index) => {
                       console.log(`🔍 Buscando pregunta con ID: ${condition.questionId}`)
-                      console.log(`📋 Todas las preguntas:`, allQuestions?.map(q => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
+                      console.log(`📋 Todas las preguntas:`, allQuestions?.map((q: Question) => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
                       
-                      const sourceQuestion = allQuestions.find((q) => q.id === condition.questionId)
+                      const sourceQuestion = allQuestions.find((q: Question) => q.id === condition.questionId)
                       
                       console.log(`✅ Pregunta fuente encontrada:`, sourceQuestion)
                       
@@ -1065,8 +952,8 @@ export function AdvancedQuestionConfig({
                                   </SelectTrigger>
                                   <SelectContent>
                                     {allQuestions
-                                      .filter((q) => q.id !== question.id)
-                                      .map((q) => (
+                                      .filter((q: Question) => q.id !== question.id)
+                                      .map((q: Question) => (
                                         <SelectItem key={q.id} value={q.id}>
                                           {q.text.length > 40 ? `${q.text.substring(0, 40)}...` : q.text}
                                         </SelectItem>
@@ -1146,7 +1033,7 @@ export function AdvancedQuestionConfig({
                                       /* Para preguntas de opción múltiple y checkbox */
                                       <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
                                         <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-                                        {sourceQuestion.options.map((option, optionIndex) => (
+                                        {sourceQuestion.options.map((option: string, optionIndex: number) => (
                                           <div key={optionIndex} className="flex items-center space-x-2">
                                             <Checkbox
                                               id={`option-${index}-${optionIndex}`}
@@ -1228,34 +1115,19 @@ export function AdvancedQuestionConfig({
 
                   <SkipLogicVisualizer
                     rules={config.skipLogic?.rules || []}
-                    question={question}
                     allSections={allSections}
                     allQuestions={allQuestions}
-                    onUpdateRule={updateSkipRule}
+                    onAddRule={(rule) => {
+                      setConfig((prev) => ({
+                        ...prev,
+                        skipLogic: {
+                          ...prev.skipLogic,
+                          rules: [...(prev.skipLogic?.rules || []), rule],
+                        },
+                      }));
+                    }}
+                    onDeleteRule={removeSkipRule}
                   />
-
-                  {/* Botones de eliminar regla mejorados */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-                    {(config.skipLogic?.rules || []).map((rule, index) => (
-                      <div key={index} className="flex flex-col items-center p-4 bg-gradient-to-br from-red-50 to-pink-50 rounded-xl border-2 border-red-200 hover:border-red-300 transition-all duration-200">
-                        <div className="text-center mb-3">
-                          <div className="w-8 h-8 bg-red-200 text-red-700 rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-2">
-                            {index + 1}
-                          </div>
-                          <span className="text-sm font-medium text-red-800">Regla {index + 1}</span>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeSkipRule(index)}
-                          className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-300 hover:border-red-400 transition-all duration-200"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Eliminar Regla
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </CardContent>
