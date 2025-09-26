@@ -1011,20 +1011,23 @@ function PreviewSurveyPageContent() {
             );
           }
           case "multiple_textboxes":
-            return (
-              <div className="space-y-4">
-                {(question.options || []).map((option, idx) => (
-                  <div key={idx} className="space-y-2">
-                    <Label>{option}</Label>
-                    <Input
-                      value={answers[`${question.id}_${idx}`] || ""}
-                      onChange={(e) => handleAnswerChange(`${question.id}_${idx}`, e.target.value)}
-                      placeholder={`Respuesta para ${option}`}
-                    />
-                  </div>
-                ))}
-              </div>
-            )
+            {
+              const labels = question.config?.textboxLabels || question.options || [];
+              return (
+                <div className="space-y-4">
+                  {labels.map((label, idx) => (
+                    <div key={idx} className="space-y-2">
+                      <Label>{label}</Label>
+                      <Input
+                        value={answers[`${question.id}_${idx}`] || ""}
+                        onChange={(e) => handleAnswerChange(`${question.id}_${idx}`, e.target.value)}
+                        placeholder={`Respuesta para ${label}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            }
           default:
             return <Input {...commonProps} placeholder={`Tipo de pregunta "${question.type}" no soportado en preview`} disabled />
         }
@@ -1224,10 +1227,36 @@ function PreviewSurveyPageContent() {
               <Target className="h-4 w-4" />
               Sección {currentSectionIndex + 1}
             </div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">{currentSection.title}</h2>
-            {currentSection.description && (
-              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">{currentSection.description}</p>
+            {currentSection.title_html ? (
+              <div
+                className="section-title-html text-4xl font-bold text-center mb-3"
+                dangerouslySetInnerHTML={{ __html: currentSection.title_html }}
+              />
+            ) : (
+              <div className="section-title-html text-4xl font-bold text-center mb-3">
+                {currentSection.title ? currentSection.title : `Sección ${currentSectionIndex + 1}`}
+              </div>
             )}
+            {currentSection.description && (
+              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+                {currentSection.description.replace(/<[^>]+>/g, "")}
+              </p>
+            )}
+      <style jsx global>{`
+        .section-title-html h1, .section-title-html h2, .section-title-html span, .section-title-html {
+          margin: 0;
+          padding: 0;
+          font-weight: bold;
+          text-align: center;
+        }
+        .section-title-html span, .section-title-html h1, .section-title-html h2 {
+          color: inherit !important;
+          font-family: inherit !important;
+        }
+        .section-title-html * {
+          line-height: 1.1;
+        }
+      `}</style>
           </div>
 
           {/* Indicador de lógica de visualización */}

@@ -496,6 +496,7 @@ export interface SurveySection {
   id: string
   survey_id: string
   title: string
+  title_html?: string
   description?: string
   order_num: number
   created_at?: string

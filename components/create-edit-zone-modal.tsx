@@ -285,9 +285,18 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
                   <Badge
                     key={neighborhood}
                     variant="secondary"
-                    style={{ backgroundColor: zoneColor + "20", color: zoneColor }}
+                    style={{ backgroundColor: zoneColor + "20", color: zoneColor, position: 'relative', paddingRight: '1.5rem' }}
                   >
                     {neighborhood}
+                    <button
+                      type="button"
+                      aria-label={`Eliminar ${neighborhood}`}
+                      onClick={() => setSelectedNeighborhoods(selectedNeighborhoods.filter((n) => n !== neighborhood))}
+                      className="absolute top-0 right-0 px-1 text-xs text-gray-400 hover:text-red-500 focus:outline-none"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+                    >
+                      ×
+                    </button>
                   </Badge>
                 ))}
               </div>

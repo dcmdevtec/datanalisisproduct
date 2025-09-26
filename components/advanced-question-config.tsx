@@ -212,15 +212,12 @@ function SkipLogicVisualizer({
   onAddRule: (rule: any) => void;
   onDeleteRule: (index: number) => void;
 }) {
-  const [newSectionId, setNewSectionId] = useState("");
-  const [newQuestionId, setNewQuestionId] = useState("");
+  // Estados para la nueva regla
   const [conditionOperator, setConditionOperator] = useState("equals");
   const [conditionValue, setConditionValue] = useState("");
-
-  // Preguntas de la sección seleccionada
-  const sectionQuestions = allSections.find(s => s.id === newSectionId)?.questions || [];
-  // Pregunta destino seleccionada
-  const selectedQuestion = sectionQuestions.find((q: Question) => q.id === newQuestionId) || sectionQuestions[0];
+  const [showDestSelectors, setShowDestSelectors] = useState(false);
+  const [newSectionId, setNewSectionId] = useState("");
+  const [newQuestionId, setNewQuestionId] = useState("");
 
   // Opciones de operadores
   const operatorOptions = [
@@ -234,157 +231,123 @@ function SkipLogicVisualizer({
     { value: "is_not_empty", label: "no está vacía" },
   ];
 
-  // Render input dinámico para valor de condición
-  function renderConditionValueInput() {
-    if (!selectedQuestion) return null;
-    if (selectedQuestion.type === "multiple_choice" || selectedQuestion.type === "checkbox") {
-      return (
-        <select
-          className="border rounded px-2 py-1 min-w-[120px]"
-          value={conditionValue}
-          onChange={e => setConditionValue(e.target.value)}
-        >
-          <option value="">Selecciona opción</option>
-          {selectedQuestion.options.map((opt: string, i: number) => (
-            <option key={i} value={opt}>{opt}</option>
-          ))}
-        </select>
-      );
+  // Mostrar selectores de destino solo si hay valor definido
+  useEffect(() => {
+    if (
+      (conditionOperator !== "is_empty" && conditionOperator !== "is_not_empty" && conditionValue !== "") ||
+      (conditionOperator === "is_empty" || conditionOperator === "is_not_empty")
+    ) {
+      setShowDestSelectors(true);
+    } else {
+      setShowDestSelectors(false);
     }
-    if (selectedQuestion.type === "number") {
-      return (
-        <input
-          type="number"
-          className="border rounded px-2 py-1 min-w-[80px]"
-          value={conditionValue}
-          onChange={e => setConditionValue(e.target.value)}
-        />
-      );
-    }
-    // text, textarea, etc.
-    return (
-      <input
-        type="text"
-        className="border rounded px-2 py-1 min-w-[120px]"
-        value={conditionValue}
-        onChange={e => setConditionValue(e.target.value)}
-      />
-    );
-  }
+  }, [conditionOperator, conditionValue]);
+
+  // Preguntas de la sección seleccionada
+  const sectionQuestions = allSections.find(s => s.id === newSectionId)?.questions || [];
 
   return (
     <div className="overflow-x-auto">
       {/* Formulario inline para agregar nueva regla */}
-      <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex flex-col md:flex-row gap-3 items-center">
-        {/* Destino: sección y pregunta */}
-        <select
-          className="border rounded px-2 py-1 min-w-[180px]"
-          value={newSectionId}
-          onChange={e => {
-            setNewSectionId(e.target.value);
-            setNewQuestionId("");
-            setConditionValue("");
-          }}
-        >
-          <option value="">Selecciona sección destino</option>
-          {allSections.map(section => (
-            <option key={section.id} value={section.id}>{stripHtmlTags(section.title)}</option>
-          ))}
-        </select>
-        <select
-          className="border rounded px-2 py-1 min-w-[180px]"
-          value={newQuestionId}
-          onChange={e => {
-            setNewQuestionId(e.target.value);
-            setConditionValue("");
-          }}
-          disabled={!newSectionId}
-        >
-          <option value="">{newSectionId ? "Selecciona pregunta destino (opcional)" : "Primero selecciona sección"}</option>
-          <option value="section_start">Ir al inicio de la sección</option>
-          {sectionQuestions.map((q: Question) => (
-            <option key={q.id} value={q.id}>{stripHtmlTags(q.text.length > 50 ? `${q.text.substring(0, 50)}...` : q.text)}</option>
-          ))}
-        </select>
-        {/* Condición lógica */}
-        {newSectionId && newQuestionId && newQuestionId !== "section_start" && selectedQuestion && (
-          <>
+      <div className="mb-4 p-4 bg-gradient-to-br from-emerald-50 via-white to-emerald-100 border border-emerald-200 rounded-xl shadow flex flex-col gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full items-center">
+          <span className="font-semibold text-emerald-700 col-span-1 md:col-span-1">Si la respuesta de la pregunta actual</span>
+          <select
+            className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
+            value={conditionOperator}
+            onChange={e => setConditionOperator(e.target.value)}
+          >
+            {operatorOptions.map((op) => (
+              <option key={op.value} value={op.value}>{op.label}</option>
+            ))}
+          </select>
+          {(conditionOperator !== "is_empty" && conditionOperator !== "is_not_empty") && (
+            <input
+              type="text"
+              className="border border-emerald-300 rounded-lg px-3 py-2 min-w-[120px] bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
+              value={conditionValue}
+              onChange={e => setConditionValue(e.target.value)}
+              placeholder="Valor de la respuesta"
+            />
+          )}
+        </div>
+        {showDestSelectors && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full items-center mt-2">
+            <span className="font-semibold text-emerald-700 col-span-1">Entonces saltar a:</span>
             <select
-              className="border rounded px-2 py-1 min-w-[120px]"
-              value={conditionOperator}
-              onChange={e => setConditionOperator(e.target.value)}
+              className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
+              value={newSectionId}
+              onChange={e => setNewSectionId(e.target.value)}
             >
-              {operatorOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="">Selecciona sección destino</option>
+              {allSections.map((section) => (
+                <option key={section.id} value={section.id}>{section.title}</option>
               ))}
             </select>
-            {renderConditionValueInput()}
-          </>
+            {newSectionId && (
+              <select
+                className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
+                value={newQuestionId}
+                onChange={e => setNewQuestionId(e.target.value)}
+              >
+                <option value="">Selecciona pregunta destino (opcional)</option>
+                {sectionQuestions.map((q) => (
+                  <option key={q.id} value={q.id}>{q.text}</option>
+                ))}
+              </select>
+            )}
+            <button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2 rounded-lg shadow transition disabled:bg-emerald-200 col-span-1"
+              onClick={() => {
+                onAddRule({
+                  condition: conditionOperator,
+                  value: conditionValue,
+                  targetSectionId: newSectionId,
+                  targetQuestionId: newQuestionId,
+                  enabled: true,
+                });
+                setConditionOperator("equals");
+                setConditionValue("");
+                setNewSectionId("");
+                setNewQuestionId("");
+              }}
+              disabled={!newSectionId}
+            >Agregar</button>
+          </div>
         )}
-        <button
-          className="bg-emerald-600 text-white px-4 py-1 rounded hover:bg-emerald-700 disabled:bg-emerald-200"
-          disabled={!newSectionId || (newQuestionId && newQuestionId !== "section_start" && (!conditionOperator || (conditionOperator !== 'is_empty' && conditionOperator !== 'is_not_empty' && !conditionValue)))}
-          onClick={() => {
-            onAddRule({
-              condition: newQuestionId && newQuestionId !== "section_start" ? newQuestionId : "",
-              operator: newQuestionId && newQuestionId !== "section_start" ? conditionOperator : "",
-              value: newQuestionId && newQuestionId !== "section_start" ? conditionValue : "",
-              targetSectionId: newSectionId,
-              targetQuestionId: newQuestionId === "section_start" ? '' : newQuestionId,
-              targetQuestionText: newQuestionId ? (sectionQuestions.find((q: Question) => q.id === newQuestionId)?.text || "") : "",
-              enabled: true,
-            });
-            setNewSectionId("");
-            setNewQuestionId("");
-            setConditionOperator("equals");
-            setConditionValue("");
-          }}
-        >Agregar</button>
       </div>
-      <table className="min-w-full border border-emerald-200 bg-white rounded-lg">
-        <thead className="bg-emerald-50">
-          <tr>
-            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">#</th>
-            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">Sección destino</th>
-            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">Pregunta destino</th>
-            <th className="px-4 py-2 text-left text-emerald-800 font-semibold">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rules.length === 0 && (
+      <div className="overflow-x-auto">
+        <table className="min-w-full border border-emerald-200 bg-white rounded-xl shadow">
+          <thead className="bg-emerald-50">
             <tr>
-              <td colSpan={4} className="text-center text-gray-500 py-4">No hay reglas de salto configuradas.</td>
+              <th className="px-4 py-2 text-left text-emerald-800 font-bold">#</th>
+              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Condición</th>
+              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Sección destino</th>
+              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Pregunta destino</th>
+              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Acciones</th>
             </tr>
-          )}
-          {rules.map((rule, index) => {
-            const targetSection = allSections.find(s => s.id === rule.targetSectionId);
-            const displayTargetSection = targetSection || {
-              id: rule.targetSectionId,
-              title: `⚠️ Sección no encontrada (ID: ${rule.targetSectionId?.substring(0, 8)}...)`,
-              questions: []
-            };
-            const targetQuestion = rule.targetQuestionId ? allQuestions.find((q: Question) => q.id === rule.targetQuestionId) : null;
-            return (
-              <tr key={index} className={targetSection ? '' : 'bg-red-50'}>
-                <td className="px-4 py-2 font-bold text-emerald-700">{index + 1}</td>
-                <td className="px-4 py-2">{stripHtmlTags(displayTargetSection.title)}</td>
-                <td className="px-4 py-2">
-                  {rule.targetQuestionId && targetQuestion
-                    ? stripHtmlTags(targetQuestion.text.length > 50 ? `${targetQuestion.text.substring(0, 50)}...` : targetQuestion.text)
-                    : <span className="text-emerald-600">(inicio de la sección)</span>}
-                </td>
-                <td className="px-4 py-2">
-                  <button
-                    className="text-red-600 hover:underline"
-                    title="Eliminar"
-                    onClick={() => onDeleteRule(index)}
-                  >Eliminar</button>
-                </td>
+          </thead>
+          <tbody>
+            {rules.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="text-center py-6 text-muted-foreground">No hay reglas de salto configuradas.</td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ) : (
+              rules.map((rule, idx) => (
+                <tr key={idx} className="hover:bg-emerald-50">
+                  <td className="px-4 py-2 font-bold text-emerald-700">{idx + 1}</td>
+                  <td className="px-4 py-2">{operatorOptions.find(op => op.value === rule.condition)?.label || rule.condition} {rule.value && `: ${rule.value}`}</td>
+                  <td className="px-4 py-2">{allSections.find(s => s.id === rule.targetSectionId)?.title || ""}</td>
+                  <td className="px-4 py-2">{rule.targetQuestionId ? (allQuestions.find(q => q.id === rule.targetQuestionId)?.text || "") : "-"}</td>
+                  <td className="px-4 py-2">
+                    <button className="text-red-600 hover:underline font-semibold" onClick={() => onDeleteRule(idx)}>Eliminar</button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1100,18 +1063,7 @@ export function AdvancedQuestionConfig({
             <CardContent className="space-y-4 ">
               {config.skipLogic?.enabled && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-emerald-800">Reglas de salto</h4>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={addSkipRule}
-                      className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-emerald-300 hover:border-emerald-400"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar Regla
-                    </Button>
-                  </div>
+                  
 
                   <SkipLogicVisualizer
                     rules={config.skipLogic?.rules || []}
@@ -1642,7 +1594,7 @@ export function AdvancedQuestionConfig({
             Configuración Avanzada
           </DialogTitle>
           <DialogDescription className="text-base">
-            Personaliza el comportamiento y apariencia de la pregunta: "{question.text}"
+            Personaliza el comportamiento y apariencia de la pregunta: "{question.text?.replace(/<[^>]+>/g, '')}"
           </DialogDescription>
         </DialogHeader>
 

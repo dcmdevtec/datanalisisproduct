@@ -2,6 +2,84 @@
 
 import type React from "react"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
+import { useToast } from "@/components/ui/use-toast"
+import { useState, useEffect, useRef } from "react"
+import dynamic from "next/dynamic"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Slider } from "@/components/ui/slider"
+import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Palette, Settings } from "lucide-react"
+import { Dialog } from "@/components/ui/dialog"
+import FullTiptapEditor from "@/components/ui/FullTiptapEditor"
+import { Badge } from "@/components/ui/badge"
+import { useDebounce } from "use-debounce"
+import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
+import type {  SurveySection } from "@/types-updated"
+import { supabase } from "@/lib/supabase-browser";
+import type { Question } from "@/types-updated";
+
+const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
+  ssr: false,
+})
+
+
+export async function autoSaveQuestionHelper(question: Question, sectionId: string, surveyId: string) {
+  if (
+    sectionId &&
+    sectionId !== "temp-id" &&
+    sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i) &&
+    question.id
+  ) {
+    // Construir el objeto questionData igual que en page.tsx
+    const questionData = {
+      id: question.id,
+      survey_id: surveyId, // Usar el argumento obligatorio
+      section_id: sectionId,
+      type: question.type,
+      text: (question.text || "").replace(/<[^>]*>/g, "").trim(),
+      options: question.options || [],
+      required: question.required || false,
+      order_num: question.order_num || 0,
+      settings: {
+        ...question.config,
+        matrixRows: question.matrixRows,
+        matrixCols: question.matrixCols,
+        ratingScale: question.ratingScale,
+      },
+      matrix_rows: question.matrixRows || [],
+      matrix_cols: question.matrixCols || [],
+      rating_scale: question.ratingScale || null,
+      file_url: question.image || null,
+      skip_logic: question.config?.skipLogic || null,
+      display_logic: question.config?.displayLogic || null,
+      validation_rules: question.config?.validation || null,
+      style: question.style || {},
+      comment_box: question.comment_box || false,
+      matrix: question.matrix || [],
+      question_config: question.question_config || null,
+    };
+    try {
+      // Forzar el tipo any para evitar error de generics en el upsert
+      const { error, data } = await (supabase as any).from("questions").upsert([questionData], { onConflict: "id" });
+      console.log("Guardado en supabase:", { error, data, questionData });
+      if (error) {
+        // Mostrar el error completo y los datos enviados
+        console.error("Error al guardar pregunta:", error, questionData);
+      }
+    } catch (err) {
+      console.error("Error inesperado al guardar pregunta:", err);
+    }
+  } else {
+    console.warn("No se guardó: sectionId o question.id inválidos", { sectionId, question });
+  }
+}
 
 // MatrixOptionInput for matrix column options (debounced, allows empty string)
 type MatrixOptionInputProps = {
@@ -28,34 +106,11 @@ const MatrixOptionInput: React.FC<MatrixOptionInputProps> = ({ value, onChange, 
   return <Input value={localValue} onChange={handleChange} placeholder={placeholder} />
 }
 
-import { useState, useEffect, useRef } from "react"
-import dynamic from "next/dynamic"
-import { useSortable } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Slider } from "@/components/ui/slider"
-import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Palette, Settings } from "lucide-react"
-import { Dialog } from "@/components/ui/dialog"
-import FullTiptapEditor from "@/components/ui/FullTiptapEditor"
-import { Badge } from "@/components/ui/badge"
-import { useDebounce } from "use-debounce"
-import { useToast } from "@/components/ui/use-toast"
-import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
-import type { Question, SurveySection } from "@/types-updated"
-
-const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
-  ssr: false,
-})
 
 interface QuestionEditorProps {
   question: Question
   sectionId: string
+  surveyId: string
   onRemoveQuestion: (sectionId: string, questionId: string) => void
   onUpdateQuestion: (sectionId: string, questionId: string, field: keyof Question, value: any) => void
   onDuplicateQuestion: (sectionId: string, questionId: string) => void
@@ -68,6 +123,7 @@ interface QuestionEditorProps {
 export function QuestionEditor({
   question,
   sectionId,
+  surveyId,
   onRemoveQuestion,
   onUpdateQuestion,
   onDuplicateQuestion,
@@ -75,7 +131,8 @@ export function QuestionEditor({
   qIndex,
 }: QuestionEditorProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const { toast } = useToast()
+  // Estado para mostrar/ocultar el textarea de pegado masivo de opciones
+  const [showPasteOptions, setShowPasteOptions] = useState(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
 
   const {
@@ -116,10 +173,6 @@ export function QuestionEditor({
 
     if (lines.length > 1) {
       onUpdateQuestion(sectionId, question.id, "options", lines)
-      toast({
-        title: "Opciones agregadas",
-        description: `Se agregaron ${lines.length} opciones.`,
-      })
       return true
     }
     return false
@@ -139,6 +192,12 @@ export function QuestionEditor({
 
   const handleAdvancedConfigSave = (newConfig: any) => {
     onUpdateQuestion(sectionId, question.id, "config", newConfig)
+    // Guardar inmediatamente en Supabase al guardar la configuración avanzada
+    // Usar el helper ya existente
+    autoSaveQuestionHelper({
+      ...question,
+      config: newConfig
+    }, sectionId, surveyId)
   }
 
   const matrixRows = question.matrixRows?.length ? question.matrixRows : ["Fila 1"]
@@ -153,8 +212,8 @@ export function QuestionEditor({
   return (
     <Card ref={setNodeRef} style={style} className="mb-6 border-l-4">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
             <div
               {...attributes}
               {...listeners}
@@ -180,7 +239,6 @@ export function QuestionEditor({
                 <circle cx="15" cy="19" r="1"/>
               </svg>
             </div>
-            {/* Grip icon for drag handle - assuming it's handled by parent SortableContext */}
             <Select
               value={question.type}
               onValueChange={(value) => onUpdateQuestion(sectionId, question.id, "type", value)}
@@ -189,62 +247,79 @@ export function QuestionEditor({
                 <SelectValue placeholder="Tipo de pregunta" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">📝 Texto corto *</SelectItem>
-                <SelectItem value="textarea">📄 Texto largo *</SelectItem>
-                <SelectItem value="multiple_choice">🔘 Opción múltiple *</SelectItem>
-                <SelectItem value="checkbox">☑️ Casillas de verificación *</SelectItem>
-                <SelectItem value="dropdown">📋 Lista desplegable *</SelectItem>
-                <SelectItem value="scale">📊 Escala de calificación *</SelectItem>
+                <SelectItem value="text">📝 Texto simple</SelectItem>
+                <SelectItem value="textarea">📄 Texto largo</SelectItem>
+                <SelectItem value="multiple_choice">🔘 Opción múltiple</SelectItem>
+                <SelectItem value="checkbox">☑️ Casillas de verificación</SelectItem>
+                <SelectItem value="dropdown">📋 Lista desplegable</SelectItem>
+                <SelectItem value="scale">📊 Escala de calificación</SelectItem>
                 <SelectItem value="matrix">📋 Matriz/Tabla</SelectItem>
                 <SelectItem value="ranking">🔢 Clasificación</SelectItem>
-                <SelectItem value="date">📅 Fecha *</SelectItem>
-                <SelectItem value="time">🕐 Hora *</SelectItem>
-                <SelectItem value="email">📧 Email *</SelectItem>
-                <SelectItem value="phone">📞 Teléfono *</SelectItem>
-                <SelectItem value="number">🔢 Número *</SelectItem>
-                <SelectItem value="rating">⭐ Valoración *</SelectItem>
-                <SelectItem value="file">📎 Archivo *</SelectItem>
-                <SelectItem value="image_upload">🖼️ Subir imagen *</SelectItem>
-                <SelectItem value="signature">✍️ Firma *</SelectItem>
+                <SelectItem value="date">📅 Fecha</SelectItem>
+                <SelectItem value="time">🕐 Hora</SelectItem>
+                <SelectItem value="email">📧 Email</SelectItem>
+                <SelectItem value="phone">📞 Teléfono</SelectItem>
+                <SelectItem value="number">🔢 Número</SelectItem>
+                <SelectItem value="rating">⭐ Valoración</SelectItem>
+                <SelectItem value="file">📎 Archivo</SelectItem>
+                <SelectItem value="image_upload">🖼️ Subir imagen</SelectItem>
+                <SelectItem value="signature">✍️ Firma</SelectItem>
                 <SelectItem value="likert">📈 Escala Likert</SelectItem>
-                <SelectItem value="net_promoter">📊 Net Promoter Score *</SelectItem>
-                <SelectItem value="slider">🎚️ Control deslizante *</SelectItem>
-                <SelectItem value="comment_box">💬 Caja de comentarios *</SelectItem>
-                <SelectItem value="star_rating">⭐ Calificación con estrellas *</SelectItem>
-                <SelectItem value="demographic">👤 Demográfica *</SelectItem>
-                <SelectItem value="contact_info">📧 Información de contacto *</SelectItem>
-                <SelectItem value="single_textbox">📝 Una sola caja de texto *</SelectItem>
-                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto *</SelectItem>
+                <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
+                <SelectItem value="slider">🎚️ Control deslizante</SelectItem>
+                <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
+                <SelectItem value="star_rating">⭐ Calificación con estrellas</SelectItem>
+                <SelectItem value="demographic">👤 Demográfica</SelectItem>
+                <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
+                <SelectItem value="single_textbox">📝 Una sola caja de texto</SelectItem>
+                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
               </SelectContent>
             </Select>
             <Badge variant={question.required ? "destructive" : "secondary"}>
               {question.required ? "Obligatorio" : "Opcional"}
             </Badge>
-          </div>
-
-          {/* Nota explicativa sobre el asterisco */}
-          <div className="text-xs text-muted-foreground mt-1">
-            <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleQuestionExpansion}>
+            <Button variant="ghost" size="sm" onClick={toggleQuestionExpansion} title="Expandir/Colapsar">
               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)}>
+            <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)} title="Copiar pregunta">
               <Copy className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onRemoveQuestion(sectionId, question.id)}>
+            <Button variant="ghost" size="sm" onClick={() => onRemoveQuestion(sectionId, question.id)} title="Borrar pregunta">
               <Trash2 className="h-4 w-4" />
             </Button>
+            {/* Botón para mover pregunta (preparado, requiere implementación de onMoveQuestion) */}
+            {/* <Button variant="ghost" size="sm" onClick={() => onMoveQuestion && onMoveQuestion(question.id, sectionId, 'destSectionId')}>Mover</Button> */}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor={`question-${question.id}`}>Pregunta</Label>
-
-          <div className="flex-1">
+          <Label htmlFor={`question-${question.id}`}>Enunciado de la pregunta</Label>
+          <div className="flex flex-col md:flex-row gap-2 hidden">
+            <Button
+              type="button"
+              variant={!isEditing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsEditing(false)}
+              disabled={!isEditing}
+            >
+              Texto simple
+            </Button>
+            <Button
+              type="button"
+              variant={isEditing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsEditing(true)}
+              disabled={isEditing}
+            >
+              Formato avanzado
+            </Button>
+          </div>
+          <div className="flex-1 mt-2">
             {!isEditing ? (
               <Input
                 readOnly
@@ -260,27 +335,26 @@ export function QuestionEditor({
                   onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
                   placeholder="Escribe tu pregunta aquí..."
                   immediatelyRender={false}
-                  autoFocus
                 />
                 <div className="flex justify-end mt-2 gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => {
+                      autoSaveQuestionHelper(question, sectionId, surveyId);
+                      setIsEditing(false);
+                    }}
+                  >
                     Guardar
                   </Button>
+                
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-          <div className="flex items-center space-x-2">
-            <Switch
-              checked={question.required}
-              onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
-            />
-
-            <Label htmlFor={`required-${question.id}`}>Pregunta obligatoria</Label>
-          </div>
+        <div className="flex items-center justify-end p-3 bg-muted/50 rounded-lg">
           <Button variant="outline" size="sm" onClick={openConfigEditor}>
             <Settings className="h-4 w-4 mr-2" />
             Configuración avanzada
@@ -947,117 +1021,98 @@ export function QuestionEditor({
         )}
 
         {(question.type === "multiple_choice" || question.type === "checkbox" || question.type === "dropdown") && (
-          <div className="space-y-3 p-4 border rounded-lg">
-            <div className="flex items-center justify-between">
-              <Label className="text-lg font-semibold">Opciones de respuesta</Label>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={question.config?.allowOther || false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        allowOther: checked,
-                      })
-                    }
-                  />
-                  <Label className="text-sm">Permitir "Otro"</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={question.config?.randomizeOptions || false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        randomizeOptions: checked,
-                      })
-                    }
-                  />
-                  <Label className="text-sm">Aleatorizar</Label>
-                </div>
-              </div>
+          <div className="space-y-4 p-4 bg-white border rounded-lg">
+            <div className="flex gap-4 items-center mb-2">
+              <Switch
+                checked={showPasteOptions}
+                onCheckedChange={setShowPasteOptions}
+                id={`show-paste-options-${question.id}`}
+              />
+              <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
+              <Switch
+                checked={question.config?.allowOther || false}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, allowOther: checked })}
+                id={`allow-other-${question.id}`}
+              />
+              <Label htmlFor={`allow-other-${question.id}`}>Permitir "Otro"</Label>
+              <Switch
+                checked={question.config?.randomizeOptions || false}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, randomizeOptions: checked })}
+                id={`randomize-options-${question.id}`}
+              />
+              <Label htmlFor={`randomize-options-${question.id}`}>Aleatorizar</Label>
             </div>
-
-            {question.type === "checkbox" && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-blue-700">Mínimo de respuestas</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={question.options.length}
-                      value={question.config?.minSelections || 0}
-                      onChange={(e) =>
-                        onUpdateQuestion(sectionId, question.id, "config", {
-                          ...question.config,
-                          minSelections: Number.parseInt(e.target.value) || 0,
-                        })
-                      }
-                      placeholder="0"
-                      className="h-8"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-blue-700">Máximo de respuestas</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max={question.options.length}
-                      value={question.config?.maxSelections || question.options.length}
-                      onChange={(e) =>
-                        onUpdateQuestion(sectionId, question.id, "config", {
-                          ...question.config,
-                          maxSelections: Number.parseInt(e.target.value) || question.options.length,
-                        })
-                      }
-                      placeholder={question.options.length.toString()}
-                      className="h-8"
-                    />
-                  </div>
-                </div>
-                <div className="text-xs text-blue-600">
-                  {question.config?.minSelections > 0 && question.config?.maxSelections && (
-                    <>
-                      {question.config.minSelections === question.config.maxSelections
-                        ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
-                        : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`}
-                    </>
-                  )}
-                  {question.config?.minSelections === 0 &&
-                    question.config?.maxSelections &&
-                    `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`}
-                  {(!question.config?.minSelections || question.config.minSelections === 0) &&
-                    (!question.config?.maxSelections || question.config.maxSelections === question.options.length) &&
-                    "Sin límites de selección"}
-                </div>
+            {showPasteOptions && (
+              <div>
+                <Label className="text-lg font-semibold">Opciones de respuesta</Label>
+                <Label>Pegar opciones (una por línea)</Label>
+                <Textarea
+                  placeholder="Opción 1\nOpción 2\nOpción 3 ..."
+                  className="mb-2"
+                  onPaste={(e) => {
+                    if (handlePasteOptions(e.clipboardData.getData("text"), question.options || [])) {
+                      e.preventDefault()
+                    }
+                  }}
+                />
+                <div className="text-xs text-muted-foreground mb-2">Puedes pegar múltiples opciones separadas por saltos de línea</div>
               </div>
             )}
-
-            <div className="mb-4">
-              <Label className="text-sm font-medium">Pegar opciones (una por línea)</Label>
-              <Textarea
-                placeholder="Opción 1&#10;Opción 2&#10;Opción 3&#10;..."
-                className="mt-1"
-                onPaste={(e) => {
-                  const pastedText = e.clipboardData.getData("text")
-                  handlePasteOptions(pastedText, question.options)
-                  e.preventDefault()
-                }}
-                onChange={(e) => {
-                  const text = e.target.value
-                  if (text.includes("\n")) {
-                    handlePasteOptions(text, question.options)
-                    e.target.value = ""
-                  }
-                }}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Puedes pegar múltiples opciones separadas por saltos de línea
-              </p>
+            
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+              <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-blue-700">Mínimo de respuestas</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max={question.options.length}
+                    value={question.config?.minSelections || 0}
+                    onChange={(e) =>
+                      onUpdateQuestion(sectionId, question.id, "config", {
+                        ...question.config,
+                        minSelections: Number.parseInt(e.target.value) || 0,
+                      })
+                    }
+                    placeholder="0"
+                    className="h-8"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-blue-700">Máximo de respuestas</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max={question.options.length}
+                    value={question.config?.maxSelections || question.options.length}
+                    onChange={(e) =>
+                      onUpdateQuestion(sectionId, question.id, "config", {
+                        ...question.config,
+                        maxSelections: Number.parseInt(e.target.value) || question.options.length,
+                      })
+                    }
+                    placeholder={question.options.length.toString()}
+                    className="h-8"
+                  />
+                </div>
+              </div>
+              <div className="text-xs text-blue-600">
+                {question.config?.minSelections > 0 && question.config?.maxSelections && (
+                  <>
+                    {question.config.minSelections === question.config.maxSelections
+                      ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
+                      : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`}
+                  </>
+                )}
+                {question.config?.minSelections === 0 &&
+                  question.config?.maxSelections &&
+                  `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`}
+                {(!question.config?.minSelections || question.config.minSelections === 0) &&
+                  (!question.config?.maxSelections || question.config.maxSelections === question.options.length) &&
+                  "Sin límites de selección"}
+              </div>
             </div>
-
             {question.options.map((option: string, index: number) => (
               <div key={index} className="flex items-center gap-2">
                 <div className="w-6 h-6 flex items-center justify-center">
@@ -1105,7 +1160,6 @@ export function QuestionEditor({
             >
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
-
             {question.config?.allowOther && (
               <div className="flex items-center gap-2 mt-2">
                 <div className="w-6 h-6 flex items-center justify-center">

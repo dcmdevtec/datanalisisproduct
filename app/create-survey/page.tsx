@@ -493,7 +493,11 @@ export default function CreateSurveyPage() {
               {sections.map((section) => (
                 <div key={section.id} className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium">{section.title}</h3>
+                    { (section as any).title_html ? (
+                      <h3 className="text-lg font-medium" dangerouslySetInnerHTML={{ __html: (section as any).title_html }} />
+                    ) : (
+                      <h3 className="text-lg font-medium">{section.title}</h3>
+                    )}
                     {section.description && (
                       <p className="text-sm text-muted-foreground">{section.description}</p>
                     )}

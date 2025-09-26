@@ -11,6 +11,22 @@ import { useToast } from "@/components/ui/use-toast"
 import { generateUUID } from "@/lib/utils"
 import { RichTextEditor } from "@/components/rich-text-editor"
 
+// Utility: strip HTML tags safely in browser (returns plain text)
+function stripHtml(html?: string | null): string {
+  if (!html) return "";
+  try {
+    const tmp = typeof document !== 'undefined' ? document.createElement('div') : null;
+    if (tmp) {
+      tmp.innerHTML = html;
+      return tmp.textContent || tmp.innerText || "";
+    }
+  } catch (e) {
+    // Fallback: remove tags with regex
+    return html.replace(/<[^>]*>/g, "");
+  }
+  return html.replace(/<[^>]*>/g, "");
+}
+
 interface Question {
   id: string
   type: string
@@ -109,20 +125,14 @@ function SortableSectionCard({
                   </Badge>
                 </div>
                 {/* Utilidad robusta para limpiar etiquetas HTML */}
-                {(() => {
-                  function stripHtml(html: string): string {
-                    if (!html) return "";
-                    const tmp = document.createElement("div");
-                    tmp.innerHTML = html;
-                    return tmp.textContent || tmp.innerText || "";
-                  }
-                  return (
-                    <>
-                      <h3 className="font-semibold text-lg">{stripHtml(section.title) || `Sección ${index + 1}`}</h3>
-                      {section.description && <p className="text-sm text-muted-foreground mt-1">{stripHtml(section.description)}</p>}
-                    </>
-                  );
-                })()}
+                <>
+                  {/* Mostrar HTML estilado si existe, si no mostrar texto plano */}
+                  <div
+                    className="font-semibold text-lg"
+                    dangerouslySetInnerHTML={{ __html: section.title_html || stripHtml(section.title) || `Sección ${index + 1}` }}
+                  />
+                  {section.description && <p className="text-sm text-muted-foreground mt-1">{stripHtml(section.description)}</p>}
+                </>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -155,13 +165,6 @@ function SortableSectionCard({
               <h4 className="text-sm font-medium text-muted-foreground mb-2">Preguntas:</h4>
               <div className="grid gap-2 p-2 rounded-lg">
                 {section.questions.map((question, qIndex) => {
-                  // Utilidad robusta para limpiar etiquetas HTML
-                  function stripHtml(html: string): string {
-                    if (!html) return "";
-                    const tmp = document.createElement("div");
-                    tmp.innerHTML = html;
-                    return tmp.textContent || tmp.innerText || "";
-                  }
                   return (
                     <div
                       key={`${section.id}-${question.id}`}
@@ -247,6 +250,14 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     }
   }
 
+  // Ensure the rich editor is populated with the saved HTML title when a section is selected for editing.
+  useEffect(() => {
+    if (editingSection) {
+      setEditTitle(editingSection.title_html ?? editingSection.title ?? "")
+      setEditDescription(editingSection.description ?? "")
+    }
+  }, [editingSection])
+
   const handleConfirmMove = () => {
     if (!movingSection || !targetPosition) return
 
@@ -290,7 +301,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   const handleEdit = (section: SurveySection) => {
     setEditingSection(section)
-    setEditTitle(section.title)
+    setEditTitle(section.title_html || section.title)
     setEditDescription(section.description || "")
   }
 
@@ -298,9 +309,19 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     if (!editingSection) return
 
     const updatedSections = localSections.map((section) =>
-      section.id === editingSection.id ? { ...section, title: editTitle, description: editDescription } : section,
+      section.id === editingSection.id
+        ? { ...section, title_html: editTitle, title: stripHtml(editTitle), description: editDescription }
+        : section,
     )
     setLocalSections(updatedSections)
+    // Also propagate immediately to parent so external state/store can persist and reflect the HTML
+    try {
+      onSectionsChange(updatedSections)
+    } catch (e) {
+      console.debug("onSectionsChange failed in handleSaveEdit", e)
+    }
+    // Helpful debug log to inspect what HTML was saved in local state
+    console.debug("Saved section title_html:", editTitle)
     setEditingSection(null)
     setEditTitle("")
     setEditDescription("")
@@ -355,11 +376,16 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
       };
     });
 
-    // Create the new section
+    // Create the new section (preserve HTML title if exists)
+    const baseTitle = section.title_html ? stripHtml(section.title_html) : section.title
+    const newTitleText = `${baseTitle} (Copia)`
+    const newTitleHtml = `<h1>${newTitleText}</h1>`
+
     const newSection: SurveySection = {
       ...section,
       id: generateUUID(),
-      title: `${section.title} (Copia)`,
+      title: newTitleText,
+      title_html: newTitleHtml,
       order_num: localSections.length,
       questions: newQuestions,
     };
@@ -389,6 +415,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     const newSection: SurveySection = {
       id: generateUUID(),
       title: `Nueva Sección ${localSections.length + 1}`,
+      title_html: `<h1>Nueva Sección ${localSections.length + 1}</h1>`,
       description: "",
       order_num: localSections.length,
       questions: [],
@@ -633,7 +660,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
         </DialogContent>
       </Dialog>
 
-      {/* Enhanced Move Question Modal */}
+   
       <Dialog open={!!movingQuestion} onOpenChange={() => setMovingQuestion(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -653,10 +680,10 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                 <span className="text-lg">
                   {(() => {
                     const icons: { [key: string]: string } = {
-                      text: "📝", textarea: "📄", multiple_choice: "🔘", checkbox: "☑️", 
-                      dropdown: "📋", scale: "📊", matrix: "📋", ranking: "🔢", date: "📅", 
-                      time: "🕐", email: "📧", phone: "📞", number: "🔢", rating: "⭐", 
-                      file: "📎", image_upload: "🖼️", signature: "✍️", likert: "📈", 
+                      text: "📝", textarea: "📄", multiple_choice: "🔘", checkbox: "☑️",
+                      dropdown: "📋", scale: "📊", matrix: "📋", ranking: "🔢", date: "📅",
+                      time: "🕐", email: "📧", phone: "📞", number: "🔢", rating: "⭐",
+                      file: "📎", image_upload: "🖼️", signature: "✍️", likert: "📈",
                       net_promoter: "📊", slider: "🎚️",
                     }
                     return icons[movingQuestion?.question.type || "text"] || "❓"
@@ -667,9 +694,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
               <div className="text-sm text-muted-foreground bg-white p-3 rounded border">
                 {movingQuestion?.question.text.replace(/<[^>]*>/g, "") || "Pregunta sin título"}
                 {movingQuestion?.question.required && (
-                  <Badge variant="destructive" className="text-xs ml-2">
-                    Obligatorio
-                  </Badge>
+                  <Badge variant="destructive" className="text-xs ml-2">Obligatorio</Badge>
                 )}
               </div>
             </div>
@@ -677,11 +702,11 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
             {/* Target section selection */}
             <div className="space-y-3">
               <label className="text-sm font-medium">Sección destino</label>
-              <Select 
-                value={bulkMoveSection?.toSectionId} 
+              <Select
+                value={bulkMoveSection?.toSectionId}
                 onValueChange={(sectionId) => setBulkMoveSection({
                   fromSectionId: movingQuestion?.sectionId || "",
-                  toSectionId: sectionId
+                  toSectionId: sectionId,
                 })}
               >
                 <SelectTrigger>
@@ -691,10 +716,8 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                   {localSections.map((section) => (
                     <SelectItem key={section.id} value={section.id}>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {section.questions.length} preguntas
-                        </Badge>
-                        <span>{section.title || `Sección ${section.order_num + 1}`}</span>
+                        <Badge variant="outline" className="text-xs">{section.questions.length} preguntas</Badge>
+                        <span>{stripHtml(section.title) || `Sección ${section.order_num + 1}`}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -711,22 +734,13 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="before">
-                    <div className="flex items-center gap-2">
-                      <ArrowUp className="h-4 w-4" />
-                      Antes de una pregunta específica
-                    </div>
+                    <div className="flex items-center gap-2"><ArrowUp className="h-4 w-4" />Antes de una pregunta específica</div>
                   </SelectItem>
                   <SelectItem value="after">
-                    <div className="flex items-center gap-2">
-                      <ArrowDown className="h-4 w-4" />
-                      Después de una pregunta específica
-                    </div>
+                    <div className="flex items-center gap-2"><ArrowDown className="h-4 w-4" />Después de una pregunta específica</div>
                   </SelectItem>
                   <SelectItem value="end">
-                    <div className="flex items-center gap-2">
-                      <Plus className="h-4 w-4" />
-                      Al final de la sección
-                    </div>
+                    <div className="flex items-center gap-2"><Plus className="h-4 w-4" />Al final de la sección</div>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -735,9 +749,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
             {/* Question position selection (only if not "end") */}
             {questionMoveMode !== "end" && bulkMoveSection && (
               <div className="space-y-3">
-                <label className="text-sm font-medium">
-                  Selecciona la pregunta de referencia
-                </label>
+                <label className="text-sm font-medium">Selecciona la pregunta de referencia</label>
                 <Select value={targetQuestionPosition} onValueChange={setTargetQuestionPosition}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona una pregunta..." />
@@ -745,40 +757,29 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                   <SelectContent className="max-h-60">
                     {localSections
                       .find(s => s.id === bulkMoveSection.toSectionId)
-                      ?.questions.filter(q => q.id !== movingQuestion?.question.id) // Exclude the question being moved
+                      ?.questions.filter(q => q.id !== movingQuestion?.question.id)
                       .map((question, index) => (
-                      <SelectItem key={question.id} value={index.toString()}>
-                        <div className="flex items-center gap-2 max-w-[400px]">
-                          <Badge variant="outline" className="text-xs shrink-0">
-                            {index + 1}
-                          </Badge>
-                          <span className="text-lg shrink-0">
-                            {(() => {
+                        <SelectItem key={question.id} value={index.toString()}>
+                          <div className="flex items-center gap-2 max-w-[400px]">
+                            <Badge variant="outline" className="text-xs shrink-0">{index + 1}</Badge>
+                            <span className="text-lg shrink-0">{(() => {
                               const icons: { [key: string]: string } = {
-                                text: "📝", textarea: "📄", multiple_choice: "🔘", checkbox: "☑️", 
-                                dropdown: "📋", scale: "📊", matrix: "📋", ranking: "🔢", date: "📅", 
-                                time: "🕐", email: "📧", phone: "📞", number: "🔢", rating: "⭐", 
-                                file: "📎", image_upload: "🖼️", signature: "✍️", likert: "📈", 
+                                text: "📝", textarea: "📄", multiple_choice: "🔘", checkbox: "☑️",
+                                dropdown: "📋", scale: "📊", matrix: "📋", ranking: "🔢", date: "📅",
+                                time: "🕐", email: "📧", phone: "📞", number: "🔢", rating: "⭐",
+                                file: "📎", image_upload: "🖼️", signature: "✍️", likert: "📈",
                                 net_promoter: "📊", slider: "🎚️",
                               }
                               return icons[question.type] || "❓"
-                            })()}
-                          </span>
-                          <span className="truncate">
-                            {question.text.replace(/<[^>]*>/g, "") || `Pregunta ${index + 1}`}
-                          </span>
-                          {question.required && (
-                            <Badge variant="destructive" className="text-xs shrink-0">
-                              Req
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
+                            })()}</span>
+                            <span className="truncate">{question.text.replace(/<[^>]*>/g, "") || `Pregunta ${index + 1}`}</span>
+                            {question.required && <Badge variant="destructive" className="text-xs shrink-0">Req</Badge>}
+                          </div>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
-                
-                {/* Show target section questions count */}
+
                 <div className="text-xs text-muted-foreground">
                   {(() => {
                     const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
@@ -796,29 +797,21 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-blue-600">De:</span>
-                    <Badge variant="outline">
-                      {localSections.find(s => s.id === bulkMoveSection.fromSectionId)?.title || "Sección origen"}
-                    </Badge>
+                    <Badge variant="outline">{stripHtml(localSections.find(s => s.id === bulkMoveSection.fromSectionId)?.title || "Sección origen")}</Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-blue-600">A:</span>
-                    <Badge variant="default">
-                      {localSections.find(s => s.id === bulkMoveSection.toSectionId)?.title || "Sección destino"}
-                    </Badge>
+                    <Badge variant="default">{stripHtml(localSections.find(s => s.id === bulkMoveSection.toSectionId)?.title || "Sección destino")}</Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-blue-600">Posición:</span>
-                    <Badge variant="secondary">
-                      {(() => {
-                        if (questionMoveMode === "end") {
-                          return "Al final de la sección";
-                        }
-                        const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
-                        const referenceQuestion = targetSection?.questions[Number(targetQuestionPosition)];
-                        const referenceText = referenceQuestion?.text.replace(/<[^>]*>/g, "") || `Pregunta ${Number(targetQuestionPosition) + 1}`;
-                        return `${questionMoveMode === "before" ? "Antes" : "Después"} de: ${referenceText.substring(0, 30)}${referenceText.length > 30 ? "..." : ""}`;
-                      })()}
-                    </Badge>
+                    <Badge variant="secondary">{(() => {
+                      if (questionMoveMode === "end") return "Al final de la sección";
+                      const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
+                      const referenceQuestion = targetSection?.questions[Number(targetQuestionPosition)];
+                      const referenceText = referenceQuestion?.text.replace(/<[^>]*>/g, "") || `Pregunta ${Number(targetQuestionPosition) + 1}`;
+                      return `${questionMoveMode === "before" ? "Antes" : "Después"} de: ${referenceText.substring(0, 30)}${referenceText.length > 30 ? "..." : ""}`;
+                    })()}</Badge>
                   </div>
                 </div>
               </div>
@@ -831,16 +824,9 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
               setBulkMoveSection(null);
               setTargetQuestionPosition("");
               setQuestionMoveMode("after");
-            }} variant="outline">
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleQuestionMove}
-              disabled={!bulkMoveSection || (questionMoveMode !== "end" && !targetQuestionPosition)}
-              className="gap-2"
-            >
-              <ArrowUpDown className="h-4 w-4" />
-              Mover Pregunta
+            }} variant="outline">Cancelar</Button>
+            <Button onClick={handleQuestionMove} disabled={!bulkMoveSection || (questionMoveMode !== "end" && !targetQuestionPosition)} className="gap-2">
+              <ArrowUpDown className="h-4 w-4" />Mover Pregunta
             </Button>
           </div>
         </DialogContent>
@@ -895,7 +881,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                     if (section.id === movingSection?.id) return null
                     return (
                       <SelectItem key={section.id} value={(index + 1).toString()}>
-                        {moveMode === "exact" ? `Posición ${index + 1}` : `${index + 1}. ${section.title}`}
+                        {moveMode === "exact" ? `Posición ${index + 1}` : `${index + 1}. ${stripHtml(section.title)}`}
                       </SelectItem>
                     )
                   })}

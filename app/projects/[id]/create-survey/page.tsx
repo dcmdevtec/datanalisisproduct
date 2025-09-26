@@ -1,3 +1,4 @@
+import type { SurveySection, Question, SurveySettings, Survey } from "@/types-updated";
 
 "use client"
 
@@ -213,9 +214,11 @@ function SortableSection({
   allSections,
   sections,
   setSections,
+  currentSurveyId,
 }: SortableSectionProps & {
   sections: SurveySection[]
   setSections: React.Dispatch<React.SetStateAction<SurveySection[]>>
+  currentSurveyId: string | null
 }) {
   // Estado local para el editor enriquecido del título de la sección
   const [localSectionTitle, setLocalSectionTitle] = useState(section.title || "");
@@ -228,7 +231,10 @@ function SortableSection({
   // Guardar el valor HTML en el estado global al cambiar
   const handleSectionTitleChange = (html: string) => {
     setLocalSectionTitle(html);
-    onUpdateSection(section.id, "title", html);
+    // Extraer texto plano del HTML
+    const plain = stripHtml(html);
+    onUpdateSection(section.id, "title", plain);
+    onUpdateSection(section.id, "title_html", html);
   };
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
 
@@ -348,13 +354,17 @@ function SortableSection({
           </div>
         )}
 
-        <Textarea
-          value={section.description || ""}
-          onChange={(e) => onUpdateSection(section.id, "description", e.target.value)}
-          placeholder="Descripción opcional de la sección..."
-          className="mt-2 border-none bg-transparent px-0 focus-visible:ring-0 resize-none"
-          rows={2}
-        />
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-muted-foreground mb-1">Descripción de la sección</label>
+          <div className="rounded-lg border border-muted bg-white/70 p-2 shadow-sm transition focus-within:ring-2 focus-within:ring-primary/30">
+            <AdvancedRichTextEditor
+              value={section.description || ""}
+              onChange={(html) => onUpdateSection(section.id, "description", html)}
+              placeholder="Descripción opcional de la sección..."
+              className="min-h-[80px] border-none bg-transparent px-0 focus-visible:ring-0"
+            />
+          </div>
+        </div>
       </div>
 
       <Dialog open={showSkipLogicModal} onOpenChange={setShowSkipLogicModal}>
@@ -425,12 +435,13 @@ function SortableSection({
                         {qIndex + 1}
                       </div>
                       <QuestionEditor
-                        question={question}
+                        question={question as Question}
                         sectionId={section.id}
+                        surveyId={currentSurveyId || ""}
                         onRemoveQuestion={onRemoveQuestion}
-                        onUpdateQuestion={onUpdateQuestion}
+                        onUpdateQuestion={onUpdateQuestion as any}
                         onDuplicateQuestion={onDuplicateQuestion}
-                        allSections={sections}
+                        allSections={sections as SurveySection[]}
                         qIndex={qIndex}
                       />
                     </div>
@@ -496,7 +507,7 @@ function SortableSection({
  * @param {string} surveyId - ID de la encuesta
  * @returns {Promise<'saved'|'error'>}
  */
-async function autoSaveQuestion(sectionId, question, surveyId) {
+async function autoSaveQuestion(sectionId: string, question: Question, surveyId: string) {
   // Validar que la sección tenga un ID real (UUID v4)
   if (!sectionId || sectionId === 'temp-id' || !sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)) {
     console.warn('autoSaveQuestion: sección sin ID real, no se guarda');
@@ -532,7 +543,7 @@ async function autoSaveQuestion(sectionId, question, surveyId) {
   };
   try {
     // Upsert (insert/update) en Supabase
-    const { error } = await supabase.from('questions').upsert([questionData], { onConflict: 'id' });
+  const { error } = await (supabase as any).from('questions').upsert([questionData], { onConflict: 'id' });
     if (error) {
       console.error('autoSaveQuestion error:', error);
       return 'error';
@@ -1016,6 +1027,7 @@ function CreateSurveyForProjectPageContent() {
       const sectionData = {
         survey_id: workingSurveyId,
         title: section.title.trim(),
+        title_html: section.title_html || "",
         description: section.description || "",
         order_num: sections.findIndex((s) => s.id === sectionId),
         skip_logic: section.skipLogic || null,
@@ -1561,6 +1573,7 @@ function CreateSurveyForProjectPageContent() {
           const sectionData = {
             survey_id: currentSurveyId,
             title: section.title.trim(),
+            title_html: section.title_html || "",
             description: section.description || "",
             order_num: secIndex,
             skip_logic: section.skipLogic || null,
@@ -2994,6 +3007,7 @@ function CreateSurveyForProjectPageContent() {
                               allSections={sections}
                               sections={sections}
                               setSections={setSections}
+                              currentSurveyId={currentSurveyId}
                             />
                           )}
 
