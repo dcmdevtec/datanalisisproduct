@@ -846,6 +846,7 @@ export function AdvancedQuestionConfig({
                       
                       console.log(`✅ Pregunta fuente encontrada:`, sourceQuestion)
                       
+                      const [saving, setSaving] = useState(false);
                       return (
                         <Card key={index} className="bg-gradient-to-br from-white via-green-50/30 to-emerald-100/30 border-2 border-green-200 shadow-lg hover:shadow-xl transition-all duration-300">
                           <CardContent className="pt-6">
@@ -1000,6 +1001,30 @@ export function AdvancedQuestionConfig({
                                   )}
                                 </div>
                               )}
+
+                              {/* Botón Guardar condición */}
+                              <div className="flex justify-end pt-2">
+                                <Button
+                                  variant="success"
+                                  size="sm"
+                                  disabled={saving}
+                                  onClick={async () => {
+                                    setSaving(true);
+                                    // Simula guardado (puedes poner aquí lógica real de guardado si lo necesitas)
+                                    await new Promise(res => setTimeout(res, 1000));
+                                    setSaving(false);
+                                  }}
+                                  className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+                                >
+                                  {saving && (
+                                    <svg className="animate-spin h-4 w-4 mr-1 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                    </svg>
+                                  )}
+                                  {saving ? 'Guardando...' : 'Guardar condición'}
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
