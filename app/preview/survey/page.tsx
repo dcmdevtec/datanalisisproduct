@@ -542,6 +542,23 @@ function PreviewSurveyPageContent() {
                     <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
                   </div>
                 ))}
+                {question.config?.allowOther && (
+                  <div className="flex items-center space-x-2 mt-2">
+                    <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
+                    <Label htmlFor={`${question.id}-option-other`}>
+                      {question.config.otherText || 'Otro (especificar)'}
+                    </Label>
+                    {answers[question.id] === "__other__" && (
+                      <input
+                        type="text"
+                        className="ml-2 border rounded px-2 py-1"
+                        value={answers[`${question.id}_other`] || ""}
+                        onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                        placeholder="Especifica..."
+                      />
+                    )}
+                  </div>
+                )}
               </RadioGroup>
             )
           case "checkbox":
@@ -565,22 +582,65 @@ function PreviewSurveyPageContent() {
                     <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
                   </div>
                 ))}
+                {question.config?.allowOther && (
+                  <div className="flex items-center space-x-2 mt-2">
+                    <Checkbox
+                      id={`${question.id}-option-other`}
+                      checked={(answers[question.id] || []).includes("__other__")}
+                      onCheckedChange={(checked) => {
+                        let currentAnswers = new Set(answers[question.id] || [])
+                        if (checked) {
+                          currentAnswers.add("__other__")
+                        } else {
+                          currentAnswers.delete("__other__")
+                        }
+                        handleAnswerChange(question.id, Array.from(currentAnswers))
+                      }}
+                    />
+                    <Label htmlFor={`${question.id}-option-other`}>
+                      {question.config.otherText || 'Otro (especificar)'}
+                    </Label>
+                    {(answers[question.id] || []).includes("__other__") && (
+                      <input
+                        type="text"
+                        className="ml-2 border rounded px-2 py-1"
+                        value={answers[`${question.id}_other`] || ""}
+                        onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                        placeholder="Especifica..."
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )
           case "dropdown":
             return (
-              <Select value={answers[question.id] || ""} onValueChange={(value) => handleAnswerChange(question.id, value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una opción..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(question.options || []).map((option, idx) => (
-                    <SelectItem key={idx} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div>
+                <Select value={answers[question.id] || ""} onValueChange={(value) => handleAnswerChange(question.id, value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una opción..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(question.options || []).map((option, idx) => (
+                      <SelectItem key={idx} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                    {question.config?.allowOther && (
+                      <SelectItem value="__other__">{question.config.otherText || 'Otro (especificar)'}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {question.config?.allowOther && answers[question.id] === "__other__" && (
+                  <input
+                    type="text"
+                    className="mt-2 border rounded px-2 py-1"
+                    value={answers[`${question.id}_other`] || ""}
+                    onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                    placeholder="Especifica..."
+                  />
+                )}
+              </div>
             )
           case "rating":
           case "star_rating":
