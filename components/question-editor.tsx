@@ -195,17 +195,25 @@ export function QuestionEditor({
     return false
   }
 
-  const getRatingEmojis = (scale: number) => {
-    const emojiSets = {
-      3: ["😞", "😐", "😊"],
-      4: ["😞", "😐", "🙂", "😊"],
-      5: ["😞", "😕", "😐", "🙂", "😊"],
-      6: ["😞", "😕", "😐", "🙂", "😊", "😍"],
-      7: ["😞", "😕", "😐", "🙂", "😊", "😍", "🤩"],
-      10: ["😞", "😕", "😐", "🙂", "😊", "😍", "🤩", "🥰", "😘", "🤗"],
-    }
-    return emojiSets[scale as keyof typeof emojiSets] || emojiSets[5]
-  }
+  // Emoji sets para valoración
+  const RATING_EMOJI_SETS = [
+    { key: "caras", label: "Caras", emojis: ["😞", "😐", "😊"] },
+    { key: "estrellas", label: "Estrellas", emojis: ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"] },
+    { key: "corazones", label: "Corazones", emojis: ["�", "�", "❤️"] },
+    { key: "pulgares", label: "Pulgares", emojis: ["�", "�"] },
+    { key: "fuegos", label: "Fuegos", emojis: ["�", "�🔥", "�🔥🔥", "�🔥🔥🔥", "🔥🔥🔥🔥🔥"] },
+    { key: "caritas_varias", label: "Caritas Variadas", emojis: ["�", "�", "�", "�", "😍"] },
+  ];
+
+  // Devuelve el set de emojis seleccionado o el default (caras)
+  const getRatingEmojis = (scale: number, emojiSetKey?: string) => {
+    const set = RATING_EMOJI_SETS.find(s => s.key === emojiSetKey) || RATING_EMOJI_SETS[0];
+    // Si el set tiene menos emojis que el scale, repite el último
+    if (set.emojis.length >= scale) return set.emojis.slice(0, scale);
+    if (set.emojis.length === 1) return Array(scale).fill(set.emojis[0]);
+    // Rellena con el último emoji si faltan
+    return [...set.emojis, ...Array(scale - set.emojis.length).fill(set.emojis[set.emojis.length - 1])];
+  };
 
   const handleAdvancedConfigSave = (newConfig: any) => {
     onUpdateQuestion(sectionId, question.id, "config", newConfig)
@@ -915,55 +923,40 @@ export function QuestionEditor({
             <Label className="text-lg font-semibold">Configuración de Valoración</Label>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Escala de valoración</Label>
+                <Label>Escala</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={10}
+                  value={question.ratingScale || 5}
+                  onChange={e => onUpdateQuestion(sectionId, question.id, "ratingScale", Number(e.target.value))}
+                  className="w-24"
+                />
+              </div>
+              <div>
+                <Label>Estilo de emoji</Label>
                 <Select
-                  value={question.ratingScale?.toString() || "5"}
-                  onValueChange={(value) =>
-                    onUpdateQuestion(sectionId, question.id, "ratingScale", Number.parseInt(value))
-                  }
+                  value={question.config?.ratingEmojiSet || RATING_EMOJI_SETS[0].key}
+                  onValueChange={val => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, ratingEmojiSet: val })}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Estilo de emoji" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="3">1 a 3</SelectItem>
-                    <SelectItem value="4">1 a 4</SelectItem>
-                    <SelectItem value="5">1 a 5</SelectItem>
-                    <SelectItem value="6">1 a 6</SelectItem>
-                    <SelectItem value="7">1 a 7</SelectItem>
-                    <SelectItem value="10">1 a 10</SelectItem>
+                    {RATING_EMOJI_SETS.map(set => (
+                      <SelectItem key={set.key} value={set.key}>
+                        {set.label} {set.emojis.join(" ")}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={question.config?.ratingEmojis !== false}
-                  onCheckedChange={(checked) =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      ratingEmojis: checked,
-                    })
-                  }
-                />
-                <Label>Mostrar emojis</Label>
-              </div>
             </div>
-
-            <div className="mt-4">
-              <Label className="font-medium">Vista previa</Label>
-              <div className="flex gap-2 mt-2 p-4 border rounded-lg bg-muted/20">
-                {Array.from({ length: question.ratingScale || 5 }, (_, i) => {
-                  const emojis = getRatingEmojis(question.ratingScale || 5)
-                  return (
-                    <div key={i} className="flex flex-col items-center gap-1">
-                      {question.config?.ratingEmojis !== false && <span className="text-2xl">{emojis[i]}</span>}
-                      <button className="w-8 h-8 rounded-full border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors">
-                        {i + 1}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
+            <div className="mt-4 flex gap-2 items-center">
+              <span className="text-muted-foreground text-sm mr-2">Vista previa:</span>
+              {getRatingEmojis(question.ratingScale || 5, question.config?.ratingEmojiSet).map((emoji, idx) => (
+                <span key={idx} style={{ fontSize: 28 }}>{emoji}</span>
+              ))}
             </div>
           </div>
         )}
