@@ -1405,7 +1405,7 @@ function CreateSurveyForProjectPageContent() {
     window.open("/preview/survey", "_blank")
   }
 
-  const handleSave = async () => {
+ const handleSave = async () => {
   if (!surveyTitle.trim()) {
     toast({
       title: "Error",
@@ -1465,6 +1465,14 @@ function CreateSurveyForProjectPageContent() {
     }
 
     // Guardar asignaciones de encuestador-zona
+    const surveyId = surveyResult.id;
+    // 1. Eliminar asignaciones existentes
+    await supabase
+      .from("survey_surveyor_zones")
+      .delete()
+      .eq("survey_id", surveyId);
+
+    // 2. Insertar nuevas asignaciones
     const surveyorZoneAssignmentsToInsert: {
       survey_id: string;
       surveyor_id: string;
@@ -1476,7 +1484,7 @@ function CreateSurveyForProjectPageContent() {
       for (const surveyorId of surveyorsForZone) {
         if (surveyorId && zoneId) {
           surveyorZoneAssignmentsToInsert.push({
-            survey_id: surveyResult.id,
+            survey_id: surveyId,
             surveyor_id: surveyorId,
             zone_id: zoneId,
           });
