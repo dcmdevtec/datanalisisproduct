@@ -1,4 +1,4 @@
-import type { SurveySection, Question, SurveySettings, Survey } from "@/types-updated";
+
 
 "use client"
 
@@ -220,13 +220,13 @@ function SortableSection({
   setSections: React.Dispatch<React.SetStateAction<SurveySection[]>>
   currentSurveyId: string | null
 }) {
-  // Estado local para el editor enriquecido del título de la sección
-  const [localSectionTitle, setLocalSectionTitle] = useState(section.title || "");
+  // Estado local para el editor enriquecido del título de la sección (usa title_html como fuente principal)
+  const [localSectionTitle, setLocalSectionTitle] = useState(section.title_html || "");
 
-  // Sincronizar el estado local si cambia el título desde fuera (por ejemplo, al duplicar o cargar)
+  // Sincronizar el estado local SOLO con title_html
   useEffect(() => {
-    setLocalSectionTitle(section.title || "");
-  }, [section.title]);
+    setLocalSectionTitle(section.title_html || "");
+  }, [section.title_html]);
 
   // Guardar el valor HTML en el estado global al cambiar
   const handleSectionTitleChange = (html: string) => {
@@ -2197,6 +2197,7 @@ function CreateSurveyForProjectPageContent() {
           `
          id,
          title,
+         title_html,
          description,
          order_num,
          skip_logic,
@@ -2204,6 +2205,7 @@ function CreateSurveyForProjectPageContent() {
            id,
            type,
            text,
+           text_html,
            options,
            required,
            order_num,
@@ -2258,6 +2260,7 @@ function CreateSurveyForProjectPageContent() {
         return {
           id: s.id,
           title: s.title,
+          title_html: s.title_html || "",
           description: s.description || "",
           order_num: s.order_num,
           skipLogic: s.skip_logic ? s.skip_logic : undefined,
@@ -2265,78 +2268,32 @@ function CreateSurveyForProjectPageContent() {
             s.questions
               ?.sort((a, b) => a.order_num - b.order_num)
               .map((q) => {
-                console.log(`❓ Procesando pregunta: "${q.text}" (tipo: ${q.type})`)
-                console.log(`❓ Datos de pregunta:`, {
-                  id: q.id,
-                  type: q.type,
-                  text: q.text,
-                  options: q.options,
-                  required: q.required,
-                  rating: q.rating,
-                  settings: q.settings,
-                  display_logic: q.display_logic,
-                  skip_logic: q.skip_logic,
-                  validation_rules: q.validation_rules,
-                  question_config: q.question_config,
-                  matrix: q.matrix,
-                  comment_box: q.comment_box,
-                  style: q.style,
-                })
-
                 // Construir la configuración completa de la pregunta
                 const questionConfig = {
-                  // Configuraciones generales del campo settings
                   ...q.settings,
-
-                  // Preservar configuración Likert si existe
                   likertScale: q.settings?.likertScale || null,
-
-                  // Configuraciones específicas de la pregunta
                   matrixRows: q.matrix_rows || [],
                   matrixCols: q.matrix_cols || [],
                   ratingScale: q.rating_scale || q.rating || 5,
-
-                  // Lógica de visualización - desde campo específico
                   displayLogic: q.display_logic || { enabled: false, conditions: [] },
-
-                  // Lógica de salto - desde campo específico
                   skipLogic: q.skip_logic || { enabled: false, rules: [] },
-
-                  // Reglas de validación - desde campo específico
                   validation: q.validation_rules || { required: q.required || false },
-
-                  // Configuración específica de la pregunta - desde campo específico
                   questionConfig: q.question_config || {},
-
-                  // Configuraciones de matriz
                   matrix: q.matrix || null,
-
-                  // Configuraciones de comentarios y estilo
                   commentBox: q.comment_box || false,
                   style: q.style || {},
                   parentId: q.parent_id || null,
-
-                  // Configuraciones adicionales
                   allowOther: q.settings?.allowOther || false,
                   randomizeOptions: q.settings?.randomizeOptions || false,
                   ratingEmojis: q.settings?.ratingEmojis !== undefined ? q.settings.ratingEmojis : true,
                   scaleMin: q.settings?.scaleMin || 1,
                   scaleMax: q.settings?.scaleMax || 5,
                 }
-
-                // Depuración de configuración
-                console.log(`📝 Configuración cargada para pregunta "${q.text.substring(0, 30)}...":`, {
-                  id: q.id,
-                  likertScale: questionConfig.likertScale,
-                  settings: q.settings,
-                })
-
-                console.log(`🔧 Configuración avanzada para pregunta "${q.text}":`, questionConfig)
-
                 return {
                   id: q.id,
                   type: q.type || "text",
-                  text: q.text.trim(),
+                  text: q.text ? q.text.trim() : "",
+                  text_html: q.text_html || "",
                   options: q.options || [],
                   required: q.required,
                   image: q.file_url,

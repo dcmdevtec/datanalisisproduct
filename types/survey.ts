@@ -146,6 +146,7 @@ export interface Question {
   id: string;
   type: string;
   text: string;
+  text_html?: string;
   options: string[];
   required: boolean;
   image?: string | null;
@@ -166,6 +167,7 @@ export interface SectionSkipLogic {
 export interface SurveySection {
   id: string;
   title: string;
+  title_html?: string;
   description?: string;
   order_num: number;
   questions: Question[];

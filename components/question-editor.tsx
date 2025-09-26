@@ -43,7 +43,9 @@ export async function autoSaveQuestionHelper(question: Question, sectionId: stri
       survey_id: surveyId, // Usar el argumento obligatorio
       section_id: sectionId,
       type: question.type,
-      text: (question.text || "").replace(/<[^>]*>/g, "").trim(),
+      // Guardar texto plano y HTML enriquecido
+      text: (question.text_html || question.text || "").replace(/<[^>]*>/g, "").trim(),
+      text_html: question.text_html || question.text || "",
       options: question.options || [],
       required: question.required || false,
       order_num: question.order_num || 0,
@@ -159,7 +161,22 @@ export function QuestionEditor({
     setShowConfig(false)
   }
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
-  // Solo editor enriquecido, sin input simple ni debounce
+  // Editor enriquecido para enunciado de pregunta (usa text_html si existe, nunca el texto plano si hay HTML)
+  const [localQuestionTextHtml, setLocalQuestionTextHtml] = useState(question.text_html ?? "");
+
+  // Sincronizar el estado local SOLO con text_html (nunca con text plano)
+  useEffect(() => {
+    setLocalQuestionTextHtml(question.text_html ?? "");
+  }, [question.text_html]);
+
+  // Guardar el valor HTML en el estado global al cambiar
+  const handleQuestionTextChange = (html: string) => {
+    setLocalQuestionTextHtml(html);
+    // Extraer texto plano del HTML
+    const plain = html.replace(/<[^>]*>/g, "").trim();
+    onUpdateQuestion(sectionId, question.id, "text", plain);
+    onUpdateQuestion(sectionId, question.id, "text_html", html);
+  };
 
   const toggleQuestionExpansion = () => {
     setIsExpanded((prev) => !prev)
@@ -324,15 +341,15 @@ export function QuestionEditor({
               <Input
                 readOnly
                 className="text-lg cursor-pointer bg-background border rounded-lg"
-                value={question.text ? question.text.replace(/<[^>]+>/g, "") : ""}
+                value={question.text_html ? question.text_html.replace(/<[^>]+>/g, "") : ""}
                 placeholder="Escribe tu pregunta aquí..."
                 onClick={() => setIsEditing(true)}
               />
             ) : (
               <div className="border rounded-lg overflow-hidden p-2 bg-background">
                 <AdvancedRichTextEditor
-                  value={question.text}
-                  onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
+                  value={localQuestionTextHtml}
+                  onChange={handleQuestionTextChange}
                   placeholder="Escribe tu pregunta aquí..."
                   immediatelyRender={false}
                 />
@@ -341,13 +358,16 @@ export function QuestionEditor({
                     size="sm"
                     variant="default"
                     onClick={() => {
-                      autoSaveQuestionHelper(question, sectionId, surveyId);
+                      // Al guardar, sincroniza ambos campos
+                      const plain = localQuestionTextHtml.replace(/<[^>]*>/g, "").trim();
+                      onUpdateQuestion(sectionId, question.id, "text", plain);
+                      onUpdateQuestion(sectionId, question.id, "text_html", localQuestionTextHtml);
+                      autoSaveQuestionHelper({ ...question, text: plain, text_html: localQuestionTextHtml }, sectionId, surveyId);
                       setIsEditing(false);
                     }}
                   >
                     Guardar
                   </Button>
-                
                 </div>
               </div>
             )}
