@@ -1059,96 +1059,6 @@ export function AdvancedQuestionConfig({
       ),
     },
     {
-      id: "appearance",
-      label: "Apariencia",
-      icon: Settings,
-      content: (
-        <div className="space-y-6">
-          <Card className="border-2 border-teal-200 bg-gradient-to-br from-white via-teal-50/50 to-emerald-100/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-teal-600" />
-                Configuración de Apariencia
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="showNumbers"
-                      checked={config.appearance?.showNumbers || false}
-                      onCheckedChange={(checked) => updateAppearance("showNumbers", checked)}
-                    />
-                    <label htmlFor="showNumbers" className="text-sm font-medium text-teal-800">
-                      Mostrar números de pregunta
-                    </label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="randomizeOptions"
-                      checked={config.appearance?.randomizeOptions || false}
-                      onCheckedChange={(checked) => updateAppearance("randomizeOptions", checked)}
-                    />
-                    <label htmlFor="randomizeOptions" className="text-sm font-medium text-teal-800">
-                      Aleatorizar opciones
-                    </label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="allowOther"
-                      checked={config.appearance?.allowOther || false}
-                      onCheckedChange={(checked) => updateAppearance("allowOther", checked)}
-                    />
-                    <label htmlFor="allowOther" className="text-sm font-medium text-teal-800">
-                      Permitir "Otra" opción
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {config.appearance?.allowOther && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-teal-800">Texto para "Otra" opción</label>
-                      <Input
-                        value={config.appearance?.otherText || ""}
-                        onChange={(e) => updateAppearance("otherText", e.target.value)}
-                        placeholder="Otra"
-                        className="bg-white border-teal-300 focus:border-teal-500"
-                      />
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-teal-800">Texto de placeholder</label>
-                    <Input
-                      value={config.appearance?.placeholder || ""}
-                      onChange={(e) => updateAppearance("placeholder", e.target.value)}
-                      placeholder="Texto de ayuda"
-                      className="bg-white border-teal-300 focus:border-teal-500"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-teal-800">Texto de ayuda</label>
-                    <Textarea
-                      value={config.appearance?.helpText || ""}
-                      onChange={(e) => updateAppearance("helpText", e.target.value)}
-                      placeholder="Texto explicativo adicional"
-                      className="bg-white border-teal-300 focus:border-teal-500"
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ),
-    },
-    {
       id: "likert",
       label: "Escala Likert",
       icon: Sliders,
@@ -1460,102 +1370,11 @@ export function AdvancedQuestionConfig({
         </div>
       ),
     },
-    {
-      id: "advanced",
-      label: "Avanzado",
-      icon: ArrowRight,
-      content: (
-        <div className="space-y-6">
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ArrowRight className="h-5 w-5 text-green-600" />
-                Configuración Avanzada
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="allowMultiple"
-                      checked={config.advanced?.allowMultiple || false}
-                      onCheckedChange={(checked) => updateAdvanced("allowMultiple", checked)}
-                    />
-                    <label htmlFor="allowMultiple" className="text-sm font-medium text-green-800">
-                      Permitir múltiples selecciones
-                    </label>
-                  </div>
-
-                  {config.advanced?.allowMultiple && (
-                    <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-green-800">Selección mínima</label>
-                        <Input
-                          type="number"
-                          value={config.advanced?.minSelections || 1}
-                          onChange={(e) => updateAdvanced("minSelections", parseInt(e.target.value))}
-                          min={1}
-                          className="bg-white border-green-300 focus:border-green-500"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-green-800">Selección máxima</label>
-                        <Input
-                          type="number"
-                          value={config.advanced?.minSelections || 1}
-                          onChange={(e) => updateAdvanced("maxSelections", parseInt(e.target.value))}
-                          min={1}
-                          className="bg-white border-green-300 focus:border-green-500"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="showProgressBar"
-                      checked={config.advanced?.showProgressBar || false}
-                      onCheckedChange={(checked) => updateAdvanced("showProgressBar", checked)}
-                    />
-                    <label htmlFor="showProgressBar" className="text-sm font-medium text-green-800">
-                      Mostrar barra de progreso
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-green-800">Límite de tiempo (segundos)</label>
-                    <Input
-                      type="number"
-                      value={config.advanced?.timeLimit || 0}
-                      onChange={(e) => updateAdvanced("timeLimit", parseInt(e.target.value) || 0)}
-                      placeholder="Sin límite"
-                      min={0}
-                      className="bg-white border-green-300 focus:border-green-500"
-                    />
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="autoAdvance"
-                      checked={config.advanced?.autoAdvance || false}
-                      onCheckedChange={(checked) => updateAdvanced("autoAdvance", checked)}
-                    />
-                    <label htmlFor="autoAdvance" className="text-sm font-medium text-green-800">
-                      Avance automático
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ),
-    },
+    
   ]
-
+const visibleTabs = question.type === 'likert'
+  ? tabs
+  : tabs.filter(tab => tab.id !== 'likert');
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
@@ -1573,7 +1392,7 @@ export function AdvancedQuestionConfig({
           {/* Navigation Tabs */}
           <div className="border-b">
             <nav className="flex space-x-1 overflow-x-auto">
-              {tabs.map((tab) => (
+              {visibleTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
