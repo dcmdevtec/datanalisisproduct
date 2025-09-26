@@ -561,46 +561,56 @@ function PreviewSurveyPageContent() {
                 )}
               </RadioGroup>
             )
-          case "checkbox":
+          case "checkbox": {
+            const selected = Array.isArray(answers[question.id]) ? answers[question.id] : [];
+            const minSel = question.config?.minSelections ?? 0;
+            const maxSel = question.config?.maxSelections ?? (question.options?.length || 99);
+            const isMaxReached = selected.length >= maxSel;
             return (
               <div className="space-y-2">
-                {(question.options || []).map((option, idx) => (
-                  <div key={idx} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`${question.id}-option-${idx}`}
-                      checked={(answers[question.id] || []).includes(option)}
-                      onCheckedChange={(checked) => {
-                        const currentAnswers = new Set(answers[question.id] || [])
-                        if (checked) {
-                          currentAnswers.add(option)
-                        } else {
-                          currentAnswers.delete(option)
-                        }
-                        handleAnswerChange(question.id, Array.from(currentAnswers))
-                      }}
-                    />
-                    <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
-                  </div>
-                ))}
+                {(question.options || []).map((option, idx) => {
+                  const checked = selected.includes(option);
+                  const disabled = !checked && isMaxReached;
+                  return (
+                    <div key={idx} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`${question.id}-option-${idx}`}
+                        checked={checked}
+                        disabled={disabled}
+                        onCheckedChange={(checked) => {
+                          const currentAnswers = new Set(selected);
+                          if (checked) {
+                            currentAnswers.add(option);
+                          } else {
+                            currentAnswers.delete(option);
+                          }
+                          handleAnswerChange(question.id, Array.from(currentAnswers));
+                        }}
+                      />
+                      <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
+                    </div>
+                  );
+                })}
                 {question.config?.allowOther && (
                   <div className="flex items-center space-x-2 mt-2">
                     <Checkbox
                       id={`${question.id}-option-other`}
-                      checked={(answers[question.id] || []).includes("__other__")}
+                      checked={selected.includes("__other__")}
+                      disabled={!selected.includes("__other__") && isMaxReached}
                       onCheckedChange={(checked) => {
-                        let currentAnswers = new Set(answers[question.id] || [])
+                        let currentAnswers = new Set(selected);
                         if (checked) {
-                          currentAnswers.add("__other__")
+                          currentAnswers.add("__other__");
                         } else {
-                          currentAnswers.delete("__other__")
+                          currentAnswers.delete("__other__");
                         }
-                        handleAnswerChange(question.id, Array.from(currentAnswers))
+                        handleAnswerChange(question.id, Array.from(currentAnswers));
                       }}
                     />
                     <Label htmlFor={`${question.id}-option-other`}>
                       {question.config.otherText || 'Otro (especificar)'}
                     </Label>
-                    {(answers[question.id] || []).includes("__other__") && (
+                    {selected.includes("__other__") && (
                       <input
                         type="text"
                         className="ml-2 border rounded px-2 py-1"
@@ -611,8 +621,18 @@ function PreviewSurveyPageContent() {
                     )}
                   </div>
                 )}
+                {(minSel > 0 || maxSel < (question.options?.length || 99)) && (
+                  <div className="text-xs text-muted-foreground mt-2">
+                    {minSel > 0 && maxSel < (question.options?.length || 99)
+                      ? `Selecciona entre ${minSel} y ${maxSel} opciones.`
+                      : minSel > 0
+                        ? `Selecciona al menos ${minSel} opción${minSel > 1 ? 'es' : ''}.`
+                        : `Selecciona hasta ${maxSel} opción${maxSel > 1 ? 'es' : ''}.`}
+                  </div>
+                )}
               </div>
-            )
+            );
+          }
           case "dropdown":
             return (
               <div>
