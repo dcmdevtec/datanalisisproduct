@@ -743,71 +743,42 @@ export function AdvancedQuestionConfig({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-green-500" />
-                Reglas de Validación
+                Validación de Longitud
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="required"
-                  checked={config.validation?.required || false}
-                  onCheckedChange={(checked) => updateValidation("required", checked)}
-                />
-                <label
-                  htmlFor="required"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Pregunta obligatoria
-                </label>
-              </div>
-
-              {config.validation?.required && (
-                <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-green-800">Longitud mínima</label>
-                      <Input
-                        type="number"
-                        value={config.validation?.minLength || ""}
-                        onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
-                        placeholder="Sin límite"
-                        className="bg-white border-green-300 focus:border-green-500"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-green-800">Longitud máxima</label>
-                      <Input
-                        type="number"
-                        value={config.validation?.maxLength || ""}
-                        onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
-                        placeholder="Sin límite"
-                        className="bg-white border-green-300 focus:border-green-500"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-green-800">Patrón de validación (regex)</label>
-                    <Input
-                      value={config.validation?.pattern || ""}
-                      onChange={(e) => updateValidation("pattern", e.target.value)}
-                      placeholder="Ej: ^[A-Za-z]+$"
-                      className="bg-white border-green-300 focus:border-green-500"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-green-800">Mensaje de error personalizado</label>
-                    <Textarea
-                      value={config.validation?.customMessage || ""}
-                      onChange={(e) => updateValidation("customMessage", e.target.value)}
-                      placeholder="Mensaje que se mostrará cuando la validación falle"
-                      className="bg-white border-green-300 focus:border-green-500"
-                      rows={2}
-                    />
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-green-800">Longitud mínima</label>
+                  <Input
+                    type="number"
+                    value={config.validation?.minLength || ""}
+                    onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                    placeholder="Sin límite"
+                    className="bg-white border-green-300 focus:border-green-500"
+                  />
                 </div>
-              )}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-green-800">Longitud máxima</label>
+                  <Input
+                    type="number"
+                    value={config.validation?.maxLength || ""}
+                    onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                    placeholder="Sin límite"
+                    className="bg-white border-green-300 focus:border-green-500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-green-800">Mensaje de error personalizado</label>
+                <Textarea
+                  value={config.validation?.customMessage || ""}
+                  onChange={(e) => updateValidation("customMessage", e.target.value)}
+                  placeholder="Mensaje que se mostrará cuando la validación falle"
+                  className="bg-white border-green-300 focus:border-green-500"
+                  rows={2}
+                />
+              </div>
             </CardContent>
           </Card>
         </div>
