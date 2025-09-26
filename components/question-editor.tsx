@@ -283,12 +283,10 @@ export function QuestionEditor({
                 <SelectItem value="signature">✍️ Firma</SelectItem>
                 <SelectItem value="likert">📈 Escala Likert</SelectItem>
                 <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
-                <SelectItem value="slider">🎚️ Control deslizante</SelectItem>
                 <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
                 <SelectItem value="star_rating">⭐ Calificación con estrellas</SelectItem>
                 <SelectItem value="demographic">👤 Demográfica</SelectItem>
                 <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
-                <SelectItem value="single_textbox">📝 Una sola caja de texto</SelectItem>
                 <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
               </SelectContent>
             </Select>
@@ -993,56 +991,6 @@ export function QuestionEditor({
           </div>
         )}
 
-        {question.type === "slider" && (
-          <div className="space-y-4 p-4 border rounded-lg">
-            <Label className="text-lg font-semibold">Control Deslizante</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Valor mínimo</Label>
-                <Input
-                  type="number"
-                  value={question.config?.scaleMin || 0}
-                  onChange={(e) =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      scaleMin: Number.parseInt(e.target.value),
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label>Valor máximo</Label>
-                <Input
-                  type="number"
-                  value={question.config?.scaleMax || 100}
-                  onChange={(e) =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      scaleMax: Number.parseInt(e.target.value),
-                    })
-                  }
-                />
-              </div>
-            </div>
-            <div className="mt-4">
-              <Label className="font-medium">Vista previa</Label>
-              <div className="mt-2 p-4 border rounded-lg bg-muted/20">
-                <input
-                  type="range"
-                  min={question.config?.scaleMin || 0}
-                  max={question.config?.scaleMax || 100}
-                  defaultValue={(question.config?.scaleMin || 0) + (question.config?.scaleMax || 100) / 2}
-                  className="w-full"
-                  disabled
-                />
-                <div className="flex justify-between text-sm text-muted-foreground mt-1">
-                  <span>{question.config?.scaleMin || 0}</span>
-                  <span>{question.config?.scaleMax || 100}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {(question.type === "multiple_choice" || question.type === "checkbox" || question.type === "dropdown") && (
           <div className="space-y-4 p-4 bg-white border rounded-lg">
