@@ -292,12 +292,16 @@ export function QuestionEditor({
                 <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
               </SelectContent>
             </Select>
-            <Badge variant={question.required ? "destructive" : "secondary"}>
-              {question.required ? "Obligatorio" : "Opcional"}
-            </Badge>
-            <Button variant="ghost" size="sm" onClick={toggleQuestionExpansion} title="Expandir/Colapsar">
-              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
+            {/* Switch para marcar como obligatoria la pregunta */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Obligatoria</span>
+              <Switch
+                checked={question.required}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
+                id={`required-switch-${question.id}`}
+              />
+            </div>
+           
             <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)} title="Copiar pregunta">
               <Copy className="h-4 w-4" />
             </Button>
