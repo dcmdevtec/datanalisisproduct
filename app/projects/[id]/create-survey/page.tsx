@@ -1406,657 +1406,122 @@ function CreateSurveyForProjectPageContent() {
   }
 
   const handleSave = async () => {
-    if (!surveyTitle.trim()) {
-      toast({
-        title: "Error",
-        description: "El título de la encuesta es obligatorio",
-        variant: "destructive",
-      })
-      setActiveTab("details")
-      return
-    }
-
-    if (sections.length === 0) {
-      toast({
-        title: "Error",
-        description: "Debes agregar al menos una sección",
-        variant: "destructive",
-      })
-      setActiveTab("questions")
-      return
-    }
-
-    const totalQuestions = sections.reduce((acc, section) => acc + section.questions.length, 0)
-    if (totalQuestions === 0) {
-      toast({
-        title: "Error",
-        description: "Debes agregar al menos una pregunta en alguna sección",
-        variant: "destructive",
-      })
-      setActiveTab("questions")
-      return
-    }
-
-    const invalidQuestions = sections.some((section) => section.questions.some((q) => !q.text.trim()))
-    if (invalidQuestions) {
-      toast({
-        title: "Error",
-        description: "Todas las preguntas deben tener un texto",
-        variant: "destructive",
-      })
-      setActiveTab("questions")
-      return
-    }
-
-    const invalidOptions = sections.some((section) =>
-      section.questions.some(
-        (q) => (q.type === "multiple_choice" || q.type === "checkbox" || q.type === "dropdown") && q.options.length < 1,
-      ),
-    )
-    if (invalidOptions) {
-      toast({
-        title: "Error",
-        description: "Las preguntas de opción múltiple deben tener al menos 1 opción",
-        variant: "destructive",
-      })
-      setActiveTab("questions")
-      return
-    }
-
-    setIsSaving(true)
-    setError(null)
-
-    try {
-      console.log("🔄 Iniciando proceso de guardado...")
-      console.log("📊 Datos de la encuesta:", { surveyTitle, surveyDescription, sections: sections.length })
-
-      // Validar que el usuario esté autenticado
-      if (!user?.id) {
-        throw new Error("Usuario no autenticado")
-      }
-
-      // Derive overall assigned_surveyors from assignedZoneSurveyors for the surveys table
-      const allAssignedSurveyors = Array.from(new Set(Object.values(assignedZoneSurveyors).flat())).filter(
-        Boolean,
-      ) as string[]
-
-      console.log("👥 Encuestadores asignados:", allAssignedSurveyors)
-      console.log("🗺️ Zonas asignadas:", settings.assignedZones)
-
-      const surveyData = {
-        title: surveyTitle,
-        description: surveyDescription,
-        settings: settings || {},
-        start_date: startDate || null,
-        deadline: deadline || null,
-        project_id: projectId,
-        created_by: user.id,
-        status: surveyStatus,
-        assigned_surveyors: allAssignedSurveyors || [],
-        assigned_zones: settings.assignedZones || [],
-        logo: settings.branding?.logo || null,
-        theme_config: settings.theme || null,
-        security_config: settings.security || null,
-        notification_config: settings.notifications || null,
-        branding_config: settings.branding || null,
-      }
-
-      let surveyResult
-      if (isEditMode && currentSurveyId) {
-        console.log("✏️ Modo edición - Actualizando encuesta existente...")
-        const { data, error: surveyError } = await supabase
-          .from("surveys")
-          .update(surveyData)
-          .eq("id", currentSurveyId)
-          .select()
-          .single()
-        if (surveyError) {
-          console.error("❌ Error al actualizar encuesta:", surveyError)
-          throw surveyError
-        }
-        surveyResult = data
-        console.log("✅ Encuesta actualizada:", surveyResult.id)
-
-        // Para edición, implementar lógica de upsert inteligente para preservar IDs
-        console.log("🔄 Implementando lógica de upsert inteligente para preservar IDs...")
-
-        // Eliminar preguntas existentes (esto se mantiene igual)
-        const { error: deleteQuestionsError } = await supabase
-          .from("questions")
-          .delete()
-          .eq("survey_id", currentSurveyId)
-        if (deleteQuestionsError) {
-          console.error("❌ Error al eliminar preguntas existentes:", deleteQuestionsError)
-          throw deleteQuestionsError
-        }
-        console.log("✅ Preguntas existentes eliminadas")
-
-        // En lugar de eliminar secciones, vamos a hacer upsert inteligente
-        console.log("🔄 Procesando secciones con upsert inteligente...")
-
-        // Crear un mapa de secciones existentes para referencia rápida
-        const existingSectionsMap: { [key: string]: { id: string; title: string } } = {}
-        const { data: existingSections } = await supabase
-          .from("survey_sections")
-          .select("id, title")
-          .eq("survey_id", currentSurveyId)
-
-        if (existingSections) {
-          existingSections.forEach((section) => {
-            existingSectionsMap[section.id] = section
-          })
-        }
-
-        // Crear un mapa de secciones por título para evitar duplicados
-        const sectionsByTitle: { [key: string]: SurveySection } = {}
-        sections.forEach((section) => {
-          if (section.title.trim()) {
-            sectionsByTitle[section.title.trim()] = section
-          }
-        })
-
-        // Mapa para mantener correspondencia entre IDs antiguos y nuevos de preguntas
-        const questionIdMapping: { [oldId: string]: string } = {}
-
-        // PRIMER PASO: Guardar todas las preguntas para obtener IDs permanentes
-        console.log("🔄 PRIMER PASO: Guardando preguntas para obtener IDs permanentes...")
-
-        for (const [secIndex, section] of sections.entries()) {
-          console.log(`📋 Procesando sección ${secIndex + 1}: "${section.title}"`)
-
-          // Validar que la sección tenga datos válidos
-          if (!section.title || !section.title.trim()) {
-            throw new Error(`La sección ${secIndex + 1} debe tener un título válido`)
-          }
-
-          // Preparar datos de la sección
-          const sectionData = {
-            survey_id: currentSurveyId,
-            title: section.title.trim(),
-            title_html: section.title_html || "",
-            description: section.description || "",
-            order_num: secIndex,
-            skip_logic: section.skipLogic || null,
-          }
-
-          let newSection
-
-          // ESTRATEGIA MEJORADA: Priorizar preservación de IDs existentes
-          if (section.id && section.id !== "" && section.id !== "temp-id" && existingSectionsMap[section.id]) {
-            // La sección existe en la BD con el mismo ID, hacer UPDATE
-            console.log(`📝 Actualizando sección existente "${section.title}" con ID: ${section.id}`)
-
-            try {
-              const { data, error: updateError } = await supabase
-                .from("survey_sections")
-                .update(sectionData)
-                .eq("id", section.id)
-                .select()
-                .single()
-
-              if (updateError) {
-                console.log(`⚠️ Error en update de sección ${section.id}:`, updateError.message)
-                // Si falla el update, verificar si es por conflicto de título
-                if (updateError.code === "23505") {
-                  // Unique constraint violation
-                  console.log(`🔄 Conflicto de título detectado, buscando sección existente...`)
-                  // Buscar si ya existe una sección con este título
-                  const { data: existingSection } = await supabase
-                    .from("survey_sections")
-                    .select("id, title")
-                    .eq("survey_id", currentSurveyId)
-                    .eq("title", section.title.trim())
-                    .single()
-
-                  if (existingSection) {
-                    // Usar la sección existente
-                    newSection = existingSection
-                    section.id = existingSection.id
-                    console.log(`✅ Reutilizando sección existente "${section.title}" con ID: ${existingSection.id}`)
-                  } else {
-                    throw new Error(`No se pudo actualizar ni encontrar la sección "${section.title}"`)
-                  }
-                } else {
-                  throw updateError
-                }
-              } else {
-                // Update exitoso, mantener ID original
-                newSection = data
-                console.log(`✅ Sección "${section.title}" actualizada manteniendo ID: ${newSection.id}`)
-              }
-            } catch (error) {
-              console.error(`❌ Error crítico al procesar sección "${section.title}":`, error)
-              throw new Error(
-                `Error al procesar la sección "${section.title}": ${error instanceof Error ? error.message : "Error desconocido"}`,
-              )
-            }
-          } else if (section.id && section.id !== "" && section.id !== "temp-id") {
-            // La sección tiene un ID que no está en la BD (posiblemente eliminada)
-            // Buscar si existe una sección con el mismo título
-            console.log(`🔍 Sección con ID ${section.id} no encontrada, buscando por título...`)
-
-            const { data: existingSection } = await supabase
-              .from("survey_sections")
-              .select("id, title")
-              .eq("survey_id", currentSurveyId)
-              .eq("title", section.title.trim())
-              .single()
-
-            if (existingSection) {
-              // Reutilizar la sección existente
-              newSection = existingSection
-              const oldId = section.id
-              section.id = existingSection.id
-              console.log(`✅ Reutilizando sección existente "${section.title}" con ID: ${existingSection.id}`)
-
-              // Actualizar referencias en la lógica de salto
-              const updatedSections = updateSkipLogicReferences(sections, oldId, existingSection.id)
-              setSections(updatedSections)
-            } else {
-              // Crear nueva sección
-              console.log(`📝 Creando nueva sección "${section.title}"...`)
-              const { data: insertData, error: insertError } = await supabase
-                .from("survey_sections")
-                .insert([sectionData])
-                .select()
-                .single()
-
-              if (insertError) {
-                console.error("❌ Error al insertar sección:", insertError)
-                throw new Error(`Error al crear la sección "${section.title}": ${insertError.message}`)
-              }
-
-              newSection = insertData
-              const oldId = section.id
-              section.id = newSection.id
-              console.log(`✅ Nueva sección "${section.title}" creada con ID: ${newSection.id}`)
-
-              // Actualizar referencias en la lógica de salto
-              const updatedSections = updateSkipLogicReferences(sections, oldId, newSection.id)
-              setSections(updatedSections)
-            }
-          } else {
-            // Si la sección no tiene ID o es temporal, hacer insert
-            console.log(`📝 Insertando nueva sección "${section.title}"...`)
-
-            const { data, error: insertError } = await supabase
-              .from("survey_sections")
-              .insert([sectionData])
-              .select()
-              .single()
-
-            if (insertError) {
-              console.error("❌ Error al insertar sección:", insertError)
-              throw new Error(`Error al crear la sección "${section.title}": ${insertError.message}`)
-            }
-
-            newSection = data
-            console.log(`✅ Nueva sección "${section.title}" creada con ID: ${newSection.id}`)
-
-            // Actualizar el ID en el estado local para mantener referencias
-            section.id = newSection.id
-          }
-
-          // Validar y preparar preguntas para inserción
-          console.log(`❓ Procesando ${section.questions.length} preguntas de la sección "${section.title}"...`)
-
-          for (const [qIndex, q] of section.questions.entries()) {
-            // Validar que la pregunta tenga datos válidos
-            if (!q.text || !q.text.trim()) {
-              throw new Error(`La pregunta ${qIndex + 1} de la sección "${section.title}" debe tener un texto válido`)
-            }
-
-            // Guardar el ID antiguo para el mapeo
-            const oldQuestionId = q.id
-
-            // Extraer la configuración de la pregunta y mantener las configuraciones existentes
-            const questionConfig = {
-              ...(q.config || {}),
-              // Preservar la configuración Likert si existe
-              likertScale: q.config?.likertScale || q.config?.settings?.likertScale || null,
-            } // Preparar los datos para la base de datos
-            const questionData = {
-              survey_id: currentSurveyId,
-              section_id: newSection.id,
-              type: q.type || "text",
-              text: q.text.trim(),
-              options: q.options || [],
-              required: q.required === true,
-              order_num: qIndex,
-
-              // Campo settings - incluye todas las configuraciones
-              settings: {
-                allowOther: questionConfig.allowOther || false,
-                randomizeOptions: questionConfig.randomizeOptions || false,
-                ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
-                scaleMin: questionConfig.scaleMin || 1,
-                scaleMax: questionConfig.scaleMax || 5,
-                matrixCellType: questionConfig.matrixCellType || null,
-                scaleLabels: questionConfig.scaleLabels || [],
-                otherText: questionConfig.otherText || "",
-                dropdownMulti: questionConfig.dropdownMulti || false,
-                likertScale: questionConfig.likertScale || null,
-                // MATRIZ: guardar todas las configuraciones relevantes
-                matrixColOptions: questionConfig.matrixColOptions || [],
-                matrixRows: q.matrixRows || [],
-                matrixCols: q.matrixCols || [],
-                matrixRatingScale: questionConfig.matrixRatingScale || null,
-                matrix: questionConfig.matrix || null,
-              },
-
-              // Campos específicos de la base de datos
-              matrix_rows: q.matrixRows || [],
-              matrix_cols: q.matrixCols || [],
-              rating_scale: q.ratingScale || null,
-              file_url: q.image || null,
-
-              // Lógica de visualización - campo específico
-              display_logic: questionConfig.displayLogic || null,
-
-              // Lógica de salto - campo específico
-              skip_logic: questionConfig.skipLogic || null,
-
-              // Reglas de validación - campo específico
-              validation_rules: questionConfig.validation || null,
-
-              // Configuración específica de la pregunta - campo específico
-              question_config: questionConfig.questionConfig || null,
-
-              // Configuraciones de matriz
-              matrix: questionConfig.matrix || null,
-
-              // Configuraciones de comentarios y estilo
-              comment_box: questionConfig.commentBox === true,
-              style: questionConfig.style || {},
-              parent_id: questionConfig.parentId || null,
-            }
-
-            console.log(`🔧 Datos de pregunta preparados para BD:`, questionData)
-
-            const { data, error: insertError } = await supabase
-              .from("questions")
-              .insert([questionData])
-              .select()
-              .single()
-
-            if (insertError) {
-              console.error("❌ Error al insertar pregunta:", insertError)
-              throw new Error(`Error al crear la pregunta "${q.text.substring(0, 50)}...": ${insertError.message}`)
-            }
-
-            console.log(`✅ Nueva pregunta "${q.text.substring(0, 50)}..." creada con ID: ${data.id}`)
-
-            // Actualizar el ID de la pregunta en el estado local para mantener referencias
-            q.id = data.id
-
-            // Guardar el mapeo de ID antiguo a nuevo
-            if (oldQuestionId && oldQuestionId !== "temp-id") {
-              questionIdMapping[oldQuestionId] = data.id
-              console.log(`🔄 Mapeo de ID de pregunta: ${oldQuestionId} -> ${data.id}`)
-            }
-          }
-        }
-
-        // SEGUNDO PASO: Actualizar referencias de lógica de salto con los nuevos IDs
-        console.log("🔄 SEGUNDO PASO: Actualizando referencias de lógica de salto con nuevos IDs de preguntas...")
-        const updatedSectionsWithNewIds = updateSkipLogicReferencesWithQuestionMapping(sections, questionIdMapping)
-        setSections(updatedSectionsWithNewIds)
-
-        // TERCER PASO: Actualizar las preguntas con la lógica de salto corregida
-        console.log("🔄 TERCER PASO: Actualizando preguntas con lógica de salto corregida...")
-
-        for (const section of updatedSectionsWithNewIds) {
-          for (const [qIndex, q] of section.questions.entries()) {
-            // Preparar datos actualizados de la pregunta
-            const questionConfig = q.config || {}
-
-            const updatedQuestionData = {
-              // Solo actualizar los campos que pueden haber cambiado
-              skip_logic: (questionConfig as any).skipLogic || null,
-              display_logic: (questionConfig as any).displayLogic || null,
-              validation_rules: (questionConfig as any).validation || null,
-              question_config: (questionConfig as any).questionConfig || null,
-              matrix: (questionConfig as any).matrix || null,
-              style: (questionConfig as any).style || {},
-            }
-
-            console.log(`🔄 Actualizando pregunta "${q.text.substring(0, 50)}..." con lógica corregida...`)
-
-            const { error: updateError } = await supabase.from("questions").update(updatedQuestionData).eq("id", q.id)
-
-            if (updateError) {
-              console.error("❌ Error al actualizar pregunta con lógica corregida:", updateError)
-              // No lanzar error aquí, solo log
-              console.warn(`⚠️ No se pudo actualizar la lógica de salto de la pregunta "${q.text.substring(0, 50)}..."`)
-            } else {
-              console.log(`✅ Pregunta "${q.text.substring(0, 50)}..." actualizada con lógica corregida`)
-            }
-          }
-        }
-
-        // Eliminar asignaciones encuestador-zona existentes para reemplazarlas
-        const { error: deleteAssignmentsError } = await supabase
-          .from("survey_surveyor_zones")
-          .delete()
-          .eq("survey_id", currentSurveyId)
-        if (deleteAssignmentsError) {
-          console.error("❌ Error al eliminar asignaciones existentes:", deleteAssignmentsError)
-          throw deleteAssignmentsError
-        }
-        console.log("✅ Asignaciones existentes eliminadas")
-
-        console.log("🔄 Continuando con inserción de nuevas secciones y preguntas...")
-      } else {
-        console.log("🆕 Modo creación - Insertando nueva encuesta...")
-        const { data, error: surveyError } = await supabase.from("surveys").insert([surveyData]).select().single()
-        if (surveyError) throw surveyError
-        surveyResult = data
-        console.log("✅ Nueva encuesta creada:", surveyResult.id)
-
-        // Para creación, insertar secciones y preguntas
-        console.log(`📝 Insertando ${sections.length} secciones para nueva encuesta...`)
-
-        for (const [secIndex, section] of sections.entries()) {
-          console.log(`📋 Procesando sección ${secIndex + 1}: "${section.title}"`)
-
-          // Validar que la sección tenga datos válidos
-          if (!section.title || !section.title.trim()) {
-            throw new Error(`La sección ${secIndex + 1} debe tener un título válido`)
-          }
-
-          console.log(`📋 Insertando sección "${section.title}"...`)
-
-          const { data: newSection, error: sectionError } = await supabase
-            .from("survey_sections")
-            .insert([
-              {
-                survey_id: surveyResult.id,
-                title: section.title.trim(),
-                description: section.description || "",
-                order_num: secIndex,
-                skip_logic: section.skipLogic || null,
-              },
-            ])
-            .select()
-            .single()
-          if (sectionError) {
-            console.error("❌ Error al insertar sección:", sectionError)
-            throw new Error(`Error al crear la sección "${section.title}": ${sectionError.message}`)
-          }
-          console.log(`✅ Sección "${section.title}" creada con ID: ${newSection.id}`)
-
-          // Validar y preparar preguntas para inserción
-          console.log(`❓ Procesando ${section.questions.length} preguntas de la sección "${section.title}"...`)
-
-          const questionsToInsert = section.questions.map((q, qIndex) => {
-            // Validar que la pregunta tenga datos válidos
-            if (!q.text || !q.text.trim()) {
-              throw new Error(`La pregunta ${qIndex + 1} de la sección "${section.title}" debe tener un texto válido`)
-            }
-
-            // Extraer la configuración de la pregunta
-            const questionConfig = q.config || {}
-
-            // Preparar los datos para la base de datos
-            const questionData = {
-              survey_id: surveyResult.id,
-              section_id: newSection.id,
-              type: q.type || "text",
-              text: q.text.trim(),
-              options: q.options || [],
-              required: q.required === true,
-              order_num: qIndex,
-
-              // Campo settings - incluye todas las configuraciones
-              settings: {
-                ...questionConfig,
-                allowOther: questionConfig.allowOther || false,
-                randomizeOptions: questionConfig.randomizeOptions || false,
-                ratingEmojis: questionConfig.ratingEmojis !== undefined ? questionConfig.ratingEmojis : true,
-                scaleMin: questionConfig.scaleMin || 1,
-                scaleMax: questionConfig.scaleMax || 5,
-                matrixCellType: questionConfig.matrixCellType || null,
-                scaleLabels: questionConfig.scaleLabels || [],
-                otherText: questionConfig.otherText || "",
-                dropdownMulti: questionConfig.dropdownMulti || false,
-                likertScale: questionConfig.likertScale || null, // Preservar configuración Likert
-              },
-
-              // Campos específicos de la base de datos
-              matrix_rows: q.matrixRows || [],
-              matrix_cols: q.matrixCols || [],
-              rating_scale: q.ratingScale || null,
-              file_url: q.image || null,
-
-              // Lógica de visualización - campo específico
-              display_logic: questionConfig.displayLogic || null,
-
-              // Lógica de salto - campo específico
-              skip_logic: questionConfig.skipLogic || null,
-
-              // Reglas de validación - campo específico
-              validation_rules: questionConfig.validation || null,
-
-              // Configuración específica de la pregunta - campo específico
-              question_config: questionConfig.questionConfig || null,
-
-              // Configuraciones de matriz
-              matrix: questionConfig.matrix || null,
-
-              // Configuraciones de comentarios y estilo
-              comment_box: questionConfig.commentBox === true,
-              style: questionConfig.style || {},
-              parent_id: questionConfig.parentId || null,
-            }
-
-            console.log(`🔧 Datos de pregunta preparados para BD:`, questionData)
-
-            return questionData
-          })
-
-          if (questionsToInsert.length > 0) {
-            console.log(`❓ Insertando ${questionsToInsert.length} preguntas en la sección "${section.title}"...`)
-            const { error: questionsError } = await supabase.from("questions").insert(questionsToInsert)
-            if (questionsError) {
-              console.error("❌ Error al insertar preguntas:", questionsError)
-              throw new Error(
-                `Error al crear las preguntas de la sección "${section.title}": ${questionsError.message}`,
-              )
-            }
-            console.log(
-              `✅ ${questionsToInsert.length} preguntas insertadas correctamente en la sección "${section.title}"`,
-            )
-          } else {
-            console.log(`ℹ️ No hay preguntas para insertar en la sección "${section.title}"`)
-          }
-        }
-      }
-
-      // Insert surveyor-zone assignments
-      const surveyorZoneAssignmentsToInsert: {
-        survey_id: string
-        surveyor_id: string
-        zone_id: string
-      }[] = []
-
-      for (const zoneId of settings.assignedZones || []) {
-        const surveyorsForZone = assignedZoneSurveyors[zoneId] || []
-        for (const surveyorId of surveyorsForZone) {
-          if (surveyorId && zoneId) {
-            // Validar que ambos IDs existan
-            surveyorZoneAssignmentsToInsert.push({
-              survey_id: surveyResult.id,
-              surveyor_id: surveyorId,
-              zone_id: zoneId,
-            })
-          }
-        }
-      }
-
-      if (surveyorZoneAssignmentsToInsert.length > 0) {
-        const { error: insertAssignmentsError } = await supabase
-          .from("survey_surveyor_zones")
-          .insert(surveyorZoneAssignmentsToInsert)
-        if (insertAssignmentsError) {
-          console.error("Error al insertar asignaciones:", insertAssignmentsError)
-          throw new Error(`Error al asignar encuestadores a zonas: ${insertAssignmentsError.message}`)
-        }
-      }
-
-      // Mensaje de éxito y redirección (tanto para creación como edición)
-      const successMessage = isEditMode ? "Encuesta actualizada exitosamente" : "Encuesta guardada exitosamente"
-      const successDescription = isEditMode
-        ? "Tu encuesta, secciones, preguntas y asignaciones han sido actualizadas exitosamente."
-        : "Tu encuesta, secciones, preguntas y asignaciones han sido guardadas exitosamente."
-
-      toast({
-        title: successMessage,
-        description: successDescription,
-      })
-
-      console.log("🎉 ¡" + successMessage + "!")
-      console.log("🔄 Redirigiendo a la lista de encuestas...")
-
-      router.push(`/surveys?projectId=${projectId}`)
-    } catch (err: any) {
-      console.error("Error completo al guardar:", err)
-      console.error("Tipo de error:", typeof err)
-      console.error("Claves del error:", Object.keys(err))
-
-      // Error más específico para debugging de Supabase
-      let errorMessage = "Error al guardar la encuesta"
-
-      if (err && typeof err === "object") {
-        if (err.message) {
-          errorMessage = err.message
-        } else if (err.error && err.error.message) {
-          errorMessage = err.error.message
-        } else if (err.error && typeof err.error === "string") {
-          errorMessage = err.error
-        } else if (err.details) {
-          errorMessage = err.details
-        } else if (err.hint) {
-          errorMessage = `Error: ${err.hint}`
-        } else if (err.code) {
-          errorMessage = `Error ${err.code}: ${err.message || "Error de base de datos"}`
-        } else {
-          // Si no hay mensaje específico, mostrar la estructura del error
-          errorMessage = `Error desconocido: ${JSON.stringify(err, null, 2)}`
-        }
-      } else if (typeof err === "string") {
-        errorMessage = err
-      }
-
-      setError(errorMessage)
-      toast({
-        title: "Error al guardar",
-        description: errorMessage,
-        variant: "destructive",
-      })
-    } finally {
-      setIsSaving(false)
-    }
+  if (!surveyTitle.trim()) {
+    toast({
+      title: "Error",
+      description: "El título de la encuesta es obligatorio",
+      variant: "destructive",
+    });
+    setActiveTab("details");
+    return;
   }
+
+  setIsSaving(true);
+  setError(null);
+
+  try {
+    // Validar usuario
+    if (!user?.id) throw new Error("Usuario no autenticado");
+
+    // Derivar encuestadores asignados
+    const allAssignedSurveyors = Array.from(new Set(Object.values(assignedZoneSurveyors).flat())).filter(Boolean) as string[];
+
+    const surveyData = {
+      title: surveyTitle,
+      description: surveyDescription,
+      settings: settings || {},
+      start_date: startDate || null,
+      deadline: deadline || null,
+      project_id: projectId,
+      created_by: user.id,
+      status: surveyStatus,
+      assigned_surveyors: allAssignedSurveyors || [],
+      assigned_zones: settings.assignedZones || [],
+      logo: settings.branding?.logo || null,
+      theme_config: settings.theme || null,
+      security_config: settings.security || null,
+      notification_config: settings.notifications || null,
+      branding_config: settings.branding || null,
+    };
+
+    let surveyResult;
+    if (isEditMode && currentSurveyId) {
+      const { data, error: surveyError } = await supabase
+        .from("surveys")
+        .update(surveyData)
+        .eq("id", currentSurveyId)
+        .select()
+        .single();
+      if (surveyError) throw surveyError;
+      surveyResult = data;
+    } else {
+      const { data, error: surveyError } = await supabase
+        .from("surveys")
+        .insert([surveyData])
+        .select()
+        .single();
+      if (surveyError) throw surveyError;
+      surveyResult = data;
+    }
+
+    // Guardar asignaciones de encuestador-zona
+    const surveyorZoneAssignmentsToInsert: {
+      survey_id: string;
+      surveyor_id: string;
+      zone_id: string;
+    }[] = [];
+
+    for (const zoneId of settings.assignedZones || []) {
+      const surveyorsForZone = assignedZoneSurveyors[zoneId] || [];
+      for (const surveyorId of surveyorsForZone) {
+        if (surveyorId && zoneId) {
+          surveyorZoneAssignmentsToInsert.push({
+            survey_id: surveyResult.id,
+            surveyor_id: surveyorId,
+            zone_id: zoneId,
+          });
+        }
+      }
+    }
+
+    if (surveyorZoneAssignmentsToInsert.length > 0) {
+      const { error: insertAssignmentsError } = await supabase
+        .from("survey_surveyor_zones")
+        .insert(surveyorZoneAssignmentsToInsert);
+      if (insertAssignmentsError) {
+        throw new Error(`Error al asignar encuestadores a zonas: ${insertAssignmentsError.message}`);
+      }
+    }
+
+    toast({
+      title: isEditMode ? "Encuesta actualizada exitosamente" : "Encuesta guardada exitosamente",
+      description: "La información general y las asignaciones han sido guardadas.",
+    });
+
+    router.push(`/surveys?projectId=${projectId}`);
+  } catch (err: any) {
+    let errorMessage = "Error al guardar la encuesta";
+    if (err && typeof err === "object") {
+      if (err.message) errorMessage = err.message;
+      else if (err.error && err.error.message) errorMessage = err.error.message;
+      else if (err.error && typeof err.error === "string") errorMessage = err.error;
+      else if (err.details) errorMessage = err.details;
+      else if (err.hint) errorMessage = `Error: ${err.hint}`;
+      else if (err.code) errorMessage = `Error ${err.code}: ${err.message || "Error de base de datos"}`;
+      else errorMessage = `Error desconocido: ${JSON.stringify(err, null, 2)}`;
+    } else if (typeof err === "string") {
+      errorMessage = err;
+    }
+    setError(errorMessage);
+    toast({
+      title: "Error al guardar",
+      description: errorMessage,
+      variant: "destructive",
+    });
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const fetchSurveyForEdit = useCallback(async () => {
     if (!currentSurveyId) {
