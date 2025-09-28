@@ -346,12 +346,25 @@ export function QuestionEditor({
           </div>
           <div className="flex-1 mt-2">
             {!isEditing ? (
-              <Input
+              <textarea
                 readOnly
-                className="text-lg cursor-pointer bg-background border rounded-lg"
+                className="text-lg cursor-pointer bg-background border rounded-lg w-full resize-none min-h-[48px] whitespace-pre-line focus:outline-none break-words"
                 value={question.text_html ? question.text_html.replace(/<[^>]+>/g, "") : ""}
                 placeholder="Escribe tu pregunta aquí..."
                 onClick={() => setIsEditing(true)}
+                rows={1}
+                style={{ height: 'auto', overflow: 'hidden' }}
+                ref={el => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                  }
+                }}
+                onInput={e => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = target.scrollHeight + 'px';
+                }}
               />
             ) : (
               <div className="border rounded-lg overflow-hidden p-2 bg-background">
