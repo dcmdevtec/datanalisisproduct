@@ -2160,7 +2160,7 @@ function CreateSurveyForProjectPageContent() {
           {showSectionOrganizer && (
             <SectionOrganizer
               sections={sections}
-              onSectionsChange={(newSections) => {
+              onSectionsChange={async (newSections) => {
                 setSections(newSections)
                 // Marcar todas las secciones como no guardadas después de reorganizar
                 const newSaveStates = newSections.reduce(
@@ -2171,7 +2171,50 @@ function CreateSurveyForProjectPageContent() {
                   {},
                 )
                 setSectionSaveStates(newSaveStates)
-                setShowSectionOrganizer(false)
+
+                // Persistir movimientos de preguntas (section_id y order_num) en Supabase
+                if (currentSurveyId) {
+                  // Mapeo de ids antiguos a nuevos
+                  let idMapping: Record<string, string> = {};
+                  let updatedSections = [...newSections];
+                  for (const section of newSections) {
+                    for (const [qIndex, question] of section.questions.entries()) {
+                      if (question.id && section.id && section.id !== "temp-id") {
+                        // Hacer upsert y obtener el id real
+                        const { data, error } = await supabase
+                          .from("questions")
+                          .upsert([
+                            {
+                              ...question,
+                              section_id: section.id,
+                              order_num: qIndex,
+                              survey_id: currentSurveyId,
+                            },
+                          ], { onConflict: "id" })
+                          .select()
+                          .single();
+                        if (!error && data && data.id && data.id !== question.id) {
+                          idMapping[question.id] = data.id;
+                          // Actualizar el id en el estado local
+                          updatedSections = updatedSections.map((s) =>
+                            s.id === section.id
+                              ? {
+                                  ...s,
+                                  questions: s.questions.map((q) =>
+                                    q.id === question.id ? { ...q, id: data.id } : q
+                                  ),
+                                }
+                              : s
+                          );
+                        }
+                      }
+                    }
+                  }
+                  // Si hubo cambios de id, actualizar el estado global
+                  if (Object.keys(idMapping).length > 0) {
+                    setSections(updatedSections);
+                  }
+                }
               }}
               onClose={() => setShowSectionOrganizer(false)}
             />

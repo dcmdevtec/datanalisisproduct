@@ -439,25 +439,36 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
   }
 
   const handleCancel = () => {
-    setLocalSections(sections) // Reset to original
+    setLocalSections(sections) // Reset to original solo si se cancela
     setEditingSection(null)
     setMovingSection(null)
     setMovingQuestion(null)
-    onClose()
+    // No llamar a onClose aquí, ya que se maneja en onOpenChange
   }
 
   const handleQuestionMove = () => {
     if (!movingQuestion || !bulkMoveSection) return;
 
-    // Get target section and its questions
-    const targetSection = localSections.find(s => s.id === bulkMoveSection.toSectionId);
-    if (!targetSection) return;
+    // Copia profunda de las secciones
+    const newSections = localSections.map(section => ({
+      ...section,
+      questions: [...section.questions],
+    }));
 
-    // Calculate target position
+    // Encuentra índices de origen y destino
+    const fromSectionIdx = newSections.findIndex(s => s.id === bulkMoveSection.fromSectionId);
+    const toSectionIdx = newSections.findIndex(s => s.id === bulkMoveSection.toSectionId);
+    if (fromSectionIdx === -1 || toSectionIdx === -1) return;
+
+    // Encuentra la pregunta a mover
+    const questionIdx = newSections[fromSectionIdx].questions.findIndex(q => q.id === movingQuestion.question.id);
+    if (questionIdx === -1) return;
+    const [questionToMove] = newSections[fromSectionIdx].questions.splice(questionIdx, 1);
+
+    // Calcula el índice de inserción en destino
     let targetIndex: number;
-    
     if (questionMoveMode === "end") {
-      targetIndex = targetSection.questions.length;
+      targetIndex = newSections[toSectionIdx].questions.length;
     } else {
       const referenceQuestionIndex = Number(targetQuestionPosition);
       if (questionMoveMode === "before") {
@@ -466,31 +477,11 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
         targetIndex = referenceQuestionIndex + 1;
       }
     }
-
-    // Create new sections array with moved question
-    const newSections = localSections.map(section => {
-      // Remove from source section
-      if (section.id === bulkMoveSection.fromSectionId) {
-        return {
-          ...section,
-          questions: section.questions.filter(q => q.id !== movingQuestion.question.id)
-        };
-      }
-      // Add to target section
-      if (section.id === bulkMoveSection.toSectionId) {
-        const newQuestions = [...section.questions];
-        newQuestions.splice(targetIndex, 0, movingQuestion.question);
-        return {
-          ...section,
-          questions: newQuestions
-        };
-      }
-      return section;
-    });
+    // Inserta la pregunta en la posición destino
+    newSections[toSectionIdx].questions.splice(targetIndex, 0, questionToMove);
 
     setLocalSections(newSections);
-    
-    // Reset state
+    // No propagues al padre aquí, solo al guardar
     setMovingQuestion(null);
     setBulkMoveSection(null);
     setTargetQuestionPosition("");
@@ -504,7 +495,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={handleCancel}>
+  <Dialog open={isOpen} onOpenChange={open => { if (!open) handleCancel(); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
