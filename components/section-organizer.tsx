@@ -129,7 +129,7 @@ function SortableSectionCard({
                   {/* Mostrar HTML estilado si existe, si no mostrar texto plano */}
                   <div
                     className="font-semibold text-lg"
-                    dangerouslySetInnerHTML={{ __html: section.title_html || stripHtml(section.title) || `Sección ${index + 1}` }}
+                    dangerouslySetInnerHTML={{ __html: stripHtml(section.title) || `Sección ${index + 1}` }}
                   />
                   {section.description && <p className="text-sm text-muted-foreground mt-1">{stripHtml(section.description)}</p>}
                 </>
@@ -253,7 +253,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
   // Ensure the rich editor is populated with the saved HTML title when a section is selected for editing.
   useEffect(() => {
     if (editingSection) {
-      setEditTitle(editingSection.title_html ?? editingSection.title ?? "")
+  setEditTitle(editingSection.title ?? "")
       setEditDescription(editingSection.description ?? "")
     }
   }, [editingSection])
@@ -301,7 +301,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   const handleEdit = (section: SurveySection) => {
     setEditingSection(section)
-    setEditTitle(section.title_html || section.title)
+  setEditTitle(section.title)
     setEditDescription(section.description || "")
   }
 
@@ -351,7 +351,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
       // Update references in display logic
       if (newConfig?.displayLogic?.conditions) {
-        newConfig.displayLogic.conditions = newConfig.displayLogic.conditions.map(condition => ({
+        newConfig.displayLogic.conditions = newConfig.displayLogic.conditions.map((condition: any) => ({
           ...condition,
           questionId: idMap.get(condition.questionId) || condition.questionId
         }));
@@ -359,7 +359,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
       // Update references in skip logic
       if (newConfig?.skipLogic?.rules) {
-        newConfig.skipLogic.rules = newConfig.skipLogic.rules.map(rule => ({
+        newConfig.skipLogic.rules = newConfig.skipLogic.rules.map((rule: any) => ({
           ...rule,
           targetQuestionId: idMap.get(rule.targetQuestionId) || rule.targetQuestionId
         }));
@@ -377,15 +377,13 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     });
 
     // Create the new section (preserve HTML title if exists)
-    const baseTitle = section.title_html ? stripHtml(section.title_html) : section.title
-    const newTitleText = `${baseTitle} (Copia)`
-    const newTitleHtml = `<h1>${newTitleText}</h1>`
+  const baseTitle = section.title
+  const newTitleText = `${baseTitle} (Copia)`
 
     const newSection: SurveySection = {
       ...section,
       id: generateUUID(),
       title: newTitleText,
-      title_html: newTitleHtml,
       order_num: localSections.length,
       questions: newQuestions,
     };
@@ -415,7 +413,6 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     const newSection: SurveySection = {
       id: generateUUID(),
       title: `Nueva Sección ${localSections.length + 1}`,
-      title_html: `<h1>Nueva Sección ${localSections.length + 1}</h1>`,
       description: "",
       order_num: localSections.length,
       questions: [],
@@ -721,15 +718,28 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
               <label className="text-sm font-medium">Tipo de posicionamiento</label>
               <Select value={questionMoveMode} onValueChange={(value: "before" | "after" | "end") => setQuestionMoveMode(value)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue
+                    placeholder={
+                      moveMode === "exact"
+                        ? "Selecciona posición (1-" + localSections.length + ")"
+                        : "Selecciona sección de referencia"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="before">
-                    <div className="flex items-center gap-2"><ArrowUp className="h-4 w-4" />Antes de una pregunta específica</div>
-                  </SelectItem>
-                  <SelectItem value="after">
-                    <div className="flex items-center gap-2"><ArrowDown className="h-4 w-4" />Después de una pregunta específica</div>
-                  </SelectItem>
+                  {moveMode === "exact"
+                    ? localSections.map((section, idx) => (
+                        <SelectItem key={idx + 1} value={(idx + 1).toString()}>
+                          {`Posición ${idx + 1} — ${stripHtml(section.title) || `Sección ${idx + 1}`}`}
+                        </SelectItem>
+                      ))
+                    : localSections
+                        .filter(s => s.id !== movingSection?.id)
+                        .map((section, idx) => (
+                          <SelectItem key={section.id} value={(idx + 1).toString()}>
+                            {`${moveMode === "before" ? "Antes de" : "Después de"} ${stripHtml(section.title) || `Sección ${idx + 1}`}`}
+                          </SelectItem>
+                        ))}
                   <SelectItem value="end">
                     <div className="flex items-center gap-2"><Plus className="h-4 w-4" />Al final de la sección</div>
                   </SelectItem>
@@ -868,14 +878,21 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {localSections.map((section, index) => {
-                    if (section.id === movingSection?.id) return null
-                    return (
-                      <SelectItem key={section.id} value={(index + 1).toString()}>
-                        {moveMode === "exact" ? `Posición ${index + 1}` : `${index + 1}. ${stripHtml(section.title)}`}
-                      </SelectItem>
-                    )
-                  })}
+                  {moveMode === "exact"
+                    ? localSections
+                        .filter(section => section.id !== movingSection?.id)
+                        .map((section, index) => (
+                          <SelectItem key={section.id} value={(index + 1).toString()}>
+                            {`Posición ${index + 1} — ${stripHtml(section.title) || `Sección ${index + 1}`}`}
+                          </SelectItem>
+                        ))
+                    : localSections
+                        .filter(section => section.id !== movingSection?.id)
+                        .map((section, index) => (
+                          <SelectItem key={section.id} value={(index + 1).toString()}>
+                            {`${index + 1}. ${stripHtml(section.title)}`}
+                          </SelectItem>
+                        ))}
                 </SelectContent>
               </Select>
             </div>
