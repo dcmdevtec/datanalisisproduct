@@ -1714,30 +1714,85 @@ export function QuestionEditor({
         )}
 
         {question.type === "time" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="time" disabled className="mt-2 w-fit" />
-          </div>
-        )}
-
-        {question.type === "email" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="email" placeholder="ejemplo@correo.com" disabled className="mt-2" />
-          </div>
-        )}
-
-        {question.type === "phone" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="tel" placeholder="+1 (555) 123-4567" disabled className="mt-2" />
-          </div>
-        )}
-
-        {question.type === "number" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="number" placeholder="123" disabled className="mt-2" />
+          <div className="space-y-4 p-4 border rounded-lg">
+            <Label className="text-lg font-semibold">Configuración de Hora</Label>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Formato de hora</Label>
+                <Select
+                  value={question.config?.timeFormat || "24"}
+                  onValueChange={val => {
+                    const newConfig = { ...question.config, timeFormat: val };
+                    onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                    autoSaveQuestionHelper({
+                      ...question,
+                      config: newConfig,
+                      order_num: question.order_num ?? qIndex ?? 0
+                    }, sectionId, surveyId);
+                  }}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="Formato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="24">24 horas</SelectItem>
+                    <SelectItem value="12">12 horas (AM/PM)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {question.config?.timeFormat === "12" && (
+                <div>
+                  <Label>AM / PM</Label>
+                  <Select
+                    value={question.config?.ampm || "AM"}
+                    onValueChange={val => {
+                      const newConfig = { ...question.config, ampm: val };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({
+                        ...question,
+                        config: newConfig,
+                        order_num: question.order_num ?? qIndex ?? 0
+                      }, sectionId, surveyId);
+                    }}
+                  >
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="AM/PM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <div className="mt-4">
+              <Label className="font-medium">Vista previa</Label>
+              <div className="mt-2 flex items-center gap-2 p-4 border rounded-lg bg-muted/20">
+                {question.config?.timeFormat === "12" ? (
+                  <>
+                    <Input type="number" min={1} max={12} defaultValue={12} className="w-16" disabled />
+                    <span>:</span>
+                    <Input type="number" min={0} max={59} defaultValue={0} className="w-16" disabled />
+                    <Select value={question.config?.ampm || "AM"} disabled>
+                      <SelectTrigger className="w-[80px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AM">AM</SelectItem>
+                        <SelectItem value="PM">PM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                ) : (
+                  <>
+                    <Input type="number" min={0} max={23} defaultValue={23} className="w-16" disabled />
+                    <span>:</span>
+                    <Input type="number" min={0} max={59} defaultValue={0} className="w-16" disabled />
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1753,7 +1808,7 @@ export function QuestionEditor({
             <Label className="font-medium">Vista previa</Label>
             <Input type="file" accept="image/*" disabled className="mt-2" />
           </div>
-        )}
+        )} 
 
         {question.type === "signature" && (
           <div className="p-4 border rounded-lg bg-muted/20">
