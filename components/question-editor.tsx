@@ -1090,7 +1090,8 @@ export function QuestionEditor({
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
                       autoSaveQuestionHelper({
                         ...question,
-                        config: newConfig
+                        config: newConfig,
+                        order_num: question.order_num ?? qIndex ?? 0
                       }, sectionId, surveyId);
                     }}
                     placeholder="0"
@@ -1112,7 +1113,8 @@ export function QuestionEditor({
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
                       autoSaveQuestionHelper({
                         ...question,
-                        config: newConfig
+                        config: newConfig,
+                        order_num: question.order_num ?? qIndex ?? 0
                       }, sectionId, surveyId);
                     }}
                     placeholder={question.options.length.toString()}
