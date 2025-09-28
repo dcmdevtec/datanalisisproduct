@@ -1286,12 +1286,24 @@ function CreateSurveyForProjectPageContent() {
     }
   }
 
-  const removeQuestionFromSection = (sectionId: string, questionId: string): void => {
+  const removeQuestionFromSection = async (sectionId: string, questionId: string): Promise<void> => {
+    // Verifica si el ID es un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(questionId)) {
+      try {
+        const { error } = await supabase.from("questions").delete().eq("id", questionId);
+        if (error) {
+          console.error("Error al eliminar la pregunta de Supabase:", error);
+        }
+      } catch (err) {
+        console.error("Error inesperado al eliminar la pregunta:", err);
+      }
+    }
     setSections((prevSections) =>
       prevSections.map((s) =>
         s.id === sectionId ? { ...s, questions: s.questions.filter((q) => q.id !== questionId) } : s,
       ),
-    )
+    );
   }
 
   const updateQuestionInSection = useCallback(

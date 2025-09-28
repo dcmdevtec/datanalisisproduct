@@ -287,16 +287,12 @@ export function QuestionEditor({
                 <SelectItem value="number">🔢 Número</SelectItem>
                 <SelectItem value="rating">⭐ Valoración</SelectItem>
                 <SelectItem value="file">📎 Archivo</SelectItem>
-                <SelectItem value="image_upload">🖼️ Subir imagen</SelectItem>
                 <SelectItem value="signature">✍️ Firma</SelectItem>
                 <SelectItem value="likert">📈 Escala Likert</SelectItem>
                 <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
-                <SelectItem value="slider">🎚️ Control deslizante</SelectItem>
                 <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
-                <SelectItem value="star_rating">⭐ Calificación con estrellas</SelectItem>
                 <SelectItem value="demographic">👤 Demográfica</SelectItem>
                 <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
-                <SelectItem value="single_textbox">📝 Una sola caja de texto</SelectItem>
                 <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
               </SelectContent>
             </Select>
