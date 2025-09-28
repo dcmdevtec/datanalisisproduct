@@ -1082,12 +1082,17 @@ export function QuestionEditor({
                     min="0"
                     max={question.options.length}
                     value={question.config?.minSelections || 0}
-                    onChange={(e) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
+                    onChange={e => {
+                      const newConfig = {
                         ...question.config,
                         minSelections: Number.parseInt(e.target.value) || 0,
-                      })
-                    }
+                      };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({
+                        ...question,
+                        config: newConfig
+                      }, sectionId, surveyId);
+                    }}
                     placeholder="0"
                     className="h-8"
                   />
@@ -1099,12 +1104,17 @@ export function QuestionEditor({
                     min="1"
                     max={question.options.length}
                     value={question.config?.maxSelections || question.options.length}
-                    onChange={(e) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
+                    onChange={e => {
+                      const newConfig = {
                         ...question.config,
                         maxSelections: Number.parseInt(e.target.value) || question.options.length,
-                      })
-                    }
+                      };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({
+                        ...question,
+                        config: newConfig
+                      }, sectionId, surveyId);
+                    }}
                     placeholder={question.options.length.toString()}
                     className="h-8"
                   />
