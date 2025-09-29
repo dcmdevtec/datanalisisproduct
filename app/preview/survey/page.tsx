@@ -1217,7 +1217,19 @@ function PreviewSurveyPageContent() {
       }
 
       return (
-        <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60">
+        <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60 preview-content">
+          <style jsx global>{`
+            .preview-content h1 {
+              font-size: 2.25rem;
+              font-weight: bold;
+              margin: 0.5em 0;
+            }
+            .preview-content h2 {
+              font-size: 1.5rem;
+              font-weight: bold;
+              margin: 0.5em 0;
+            }
+          `}</style>
           {/* Header de la pregunta */}
           <div className="flex items-start gap-4 mb-6">
             <div className="flex-shrink-0">
