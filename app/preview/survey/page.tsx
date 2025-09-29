@@ -1358,11 +1358,41 @@ function PreviewSurveyPageContent() {
 
   const progress = ((currentSectionIndex + 1) / totalSections) * 100
 
+  // Estilos dinámicos para aplicar el color de fondo y color primario
+  const dynamicStyles = (
+    <style jsx global>{`
+      body, .preview-bg {
+        background: ${themeColors.background} !important;
+      }
+      .preview-header {
+        background: transparent;
+      }
+      .preview-title {
+        color: ${themeColors.text} !important;
+        background: none !important;
+        -webkit-background-clip: initial !important;
+        -webkit-text-fill-color: initial !important;
+      }
+      .preview-progress-bar {
+        background: ${themeColors.primary} !important;
+      }
+      .preview-card {
+        background: ${themeColors.background} !important;
+      }
+      .preview-btn-primary {
+        background: ${themeColors.primary} !important;
+        border-color: ${themeColors.primary} !important;
+        color: #fff !important;
+      }
+    `}</style>
+  )
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 flex flex-col items-center p-4 sm:p-8">
+    <div className="min-h-screen preview-bg flex flex-col items-center p-4 sm:p-8">
+      {dynamicStyles}
       {/* Header principal */}
-      <div className="w-full max-w-5xl mb-8">
-        <Card className="border-0 shadow-2xl bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50 backdrop-blur-sm">
+      <div className="w-full max-w-5xl mb-8 preview-header">
+        <Card className="border-0 shadow-2xl preview-card">
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between mb-6">
               <Button 
@@ -1398,11 +1428,9 @@ function PreviewSurveyPageContent() {
                 />
               )}
               <CardTitle 
-                className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
+                className="text-5xl font-bold mb-4 preview-title"
                 style={{
-                  background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
+                  color: themeColors.text
                 }}
               >
                 {surveyData.title}
@@ -1422,20 +1450,16 @@ function PreviewSurveyPageContent() {
                     {currentSectionIndex + 1} de {totalSections}
                   </span>
                 </div>
-                <div className="relative">
-                  <Progress 
-                    value={progress} 
-                    className="w-full h-4 rounded-full" 
+                <div className="relative w-full">
+                  <div className="w-full h-4 rounded-full bg-gray-100" />
+                  <div
+                    className="absolute top-0 left-0 h-4 rounded-full preview-progress-bar"
                     style={{
-                      '--progress-background': themeColors.primary
-                    } as React.CSSProperties}
-                  />
-                  <div 
-                    className="absolute inset-0 rounded-full opacity-30"
-                    style={{
-                      background: `linear-gradient(to right, ${themeColors.primary}40, ${themeColors.primary}60)`
+                      width: `${progress}%`,
+                      background: themeColors.primary,
+                      transition: 'width 0.4s cubic-bezier(.4,2,.6,1)',
                     }}
-                  ></div>
+                  />
                 </div>
                 <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
                   <span>Inicio</span>
@@ -1448,7 +1472,7 @@ function PreviewSurveyPageContent() {
       </div>
 
       {/* Contenido principal */}
-      <Card className="w-full max-w-5xl shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
+      <Card className="w-full max-w-5xl shadow-2xl border-0 preview-card">
         <CardContent className="p-10">
           {/* Header de la sección */}
           <div className="text-center mb-10 preview-content">
@@ -1578,9 +1602,6 @@ function PreviewSurveyPageContent() {
 }
 
 export default function SurveyPreviewPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100">
-      <PreviewSurveyPageContent />
-    </div>
-  )
+  // El fondo general ahora se maneja con .preview-bg
+  return <PreviewSurveyPageContent />
 }
