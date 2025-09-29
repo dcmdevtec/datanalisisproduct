@@ -1200,8 +1200,8 @@ function PreviewSurveyPageContent() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div
-                  className="text-xl font-semibold text-gray-900 flex-1 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: question.text || "Pregunta sin texto" }}
+                  className="question-title-html flex-1"
+                  dangerouslySetInnerHTML={{ __html: question.text_html || question.text || "Pregunta sin texto" }}
                 />
                 <div className="flex gap-2">
                   {question.required && (
@@ -1224,6 +1224,11 @@ function PreviewSurveyPageContent() {
           {/* Contenido de la pregunta */}
           <div className="ml-16">
             <div className="mt-6">{renderInput()}</div>
+            <style jsx global>{`
+              .question-title-html * {
+                line-height: 1.2;
+              }
+            `}</style>
             {error && (
               <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-xl">
                 <div className="flex items-center gap-3 text-red-700">
