@@ -23,6 +23,7 @@ create table public.questions (
   question_config jsonb null,
   rating_scale integer null default 5,
   section_id uuid null,
+  text_html text null,
   constraint questions_pkey primary key (id),
   constraint questions_section_id_fkey foreign KEY (section_id) references survey_sections (id),
   constraint questions_survey_id_fkey foreign KEY (survey_id) references surveys (id) on delete CASCADE,
@@ -91,6 +92,7 @@ create table public.survey_sections (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   skip_logic jsonb null,
+  title_html text null,
   constraint survey_sections_pkey primary key (id),
   constraint survey_sections_survey_id_fkey foreign KEY (survey_id) references surveys (id) on delete CASCADE,
   constraint check_id_not_changed check ((id = id))

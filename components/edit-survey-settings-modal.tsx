@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import ColorInput from "./mantine-color-input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -329,11 +330,17 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       className="w-8 h-8 rounded border-2 border-purple-200"
                       style={{ backgroundColor: editedSettings.theme?.primaryColor || "#18b0a4" }}
                     />
-                    <Input
-                      value={editedSettings.theme?.primaryColor || "#18b0a4"}
-                      onChange={(e) => handleThemeChange("primaryColor", e.target.value)}
-                      className="bg-white border-purple-300 focus:border-purple-500"
-                    />
+                    <div className="flex-1">
+                      <ColorInput
+                        value={editedSettings.theme?.primaryColor || "#18b0a4"}
+                        onChange={(color: string) => handleThemeChange("primaryColor", color)}
+                        format="hex"
+                        swatches={["#10b981", "#3b82f6", "#8b5cf6", "#f97316", "#ec4899", "#18b0a4", "#ffffff", "#1f2937"]}
+                        withPicker
+                        size="md"
+                        styles={{ input: { width: '100%' } }}
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-purple-600">Color principal para botones y elementos destacados</p>
                 </div>
@@ -345,11 +352,17 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       className="w-8 h-8 rounded border-2 border-purple-200"
                       style={{ backgroundColor: editedSettings.theme?.backgroundColor || "#ffffff" }}
                     />
-                    <Input
-                      value={editedSettings.theme?.backgroundColor || "#ffffff"}
-                      onChange={(e) => handleThemeChange("backgroundColor", e.target.value)}
-                      className="bg-white border-purple-300 focus:border-purple-500"
-                    />
+                    <div className="flex-1">
+                      <ColorInput
+                        value={editedSettings.theme?.backgroundColor || "#ffffff"}
+                        onChange={(color: string) => handleThemeChange("backgroundColor", color)}
+                        format="hex"
+                        swatches={["#ffffff", "#f0fdf4", "#eff6ff", "#faf5ff", "#fff7ed", "#fdf2f8", "#f0fdf4", "#f9fafb"]}
+                        withPicker
+                        size="md"
+                        styles={{ input: { width: '100%' } }}
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-purple-600">Color de fondo principal de la encuesta</p>
                 </div>
@@ -361,11 +374,17 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       className="w-8 h-8 rounded border-2 border-purple-200"
                       style={{ backgroundColor: editedSettings.theme?.textColor || "#1f2937" }}
                     />
-                    <Input
-                      value={editedSettings.theme?.textColor || "#1f2937"}
-                      onChange={(e) => handleThemeChange("textColor", e.target.value)}
-                      className="bg-white border-purple-300 focus:border-purple-500"
-                    />
+                    <div className="flex-1">
+                      <ColorInput
+                        value={editedSettings.theme?.textColor || "#1f2937"}
+                        onChange={(color: string) => handleThemeChange("textColor", color)}
+                        format="hex"
+                        swatches={["#1f2937", "#064e3b", "#1e3a8a", "#5b21b6", "#9a3412", "#be185d", "#374151", "#000000"]}
+                        withPicker
+                        size="md"
+                        styles={{ input: { width: '100%' } }}
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-purple-600">Color del texto principal</p>
                 </div>
