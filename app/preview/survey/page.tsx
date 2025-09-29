@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { AdvancedQuestionConfig } from "./advanced-question-config-dynamic"
 import { RankingPreviewDraggable } from "@/components/RankingPreviewDraggable"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1203,6 +1204,9 @@ function PreviewSurveyPageContent() {
         }
       }
 
+      // Estado para mostrar el modal de configuración avanzada
+      const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
+
       return (
         <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60">
           {/* Header de la pregunta */}
@@ -1234,10 +1238,16 @@ function PreviewSurveyPageContent() {
                       Condicional
                     </Badge>
                   )}
+                  {/* Botón de configuración avanzada */}
+                  <Button
+                    variant="outline"
+                    className="ml-2 px-3 py-1 text-xs flex items-center gap-1 border-gray-300"
+                    onClick={() => setShowAdvancedConfig(true)}
+                  >
+                    <span role="img" aria-label="config">⚙️</span> Configuración avanzada
+                  </Button>
                 </div>
               </div>
-              
-              
             </div>
           </div>
 
@@ -1258,6 +1268,22 @@ function PreviewSurveyPageContent() {
               </div>
             )}
           </div>
+
+          {/* Modal de configuración avanzada */}
+          {showAdvancedConfig && (
+            <AdvancedQuestionConfig
+              isOpen={showAdvancedConfig}
+              onClose={() => setShowAdvancedConfig(false)}
+              question={question}
+              allSections={surveyData?.sections || []}
+              allQuestions={currentSection.questions}
+              onSave={(config) => {
+                // Aquí puedes manejar el guardado de la configuración avanzada si es necesario
+                // Por ejemplo, actualizar el estado local o hacer una llamada a la API
+                setShowAdvancedConfig(false);
+              }}
+            />
+          )}
         </div>
       )
     },

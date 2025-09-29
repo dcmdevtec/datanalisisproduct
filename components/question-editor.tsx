@@ -370,7 +370,14 @@ export function QuestionEditor({
           </div>
         </div>
       </CardHeader>
-
+ <AdvancedQuestionConfig
+          isOpen={showConfig}
+          onClose={closeConfigEditor}
+          question={question}
+          allSections={allSections}
+          allQuestions={allSections.flatMap((s) => s.questions)}
+          onSave={handleAdvancedConfigSave}
+        />
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor={`question-${question.id}`}>Enunciado de la pregunta</Label>
