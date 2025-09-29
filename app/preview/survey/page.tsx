@@ -360,15 +360,15 @@ function PreviewSurveyPageContent() {
   const getThemeColors = () => {
     if (surveyData?.settings?.theme) {
       return {
-        primary: surveyData.settings.theme.primaryColor || '#10b981', // verde por defecto
-        background: surveyData.settings.theme.backgroundColor || '#f0fdf4',
-        text: surveyData.settings.theme.textColor || '#1f2937'
+        primary: surveyData.settings.theme.primaryColor || '#8b5cf6',
+        background: surveyData.settings.theme.backgroundColor || '#faf5ff',
+        text: surveyData.settings.theme.textColor || '#5b21b6'
       }
     }
     return {
-      primary: '#10b981',
-      background: '#f0fdf4', 
-      text: '#1f2937'
+      primary: '#8b5cf6',
+      background: '#faf5ff',
+      text: '#5b21b6'
     }
   }
 
@@ -704,6 +704,26 @@ function PreviewSurveyPageContent() {
                   <span>{question.ratingScale || 10}</span>
                 </div>
                 <div className="text-center">
+              {(() => {
+                let logo = surveyData.settings?.branding?.logo || surveyData.logo || surveyData.projectData?.companies?.logo;
+                // Si viene como string JSON, parsear
+                if (typeof logo === 'string' && logo.trim().startsWith('{')) {
+                  try {
+                    const parsed = JSON.parse(logo);
+                    if (parsed.logo) logo = parsed.logo;
+                  } catch {}
+                }
+                if (!logo) return null;
+                return (
+                  <div className="flex justify-center mb-4">
+                    <img
+                      src={logo}
+                      alt="Logo de la encuesta"
+                      style={{ maxHeight: 64, maxWidth: 180, objectFit: 'contain' }}
+                    />
+                  </div>
+                );
+              })()}
                   <span className="text-lg font-semibold text-primary">
                     {answers[question.id] || 1}
                   </span>
@@ -1291,10 +1311,16 @@ function PreviewSurveyPageContent() {
   const progress = ((currentSectionIndex + 1) / totalSections) * 100
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 flex flex-col items-center p-4 sm:p-8">
+    <div
+      className="min-h-screen flex flex-col items-center p-4 sm:p-8"
+      style={{ background: themeColors.background }}
+    >
       {/* Header principal */}
       <div className="w-full max-w-5xl mb-8">
-        <Card className="border-0 shadow-2xl bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50 backdrop-blur-sm">
+        <Card
+          className="border-0 shadow-2xl"
+          style={{ background: themeColors.background }}
+        >
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between mb-6">
               <Button 
@@ -1369,14 +1395,17 @@ function PreviewSurveyPageContent() {
       </div>
 
       {/* Contenido principal */}
-      <Card className="w-full max-w-5xl shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
-        <CardContent className="p-10">
+      <Card
+        className="w-full max-w-5xl shadow-2xl border-0"
+        style={{ background: themeColors.background }}
+      >
+  <CardContent className="p-10">
           {/* Header de la sección */}
           <div className="text-center mb-10">
-            <div 
+            <div
               className="inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-semibold mb-4 shadow-sm"
               style={{
-                background: `linear-gradient(to right, ${themeColors.primary}20, ${themeColors.primary}30)`,
+                background: themeColors.primary + '20',
                 color: themeColors.primary
               }}
             >

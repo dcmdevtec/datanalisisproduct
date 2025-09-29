@@ -296,30 +296,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Previsualización del Tema */}
-              <div className="space-y-4">
-                <h4 className="text-lg font-semibold text-purple-700">Previsualización del Tema</h4>
-                <div className="p-4 bg-white rounded-lg border-2 border-purple-200 shadow-lg">
-                  <div className="space-y-3">
-                    <Button 
-                      className="w-full"
-                      style={{ backgroundColor: editedSettings.theme?.primaryColor || "#18b0a4" }}
-                    >
-                      Título
-                    </Button>
-                    <p 
-                      className="text-center"
-                      style={{ color: editedSettings.theme?.textColor || "#1f2937" }}
-                    >
-                      Texto de ejemplo
-                    </p>
-                  </div>
-                  <div className="mt-4 text-sm text-purple-700 space-y-1">
-                    <p>• Color primario: {editedSettings.theme?.primaryColor || "#18b0a4"}</p>
-                    <p>• Color de fondo: {editedSettings.theme?.backgroundColor || "#ffffff"}</p>
-                    <p>• Color de texto: {editedSettings.theme?.textColor || "#1f2937"}</p>
-                  </div>
-                </div>
-              </div>
+             
 
               {/* Selectores de Color */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -411,62 +388,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
           </Card>
 
           {/* Marca */}
-          <Card className="border-2 border-orange-200 bg-gradient-to-br from-white via-orange-50/50 to-amber-100/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-800">
-                <Building2 className="h-5 w-5 text-orange-600" />
-                Marca
-              </CardTitle>
-              <CardDescription className="text-orange-700">
-                Personaliza la identidad visual de tu encuesta
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                    <Checkbox
-                      id="showLogo"
-                      checked={editedSettings.branding?.showLogo}
-                      onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
-                      className="data-[state=checked]:bg-orange-500"
-                    />
-                    <Label htmlFor="showLogo" className="font-medium text-orange-800">Mostrar logo</Label>
-                  </div>
-                  
-                  {editedSettings.branding?.showLogo && (
-                    <div className="space-y-3">
-                      <Label className="text-sm font-medium text-orange-800">Posición del logo</Label>
-                      <Select
-                        value={editedSettings.branding?.logoPosition || "top"}
-                        onValueChange={(value) => handleBrandingChange("logoPosition", value)}
-                      >
-                        <SelectTrigger className="bg-white border-orange-300 focus:border-orange-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="top">Arriba</SelectItem>
-                          <SelectItem value="center">Centro</SelectItem>
-                          <SelectItem value="bottom">Abajo</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <Label className="text-sm font-medium text-orange-800">URL del Logo</Label>
-                  <Input
-                    value={editedSettings.branding?.logo || ""}
-                    onChange={(e) => handleBrandingChange("logo", e.target.value)}
-                    placeholder="https://ejemplo.com/logo.png"
-                    className="bg-white border-orange-300 focus:border-orange-500"
-                  />
-                  <p className="text-xs text-orange-600">Ingresa la URL de tu logo</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          
 
           {/* Seguridad */}
           <Card className="border-2 border-red-200 bg-gradient-to-br from-white via-red-50/50 to-rose-100/50">

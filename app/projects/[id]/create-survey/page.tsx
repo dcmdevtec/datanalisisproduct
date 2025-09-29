@@ -2898,23 +2898,7 @@ function CreateSurveyForProjectPageContent() {
                         onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="logo-position">Posición del Logo</Label>
-                      <Select
-                        value={settings.branding?.logoPosition || "top"}
-                        onValueChange={(value) => handleBrandingChange("logoPosition", value)}
-                      >
-                        <SelectTrigger id="logo-position">
-                          <SelectValue placeholder="Seleccionar posición" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="top">Superior</SelectItem>
-                          <SelectItem value="bottom">Inferior</SelectItem>
-                          <SelectItem value="left">Izquierda</SelectItem>
-                          <SelectItem value="right">Derecha</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    
                   </CardContent>
                 </Card>
 
