@@ -1,6 +1,27 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+// Utilidad para extraer fuentes de un HTML
+function extractFontFamilies(html: string): string[] {
+  if (!html) return [];
+  const regex = /font-family\s*:\s*([^;"']+)/gi;
+  const matches = Array.from(html.matchAll(regex));
+  const fonts = matches.map(m => m[1].split(',')[0].replace(/['"]/g, '').trim());
+  return Array.from(new Set(fonts));
+}
+
+// Utilidad para cargar Google Fonts dinámicamente
+function loadGoogleFont(font: string) {
+  if (!font) return;
+  const fontParam = font.replace(/ /g, '+');
+  const id = `dynamic-googlefont-${fontParam}`;
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${fontParam}:wght@400;700&display=swap`;
+  document.head.appendChild(link);
+}
 import { RankingPreviewDraggable } from "@/components/RankingPreviewDraggable"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -154,14 +175,26 @@ function PreviewSurveyPageContent() {
       const hasDisplayLogic = surveyData.sections.some(section => 
         section.questions.some(q => q.config?.displayLogic?.enabled)
       )
-      
       if (hasDisplayLogic) {
         setIsReconciling(true)
         setHasReconciled(true)
-        
-        // Ocultar después de un breve delay
         setTimeout(() => setIsReconciling(false), 2000)
       }
+    }
+    // --- Cargar fuentes de Google Fonts para secciones y preguntas ---
+    if (surveyData) {
+      // Secciones
+      surveyData.sections.forEach(section => {
+        if (section.title_html) {
+          extractFontFamilies(section.title_html).forEach(loadGoogleFont);
+        }
+        // Preguntas
+        section.questions.forEach(q => {
+          if (q.text_html) {
+            extractFontFamilies(q.text_html).forEach(loadGoogleFont);
+          }
+        });
+      });
     }
   }, [surveyData, hasReconciled])
 
@@ -1374,7 +1407,19 @@ function PreviewSurveyPageContent() {
       <Card className="w-full max-w-5xl shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
         <CardContent className="p-10">
           {/* Header de la sección */}
-          <div className="text-center mb-10">
+          <div className="text-center mb-10 preview-content">
+      <style jsx global>{`
+        .preview-content h1 {
+          font-size: 2.25rem;
+          font-weight: bold;
+          margin: 0.5em 0;
+        }
+        .preview-content h2 {
+          font-size: 1.5rem;
+          font-weight: bold;
+          margin: 0.5em 0;
+        }
+      `}</style>
             <div 
               className="inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-semibold mb-4 shadow-sm"
               style={{
@@ -1387,11 +1432,10 @@ function PreviewSurveyPageContent() {
             </div>
             {currentSection.title_html ? (
               <div
-                className="section-title-html text-4xl font-bold text-center mb-3"
                 dangerouslySetInnerHTML={{ __html: currentSection.title_html }}
               />
             ) : (
-              <div className="section-title-html text-4xl font-bold text-center mb-3">
+              <div className="text-4xl font-bold text-center mb-3">
                 {currentSection.title ? currentSection.title : `Sección ${currentSectionIndex + 1}`}
               </div>
             )}
@@ -1400,21 +1444,7 @@ function PreviewSurveyPageContent() {
                 {currentSection.description.replace(/<[^>]+>/g, "")}
               </p>
             )}
-      <style jsx global>{`
-        .section-title-html h1, .section-title-html h2, .section-title-html span, .section-title-html {
-          margin: 0;
-          padding: 0;
-          font-weight: bold;
-          text-align: center;
-        }
-        .section-title-html span, .section-title-html h1, .section-title-html h2 {
-          color: inherit !important;
-          font-family: inherit !important;
-        }
-        .section-title-html * {
-          line-height: 1.1;
-        }
-      `}</style>
+      {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
           </div>
 
           {/* Indicador de lógica de visualización */}
