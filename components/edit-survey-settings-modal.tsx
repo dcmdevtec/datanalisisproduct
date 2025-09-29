@@ -10,7 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import ColorInput from "./mantine-color-input"
+import ColorPicker from "./mantine-color-picker"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -331,14 +331,14 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       style={{ backgroundColor: editedSettings.theme?.primaryColor || "#18b0a4" }}
                     />
                     <div className="flex-1">
-                      <ColorInput
+                      <ColorPicker
                         value={editedSettings.theme?.primaryColor || "#18b0a4"}
                         onChange={(color: string) => handleThemeChange("primaryColor", color)}
                         format="hex"
                         swatches={["#10b981", "#3b82f6", "#8b5cf6", "#f97316", "#ec4899", "#18b0a4", "#ffffff", "#1f2937"]}
-                        withPicker
+                        fullWidth
                         size="md"
-                        styles={{ input: { width: '100%' } }}
+                        style={{ width: '100%' }}
                       />
                     </div>
                   </div>
@@ -353,14 +353,14 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       style={{ backgroundColor: editedSettings.theme?.backgroundColor || "#ffffff" }}
                     />
                     <div className="flex-1">
-                      <ColorInput
+                      <ColorPicker
                         value={editedSettings.theme?.backgroundColor || "#ffffff"}
                         onChange={(color: string) => handleThemeChange("backgroundColor", color)}
                         format="hex"
                         swatches={["#ffffff", "#f0fdf4", "#eff6ff", "#faf5ff", "#fff7ed", "#fdf2f8", "#f0fdf4", "#f9fafb"]}
-                        withPicker
+                        fullWidth
                         size="md"
-                        styles={{ input: { width: '100%' } }}
+                        style={{ width: '100%' }}
                       />
                     </div>
                   </div>
@@ -375,14 +375,14 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       style={{ backgroundColor: editedSettings.theme?.textColor || "#1f2937" }}
                     />
                     <div className="flex-1">
-                      <ColorInput
+                      <ColorPicker
                         value={editedSettings.theme?.textColor || "#1f2937"}
                         onChange={(color: string) => handleThemeChange("textColor", color)}
                         format="hex"
                         swatches={["#1f2937", "#064e3b", "#1e3a8a", "#5b21b6", "#9a3412", "#be185d", "#374151", "#000000"]}
-                        withPicker
+                        fullWidth
                         size="md"
-                        styles={{ input: { width: '100%' } }}
+                        style={{ width: '100%' }}
                       />
                     </div>
                   </div>

@@ -1171,15 +1171,15 @@ function PreviewSurveyPageContent() {
 
   if (loading || !surveyData) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100">
+      <div className="flex h-screen items-center justify-center" style={{ background: themeColors.background }}>
         <div className="text-center">
           <div className="relative mb-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-green-500 via-emerald-600 to-teal-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xl">
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto shadow-2xl" style={{ background: themeColors.primary }}>
               <Loader2 className="h-10 w-10 animate-spin text-white" />
             </div>
-            <div className="absolute -inset-4 bg-gradient-to-br from-green-500/20 to-emerald-600/20 rounded-3xl blur-xl animate-pulse"></div>
+            <div className="absolute -inset-4 rounded-3xl blur-xl animate-pulse" style={{ background: themeColors.primary + '20' }}></div>
           </div>
-          <h2 className="text-2xl font-bold text-gray-700 mb-2">Cargando encuesta...</h2>
+          <h2 className="text-2xl font-bold mb-2" style={{ color: themeColors.text }}>Cargando encuesta...</h2>
           <p className="text-muted-foreground">Preparando la vista previa para ti</p>
         </div>
       </div>
@@ -1188,22 +1188,22 @@ function PreviewSurveyPageContent() {
 
   if (!currentSection) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100">
+      <div className="flex h-screen flex-col items-center justify-center p-4 text-center" style={{ background: themeColors.background }}>
         <div className="max-w-lg">
           <div className="relative mb-8">
-            <div className="w-24 h-24 bg-gradient-to-br from-gray-300 to-gray-400 rounded-2xl flex items-center justify-center mx-auto shadow-xl">
-              <AlertCircle className="h-12 w-12 text-gray-500" />
+            <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto shadow-xl" style={{ background: themeColors.primary + '30' }}>
+              <AlertCircle className="h-12 w-12" style={{ color: themeColors.primary }} />
             </div>
-            <div className="absolute -inset-6 bg-gradient-to-br from-gray-300/20 to-gray-400/20 rounded-3xl blur-xl"></div>
+            <div className="absolute -inset-6 rounded-3xl blur-xl" style={{ background: themeColors.primary + '10' }}></div>
           </div>
-          <h2 className="text-3xl font-bold mb-4 text-gray-700 bg-gradient-to-r from-gray-700 to-gray-500 bg-clip-text text-transparent">No hay secciones o preguntas para previsualizar.</h2>
+          <h2 className="text-3xl font-bold mb-4" style={{ color: themeColors.text }}>No hay secciones o preguntas para previsualizar.</h2>
           <p className="text-lg text-muted-foreground mb-6">La encuesta no tiene contenido configurado para mostrar en la vista previa.</p>
           <Button 
             onClick={() => router.push(`/projects/${surveyData.projectData?.id}/create-survey`)}
             className="px-8 py-3 text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
             style={{
-              background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd)`,
-              color: 'white'
+              background: themeColors.primary,
+              color: themeColors.text
             }}
           >
             Volver al editor de encuestas
@@ -1216,20 +1216,20 @@ function PreviewSurveyPageContent() {
   const progress = ((currentSectionIndex + 1) / totalSections) * 100
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 flex flex-col items-center p-4 sm:p-8">
+    <div className="min-h-screen flex flex-col items-center p-4 sm:p-8" style={{ background: themeColors.background, color: themeColors.text }}>
       {/* Header principal */}
       <div className="w-full max-w-5xl mb-8">
-        <Card className="border-0 shadow-2xl bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50 backdrop-blur-sm">
+        <Card className="border-0 shadow-2xl backdrop-blur-sm" style={{ background: themeColors.background }}>
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between mb-6">
               <Button 
                 variant="ghost" 
                 onClick={() => router.back()} 
                 className="text-muted-foreground hover:bg-green-100/80 transition-all duration-200 rounded-xl px-4 py-2"
+                style={{ color: themeColors.primary }}
               >
                 <ArrowLeft className="h-5 w-5 mr-2" /> Volver
               </Button>
-              
               {/* Botón para limpiar respuestas (testing) */}
               <Button 
                 variant="outline" 
@@ -1238,12 +1238,12 @@ function PreviewSurveyPageContent() {
                   setAnswers({})
                   console.log("🧹 Respuestas limpiadas")
                 }}
-                className="text-orange-600 border-orange-200 hover:bg-orange-50 transition-all duration-200 rounded-xl px-4 py-2"
+                className="border-orange-200 hover:bg-orange-50 transition-all duration-200 rounded-xl px-4 py-2"
+                style={{ color: themeColors.primary, borderColor: themeColors.primary }}
               >
                 Limpiar Respuestas
               </Button>
             </div>
-            
             <div className="text-center">
               <CardTitle 
                 className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
@@ -1256,14 +1256,13 @@ function PreviewSurveyPageContent() {
                 {surveyData.title}
               </CardTitle>
               {surveyData.description && (
-                <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
+                <p className="text-xl mb-6 max-w-3xl mx-auto leading-relaxed" style={{ color: themeColors.text }}>{surveyData.description}</p>
               )}
-              
               {/* Barra de progreso mejorada */}
               <div className="mt-8 max-w-2xl mx-auto">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-gray-700">Progreso de la encuesta</span>
-                  <span className="text-sm font-semibold text-gray-700">
+                  <span className="text-sm font-semibold" style={{ color: themeColors.text }}>Progreso de la encuesta</span>
+                  <span className="text-sm font-semibold" style={{ color: themeColors.text }}>
                     {currentSectionIndex + 1} de {totalSections}
                   </span>
                 </div>
@@ -1271,18 +1270,14 @@ function PreviewSurveyPageContent() {
                   <Progress 
                     value={progress} 
                     className="w-full h-4 rounded-full" 
-                    style={{
-                      '--progress-background': themeColors.primary
-                    } as React.CSSProperties}
+                    style={{ background: themeColors.background }}
                   />
                   <div 
                     className="absolute inset-0 rounded-full opacity-30"
-                    style={{
-                      background: `linear-gradient(to right, ${themeColors.primary}40, ${themeColors.primary}60)`
-                    }}
+                    style={{ background: `linear-gradient(to right, ${themeColors.primary}40, ${themeColors.primary}60)` }}
                   ></div>
                 </div>
-                <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
+                <div className="flex justify-between mt-3 text-xs font-medium" style={{ color: themeColors.text }}>
                   <span>Inicio</span>
                   <span>Final</span>
                 </div>
@@ -1293,7 +1288,7 @@ function PreviewSurveyPageContent() {
       </div>
 
       {/* Contenido principal */}
-      <Card className="w-full max-w-5xl shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
+      <Card className="w-full max-w-5xl shadow-2xl border-0 backdrop-blur-sm" style={{ background: themeColors.background, color: themeColors.text }}>
         <CardContent className="p-10">
           {/* Header de la sección */}
           <div className="text-center mb-10">
@@ -1318,7 +1313,7 @@ function PreviewSurveyPageContent() {
               </div>
             )}
             {currentSection.description && (
-              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              <p className="text-xl max-w-3xl mx-auto leading-relaxed" style={{ color: themeColors.text }}>
                 {currentSection.description.replace(/<[^>]+>/g, "")}
               </p>
             )}
@@ -1342,15 +1337,15 @@ function PreviewSurveyPageContent() {
           {/* Indicador de lógica de visualización */}
           {currentSection.questions.some(q => q.config?.displayLogic?.enabled) && (
             <Alert className="mb-4 border-blue-200 bg-blue-50">
-              <Info className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800">
+              <Info className="h-4 w-4" style={{ color: themeColors.primary }} />
+              <AlertDescription style={{ color: themeColors.primary }}>
                 <strong>Lógica de Visualización Activa:</strong> Algunas preguntas en esta sección solo se mostrarán cuando se cumplan ciertas condiciones.
                 <div className="mt-2 text-sm">
                   <strong>Preguntas con condiciones:</strong>
                   {currentSection.questions
                     .filter(q => q.config?.displayLogic?.enabled)
                     .map((q, idx) => (
-                      <div key={q.id} className="ml-4 text-blue-700">
+                      <div key={q.id} className="ml-4" style={{ color: themeColors.primary }}>
                         • {q.text.substring(0, 50)}...
                       </div>
                     ))}
@@ -1363,8 +1358,8 @@ function PreviewSurveyPageContent() {
           {isReconciling && (
             <Alert className="mb-4 border-green-200 bg-green-50">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-green-800 font-medium">Reconciliando IDs automáticamente...</span>
+                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: themeColors.primary }}></div>
+                <span className="font-medium" style={{ color: themeColors.primary }}>Reconciliando IDs automáticamente...</span>
               </div>
               <AlertDescription className="text-green-700 text-sm mt-1">
                 El sistema está verificando y corrigiendo automáticamente las referencias de preguntas en la lógica de visualización.
@@ -1372,7 +1367,7 @@ function PreviewSurveyPageContent() {
             </Alert>
           )}
 
-          <Progress value={(currentSectionIndex + 1) / currentSection.questions.length * 100} className="mb-4" />
+          <Progress value={(currentSectionIndex + 1) / currentSection.questions.length * 100} className="mb-4" style={{ background: themeColors.background, color: themeColors.primary }} />
 
           <Separator className="my-10" />
 
@@ -1380,18 +1375,18 @@ function PreviewSurveyPageContent() {
           <div className="space-y-8">
             {currentSection.questions.length === 0 ? (
               <div className="text-center py-16">
-                <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                  <AlertCircle className="h-10 w-10 text-gray-400" />
+                <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner" style={{ background: themeColors.primary + '10' }}>
+                  <AlertCircle className="h-10 w-10" style={{ color: themeColors.primary }} />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-700 mb-3">Esta sección no tiene preguntas</h3>
-                <p className="text-muted-foreground text-lg">No hay preguntas configuradas para esta sección.</p>
+                <h3 className="text-xl font-semibold mb-3" style={{ color: themeColors.text }}>Esta sección no tiene preguntas</h3>
+                <p className="text-lg" style={{ color: themeColors.text }}>No hay preguntas configuradas para esta sección.</p>
               </div>
             ) : (
-                             currentSection.questions.map((question, qIndex) => (
-                 <div key={question.id}>
-                   {renderQuestion(question, qIndex)}
-                 </div>
-               ))
+              currentSection.questions.map((question, qIndex) => (
+                <div key={question.id}>
+                  {renderQuestion(question, qIndex)}
+                </div>
+              ))
             )}
           </div>
 
