@@ -1299,7 +1299,6 @@ function PreviewSurveyPageContent() {
               >
                 <ArrowLeft className="h-5 w-5 mr-2" /> Volver
               </Button>
-              
               {/* Botón para limpiar respuestas (testing) */}
               <Button 
                 variant="outline" 
@@ -1313,8 +1312,18 @@ function PreviewSurveyPageContent() {
                 Limpiar Respuestas
               </Button>
             </div>
-            
-            <div className="text-center">
+            <div className="flex flex-col items-center justify-center">
+              {/* Mostrar logo si existe en branding_config.logo (base64) */}
+              {surveyData?.settings?.branding?.showLogo && surveyData?.settings?.branding?.logo && (
+                <img
+                  src={surveyData.settings.branding.logo}
+                  alt="Logo de la encuesta"
+                  className="mx-auto mb-4 max-h-24 max-w-xs object-contain rounded-xl shadow"
+                  style={{
+                    display: 'block',
+                  }}
+                />
+              )}
               <CardTitle 
                 className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
                 style={{
@@ -1328,7 +1337,6 @@ function PreviewSurveyPageContent() {
               {surveyData.description && (
                 <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
               )}
-              
               {/* Barra de progreso mejorada */}
               <div className="mt-8 max-w-2xl mx-auto">
                 <div className="flex items-center justify-between mb-3">
