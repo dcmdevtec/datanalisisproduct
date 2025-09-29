@@ -698,29 +698,41 @@ function PreviewSurveyPageContent() {
               </div>
             )
           case "rating":
-          case "star_rating":
+          case "star_rating": {
+            // Obtener configuración de emojis personalizados
+            const min = question.config?.ratingMin ?? 1;
+            const max = question.config?.ratingMax ?? 5;
+            const emojis = Array.isArray(question.config?.ratingEmojis)
+              ? question.config.ratingEmojis
+              : Array.from({ length: max - min + 1 }, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐");
             return (
               <div className="flex items-center space-x-4">
-                <span className="text-sm text-muted-foreground">1</span>
+                <span className="text-sm text-muted-foreground">{min}</span>
                 <div className="flex space-x-1">
-                  {[1, 2, 3, 4, 5].map((rating) => (
-                    <button
-                      key={rating}
-                      type="button"
-                      onClick={() => handleAnswerChange(question.id, rating)}
-                      className={`p-2 rounded-lg transition-colors ${
-                        answers[question.id] === rating
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted/80"
-                      }`}
-                    >
-                      <Star className="h-5 w-5" fill={answers[question.id] === rating ? "currentColor" : "none"} />
-                    </button>
-                  ))}
+                  {emojis.map((emoji, idx) => {
+                    const value = min + idx;
+                    const isActive = answers[question.id] === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleAnswerChange(question.id, value)}
+                        className={`p-2 rounded-lg transition-colors text-2xl ${
+                          isActive
+                            ? "bg-primary text-primary-foreground scale-110 shadow-lg"
+                            : "bg-muted hover:bg-muted/80"
+                        }`}
+                        aria-label={`Valoración ${value}`}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
                 </div>
-                <span className="text-sm text-muted-foreground">5</span>
+                <span className="text-sm text-muted-foreground">{max}</span>
               </div>
-            )
+            );
+          }
           case "slider":
             return (
               <div className="space-y-2">
