@@ -284,7 +284,7 @@ function SkipLogicVisualizer({
                 <option key={section.id} value={section.id}>{section.title}</option>
               ))}
             </select>
-            {newSectionId && (
+            {/* {newSectionId && ( 
               <select
                 className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
                 value={newQuestionId}
@@ -295,7 +295,7 @@ function SkipLogicVisualizer({
                   <option key={q.id} value={q.id}>{q.text}</option>
                 ))}
               </select>
-            )}
+            )}*/}
             <button
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2 rounded-lg shadow transition disabled:bg-emerald-200 col-span-1"
               onClick={() => {
@@ -323,7 +323,7 @@ function SkipLogicVisualizer({
               <th className="px-4 py-2 text-left text-emerald-800 font-bold">#</th>
               <th className="px-4 py-2 text-left text-emerald-800 font-bold">Condición</th>
               <th className="px-4 py-2 text-left text-emerald-800 font-bold">Sección destino</th>
-              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Pregunta destino</th>
+              
               <th className="px-4 py-2 text-left text-emerald-800 font-bold">Acciones</th>
             </tr>
           </thead>
@@ -338,7 +338,7 @@ function SkipLogicVisualizer({
                   <td className="px-4 py-2 font-bold text-emerald-700">{idx + 1}</td>
                   <td className="px-4 py-2">{operatorOptions.find(op => op.value === rule.condition)?.label || rule.condition} {rule.value && `: ${rule.value}`}</td>
                   <td className="px-4 py-2">{allSections.find(s => s.id === rule.targetSectionId)?.title || ""}</td>
-                  <td className="px-4 py-2">{rule.targetQuestionId ? (allQuestions.find(q => q.id === rule.targetQuestionId)?.text || "") : "-"}</td>
+                 
                   <td className="px-4 py-2">
                     <button className="text-red-600 hover:underline font-semibold" onClick={() => onDeleteRule(idx)}>Eliminar</button>
                   </td>
