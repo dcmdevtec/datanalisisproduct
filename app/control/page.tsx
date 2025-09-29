@@ -95,6 +95,21 @@ export default function ReportsPage() {
                   <li>Mejora en la versatilidad del sistema de encuestas</li>
                 </ul>
               </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.2 - Mejoras y Correcciones</h2>
+                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 29 de septiembre del 2025</p>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades y Correcciones:</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li> Corrección en la creación de zonas.</li>
+                  <li> Agregado el estado “modo prueba” en las encuestas.</li>
+                  <li> Implementado un guardado de encuestas más sencillo.</li>
+                  <li> El enunciado ahora se muestra completamente.</li>
+                  <li> Configuración del tipo de fuente para el enunciado.</li>
+                  <li> Posibilidad de definir color u otros estilos visuales para el enunciado.</li>
+                  <li> Ajustes en la interfaz para mejorar la usabilidad y la ubicación de los botones.</li>
+                  <li> Corrección de preguntas mal configuradas, ahora funcionando correctamente.</li>
+                </ul>
+              </div>
             </div>
           </CardContent>
         </Card>
