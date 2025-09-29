@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { AdvancedQuestionConfig } from "./advanced-question-config-dynamic"
 import { RankingPreviewDraggable } from "@/components/RankingPreviewDraggable"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -361,15 +360,15 @@ function PreviewSurveyPageContent() {
   const getThemeColors = () => {
     if (surveyData?.settings?.theme) {
       return {
-        primary: surveyData.settings.theme.primaryColor || '#8b5cf6',
-        background: surveyData.settings.theme.backgroundColor || '#faf5ff',
-        text: surveyData.settings.theme.textColor || '#5b21b6'
+        primary: surveyData.settings.theme.primaryColor || '#10b981', // verde por defecto
+        background: surveyData.settings.theme.backgroundColor || '#f0fdf4',
+        text: surveyData.settings.theme.textColor || '#1f2937'
       }
     }
     return {
-      primary: '#8b5cf6',
-      background: '#faf5ff',
-      text: '#5b21b6'
+      primary: '#10b981',
+      background: '#f0fdf4', 
+      text: '#1f2937'
     }
   }
 
@@ -705,26 +704,6 @@ function PreviewSurveyPageContent() {
                   <span>{question.ratingScale || 10}</span>
                 </div>
                 <div className="text-center">
-              {(() => {
-                let logo = surveyData.settings?.branding?.logo || surveyData.logo || surveyData.projectData?.companies?.logo;
-                // Si viene como string JSON, parsear
-                if (typeof logo === 'string' && logo.trim().startsWith('{')) {
-                  try {
-                    const parsed = JSON.parse(logo);
-                    if (parsed.logo) logo = parsed.logo;
-                  } catch {}
-                }
-                if (!logo) return null;
-                return (
-                  <div className="flex justify-center mb-4">
-                    <img
-                      src={logo}
-                      alt="Logo de la encuesta"
-                      style={{ maxHeight: 64, maxWidth: 180, objectFit: 'contain' }}
-                    />
-                  </div>
-                );
-              })()}
                   <span className="text-lg font-semibold text-primary">
                     {answers[question.id] || 1}
                   </span>
@@ -1204,9 +1183,6 @@ function PreviewSurveyPageContent() {
         }
       }
 
-      // Estado para mostrar el modal de configuración avanzada
-      const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
-
       return (
         <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60">
           {/* Header de la pregunta */}
@@ -1224,8 +1200,8 @@ function PreviewSurveyPageContent() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div
-                  className="question-title-html flex-1"
-                  dangerouslySetInnerHTML={{ __html: question.text_html || question.text || "Pregunta sin texto" }}
+                  className="text-xl font-semibold text-gray-900 flex-1 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: question.text || "Pregunta sin texto" }}
                 />
                 <div className="flex gap-2">
                   {question.required && (
@@ -1238,27 +1214,16 @@ function PreviewSurveyPageContent() {
                       Condicional
                     </Badge>
                   )}
-                  {/* Botón de configuración avanzada */}
-                  <Button
-                    variant="outline"
-                    className="ml-2 px-3 py-1 text-xs flex items-center gap-1 border-gray-300"
-                    onClick={() => setShowAdvancedConfig(true)}
-                  >
-                    <span role="img" aria-label="config">⚙️</span> Configuración avanzada
-                  </Button>
                 </div>
               </div>
+              
+              
             </div>
           </div>
 
           {/* Contenido de la pregunta */}
           <div className="ml-16">
             <div className="mt-6">{renderInput()}</div>
-            <style jsx global>{`
-              .question-title-html * {
-                line-height: 1.2;
-              }
-            `}</style>
             {error && (
               <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-xl">
                 <div className="flex items-center gap-3 text-red-700">
@@ -1268,22 +1233,6 @@ function PreviewSurveyPageContent() {
               </div>
             )}
           </div>
-
-          {/* Modal de configuración avanzada */}
-          {showAdvancedConfig && (
-            <AdvancedQuestionConfig
-              isOpen={showAdvancedConfig}
-              onClose={() => setShowAdvancedConfig(false)}
-              question={question}
-              allSections={surveyData?.sections || []}
-              allQuestions={currentSection.questions}
-              onSave={(config) => {
-                // Aquí puedes manejar el guardado de la configuración avanzada si es necesario
-                // Por ejemplo, actualizar el estado local o hacer una llamada a la API
-                setShowAdvancedConfig(false);
-              }}
-            />
-          )}
         </div>
       )
     },
@@ -1337,16 +1286,10 @@ function PreviewSurveyPageContent() {
   const progress = ((currentSectionIndex + 1) / totalSections) * 100
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center p-4 sm:p-8"
-      style={{ background: themeColors.background }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 flex flex-col items-center p-4 sm:p-8">
       {/* Header principal */}
       <div className="w-full max-w-5xl mb-8">
-        <Card
-          className="border-0 shadow-2xl"
-          style={{ background: themeColors.background }}
-        >
+        <Card className="border-0 shadow-2xl bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50 backdrop-blur-sm">
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between mb-6">
               <Button 
@@ -1377,8 +1320,7 @@ function PreviewSurveyPageContent() {
                 style={{
                   background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
                   WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  fontFamily: surveyData.settings?.theme?.fontFamily || undefined
+                  WebkitTextFillColor: 'transparent'
                 }}
               >
                 {surveyData.title}
@@ -1421,17 +1363,14 @@ function PreviewSurveyPageContent() {
       </div>
 
       {/* Contenido principal */}
-      <Card
-        className="w-full max-w-5xl shadow-2xl border-0"
-        style={{ background: themeColors.background }}
-      >
-  <CardContent className="p-10">
+      <Card className="w-full max-w-5xl shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
+        <CardContent className="p-10">
           {/* Header de la sección */}
           <div className="text-center mb-10">
-            <div
+            <div 
               className="inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-semibold mb-4 shadow-sm"
               style={{
-                background: themeColors.primary + '20',
+                background: `linear-gradient(to right, ${themeColors.primary}20, ${themeColors.primary}30)`,
                 color: themeColors.primary
               }}
             >
@@ -1444,20 +1383,12 @@ function PreviewSurveyPageContent() {
                 dangerouslySetInnerHTML={{ __html: currentSection.title_html }}
               />
             ) : (
-              <div
-                className="section-title-html text-4xl font-bold text-center mb-3"
-              >
+              <div className="section-title-html text-4xl font-bold text-center mb-3">
                 {currentSection.title ? currentSection.title : `Sección ${currentSectionIndex + 1}`}
               </div>
             )}
             {currentSection.description && (
-              <p
-                className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed"
-                style={{
-                  color: themeColors.text,
-                  fontFamily: surveyData.settings?.theme?.fontFamily || undefined
-                }}
-              >
+              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
                 {currentSection.description.replace(/<[^>]+>/g, "")}
               </p>
             )}
@@ -1467,6 +1398,10 @@ function PreviewSurveyPageContent() {
           padding: 0;
           font-weight: bold;
           text-align: center;
+        }
+        .section-title-html span, .section-title-html h1, .section-title-html h2 {
+          color: inherit !important;
+          font-family: inherit !important;
         }
         .section-title-html * {
           line-height: 1.1;
