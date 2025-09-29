@@ -234,6 +234,52 @@ export function QuestionEditor({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  // --- EXTRACT: Lógica de límites de selección ---
+  const SelectionLimitsConfig = ({
+    min,
+    max,
+    valueMin,
+    valueMax,
+    onChangeMin,
+    onChangeMax,
+    labelMin = "Mínimo de respuestas",
+    labelMax = "Máximo de respuestas",
+    placeholderMin = "0",
+    placeholderMax = "",
+    helpText = ""
+  }: any) => (
+    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+      <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-xs text-blue-700">{labelMin}</Label>
+          <Input
+            type="number"
+            min={min}
+            max={max}
+            value={valueMin}
+            onChange={onChangeMin}
+            placeholder={placeholderMin}
+            className="h-8"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs text-blue-700">{labelMax}</Label>
+          <Input
+            type="number"
+            min={min === undefined ? 1 : min}
+            max={max}
+            value={valueMax}
+            onChange={onChangeMax}
+            placeholder={placeholderMax}
+            className="h-8"
+          />
+        </div>
+      </div>
+      <div className="text-xs text-blue-600">{helpText}</div>
+    </div>
+  );
+
   return (
     <Card ref={setNodeRef} style={style} className="mb-6 border-l-4">
       <CardHeader className="pb-3">
@@ -315,8 +361,12 @@ export function QuestionEditor({
             {/* Botón para mover pregunta (preparado, requiere implementación de onMoveQuestion) */}
             {/* <Button variant="ghost" size="sm" onClick={() => onMoveQuestion && onMoveQuestion(question.id, sectionId, 'destSectionId')}>Mover</Button> */}
           </div>
-          <div className="text-xs text-muted-foreground mt-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
             <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
+            <Button variant="outline" size="sm" onClick={openConfigEditor} className="ml-2">
+              <Settings className="h-4 w-4 mr-2" />
+              Configuración avanzada
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -394,22 +444,6 @@ export function QuestionEditor({
             )}
           </div>
         </div>
-
-        <div className="flex items-center justify-end p-3 bg-muted/50 rounded-lg">
-          <Button variant="outline" size="sm" onClick={openConfigEditor}>
-            <Settings className="h-4 w-4 mr-2" />
-            Configuración avanzada
-          </Button>
-        </div>
-
-        <AdvancedQuestionConfig
-          isOpen={showConfig}
-          onClose={closeConfigEditor}
-          question={question}
-          allSections={allSections}
-          allQuestions={allSections.flatMap((s) => s.questions)}
-          onSave={handleAdvancedConfigSave}
-        />
 
         {question.type === "ranking" && (
           <div className="space-y-4 p-4 border rounded-lg">
@@ -651,7 +685,51 @@ export function QuestionEditor({
                 Selecciona cómo los usuarios responderán en cada celda de la matriz
               </p>
             </div>
-
+            {/* Mostrar límites solo si es checkbox */}
+            {question.config?.matrixCellType === "checkbox" && (
+              <SelectionLimitsConfig
+                min={0}
+                max={matrixCols.length}
+                valueMin={question.config?.minSelections || 0}
+                valueMax={question.config?.maxSelections || matrixCols.length}
+                onChangeMin={e => {
+                  const newConfig = {
+                    ...question.config,
+                    minSelections: Number.parseInt(e.target.value) || 0,
+                  };
+                  onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                  autoSaveQuestionHelper({
+                    ...question,
+                    config: newConfig,
+                    order_num: question.order_num ?? qIndex ?? 0
+                  }, sectionId, surveyId);
+                }}
+                onChangeMax={e => {
+                  const newConfig = {
+                    ...question.config,
+                    maxSelections: Number.parseInt(e.target.value) || matrixCols.length,
+                  };
+                  onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                  autoSaveQuestionHelper({
+                    ...question,
+                    config: newConfig,
+                    order_num: question.order_num ?? qIndex ?? 0
+                  }, sectionId, surveyId);
+                }}
+                placeholderMax={matrixCols.length.toString()}
+                helpText={
+                  question.config?.minSelections > 0 && question.config?.maxSelections
+                    ? question.config.minSelections === question.config.maxSelections
+                      ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
+                      : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`
+                    : question.config?.minSelections === 0 && question.config?.maxSelections
+                      ? `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`
+                      : (!question.config?.minSelections || question.config.minSelections === 0) && (!question.config?.maxSelections || question.config.maxSelections === matrixCols.length)
+                        ? "Sin límite de selección por fila."
+                        : ""
+                }
+              />
+            )}
             {/* Opciones para celdas tipo 'select' - per-column options */}
             {question.config?.matrixCellType === "select" && (
               <div className="space-y-2 mt-4">
@@ -1085,72 +1163,48 @@ export function QuestionEditor({
               </div>
             )}
             
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-              <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs text-blue-700">Mínimo de respuestas</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max={question.options.length}
-                    value={question.config?.minSelections || 0}
-                    onChange={e => {
-                      const newConfig = {
-                        ...question.config,
-                        minSelections: Number.parseInt(e.target.value) || 0,
-                      };
-                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                      autoSaveQuestionHelper({
-                        ...question,
-                        config: newConfig,
-                        order_num: question.order_num ?? qIndex ?? 0
-                      }, sectionId, surveyId);
-                    }}
-                    placeholder="0"
-                    className="h-8"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-blue-700">Máximo de respuestas</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max={question.options.length}
-                    value={question.config?.maxSelections || question.options.length}
-                    onChange={e => {
-                      const newConfig = {
-                        ...question.config,
-                        maxSelections: Number.parseInt(e.target.value) || question.options.length,
-                      };
-                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                      autoSaveQuestionHelper({
-                        ...question,
-                        config: newConfig,
-                        order_num: question.order_num ?? qIndex ?? 0
-                      }, sectionId, surveyId);
-                    }}
-                    placeholder={question.options.length.toString()}
-                    className="h-8"
-                  />
-                </div>
-              </div>
-              <div className="text-xs text-blue-600">
-                {question.config?.minSelections > 0 && question.config?.maxSelections && (
-                  <>
-                    {question.config.minSelections === question.config.maxSelections
-                      ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
-                      : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`}
-                  </>
-                )}
-                {question.config?.minSelections === 0 &&
-                  question.config?.maxSelections &&
-                  `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`}
-                {(!question.config?.minSelections || question.config.minSelections === 0) &&
-                  (!question.config?.maxSelections || question.config.maxSelections === question.options.length) &&
-                  "Sin límites de selección"}
-              </div>
-            </div>
+            <SelectionLimitsConfig
+              min={0}
+              max={question.options.length}
+              valueMin={question.config?.minSelections || 0}
+              valueMax={question.config?.maxSelections || question.options.length}
+              onChangeMin={e => {
+                const newConfig = {
+                  ...question.config,
+                  minSelections: Number.parseInt(e.target.value) || 0,
+                };
+                onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                autoSaveQuestionHelper({
+                  ...question,
+                  config: newConfig,
+                  order_num: question.order_num ?? qIndex ?? 0
+                }, sectionId, surveyId);
+              }}
+              onChangeMax={e => {
+                const newConfig = {
+                  ...question.config,
+                  maxSelections: Number.parseInt(e.target.value) || question.options.length,
+                };
+                onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                autoSaveQuestionHelper({
+                  ...question,
+                  config: newConfig,
+                  order_num: question.order_num ?? qIndex ?? 0
+                }, sectionId, surveyId);
+              }}
+              placeholderMax={question.options.length.toString()}
+              helpText={
+                question.config?.minSelections > 0 && question.config?.maxSelections
+                  ? question.config.minSelections === question.config.maxSelections
+                    ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
+                    : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`
+                  : question.config?.minSelections === 0 && question.config?.maxSelections
+                    ? `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`
+                    : (!question.config?.minSelections || question.config.minSelections === 0) && (!question.config?.maxSelections || question.config.maxSelections === question.options.length)
+                      ? "Sin límite de selección."
+                      : ""
+              }
+            />
             {question.options.map((option: string, index: number) => (
               <div key={index} className="flex items-center gap-2">
                 <div className="w-6 h-6 flex items-center justify-center">
@@ -1738,7 +1792,7 @@ export function QuestionEditor({
                     <SelectItem value="24">24 horas</SelectItem>
                     <SelectItem value="12">12 horas (AM/PM)</SelectItem>
                   </SelectContent>
-                </Select>
+                               </Select>
               </div>
               {question.config?.timeFormat === "12" && (
                 <div>
