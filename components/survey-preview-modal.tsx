@@ -438,7 +438,11 @@ export function SurveyPreviewModal({ isOpen, onClose, previewData }: SurveyPrevi
             </div>
 
             <div className="space-y-2 mb-6">
-              <h3 className="text-xl font-semibold">{currentSection.title}</h3>
+              {currentSection.title_html ? (
+                <h3 className="text-xl font-semibold" dangerouslySetInnerHTML={{ __html: currentSection.title_html }} />
+              ) : (
+                <h3 className="text-xl font-semibold">{currentSection.title}</h3>
+              )}
               {currentSection.description && (
                 <p className="text-muted-foreground">{currentSection.description}</p>
               )}

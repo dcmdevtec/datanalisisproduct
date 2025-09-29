@@ -3,6 +3,28 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
+import { SectionOrganizer } from "@/components/section-organizer"
+
+interface Question {
+  id: string
+  type: string
+  text: string
+  options: string[]
+  required: boolean
+  image?: string | null
+  matrixRows?: string[]
+  matrixCols?: string[]
+  ratingScale?: number
+  config?: any
+}
+
+interface SurveySection {
+  id: string
+  title: string
+  description?: string
+  order_num: number
+  questions: Question[]
+}
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,13 +49,21 @@ export default function CreateSurveyPage() {
   const [deadline, setDeadline] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [questions, setQuestions] = useState([
+  const [sections, setSections] = useState<SurveySection[]>([
     {
-      id: "1",
-      type: "multiple_choice",
-      text: "¿Qué tan satisfecho estás con nuestro servicio?",
-      options: ["Muy satisfecho", "Satisfecho", "Neutral", "Insatisfecho", "Muy insatisfecho"],
-      required: true,
+      id: generateUUID(),
+      title: "Sección 1",
+      description: "",
+      order_num: 0,
+      questions: [
+        {
+          id: "1",
+          type: "multiple_choice",
+          text: "¿Qué tan satisfecho estás con nuestro servicio?",
+          options: ["Muy satisfecho", "Satisfecho", "Neutral", "Insatisfecho", "Muy insatisfecho"],
+          required: true,
+        },
+      ],
     },
   ])
   const [settings, setSettings] = useState({
@@ -42,6 +72,7 @@ export default function CreateSurveyPage() {
     offlineMode: true,
     distributionMethods: ["app"],
   })
+  const [showSectionOrganizer, setShowSectionOrganizer] = useState(false)
 
   if (loading) {
     return (
@@ -56,57 +87,114 @@ export default function CreateSurveyPage() {
     return null
   }
 
-  const addQuestion = () => {
-    const newQuestion = {
-      id: generateUUID(), // ✅ UUID real en lugar de timestamp
+  const addQuestion = (sectionId: string) => {
+    const newQuestion: Question = {
+      id: generateUUID(),
       type: "text",
       text: "",
       options: [],
       required: false,
     }
-    setQuestions([...questions, newQuestion])
-  }
-
-  const updateQuestion = (id, field, value) => {
-    setQuestions(questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)))
-  }
-
-  const removeQuestion = (id) => {
-    setQuestions(questions.filter((q) => q.id !== id))
-  }
-
-  const addOption = (questionId) => {
-    setQuestions(
-      questions.map((q) =>
-        q.id === questionId ? { ...q, options: [...q.options, `Opción ${q.options.length + 1}`] } : q,
-      ),
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId ? { ...s, questions: [...s.questions, newQuestion] } : s
+      )
     )
   }
 
-  const updateOption = (questionId, optionIndex, value) => {
-    setQuestions(
-      questions.map((q) =>
-        q.id === questionId
+  const updateQuestion = (sectionId: string, questionId: string, field: string, value: any) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId
           ? {
-              ...q,
-              options: q.options.map((opt, idx) => (idx === optionIndex ? value : opt)),
+              ...s,
+              questions: s.questions.map((q) =>
+                q.id === questionId ? { ...q, [field]: value } : q
+              ),
             }
-          : q,
-      ),
+          : s
+      )
     )
   }
 
-  const removeOption = (questionId, optionIndex) => {
-    setQuestions(
-      questions.map((q) =>
-        q.id === questionId
-          ? {
-              ...q,
-              options: q.options.filter((_, idx) => idx !== optionIndex),
-            }
-          : q,
-      ),
+  const removeQuestion = (sectionId: string, questionId: string) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId
+          ? { ...s, questions: s.questions.filter((q) => q.id !== questionId) }
+          : s
+      )
     )
+  }
+
+  const addOption = (sectionId: string, questionId: string) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              questions: s.questions.map((q) =>
+                q.id === questionId
+                  ? { ...q, options: [...q.options, `Opción ${q.options.length + 1}`] }
+                  : q
+              ),
+            }
+          : s
+      )
+    )
+  }
+
+  const updateOption = (sectionId: string, questionId: string, optionIndex: number, value: string) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              questions: s.questions.map((q) =>
+                q.id === questionId
+                  ? {
+                      ...q,
+                      options: q.options.map((opt, idx) =>
+                        idx === optionIndex ? value : opt
+                      ),
+                    }
+                  : q
+              ),
+            }
+          : s
+      )
+    )
+  }
+
+  const removeOption = (sectionId: string, questionId: string, optionIndex: number) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              questions: s.questions.map((q) =>
+                q.id === questionId
+                  ? {
+                      ...q,
+                      options: q.options.filter((_, idx) => idx !== optionIndex),
+                    }
+                  : q
+              ),
+            }
+          : s
+      )
+    )
+  }
+
+  const addSection = () => {
+    const newSection: SurveySection = {
+      id: generateUUID(),
+      title: `Sección ${sections.length + 1}`,
+      description: "",
+      order_num: sections.length,
+      questions: [],
+    }
+    setSections([...sections, newSection])
   }
 
   const updateSettings = (field, value) => {
@@ -125,10 +213,22 @@ export default function CreateSurveyPage() {
       return
     }
 
-    if (questions.length === 0) {
+    if (sections.length === 0) {
       toast({
         title: "Error",
-        description: "Debes agregar al menos una pregunta",
+        description: "Debes agregar al menos una sección",
+        variant: "destructive",
+      })
+      setActiveTab("questions")
+      return
+    }
+
+    // Validar que todas las secciones tengan al menos una pregunta
+    const emptySections = sections.filter((s) => s.questions.length === 0)
+    if (emptySections.length > 0) {
+      toast({
+        title: "Error",
+        description: "Todas las secciones deben tener al menos una pregunta",
         variant: "destructive",
       })
       setActiveTab("questions")
@@ -136,8 +236,8 @@ export default function CreateSurveyPage() {
     }
 
     // Validar que todas las preguntas tengan texto
-    const invalidQuestions = questions.filter((q) => !q.text.trim())
-    if (invalidQuestions.length > 0) {
+    const invalidQuestions = sections.some((s) => s.questions.some((q) => !q.text.trim()))
+    if (invalidQuestions) {
       toast({
         title: "Error",
         description: "Todas las preguntas deben tener un texto",
@@ -148,10 +248,12 @@ export default function CreateSurveyPage() {
     }
 
     // Validar que las preguntas de opción múltiple tengan opciones
-    const invalidOptions = questions.filter(
-      (q) => (q.type === "multiple_choice" || q.type === "checkbox") && q.options.length < 2,
+    const invalidOptions = sections.some((s) =>
+      s.questions.some(
+        (q) => (q.type === "multiple_choice" || q.type === "checkbox") && q.options.length < 2
+      )
     )
-    if (invalidOptions.length > 0) {
+    if (invalidOptions) {
       toast({
         title: "Error",
         description: "Las preguntas de opción múltiple deben tener al menos 2 opciones",
@@ -171,12 +273,18 @@ export default function CreateSurveyPage() {
         description: surveyDescription,
         settings,
         deadline: deadline || null,
-        questions: questions.map((q) => ({
-          type: q.type,
-          text: q.text,
-          options: q.options || [],
-          required: q.required || false,
-          settings: {},
+        sections: sections.map((section) => ({
+          id: section.id,
+          title: section.title,
+          description: section.description,
+          order_num: section.order_num,
+          questions: section.questions.map((q) => ({
+            type: q.type,
+            text: q.text,
+            options: q.options || [],
+            required: q.required || false,
+            settings: {},
+          })),
         })),
       }
 
@@ -218,14 +326,14 @@ export default function CreateSurveyPage() {
     }
   }
 
-  const renderQuestionEditor = (question) => {
+  const renderQuestionEditor = (sectionId: string, question: Question) => {
     return (
       <Card key={question.id} className="mb-6">
         <CardHeader className="pb-3 flex flex-row items-start justify-between">
           <div className="space-y-1.5">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <Grip className="h-5 w-5 text-muted-foreground cursor-move" />
-              <Select value={question.type} onValueChange={(value) => updateQuestion(question.id, "type", value)}>
+              <Select value={question.type} onValueChange={(value) => updateQuestion(sectionId, question.id, "type", value)}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Tipo de pregunta" />
                 </SelectTrigger>
@@ -240,7 +348,7 @@ export default function CreateSurveyPage() {
               </Select>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => removeQuestion(question.id)}>
+          <Button variant="ghost" size="icon" onClick={() => removeQuestion(sectionId, question.id)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </CardHeader>
@@ -250,7 +358,7 @@ export default function CreateSurveyPage() {
             <Input
               id={`question-${question.id}`}
               value={question.text}
-              onChange={(e) => updateQuestion(question.id, "text", e.target.value)}
+              onChange={(e) => updateQuestion(sectionId, question.id, "text", e.target.value)}
               placeholder="Escribe tu pregunta"
             />
           </div>
@@ -262,20 +370,20 @@ export default function CreateSurveyPage() {
                 <div key={index} className="flex items-center gap-2">
                   <Input
                     value={option}
-                    onChange={(e) => updateOption(question.id, index, e.target.value)}
+                    onChange={(e) => updateOption(sectionId, question.id, index, e.target.value)}
                     placeholder={`Opción ${index + 1}`}
                   />
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeOption(question.id, index)}
+                    onClick={() => removeOption(sectionId, question.id, index)}
                     disabled={question.options.length <= 2}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" className="mt-2" onClick={() => addOption(question.id)}>
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => addOption(sectionId, question.id)}>
                 <Plus className="h-4 w-4 mr-2" /> Agregar opción
               </Button>
             </div>
@@ -296,7 +404,7 @@ export default function CreateSurveyPage() {
             <Switch
               id={`required-${question.id}`}
               checked={question.required}
-              onCheckedChange={(checked) => updateQuestion(question.id, "required", checked)}
+              onCheckedChange={(checked) => updateQuestion(sectionId, question.id, "required", checked)}
             />
             <Label htmlFor={`required-${question.id}`}>Obligatorio</Label>
           </div>
@@ -369,15 +477,59 @@ export default function CreateSurveyPage() {
           </TabsContent>
 
           <TabsContent value="questions" className="space-y-6">
-            <div className="space-y-4">
-              {questions.map((question) => renderQuestionEditor(question))}
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Secciones y Preguntas</h3>
+              <Button
+                variant="outline"
+                onClick={() => setShowSectionOrganizer(true)}
+                className="gap-2"
+              >
+                <ArrowUpDown className="h-4 w-4" />
+                Organizar Secciones
+              </Button>
+            </div>
 
-              <Button variant="outline" className="w-full py-8 border-dashed" onClick={addQuestion}>
-                <Plus className="h-5 w-5 mr-2" /> Agregar pregunta
+            <div className="space-y-8">
+              {sections.map((section) => (
+                <div key={section.id} className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    { (section as any).title_html ? (
+                      <h3 className="text-lg font-medium" dangerouslySetInnerHTML={{ __html: (section as any).title_html }} />
+                    ) : (
+                      <h3 className="text-lg font-medium">{section.title}</h3>
+                    )}
+                    {section.description && (
+                      <p className="text-sm text-muted-foreground">{section.description}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    {section.questions.map((question) => renderQuestionEditor(section.id, question))}
+
+                    <Button
+                      variant="outline"
+                      className="w-full py-8 border-dashed"
+                      onClick={() => addQuestion(section.id)}
+                    >
+                      <Plus className="h-5 w-5 mr-2" /> Agregar pregunta a la sección
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              <Button variant="outline" className="w-full py-8 border-dashed" onClick={addSection}>
+                <Plus className="h-5 w-5 mr-2" /> Agregar nueva sección
               </Button>
             </div>
 
             <div className="flex flex-col sm:flex-row justify-between gap-2">
+
+            <SectionOrganizer
+              isOpen={showSectionOrganizer}
+              onClose={() => setShowSectionOrganizer(false)}
+              sections={sections}
+              onSectionsChange={setSections}
+            />
               <Button variant="outline" className="gap-2" onClick={() => setActiveTab("details")}>
                 <ArrowLeft className="h-4 w-4" /> Anterior
               </Button>

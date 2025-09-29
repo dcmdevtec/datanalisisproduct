@@ -50,11 +50,11 @@ export function ZoneSurveyorAssignment({
     onAssignmentChange(zoneId, newSelection)
   }
 
-  const filteredSurveyors = allSurveyors.filter(
+  const filteredSurveyors = allSurveyors?.filter(
     (surveyor) =>
       surveyor.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       surveyor.email.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  ) || []
 
   const displaySelectedSurveyors = selectedSurveyors
     .map((id) => allSurveyors.find((s) => s.id === id)?.name || allSurveyors.find((s) => s.id === id)?.email)

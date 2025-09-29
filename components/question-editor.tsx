@@ -1,44 +1,19 @@
 "use client"
 
-// MatrixOptionInput for matrix column options (debounced, allows empty string)
-type MatrixOptionInputProps = {
-  value: string;
-  onChange: (val: string) => void;
-  placeholder: string;
-};
-const MatrixOptionInput: React.FC<MatrixOptionInputProps> = ({ value, onChange, placeholder }) => {
-  const [localValue, setLocalValue] = useState(value);
-  const timeoutRef = useRef<any>(null);
-
-  useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setLocalValue(e.target.value);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = window.setTimeout(() => {
-      onChange(e.target.value);
-    }, 200);
-  }
-
-  return (
-    <Input
-      value={localValue}
-      onChange={handleChange}
-      placeholder={placeholder}
-    />
-  );
-};
-
+import type React from "react"
+import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
+import { useToast } from "@/components/ui/use-toast"
 import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Palette, Settings } from "lucide-react"
@@ -46,46 +21,138 @@ import { Dialog } from "@/components/ui/dialog"
 import FullTiptapEditor from "@/components/ui/FullTiptapEditor"
 import { Badge } from "@/components/ui/badge"
 import { useDebounce } from "use-debounce"
-import { useToast } from "@/components/ui/use-toast"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
-import type { Question, SurveySection } from "@/types-updated"
+import type {  SurveySection } from "@/types-updated"
+import { supabase } from "@/lib/supabase-browser";
+import type { Question } from "@/types-updated";
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
 })
 
+
+export async function autoSaveQuestionHelper(question: Question, sectionId: string, surveyId: string) {
+  if (
+    sectionId &&
+    sectionId !== "temp-id" &&
+    sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i) &&
+    question.id
+  ) {
+    // Construir el objeto questionData igual que en page.tsx
+    const questionData = {
+      id: question.id,
+      survey_id: surveyId, // Usar el argumento obligatorio
+      section_id: sectionId,
+      type: question.type,
+      // Guardar texto plano y HTML enriquecido
+      text: (question.text_html || question.text || "").replace(/<[^>]*>/g, "").trim(),
+      text_html: question.text_html || question.text || "",
+      options: question.options || [],
+      required: question.required || false,
+      order_num: question.order_num || 0,
+      settings: {
+        ...question.config,
+        matrixRows: question.matrixRows,
+        matrixCols: question.matrixCols,
+        ratingScale: question.ratingScale,
+      },
+      matrix_rows: question.matrixRows || [],
+      matrix_cols: question.matrixCols || [],
+      rating_scale: question.ratingScale || null,
+      file_url: question.image || null,
+      skip_logic: question.config?.skipLogic || null,
+      display_logic: question.config?.displayLogic || null,
+      validation_rules: question.config?.validation || null,
+      style: question.style || {},
+      comment_box: question.comment_box || false,
+      matrix: question.matrix || [],
+      question_config: question.question_config || null,
+    };
+    try {
+      // Forzar el tipo any para evitar error de generics en el upsert
+      const { error, data } = await (supabase as any).from("questions").upsert([questionData], { onConflict: "id" });
+      console.log("Guardado en supabase:", { error, data, questionData });
+      if (error) {
+        // Mostrar el error completo y los datos enviados
+        console.error("Error al guardar pregunta:", error, questionData);
+      }
+    } catch (err) {
+      console.error("Error inesperado al guardar pregunta:", err);
+    }
+  } else {
+    console.warn("No se guardó: sectionId o question.id inválidos", { sectionId, question });
+  }
+}
+
+// MatrixOptionInput for matrix column options (debounced, allows empty string)
+type MatrixOptionInputProps = {
+  value: string
+  onChange: (val: string) => void
+  placeholder: string
+}
+const MatrixOptionInput: React.FC<MatrixOptionInputProps> = ({ value, onChange, placeholder }) => {
+  const [localValue, setLocalValue] = useState(value)
+  const timeoutRef = useRef<any>(null)
+
+  useEffect(() => {
+    setLocalValue(value)
+  }, [value])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setLocalValue(e.target.value)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = window.setTimeout(() => {
+      onChange(e.target.value)
+    }, 200)
+  }
+
+  return <Input value={localValue} onChange={handleChange} placeholder={placeholder} />
+}
+
+
 interface QuestionEditorProps {
   question: Question
   sectionId: string
+  surveyId: string
   onRemoveQuestion: (sectionId: string, questionId: string) => void
   onUpdateQuestion: (sectionId: string, questionId: string, field: keyof Question, value: any) => void
   onDuplicateQuestion: (sectionId: string, questionId: string) => void
+  onMoveQuestion?: (questionId: string, fromSectionId: string, toSectionId: string, newIndex?: number) => void
   allSections: SurveySection[] // For skip logic targets
   qIndex: number // To display question number
+  isDragging?: boolean
 }
 
 export function QuestionEditor({
   question,
   sectionId,
+  surveyId,
   onRemoveQuestion,
   onUpdateQuestion,
   onDuplicateQuestion,
   allSections,
   qIndex,
 }: QuestionEditorProps) {
-  const { toast } = useToast()
-
-  const [showQuill, setShowQuill] = useState<boolean>(false)
+  const [isEditing, setIsEditing] = useState(false)
+  // Estado para mostrar/ocultar el textarea de pegado masivo de opciones
+  const [showPasteOptions, setShowPasteOptions] = useState(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
 
-  // Funciones para manejar el estado de los modales de manera segura
-  const openQuillEditor = () => {
-    setShowQuill(true)
-  }
-
-  const closeQuillEditor = () => {
-    setShowQuill(false)
-  }
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({
+    id: `${sectionId}-${question.id}`,
+    data: {
+      type: 'question',
+      question,
+      sectionId
+    }
+  })
 
   const openConfigEditor = () => {
     setShowConfig(true)
@@ -95,33 +162,24 @@ export function QuestionEditor({
     setShowConfig(false)
   }
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
-  const [isEditingText, setIsEditingText] = useState<boolean>(false)
-  const [localQuestionText, setLocalQuestionText] = useState<string>(question.text.replace(/<[^>]*>/g, ""))
-  const [isQuestionTextValid, setIsQuestionTextValid] = useState<boolean>(true)
+  // Estado para mostrar el picker de emoji por índice
+  const [showEmojiPicker, setShowEmojiPicker] = useState<number | null>(null)
+  // Editor enriquecido para enunciado de pregunta (usa text_html si existe, nunca el texto plano si hay HTML)
+  const [localQuestionTextHtml, setLocalQuestionTextHtml] = useState(question.text_html ?? "");
 
-  const [debouncedLocalQuestionText] = useDebounce(localQuestionText, 300)
-
+  // Sincronizar el estado local SOLO con text_html (nunca con text plano)
   useEffect(() => {
-    // Ensure debouncedLocalQuestionText is a string before calling trim()
-    const currentDebouncedText = debouncedLocalQuestionText || ""
+    setLocalQuestionTextHtml(question.text_html ?? "");
+  }, [question.text_html]);
 
-    // Validate question text
-    const isValid = currentDebouncedText.trim().length > 0
-    setIsQuestionTextValid(isValid)
-
-    // Only update the parent state if the debounced text is different from the actual question text
-    // and not empty (to avoid clearing text while typing)
-    if (question.text.replace(/<[^>]*>/g, "") !== currentDebouncedText && currentDebouncedText.trim() !== "") {
-      onUpdateQuestion(sectionId, question.id, "text", currentDebouncedText)
-    }
-  }, [debouncedLocalQuestionText, question.id, question.text, onUpdateQuestion, sectionId])
-
-  // Update local text if parent question text changes (e.g., on initial load or duplicate)
-  useEffect(() => {
-    const cleanText = question.text.replace(/<[^>]*>/g, "")
-    setLocalQuestionText(cleanText)
-    setIsQuestionTextValid(cleanText.trim().length > 0)
-  }, [question.text])
+  // Guardar el valor HTML en el estado global al cambiar
+  const handleQuestionTextChange = (html: string) => {
+    setLocalQuestionTextHtml(html);
+    // Extraer texto plano del HTML
+    const plain = html.replace(/<[^>]*>/g, "").trim();
+    onUpdateQuestion(sectionId, question.id, "text", plain);
+    onUpdateQuestion(sectionId, question.id, "text_html", html);
+  };
 
   const toggleQuestionExpansion = () => {
     setIsExpanded((prev) => !prev)
@@ -135,40 +193,126 @@ export function QuestionEditor({
 
     if (lines.length > 1) {
       onUpdateQuestion(sectionId, question.id, "options", lines)
-      toast({
-        title: "Opciones agregadas",
-        description: `Se agregaron ${lines.length} opciones.`,
-      })
       return true
     }
     return false
   }
 
-  const getRatingEmojis = (scale: number) => {
-    const emojiSets = {
-      3: ["😞", "😐", "😊"],
-      4: ["😞", "😐", "🙂", "😊"],
-      5: ["😞", "😕", "😐", "🙂", "😊"],
-      6: ["😞", "😕", "😐", "🙂", "😊", "😍"],
-      7: ["😞", "😕", "😐", "🙂", "😊", "😍", "🤩"],
-      10: ["😞", "😕", "😐", "🙂", "😊", "😍", "🤩", "🥰", "😘", "🤗"],
-    }
-    return emojiSets[scale as keyof typeof emojiSets] || emojiSets[5]
-  }
+  // Emoji sets para valoración
+  const RATING_EMOJI_SETS = [
+    { key: "caras", label: "Caras", emojis: ["😞", "😐", "😊"] },
+    { key: "estrellas", label: "Estrellas", emojis: ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"] },
+    { key: "corazones", label: "Corazones", emojis: ["�", "�", "❤️"] },
+    { key: "pulgares", label: "Pulgares", emojis: ["�", "�"] },
+    { key: "fuegos", label: "Fuegos", emojis: ["�", "�🔥", "�🔥🔥", "�🔥🔥🔥", "🔥🔥🔥🔥🔥"] },
+    { key: "caritas_varias", label: "Caritas Variadas", emojis: ["�", "�", "�", "�", "😍"] },
+  ];
+
+  // Devuelve el set de emojis seleccionado o el default (caras)
+  const getRatingEmojis = (scale: number, emojiSetKey?: string) => {
+    const set = RATING_EMOJI_SETS.find(s => s.key === emojiSetKey) || RATING_EMOJI_SETS[0];
+    // Si el set tiene menos emojis que el scale, repite el último
+    if (set.emojis.length >= scale) return set.emojis.slice(0, scale);
+    if (set.emojis.length === 1) return Array(scale).fill(set.emojis[0]);
+    // Rellena con el último emoji si faltan
+    return [...set.emojis, ...Array(scale - set.emojis.length).fill(set.emojis[set.emojis.length - 1])];
+  };
 
   const handleAdvancedConfigSave = (newConfig: any) => {
     onUpdateQuestion(sectionId, question.id, "config", newConfig)
+    // Guardar inmediatamente en Supabase al guardar la configuración avanzada
+    // Usar el helper ya existente
+    autoSaveQuestionHelper({
+      ...question,
+      config: newConfig
+    }, sectionId, surveyId)
   }
 
   const matrixRows = question.matrixRows?.length ? question.matrixRows : ["Fila 1"]
   const matrixCols = question.matrixCols?.length ? question.matrixCols : ["Columna 1"]
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  // --- EXTRACT: Lógica de límites de selección ---
+  const SelectionLimitsConfig = ({
+    min,
+    max,
+    valueMin,
+    valueMax,
+    onChangeMin,
+    onChangeMax,
+    labelMin = "Mínimo de respuestas",
+    labelMax = "Máximo de respuestas",
+    placeholderMin = "0",
+    placeholderMax = "",
+    helpText = ""
+  }: any) => (
+    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+      <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-xs text-blue-700">{labelMin}</Label>
+          <Input
+            type="number"
+            min={min}
+            max={max}
+            value={valueMin}
+            onChange={onChangeMin}
+            placeholder={placeholderMin}
+            className="h-8"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs text-blue-700">{labelMax}</Label>
+          <Input
+            type="number"
+            min={min === undefined ? 1 : min}
+            max={max}
+            value={valueMax}
+            onChange={onChangeMax}
+            placeholder={placeholderMax}
+            className="h-8"
+          />
+        </div>
+      </div>
+      <div className="text-xs text-blue-600">{helpText}</div>
+    </div>
+  );
+
   return (
-    <Card className="mb-6 border-l-4 ">
+    <Card ref={setNodeRef} style={style} className="mb-6 border-l-4">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Grip icon for drag handle - assuming it's handled by parent SortableContext */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5 text-muted-foreground"
+              >
+                <circle cx="9" cy="12" r="1"/>
+                <circle cx="9" cy="5" r="1"/>
+                <circle cx="9" cy="19" r="1"/>
+                <circle cx="15" cy="12" r="1"/>
+                <circle cx="15" cy="5" r="1"/>
+                <circle cx="15" cy="19" r="1"/>
+              </svg>
+            </div>
             <Select
               value={question.type}
               onValueChange={(value) => onUpdateQuestion(sectionId, question.id, "type", value)}
@@ -177,150 +321,59 @@ export function QuestionEditor({
                 <SelectValue placeholder="Tipo de pregunta" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">📝 Texto corto *</SelectItem>
-                <SelectItem value="textarea">📄 Texto largo *</SelectItem>
-                <SelectItem value="multiple_choice">🔘 Opción múltiple *</SelectItem>
-                <SelectItem value="checkbox">☑️ Casillas de verificación *</SelectItem>
-                <SelectItem value="dropdown">📋 Lista desplegable *</SelectItem>
-                <SelectItem value="scale">📊 Escala de calificación *</SelectItem>
+                <SelectItem value="text">📝 Texto simple</SelectItem>
+                <SelectItem value="textarea">📄 Texto largo</SelectItem>
+                <SelectItem value="multiple_choice">🔘 Opción múltiple</SelectItem>
+                <SelectItem value="checkbox">☑️ Casillas de verificación</SelectItem>
+                <SelectItem value="dropdown">📋 Lista desplegable</SelectItem>
+                <SelectItem value="scale">📊 Escala de calificación</SelectItem>
                 <SelectItem value="matrix">📋 Matriz/Tabla</SelectItem>
                 <SelectItem value="ranking">🔢 Clasificación</SelectItem>
-                <SelectItem value="date">📅 Fecha *</SelectItem>
-                <SelectItem value="time">🕐 Hora *</SelectItem>
-                <SelectItem value="email">📧 Email *</SelectItem>
-                <SelectItem value="phone">📞 Teléfono *</SelectItem>
-                <SelectItem value="number">🔢 Número *</SelectItem>
-                <SelectItem value="rating">⭐ Valoración *</SelectItem>
-                <SelectItem value="file">📎 Archivo *</SelectItem>
-                <SelectItem value="image_upload">🖼️ Subir imagen *</SelectItem>
-                <SelectItem value="signature">✍️ Firma *</SelectItem>
+                <SelectItem value="date">📅 Fecha</SelectItem>
+                <SelectItem value="time">🕐 Hora</SelectItem>
+                <SelectItem value="email">📧 Email</SelectItem>
+                <SelectItem value="phone">📞 Teléfono</SelectItem>
+                <SelectItem value="number">🔢 Número</SelectItem>
+                <SelectItem value="rating">⭐ Valoración</SelectItem>
+                <SelectItem value="file">📎 Archivo</SelectItem>
+                <SelectItem value="signature">✍️ Firma</SelectItem>
                 <SelectItem value="likert">📈 Escala Likert</SelectItem>
-                <SelectItem value="net_promoter">📊 Net Promoter Score *</SelectItem>
-                <SelectItem value="slider">🎚️ Control deslizante *</SelectItem>
-                <SelectItem value="comment_box">💬 Caja de comentarios *</SelectItem>
-                <SelectItem value="star_rating">⭐ Calificación con estrellas *</SelectItem>
-                <SelectItem value="demographic">👤 Demográfica *</SelectItem>
-                <SelectItem value="contact_info">📧 Información de contacto *</SelectItem>
-                <SelectItem value="single_textbox">📝 Una sola caja de texto *</SelectItem>
-                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto *</SelectItem>
+                <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
+                <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
+                <SelectItem value="demographic">👤 Demográfica</SelectItem>
+                <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
+                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
               </SelectContent>
             </Select>
-            <Badge variant={question.required ? "destructive" : "secondary"}>
-              {question.required ? "Obligatorio" : "Opcional"}
-            </Badge>
-          </div>
-          
-          {/* Nota explicativa sobre el asterisco */}
-          <div className="text-xs text-muted-foreground mt-1">
-            <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleQuestionExpansion}>
-              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)}>
+            {/* Switch para marcar como obligatoria la pregunta */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Obligatoria</span>
+              <Switch
+                checked={question.required}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
+                id={`required-switch-${question.id}`}
+              />
+            </div>
+           
+            <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)} title="Copiar pregunta">
               <Copy className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onRemoveQuestion(sectionId, question.id)}>
+            <Button variant="ghost" size="sm" onClick={() => onRemoveQuestion(sectionId, question.id)} title="Borrar pregunta">
               <Trash2 className="h-4 w-4" />
+            </Button>
+            {/* Botón para mover pregunta (preparado, requiere implementación de onMoveQuestion) */}
+            {/* <Button variant="ghost" size="sm" onClick={() => onMoveQuestion && onMoveQuestion(question.id, sectionId, 'destSectionId')}>Mover</Button> */}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+            <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
+            <Button variant="outline" size="sm" onClick={openConfigEditor} className="ml-2">
+              <Settings className="h-4 w-4 mr-2" />
+              Configuración avanzada
             </Button>
           </div>
         </div>
       </CardHeader>
-
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor={`question-${question.id}`}>Pregunta</Label>
-
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Button
-                variant={!isEditingText ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsEditingText(false)}
-              >
-                <Type className="h-4 w-4 mr-1" />
-                Texto simple
-              </Button>
-              <Button variant={isEditingText ? "default" : "outline"} size="sm" onClick={() => setIsEditingText(true)}>
-                <Palette className="h-4 w-4 mr-1" />
-                Formato avanzado
-              </Button>
-            </div>
-
-            {!isEditingText ? (
-              <div className="space-y-2">
-                <Input
-                  value={localQuestionText}
-                  onChange={(e) => setLocalQuestionText(e.target.value)}
-                  placeholder="Escribe tu pregunta aquí..."
-                  className={`text-lg ${!isQuestionTextValid ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-                />
-                {!isQuestionTextValid && (
-                  <p className="text-sm text-red-500">La pregunta no puede estar vacía</p>
-                )}
-              </div>
-            ) : (
-              <div className="flex gap-2 items-center">
-                <div className="flex-1">
-                  <div
-                    className="border rounded p-3 bg-background text-foreground min-h-[60px]"
-                    dangerouslySetInnerHTML={{
-                      __html:
-                        question.text ||
-                        '<span class="text-muted-foreground">Haz click en "Editar formato" para escribir tu pregunta</span>',
-                    }}
-                  />
-                </div>
-                <Button size="sm" variant="outline" onClick={() => setShowQuill(true)}>
-                  Editar formato
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <Dialog open={showQuill} onOpenChange={setShowQuill}>
-            {showQuill && (
-              <div className="fixed inset-0 bg-black/40 dark:bg-black/60 z-[999] flex items-center justify-center">
-                <div className="rounded-lg shadow-lg p-6 w-full max-w-4xl bg-background text-foreground max-h-[90vh] overflow-y-auto">
-                  <div className=" items-center justify-between mb-20">
-                    <Button variant="ghost" onClick={() => setShowQuill(false)} className="float-right">
-                      ✕
-                    </Button>
-                  </div>
-                  <FullTiptapEditor
-                    value={question.text}
-                    onChange={(html) => onUpdateQuestion(sectionId, question.id, "text", html)}
-                    autofocus
-                  />
-                  <div className="flex justify-end mt-4 gap-2">
-                    <Button variant="outline" onClick={closeQuillEditor}>
-                      Cancelar
-                    </Button>
-                    <Button onClick={closeQuillEditor}>Guardar</Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Dialog>
-        </div>
-
-        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-          <div className="flex items-center space-x-2">
-            <Switch
-              checked={question.required}
-              onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
-            />
-
-            <Label htmlFor={`required-${question.id}`}>Pregunta obligatoria</Label>
-          </div>
-          <Button variant="outline" size="sm" onClick={openConfigEditor}>
-            <Settings className="h-4 w-4 mr-2" />
-            Configuración avanzada
-          </Button>
-        </div>
-
-        <AdvancedQuestionConfig
+ <AdvancedQuestionConfig
           isOpen={showConfig}
           onClose={closeConfigEditor}
           question={question}
@@ -328,6 +381,79 @@ export function QuestionEditor({
           allQuestions={allSections.flatMap((s) => s.questions)}
           onSave={handleAdvancedConfigSave}
         />
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor={`question-${question.id}`}>Enunciado de la pregunta</Label>
+          <div className="flex flex-col md:flex-row gap-2 hidden">
+            <Button
+              type="button"
+              variant={!isEditing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsEditing(false)}
+              disabled={!isEditing}
+            >
+              Texto simple
+            </Button>
+            <Button
+              type="button"
+              variant={isEditing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsEditing(true)}
+              disabled={isEditing}
+            >
+              Formato avanzado
+            </Button>
+          </div>
+          <div className="flex-1 mt-2">
+            {!isEditing ? (
+              <textarea
+                readOnly
+                className="text-lg cursor-pointer bg-background border rounded-lg w-full resize-none min-h-[48px] whitespace-pre-line focus:outline-none break-words"
+                value={question.text_html ? question.text_html.replace(/<[^>]+>/g, "") : ""}
+                placeholder="Escribe tu pregunta aquí..."
+                onClick={() => setIsEditing(true)}
+                rows={1}
+                style={{ height: 'auto', overflow: 'hidden' }}
+                ref={el => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                  }
+                }}
+                onInput={e => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = target.scrollHeight + 'px';
+                }}
+              />
+            ) : (
+              <div className="border rounded-lg overflow-hidden p-2 bg-background">
+                <AdvancedRichTextEditor
+                  value={localQuestionTextHtml}
+                  onChange={handleQuestionTextChange}
+                  placeholder="Escribe tu pregunta aquí..."
+                  immediatelyRender={false}
+                />
+                <div className="flex justify-end mt-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => {
+                      // Al guardar, sincroniza ambos campos
+                      const plain = localQuestionTextHtml.replace(/<[^>]*>/g, "").trim();
+                      onUpdateQuestion(sectionId, question.id, "text", plain);
+                      onUpdateQuestion(sectionId, question.id, "text_html", localQuestionTextHtml);
+                      autoSaveQuestionHelper({ ...question, text: plain, text_html: localQuestionTextHtml }, sectionId, surveyId);
+                      setIsEditing(false);
+                    }}
+                  >
+                    Guardar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {question.type === "ranking" && (
           <div className="space-y-4 p-4 border rounded-lg">
@@ -335,7 +461,7 @@ export function QuestionEditor({
             <div className="space-y-4">
               <div>
                 <Label className="font-medium">Opciones</Label>
-                {(question.options || ['Opción 1']).map((option, idx) => (
+                {(question.options || ["Opción 1"]).map((option, idx) => (
                   <div key={idx} className="flex items-center gap-2 mt-2">
                     <div className="flex items-center justify-center gap-1 w-16">
                       <Button
@@ -387,7 +513,12 @@ export function QuestionEditor({
                       size="sm"
                       onClick={() => {
                         const newOptions = question.options.filter((_, i) => i !== idx)
-                        onUpdateQuestion(sectionId, question.id, "options", newOptions.length > 0 ? newOptions : ['Opción 1'])
+                        onUpdateQuestion(
+                          sectionId,
+                          question.id,
+                          "options",
+                          newOptions.length > 0 ? newOptions : ["Opción 1"],
+                        )
                       }}
                       disabled={question.options.length <= 1}
                     >
@@ -398,7 +529,7 @@ export function QuestionEditor({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-2"
+                  className="mt-2 bg-transparent"
                   onClick={() => {
                     const newOptions = [...(question.options || []), `Opción ${(question.options || []).length + 1}`]
                     onUpdateQuestion(sectionId, question.id, "options", newOptions)
@@ -431,7 +562,7 @@ export function QuestionEditor({
               <div className="mt-4">
                 <Label className="font-medium">Vista previa</Label>
                 <div className="mt-2 p-4 border rounded-lg bg-muted/20">
-                  {(question.options || ['Opción 1']).map((option, idx) => (
+                  {(question.options || ["Opción 1"]).map((option, idx) => (
                     <div key={idx} className="flex items-center gap-2 py-2 border-b last:border-b-0">
                       <div className="w-8 text-center font-medium">{idx + 1}</div>
                       <div className="flex-1">{option}</div>
@@ -564,21 +695,68 @@ export function QuestionEditor({
                 Selecciona cómo los usuarios responderán en cada celda de la matriz
               </p>
             </div>
-
+            {/* Mostrar límites solo si es checkbox */}
+            {question.config?.matrixCellType === "checkbox" && (
+              <SelectionLimitsConfig
+                min={0}
+                max={matrixCols.length}
+                valueMin={question.config?.minSelections || 0}
+                valueMax={question.config?.maxSelections || matrixCols.length}
+                onChangeMin={e => {
+                  const newConfig = {
+                    ...question.config,
+                    minSelections: Number.parseInt(e.target.value) || 0,
+                  };
+                  onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                  autoSaveQuestionHelper({
+                    ...question,
+                    config: newConfig,
+                    order_num: question.order_num ?? qIndex ?? 0
+                  }, sectionId, surveyId);
+                }}
+                onChangeMax={e => {
+                  const newConfig = {
+                    ...question.config,
+                    maxSelections: Number.parseInt(e.target.value) || matrixCols.length,
+                  };
+                  onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                  autoSaveQuestionHelper({
+                    ...question,
+                    config: newConfig,
+                    order_num: question.order_num ?? qIndex ?? 0
+                  }, sectionId, surveyId);
+                }}
+                placeholderMax={matrixCols.length.toString()}
+                helpText={
+                  question.config?.minSelections > 0 && question.config?.maxSelections
+                    ? question.config.minSelections === question.config.maxSelections
+                      ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
+                      : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`
+                    : question.config?.minSelections === 0 && question.config?.maxSelections
+                      ? `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`
+                      : (!question.config?.minSelections || question.config.minSelections === 0) && (!question.config?.maxSelections || question.config.maxSelections === matrixCols.length)
+                        ? "Sin límite de selección por fila."
+                        : ""
+                }
+              />
+            )}
             {/* Opciones para celdas tipo 'select' - per-column options */}
             {question.config?.matrixCellType === "select" && (
               <div className="space-y-2 mt-4">
                 <Label className="font-medium">Opciones para cada columna</Label>
                 {matrixCols.map((col, colIdx) => {
                   // Memoize unique option sets for reuse
-                  const allColOptions = question.config?.matrixColOptions || [];
+                  const allColOptions = question.config?.matrixColOptions || []
                   const uniqueOptionSets = allColOptions
                     .map((opts: string[], idx: number) => ({ opts, idx }))
-                    .filter((item: { opts: string[]; idx: number }, idx: number, arr: { opts: string[]; idx: number }[]) =>
-                      arr.findIndex((x: { opts: string[]; idx: number }) => JSON.stringify(x.opts) === JSON.stringify(item.opts)) === idx
-                    );
-                  const colOptions = allColOptions[colIdx] || ["Opción 1"];
-                  const isDefault = colOptions.length === 1 && colOptions[0] === "Opción 1";
+                    .filter(
+                      (item: { opts: string[]; idx: number }, idx: number, arr: { opts: string[]; idx: number }[]) =>
+                        arr.findIndex(
+                          (x: { opts: string[]; idx: number }) => JSON.stringify(x.opts) === JSON.stringify(item.opts),
+                        ) === idx,
+                    )
+                  const colOptions = allColOptions[colIdx] || ["Opción 1"]
+                  const isDefault = colOptions.length === 1 && colOptions[0] === "Opción 1"
                   return (
                     <div key={colIdx} className="mb-2">
                       <div className="font-medium mb-1">{col}</div>
@@ -587,16 +765,23 @@ export function QuestionEditor({
                         <div className="mb-2">
                           <Label>Usar opciones de otra columna:</Label>
                           <Select
-                            value={uniqueOptionSets.find((u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions))?.idx?.toString() ?? ""}
-                            onValueChange={val => {
-                              const idx = parseInt(val, 10);
+                            value={
+                              uniqueOptionSets
+                                .find(
+                                  (u: { opts: string[]; idx: number }) =>
+                                    JSON.stringify(u.opts) === JSON.stringify(colOptions),
+                                )
+                                ?.idx?.toString() ?? ""
+                            }
+                            onValueChange={(val) => {
+                              const idx = Number.parseInt(val, 10)
                               if (!isNaN(idx)) {
-                                const newColOptions = [...allColOptions];
+                                const newColOptions = [...allColOptions]
                                 newColOptions[colIdx] = [...(allColOptions[idx] || ["Opción 1"])]
                                 onUpdateQuestion(sectionId, question.id, "config", {
                                   ...question.config,
                                   matrixColOptions: newColOptions,
-                                });
+                                })
                               }
                             }}
                           >
@@ -605,7 +790,10 @@ export function QuestionEditor({
                             </SelectTrigger>
                             <SelectContent>
                               {uniqueOptionSets.map((set: { opts: string[]; idx: number }, idx: number) => (
-                                <SelectItem key={idx} value={set.idx.toString()}>{`Set ${set.idx + 1}: ${set.opts.filter(Boolean).join(", ")}`}</SelectItem>
+                                <SelectItem
+                                  key={idx}
+                                  value={set.idx.toString()}
+                                >{`Set ${set.idx + 1}: ${set.opts.filter(Boolean).join(", ")}`}</SelectItem>
                               ))}
                               <SelectItem value="new">Crear nuevo set</SelectItem>
                             </SelectContent>
@@ -613,23 +801,26 @@ export function QuestionEditor({
                         </div>
                       )}
                       {/* Edición de opciones */}
-                      {(!uniqueOptionSets.length || uniqueOptionSets.find((u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions))?.idx === colIdx || isDefault) && (
+                      {(!uniqueOptionSets.length ||
+                        uniqueOptionSets.find(
+                          (u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions),
+                        )?.idx === colIdx ||
+                        isDefault) && (
                         <>
                           {colOptions.map((option: string, optIdx: number) => (
                             <div key={optIdx} className="flex items-center gap-2 mb-1">
-
                               <MatrixOptionInput
                                 value={option}
-                                onChange={val => {
-                                  const newColOptions = allColOptions ? [...allColOptions] : [];
-                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                                onChange={(val) => {
+                                  const newColOptions = allColOptions ? [...allColOptions] : []
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
                                   const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
-                                  opts[optIdx] = val;
-                                  newColOptions[colIdx] = opts;
+                                  opts[optIdx] = val
+                                  newColOptions[colIdx] = opts
                                   onUpdateQuestion(sectionId, question.id, "config", {
                                     ...question.config,
                                     matrixColOptions: newColOptions,
-                                  });
+                                  })
                                 }}
                                 placeholder={`Opción ${optIdx + 1}`}
                               />
@@ -638,15 +829,15 @@ export function QuestionEditor({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                  const newColOptions = allColOptions ? [...allColOptions] : [];
-                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
+                                  const newColOptions = allColOptions ? [...allColOptions] : []
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
                                   const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
-                                  opts.splice(optIdx, 1);
-                                  newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"];
+                                  opts.splice(optIdx, 1)
+                                  newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"]
                                   onUpdateQuestion(sectionId, question.id, "config", {
                                     ...question.config,
                                     matrixColOptions: newColOptions,
-                                  });
+                                  })
                                 }}
                                 disabled={colOptions.length <= 1}
                               >
@@ -658,14 +849,17 @@ export function QuestionEditor({
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const newColOptions = allColOptions ? [...allColOptions] : [];
-                              while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"]);
-                              const opts = [...(newColOptions[colIdx] || ["Opción 1"]), `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`];
-                              newColOptions[colIdx] = opts;
+                              const newColOptions = allColOptions ? [...allColOptions] : []
+                              while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                              const opts = [
+                                ...(newColOptions[colIdx] || ["Opción 1"]),
+                                `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`,
+                              ]
+                              newColOptions[colIdx] = opts
                               onUpdateQuestion(sectionId, question.id, "config", {
                                 ...question.config,
                                 matrixColOptions: newColOptions,
-                              });
+                              })
                             }}
                           >
                             <Plus className="h-4 w-4 mr-2" /> Agregar opción
@@ -673,7 +867,7 @@ export function QuestionEditor({
                         </>
                       )}
                     </div>
-                  );
+                  )
                 })}
               </div>
             )}
@@ -759,7 +953,7 @@ export function QuestionEditor({
                                   return <Input type="number" disabled className="w-full" placeholder="0" />
                                 case "select": {
                                   // Use per-column options if available
-                                  const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"];
+                                  const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"]
                                   return (
                                     <Select disabled>
                                       <SelectTrigger className="w-full">
@@ -768,12 +962,16 @@ export function QuestionEditor({
                                       <SelectContent>
                                         {colOptions.map((opt: string, i: number) => (
                                           <SelectItem key={i} value={opt && opt.trim() !== "" ? opt : `__empty_${i}`}>
-                                            {opt && opt.trim() !== "" ? opt : <span className="text-muted-foreground italic">(vacío)</span>}
+                                            {opt && opt.trim() !== "" ? (
+                                              opt
+                                            ) : (
+                                              <span className="text-muted-foreground italic">(vacío)</span>
+                                            )}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
-                                  );
+                                  )
                                 }
                                 case "rating":
                                   return (
@@ -784,7 +982,7 @@ export function QuestionEditor({
                                           <span key={i} className="text-yellow-400 cursor-not-allowed">
                                             ★
                                           </span>
-                                        )
+                                        ),
                                       )}
                                     </div>
                                   )
@@ -793,8 +991,12 @@ export function QuestionEditor({
                                     <div className="flex items-center gap-1">
                                       <div className="w-8 text-center">{rIdx + 1}</div>
                                       <div className="flex gap-1">
-                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
-                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
+                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">
+                                          ↑
+                                        </button>
+                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">
+                                          ↓
+                                        </button>
                                       </div>
                                     </div>
                                   )
@@ -818,56 +1020,97 @@ export function QuestionEditor({
             <Label className="text-lg font-semibold">Configuración de Valoración</Label>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Escala de valoración</Label>
-                <Select
-                  value={question.ratingScale?.toString() || "5"}
-                  onValueChange={(value) =>
-                    onUpdateQuestion(sectionId, question.id, "ratingScale", Number.parseInt(value))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3">1 a 3</SelectItem>
-                    <SelectItem value="4">1 a 4</SelectItem>
-                    <SelectItem value="5">1 a 5</SelectItem>
-                    <SelectItem value="6">1 a 6</SelectItem>
-                    <SelectItem value="7">1 a 7</SelectItem>
-                    <SelectItem value="10">1 a 10</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Escala</Label>
+                <div className="flex gap-2 items-center">
+                  <span>Min:</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={question.config?.ratingMax || 10}
+                    value={question.config?.ratingMin ?? 1}
+                    onChange={e => {
+                      const min = Number(e.target.value);
+                      const max = question.config?.ratingMax ?? 5;
+                      let emojis = question.config?.ratingEmojis || [];
+                      if (max - min + 1 !== emojis.length) {
+                        // Ajustar el array de emojis
+                        const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
+                        emojis = Array.from({length: max - min + 1}, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
+                      }
+                      const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                    }}
+                    className="w-16"
+                  />
+                  <span>Max:</span>
+                  <Input
+                    type="number"
+                    min={question.config?.ratingMin ?? 1}
+                    max={20}
+                    value={question.config?.ratingMax ?? 5}
+                    onChange={e => {
+                      const max = Number(e.target.value);
+                      const min = question.config?.ratingMin ?? 1;
+                      let emojis = question.config?.ratingEmojis || [];
+                      if (max - min + 1 !== emojis.length) {
+                        // Ajustar el array de emojis
+                        const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
+                        emojis = Array.from({length: max - min + 1}, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
+                      }
+                      const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                    }}
+                    className="w-16"
+                  />
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={question.config?.ratingEmojis !== false}
-                  onCheckedChange={(checked) =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      ratingEmojis: checked,
-                    })
-                  }
-                />
-                <Label>Mostrar emojis</Label>
+              <div>
+                <Label>Emojis de la escala</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(Array.isArray(question.config?.ratingEmojis)
+                    ? question.config.ratingEmojis
+                    : Array.from({length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1}, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
+                  ).map((emoji, idx) => (
+                    <div key={idx} className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        className="text-3xl bg-white border rounded-lg shadow px-2 py-1 hover:bg-blue-50"
+                        onClick={() => setShowEmojiPicker(idx)}
+                      >
+                        {emoji}
+                      </button>
+                      <span className="text-xs text-muted-foreground">{(question.config?.ratingMin ?? 1) + idx}</span>
+                      {showEmojiPicker === idx && (
+                        <div className="absolute z-50 mt-2">
+                          <EmojiPicker
+                            onSelect={selectedEmoji => {
+                              const emojis = [...(question.config?.ratingEmojis || [])];
+                              emojis[idx] = selectedEmoji;
+                              const newConfig = { ...question.config, ratingEmojis: emojis };
+                              onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                              autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                              setShowEmojiPicker(null);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
+            </div>
+            <div className="mt-4 flex gap-2 items-center">
+              <span className="text-muted-foreground text-sm mr-2">Vista previa:</span>
+              {(Array.isArray(question.config?.ratingEmojis)
+                ? question.config.ratingEmojis
+                : Array.from({length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1}, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
+              ).map((emoji, idx) => (
+                <span key={idx} style={{ fontSize: 28 }}>{emoji}</span>
+              ))}
             </div>
 
-            <div className="mt-4">
-              <Label className="font-medium">Vista previa</Label>
-              <div className="flex gap-2 mt-2 p-4 border rounded-lg bg-muted/20">
-                {Array.from({ length: question.ratingScale || 5 }, (_, i) => {
-                  const emojis = getRatingEmojis(question.ratingScale || 5)
-                  return (
-                    <div key={i} className="flex flex-col items-center gap-1">
-                      {question.config?.ratingEmojis !== false && <span className="text-2xl">{emojis[i]}</span>}
-                      <button className="w-8 h-8 rounded-full border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors">
-                        {i + 1}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
           </div>
         )}
 
@@ -948,60 +1191,86 @@ export function QuestionEditor({
         )}
 
         {(question.type === "multiple_choice" || question.type === "checkbox" || question.type === "dropdown") && (
-          <div className="space-y-3 p-4 border rounded-lg">
-            <div className="flex items-center justify-between">
-              <Label className="text-lg font-semibold">Opciones de respuesta</Label>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={question.config?.allowOther || false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        allowOther: checked,
-                      })
-                    }
-                  />
-                  <Label className="text-sm">Permitir "Otro"</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={question.config?.randomizeOptions || false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        randomizeOptions: checked,
-                      })
-                    }
-                  />
-                  <Label className="text-sm">Aleatorizar</Label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <Label className="text-sm font-medium">Pegar opciones (una por línea)</Label>
-              <Textarea
-                placeholder="Opción 1&#10;Opción 2&#10;Opción 3&#10;..."
-                className="mt-1"
-                onPaste={(e) => {
-                  const pastedText = e.clipboardData.getData("text")
-                  handlePasteOptions(pastedText, question.options)
-                  e.preventDefault()
-                }}
-                onChange={(e) => {
-                  const text = e.target.value
-                  if (text.includes("\n")) {
-                    handlePasteOptions(text, question.options)
-                    e.target.value = ""
-                  }
-                }}
+          <div className="space-y-4 p-4 bg-white border rounded-lg">
+            <div className="flex gap-4 items-center mb-2">
+              <Switch
+                checked={showPasteOptions}
+                onCheckedChange={setShowPasteOptions}
+                id={`show-paste-options-${question.id}`}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Puedes pegar múltiples opciones separadas por saltos de línea
-              </p>
+              <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
+              <Switch
+                checked={question.config?.allowOther || false}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, allowOther: checked })}
+                id={`allow-other-${question.id}`}
+              />
+              <Label htmlFor={`allow-other-${question.id}`}>Permitir "Otro"</Label>
+              <Switch
+                checked={question.config?.randomizeOptions || false}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, randomizeOptions: checked })}
+                id={`randomize-options-${question.id}`}
+              />
+              <Label htmlFor={`randomize-options-${question.id}`}>Aleatorizar</Label>
             </div>
-
+            {showPasteOptions && (
+              <div>
+                <Label className="text-lg font-semibold">Opciones de respuesta</Label>
+                <Label>Pegar opciones (una por línea)</Label>
+                <Textarea
+                  placeholder="Opción 1\nOpción 2\nOpción 3 ..."
+                  className="mb-2"
+                  onPaste={(e) => {
+                    if (handlePasteOptions(e.clipboardData.getData("text"), question.options || [])) {
+                      e.preventDefault()
+                    }
+                  }}
+                />
+                <div className="text-xs text-muted-foreground mb-2">Puedes pegar múltiples opciones separadas por saltos de línea</div>
+              </div>
+            )}
+            
+            <SelectionLimitsConfig
+              min={0}
+              max={question.options.length}
+              valueMin={question.config?.minSelections || 0}
+              valueMax={question.config?.maxSelections || question.options.length}
+              onChangeMin={e => {
+                const newConfig = {
+                  ...question.config,
+                  minSelections: Number.parseInt(e.target.value) || 0,
+                };
+                onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                autoSaveQuestionHelper({
+                  ...question,
+                  config: newConfig,
+                  order_num: question.order_num ?? qIndex ?? 0
+                }, sectionId, surveyId);
+              }}
+              onChangeMax={e => {
+                const newConfig = {
+                  ...question.config,
+                  maxSelections: Number.parseInt(e.target.value) || question.options.length,
+                };
+                onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                autoSaveQuestionHelper({
+                  ...question,
+                  config: newConfig,
+                  order_num: question.order_num ?? qIndex ?? 0
+                }, sectionId, surveyId);
+              }}
+              placeholderMax={question.options.length.toString()}
+              helpText={
+                question.config?.minSelections > 0 && question.config?.maxSelections
+                  ? question.config.minSelections === question.config.maxSelections
+                    ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
+                    : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`
+                  : question.config?.minSelections === 0 && question.config?.maxSelections
+                    ? `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`
+                    : (!question.config?.minSelections || question.config.minSelections === 0) && (!question.config?.maxSelections || question.config.maxSelections === question.options.length)
+                      ? "Sin límite de selección."
+                      : ""
+              }
+            />
             {question.options.map((option: string, index: number) => (
               <div key={index} className="flex items-center gap-2">
                 <div className="w-6 h-6 flex items-center justify-center">
@@ -1049,7 +1318,6 @@ export function QuestionEditor({
             >
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
-
             {question.config?.allowOther && (
               <div className="flex items-center gap-2 mt-2">
                 <div className="w-6 h-6 flex items-center justify-center">
@@ -1136,17 +1404,17 @@ export function QuestionEditor({
               <Label className="font-medium">Vista previa</Label>
               <div className="flex items-center gap-2 mt-2 p-4 border rounded-lg bg-muted/20">
                 <span className="text-sm">{question.config?.scaleLabels?.[0] || question.config?.scaleMin || 1}</span>
-                                    {Array.from(
-                      { length: (question.config?.scaleMax || 5) - (question.config?.scaleMin || 1) + 1 },
-                      (_: any, i: number) => (
-                        <button
-                          key={i}
-                          className="w-8 h-8 rounded border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors text-sm"
-                        >
-                          {(question.config?.scaleMin || 1) + i}
-                        </button>
-                      ),
-                    )}
+                {Array.from(
+                  { length: (question.config?.scaleMax || 5) - (question.config?.scaleMin || 1) + 1 },
+                  (_: any, i: number) => (
+                    <button
+                      key={i}
+                      className="w-8 h-8 rounded border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors text-sm"
+                    >
+                      {(question.config?.scaleMin || 1) + i}
+                    </button>
+                  ),
+                )}
                 <span className="text-sm">{question.config?.scaleLabels?.[1] || question.config?.scaleMax || 5}</span>
               </div>
             </div>
@@ -1163,7 +1431,6 @@ export function QuestionEditor({
             </div>
 
             {/* Debug info */}
-         
 
             <div className="space-y-4">
               {/* Vista previa rápida */}
@@ -1173,7 +1440,7 @@ export function QuestionEditor({
                   <div className="px-2">
                     <Slider
                       defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
-                      min={question.config?.likertScale?.showZero ? 0 : (question.config?.likertScale?.min || 1)}
+                      min={question.config?.likertScale?.showZero ? 0 : question.config?.likertScale?.min || 1}
                       max={question.config?.likertScale?.max || 5}
                       step={question.config?.likertScale?.step || 1}
                       disabled
@@ -1184,16 +1451,22 @@ export function QuestionEditor({
                     {question.config?.likertScale?.showZero && (
                       <span className="text-center">
                         <div className="font-medium">0</div>
-                        <div className="text-xs">{question.config?.likertScale?.zeroLabel || 'No Sabe / No Responde'}</div>
+                        <div className="text-xs">
+                          {question.config?.likertScale?.zeroLabel || "No Sabe / No Responde"}
+                        </div>
                       </span>
                     )}
                     <span className="text-center">
                       <div className="font-medium">1</div>
-                      <div className="text-xs">{question.config?.likertScale?.labels?.left || 'Totalmente en desacuerdo'}</div>
+                      <div className="text-xs">
+                        {question.config?.likertScale?.labels?.left || "Totalmente en desacuerdo"}
+                      </div>
                     </span>
                     <span className="text-center">
                       <div className="font-medium">{question.config?.likertScale?.max || 5}</div>
-                      <div className="text-xs">{question.config?.likertScale?.labels?.right || 'Totalmente de acuerdo'}</div>
+                      <div className="text-xs">
+                        {question.config?.likertScale?.labels?.right || "Totalmente de acuerdo"}
+                      </div>
                     </span>
                   </div>
                 </div>
@@ -1201,45 +1474,49 @@ export function QuestionEditor({
 
               {/* Botones de acceso rápido */}
               <div className="grid grid-cols-2 gap-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => onUpdateQuestion(sectionId, question.id, "config", {
-                    ...question.config,
-                    likertScale: {
-                      min: 1,
-                      max: 5,
-                      step: 1,
-                      labels: {
-                        left: "Totalmente en desacuerdo",
-                        right: "Totalmente de acuerdo"
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    onUpdateQuestion(sectionId, question.id, "config", {
+                      ...question.config,
+                      likertScale: {
+                        min: 1,
+                        max: 5,
+                        step: 1,
+                        labels: {
+                          left: "Totalmente en desacuerdo",
+                          right: "Totalmente de acuerdo",
+                        },
+                        showZero: true,
+                        zeroLabel: "No Sabe / No Responde",
+                        startPosition: "left",
                       },
-                      showZero: true,
-                      zeroLabel: "No Sabe / No Responde",
-                      startPosition: "left"
-                    }
-                  })}
+                    })
+                  }
                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                 >
                   🎯 Usar Escala Estándar (1-5)
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
-                  onClick={() => onUpdateQuestion(sectionId, question.id, "config", {
-                    ...question.config,
-                    likertScale: {
-                      min: 1,
-                      max: 7,
-                      step: 1,
-                      labels: {
-                        left: "Completamente en desacuerdo",
-                        center: "Neutral",
-                        right: "Completamente de acuerdo"
+                  onClick={() =>
+                    onUpdateQuestion(sectionId, question.id, "config", {
+                      ...question.config,
+                      likertScale: {
+                        min: 1,
+                        max: 7,
+                        step: 1,
+                        labels: {
+                          left: "Completamente en desacuerdo",
+                          center: "Neutral",
+                          right: "Completamente de acuerdo",
+                        },
+                        showZero: true,
+                        zeroLabel: "No Sabe / No Responde",
+                        startPosition: "center",
                       },
-                      showZero: true,
-                      zeroLabel: "No Sabe / No Responde",
-                      startPosition: "center"
-                    }
-                  })}
+                    })
+                  }
                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                 >
                   🎯 Usar Escala Extendida (1-7)
@@ -1249,8 +1526,8 @@ export function QuestionEditor({
               {/* Mensaje de ayuda */}
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-700">
-                  💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba 
-                  y selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.
+                  💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba y
+                  selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.
                 </p>
               </div>
             </div>
@@ -1491,7 +1768,9 @@ export function QuestionEditor({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        const newLabels = (question.config?.textboxLabels || []).filter((_: string, i: number) => i !== index)
+                        const newLabels = (question.config?.textboxLabels || []).filter(
+                          (_: string, i: number) => i !== index,
+                        )
                         onUpdateQuestion(sectionId, question.id, "config", {
                           ...question.config,
                           textboxLabels: newLabels.length > 0 ? newLabels : ["Etiqueta 1"],
@@ -1555,30 +1834,85 @@ export function QuestionEditor({
         )}
 
         {question.type === "time" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="time" disabled className="mt-2 w-fit" />
-          </div>
-        )}
-
-        {question.type === "email" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="email" placeholder="ejemplo@correo.com" disabled className="mt-2" />
-          </div>
-        )}
-
-        {question.type === "phone" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="tel" placeholder="+1 (555) 123-4567" disabled className="mt-2" />
-          </div>
-        )}
-
-        {question.type === "number" && (
-          <div className="p-4 border rounded-lg bg-muted/20">
-            <Label className="font-medium">Vista previa</Label>
-            <Input type="number" placeholder="123" disabled className="mt-2" />
+          <div className="space-y-4 p-4 border rounded-lg">
+            <Label className="text-lg font-semibold">Configuración de Hora</Label>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Formato de hora</Label>
+                <Select
+                  value={question.config?.timeFormat || "24"}
+                  onValueChange={val => {
+                    const newConfig = { ...question.config, timeFormat: val };
+                    onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                    autoSaveQuestionHelper({
+                      ...question,
+                      config: newConfig,
+                      order_num: question.order_num ?? qIndex ?? 0
+                    }, sectionId, surveyId);
+                  }}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="Formato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="24">24 horas</SelectItem>
+                    <SelectItem value="12">12 horas (AM/PM)</SelectItem>
+                  </SelectContent>
+                               </Select>
+              </div>
+              {question.config?.timeFormat === "12" && (
+                <div>
+                  <Label>AM / PM</Label>
+                  <Select
+                    value={question.config?.ampm || "AM"}
+                    onValueChange={val => {
+                      const newConfig = { ...question.config, ampm: val };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({
+                        ...question,
+                        config: newConfig,
+                        order_num: question.order_num ?? qIndex ?? 0
+                      }, sectionId, surveyId);
+                    }}
+                  >
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="AM/PM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <div className="mt-4">
+              <Label className="font-medium">Vista previa</Label>
+              <div className="mt-2 flex items-center gap-2 p-4 border rounded-lg bg-muted/20">
+                {question.config?.timeFormat === "12" ? (
+                  <>
+                    <Input type="number" min={1} max={12} defaultValue={12} className="w-16" disabled />
+                    <span>:</span>
+                    <Input type="number" min={0} max={59} defaultValue={0} className="w-16" disabled />
+                    <Select value={question.config?.ampm || "AM"} disabled>
+                      <SelectTrigger className="w-[80px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AM">AM</SelectItem>
+                        <SelectItem value="PM">PM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                ) : (
+                  <>
+                    <Input type="number" min={0} max={23} defaultValue={23} className="w-16" disabled />
+                    <span>:</span>
+                    <Input type="number" min={0} max={59} defaultValue={0} className="w-16" disabled />
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1594,7 +1928,7 @@ export function QuestionEditor({
             <Label className="font-medium">Vista previa</Label>
             <Input type="file" accept="image/*" disabled className="mt-2" />
           </div>
-        )}
+        )} 
 
         {question.type === "signature" && (
           <div className="p-4 border rounded-lg bg-muted/20">

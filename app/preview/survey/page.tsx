@@ -1,10 +1,33 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+// Utilidad para extraer fuentes de un HTML
+function extractFontFamilies(html: string): string[] {
+  if (!html) return [];
+  const regex = /font-family\s*:\s*([^;"']+)/gi;
+  const matches = Array.from(html.matchAll(regex));
+  const fonts = matches.map(m => m[1].split(',')[0].replace(/['"]/g, '').trim());
+  return Array.from(new Set(fonts));
+}
+
+// Utilidad para cargar Google Fonts dinámicamente
+function loadGoogleFont(font: string) {
+  if (!font) return;
+  const fontParam = font.replace(/ /g, '+');
+  const id = `dynamic-googlefont-${fontParam}`;
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${fontParam}:wght@400;700&display=swap`;
+  document.head.appendChild(link);
+}
+import { RankingPreviewDraggable } from "@/components/RankingPreviewDraggable"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
@@ -152,14 +175,26 @@ function PreviewSurveyPageContent() {
       const hasDisplayLogic = surveyData.sections.some(section => 
         section.questions.some(q => q.config?.displayLogic?.enabled)
       )
-      
       if (hasDisplayLogic) {
         setIsReconciling(true)
         setHasReconciled(true)
-        
-        // Ocultar después de un breve delay
         setTimeout(() => setIsReconciling(false), 2000)
       }
+    }
+    // --- Cargar fuentes de Google Fonts para secciones y preguntas ---
+    if (surveyData) {
+      // Secciones
+      surveyData.sections.forEach(section => {
+        if (section.title_html) {
+          extractFontFamilies(section.title_html).forEach(loadGoogleFont);
+        }
+        // Preguntas
+        section.questions.forEach(q => {
+          if (q.text_html) {
+            extractFontFamilies(q.text_html).forEach(loadGoogleFont);
+          }
+        });
+      });
     }
   }, [surveyData, hasReconciled])
 
@@ -542,70 +577,162 @@ function PreviewSurveyPageContent() {
                     <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
                   </div>
                 ))}
+                {question.config?.allowOther && (
+                  <div className="flex items-center space-x-2 mt-2">
+                    <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
+                    <Label htmlFor={`${question.id}-option-other`}>
+                      {question.config.otherText || 'Otro (especificar)'}
+                    </Label>
+                    {answers[question.id] === "__other__" && (
+                      <input
+                        type="text"
+                        className="ml-2 border rounded px-2 py-1"
+                        value={answers[`${question.id}_other`] || ""}
+                        onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                        placeholder="Especifica..."
+                      />
+                    )}
+                  </div>
+                )}
               </RadioGroup>
             )
-          case "checkbox":
+          case "checkbox": {
+            const selected = Array.isArray(answers[question.id]) ? answers[question.id] : [];
+            const minSel = question.config?.minSelections ?? 0;
+            const maxSel = question.config?.maxSelections ?? (question.options?.length || 99);
+            const isMaxReached = selected.length >= maxSel;
             return (
               <div className="space-y-2">
-                {(question.options || []).map((option, idx) => (
-                  <div key={idx} className="flex items-center space-x-2">
+                {(question.options || []).map((option, idx) => {
+                  const checked = selected.includes(option);
+                  const disabled = !checked && isMaxReached;
+                  return (
+                    <div key={idx} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`${question.id}-option-${idx}`}
+                        checked={checked}
+                        disabled={disabled}
+                        onCheckedChange={(checked) => {
+                          const currentAnswers = new Set(selected);
+                          if (checked) {
+                            currentAnswers.add(option);
+                          } else {
+                            currentAnswers.delete(option);
+                          }
+                          handleAnswerChange(question.id, Array.from(currentAnswers));
+                        }}
+                      />
+                      <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
+                    </div>
+                  );
+                })}
+                {question.config?.allowOther && (
+                  <div className="flex items-center space-x-2 mt-2">
                     <Checkbox
-                      id={`${question.id}-option-${idx}`}
-                      checked={(answers[question.id] || []).includes(option)}
+                      id={`${question.id}-option-other`}
+                      checked={selected.includes("__other__")}
+                      disabled={!selected.includes("__other__") && isMaxReached}
                       onCheckedChange={(checked) => {
-                        const currentAnswers = new Set(answers[question.id] || [])
+                        let currentAnswers = new Set(selected);
                         if (checked) {
-                          currentAnswers.add(option)
+                          currentAnswers.add("__other__");
                         } else {
-                          currentAnswers.delete(option)
+                          currentAnswers.delete("__other__");
                         }
-                        handleAnswerChange(question.id, Array.from(currentAnswers))
+                        handleAnswerChange(question.id, Array.from(currentAnswers));
                       }}
                     />
-                    <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
+                    <Label htmlFor={`${question.id}-option-other`}>
+                      {question.config.otherText || 'Otro (especificar)'}
+                    </Label>
+                    {selected.includes("__other__") && (
+                      <input
+                        type="text"
+                        className="ml-2 border rounded px-2 py-1"
+                        value={answers[`${question.id}_other`] || ""}
+                        onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                        placeholder="Especifica..."
+                      />
+                    )}
                   </div>
-                ))}
+                )}
+                {(minSel > 0 || maxSel < (question.options?.length || 99)) && (
+                  <div className="text-xs text-muted-foreground mt-2">
+                    {minSel > 0 && maxSel < (question.options?.length || 99)
+                      ? `Selecciona entre ${minSel} y ${maxSel} opciones.`
+                      : minSel > 0
+                        ? `Selecciona al menos ${minSel} opción${minSel > 1 ? 'es' : ''}.`
+                        : `Selecciona hasta ${maxSel} opción${maxSel > 1 ? 'es' : ''}.`}
+                  </div>
+                )}
               </div>
-            )
+            );
+          }
           case "dropdown":
             return (
-              <Select value={answers[question.id] || ""} onValueChange={(value) => handleAnswerChange(question.id, value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una opción..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(question.options || []).map((option, idx) => (
-                    <SelectItem key={idx} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )
-          case "rating":
-          case "star_rating":
-            return (
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-muted-foreground">1</span>
-                <div className="flex space-x-1">
-                  {[1, 2, 3, 4, 5].map((rating) => (
-                    <button
-                      key={rating}
-                      type="button"
-                      onClick={() => handleAnswerChange(question.id, rating)}
-                      className={`p-2 rounded-lg transition-colors ${
-                        answers[question.id] === rating
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted/80"
-                      }`}
-                    >
-                      <Star className="h-5 w-5" fill={answers[question.id] === rating ? "currentColor" : "none"} />
-                    </button>
-                  ))}
-                </div>
-                <span className="text-sm text-muted-foreground">5</span>
+              <div>
+                <Select value={answers[question.id] || ""} onValueChange={(value) => handleAnswerChange(question.id, value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una opción..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(question.options || []).map((option, idx) => (
+                      <SelectItem key={idx} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                    {question.config?.allowOther && (
+                      <SelectItem value="__other__">{question.config.otherText || 'Otro (especificar)'}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {question.config?.allowOther && answers[question.id] === "__other__" && (
+                  <input
+                    type="text"
+                    className="mt-2 border rounded px-2 py-1"
+                    value={answers[`${question.id}_other`] || ""}
+                    onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                    placeholder="Especifica..."
+                  />
+                )}
               </div>
             )
+          case "rating":
+          case "star_rating": {
+            // Obtener configuración de emojis personalizados
+            const min = question.config?.ratingMin ?? 1;
+            const max = question.config?.ratingMax ?? 5;
+            const emojis = Array.isArray(question.config?.ratingEmojis)
+              ? question.config.ratingEmojis
+              : Array.from({ length: max - min + 1 }, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐");
+            return (
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-muted-foreground">{min}</span>
+                <div className="flex space-x-1">
+                  {emojis.map((emoji, idx) => {
+                    const value = min + idx;
+                    const isActive = answers[question.id] === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleAnswerChange(question.id, value)}
+                        className={`p-2 rounded-lg transition-colors text-2xl ${
+                          isActive
+                            ? "bg-primary text-primary-foreground scale-110 shadow-lg"
+                            : "bg-muted hover:bg-muted/80"
+                        }`}
+                        aria-label={`Valoración ${value}`}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="text-sm text-muted-foreground">{max}</span>
+              </div>
+            );
+          }
           case "slider":
             return (
               <div className="space-y-2">
@@ -768,20 +895,61 @@ function PreviewSurveyPageContent() {
               />
             )
           case "time":
+            // Mostrar formato de hora configurado
+            const timeFormat = question.config?.timeFormat || "24";
+            const ampmKey = `${question.id}_ampm`;
+            let hourValue = answers[question.id] || "";
+            let ampmValue = answers[ampmKey] || "AM";
+            // Si la respuesta es tipo "03:14 AM", separar
+            if (timeFormat === "12" && hourValue && hourValue.includes(" ")) {
+              const [h, ap] = hourValue.split(" ");
+              hourValue = h;
+              ampmValue = ap;
+            }
+            const handleTimeChange = (val: string) => {
+              if (timeFormat === "12") {
+                handleAnswerChange(question.id, val + " " + ampmValue);
+              } else {
+                handleAnswerChange(question.id, val);
+              }
+            };
+            const handleAMPMChange = (val: string) => {
+              handleAnswerChange(question.id, (hourValue || "") + " " + val);
+              handleAnswerChange(ampmKey, val);
+            };
             return (
-              <Input
-                type="time"
-                value={answers[question.id] || ""}
-                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                className="w-full"
-              />
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="time"
+                    value={hourValue}
+                    onChange={e => handleTimeChange(e.target.value)}
+                    className="w-full max-w-xs"
+                    step={60}
+                  />
+                  {timeFormat === "12" && (
+                    <select
+                      className="border rounded px-2 py-1 text-sm"
+                      value={ampmValue}
+                      onChange={e => handleAMPMChange(e.target.value)}
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {timeFormat === "24"
+                    ? "Formato 24 horas (00:00 - 23:59)"
+                    : "Formato 12 horas (AM/PM)"}
+                </div>
+              </div>
             )
           case "email":
             return (
-              <Input
-                type="email"
+              <EmailAutocompleteInput
                 value={answers[question.id] || ""}
-                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                onChange={val => handleAnswerChange(question.id, val)}
                 placeholder="ejemplo@email.com"
                 className="w-full"
               />
@@ -813,14 +981,30 @@ function PreviewSurveyPageContent() {
                 <Input
                   type="file"
                   onChange={(e) => {
-                    const file = e.target.files?.[0]
+                    const file = e.target.files?.[0];
                     if (file) {
-                      handleAnswerChange(question.id, file.name)
+                      // Validar tipo y tamaño
+                      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+                      const maxSize = 20 * 1024 * 1024; // 20 MB
+                      if (!allowedTypes.includes(file.type)) {
+                        alert("Solo se permiten archivos JPG, PNG o PDF.");
+                        e.target.value = "";
+                        return;
+                      }
+                      if (file.size > maxSize) {
+                        alert("El archivo no debe superar los 20 MB.");
+                        e.target.value = "";
+                        return;
+                      }
+                      handleAnswerChange(question.id, file.name);
                     }
                   }}
-                  accept={question.type === "image_upload" ? "image/*" : "*"}
+                  accept=".jpg,.jpeg,.png,.pdf"
                   className="w-full"
                 />
+                <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-100">
+                  Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b>
+                </div>
                 {answers[question.id] && (
                   <p className="text-sm text-muted-foreground">Archivo seleccionado: {answers[question.id]}</p>
                 )}
@@ -896,18 +1080,22 @@ function PreviewSurveyPageContent() {
                 </div>
               </div>
             )
-          case "ranking":
+          case "ranking": {
+            // Guardar el orden en answers[question.id] como array
+            const currentOrder = Array.isArray(answers[question.id]) && answers[question.id].length === (question.options || []).length
+              ? answers[question.id]
+              : question.options || [];
             return (
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Ordena las opciones arrastrándolas (simulado en preview)</p>
-                {(question.options || []).map((option, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <span className="text-sm text-muted-foreground">#{idx + 1}</span>
-                    <span>{option}</span>
-                  </div>
-                ))}
+                <p className="text-sm text-muted-foreground mb-2">Arrastra para ordenar las opciones</p>
+                <RankingPreviewDraggable
+                  options={question.options || []}
+                  value={currentOrder}
+                  onChange={(newOrder) => handleAnswerChange(question.id, newOrder)}
+                />
               </div>
-            )
+            );
+          }
           case "matrix": {
             // Siempre priorizar config/settings sobre el root
             const config = question.config || question.settings || {};
@@ -948,15 +1136,31 @@ function PreviewSurveyPageContent() {
                               {(() => {
                                 const cellKey = `${question.id}_${rowIdx}_${colIdx}`;
                                 switch (cellType) {
-                                  case "checkbox":
+                                  case "checkbox": {
+                                    // Para cada fila, la respuesta es un array de columnas seleccionadas
+                                    const rowKey = `${question.id}_${rowIdx}`;
+                                    const selected = Array.isArray(answers[rowKey]) ? answers[rowKey] : [];
+                                    // Permitir min/max por fila si se configura (puedes extender esto si lo necesitas)
+                                    const minSel = config.minSelections ?? 0;
+                                    const maxSel = config.maxSelections ?? matrixCols.length;
+                                    const isChecked = selected.includes(colIdx);
+                                    const isMaxReached = selected.length >= maxSel && !isChecked;
                                     return (
-                                      <input
-                                        type="checkbox"
-                                        checked={!!answers[cellKey]}
-                                        onChange={(e) => handleAnswerChange(cellKey, e.target.checked)}
-                                        className="cursor-pointer"
+                                      <Checkbox
+                                        checked={isChecked}
+                                        disabled={isMaxReached}
+                                        onCheckedChange={(checked) => {
+                                          let currentAnswers = new Set(selected);
+                                          if (checked) {
+                                            currentAnswers.add(colIdx);
+                                          } else {
+                                            currentAnswers.delete(colIdx);
+                                          }
+                                          handleAnswerChange(rowKey, Array.from(currentAnswers));
+                                        }}
                                       />
                                     );
+                                  }
                                   case "text":
                                     return (
                                       <Input
@@ -1056,27 +1260,42 @@ function PreviewSurveyPageContent() {
             );
           }
           case "multiple_textboxes":
-            return (
-              <div className="space-y-4">
-                {(question.options || []).map((option, idx) => (
-                  <div key={idx} className="space-y-2">
-                    <Label>{option}</Label>
-                    <Input
-                      value={answers[`${question.id}_${idx}`] || ""}
-                      onChange={(e) => handleAnswerChange(`${question.id}_${idx}`, e.target.value)}
-                      placeholder={`Respuesta para ${option}`}
-                    />
-                  </div>
-                ))}
-              </div>
-            )
+            {
+              const labels = question.config?.textboxLabels || question.options || [];
+              return (
+                <div className="space-y-4">
+                  {labels.map((label, idx) => (
+                    <div key={idx} className="space-y-2">
+                      <Label>{label}</Label>
+                      <Input
+                        value={answers[`${question.id}_${idx}`] || ""}
+                        onChange={(e) => handleAnswerChange(`${question.id}_${idx}`, e.target.value)}
+                        placeholder={`Respuesta para ${label}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            }
           default:
             return <Input {...commonProps} placeholder={`Tipo de pregunta "${question.type}" no soportado en preview`} disabled />
         }
       }
 
       return (
-        <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60">
+        <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60 preview-content">
+          <style jsx global>{`
+            .preview-content h1 {
+              font-size: 2.25rem;
+              font-weight: bold;
+              margin: 0.5em 0;
+            }
+            .preview-content h2 {
+              font-size: 1.5rem;
+              font-weight: bold;
+              margin: 0.5em 0;
+            }
+          `}</style>
           {/* Header de la pregunta */}
           <div className="flex items-start gap-4 mb-6">
             <div className="flex-shrink-0">
@@ -1092,8 +1311,8 @@ function PreviewSurveyPageContent() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div
-                  className="text-xl font-semibold text-gray-900 flex-1 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: question.text || "Pregunta sin texto" }}
+                  className="question-title-html flex-1"
+                  dangerouslySetInnerHTML={{ __html: question.text_html || question.text || "Pregunta sin texto" }}
                 />
                 <div className="flex gap-2">
                   {question.required && (
@@ -1177,11 +1396,41 @@ function PreviewSurveyPageContent() {
 
   const progress = ((currentSectionIndex + 1) / totalSections) * 100
 
+  // Estilos dinámicos para aplicar el color de fondo y color primario
+  const dynamicStyles = (
+    <style jsx global>{`
+      body, .preview-bg {
+        background: ${themeColors.background} !important;
+      }
+      .preview-header {
+        background: transparent;
+      }
+      .preview-title {
+        color: ${themeColors.text} !important;
+        background: none !important;
+        -webkit-background-clip: initial !important;
+        -webkit-text-fill-color: initial !important;
+      }
+      .preview-progress-bar {
+        background: ${themeColors.primary} !important;
+      }
+      .preview-card {
+        background: ${themeColors.background} !important;
+      }
+      .preview-btn-primary {
+        background: ${themeColors.primary} !important;
+        border-color: ${themeColors.primary} !important;
+        color: #fff !important;
+      }
+    `}</style>
+  )
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 flex flex-col items-center p-4 sm:p-8">
+    <div className="min-h-screen preview-bg flex flex-col items-center p-4 sm:p-8">
+      {dynamicStyles}
       {/* Header principal */}
-      <div className="w-full max-w-5xl mb-8">
-        <Card className="border-0 shadow-2xl bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50 backdrop-blur-sm">
+      <div className="w-full max-w-5xl mb-8 preview-header">
+        <Card className="border-0 shadow-2xl preview-card">
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between mb-6">
               <Button 
@@ -1204,177 +1453,56 @@ function PreviewSurveyPageContent() {
                 Limpiar Respuestas
               </Button>
             </div>
-            {/* Branding Logo Preview con posición */}
-            {surveyData.settings?.branding?.showLogo && surveyData.settings?.branding?.logo && (
-              (() => {
-                const logo = surveyData.settings.branding.logo;
-                const position = surveyData.settings.branding.logoPosition || "top";
-                const logoImg = (
-                  <img
-                    src={logo}
-                    alt="Logo de la encuesta"
+            <div className="flex flex-col items-center justify-center">
+              {/* Mostrar logo si existe en branding_config.logo (base64) */}
+              {surveyData?.settings?.branding?.showLogo && surveyData?.settings?.branding?.logo && (
+                <img
+                  src={surveyData.settings.branding.logo}
+                  alt="Logo de la encuesta"
+                  className="mx-auto mb-4 max-h-24 max-w-xs object-contain rounded-xl shadow"
+                  style={{
+                    display: 'block',
+                  }}
+                />
+              )}
+              <CardTitle 
+                className="text-5xl font-bold mb-4 preview-title"
+                style={{
+                  color: themeColors.text
+                }}
+              >
+                {surveyData.title}
+              </CardTitle>
+              {surveyData.description && (
+                <div className="flex justify-center mb-6">
+                  <div className="max-w-3xl w-full bg-blue-50/80 rounded-xl shadow p-5 text-center text-blue-900 text-lg border border-blue-100 font-normal leading-relaxed">
+                    {surveyData.description}
+                  </div>
+                </div>
+              )}
+              {/* Barra de progreso mejorada */}
+              <div className="mt-8 max-w-2xl mx-auto">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-gray-700">Progreso de la encuesta</span>
+                  <span className="text-sm font-semibold text-gray-700">
+                    {currentSectionIndex + 1} de {totalSections}
+                  </span>
+                </div>
+                <div className="relative w-full">
+                  <div className="w-full h-4 rounded-full bg-gray-100" />
+                  <div
+                    className="absolute top-0 left-0 h-4 rounded-full preview-progress-bar"
                     style={{
-                      maxHeight: 100,
-                      maxWidth: 120,
-                      objectFit: 'contain',
-                      borderRadius: 16,
-                      boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
+                      width: `${progress}%`,
+                      background: themeColors.primary,
+                      transition: 'width 0.4s cubic-bezier(.4,2,.6,1)',
                     }}
                   />
-                );
-                if (position === "top") {
-                  return (
-                    <div className="flex flex-col items-center w-full">
-                      <div className="flex w-full mb-6">
-                        <div className="w-full flex justify-center">{logoImg}</div>
-                      </div>
-                      <CardTitle 
-                        className="text-5xl font-bold mb-4 bg-clip-text text-transparent text-center w-full"
-                        style={{
-                          background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent'
-                        }}
-                      >
-                        {surveyData.title}
-                      </CardTitle>
-                      {surveyData.description && (
-                        <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed text-center w-full">{surveyData.description}</p>
-                      )}
-                    </div>
-                  );
-                } else if (position === "bottom") {
-                  return (
-                    <div className="text-center">
-                      <CardTitle 
-                        className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
-                        style={{
-                          background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent'
-                        }}
-                      >
-                        {surveyData.title}
-                      </CardTitle>
-                      {surveyData.description && (
-                        <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
-                      )}
-                      <div className="flex justify-center mt-6">{logoImg}</div>
-                    </div>
-                  );
-                } else if (position === "left") {
-                  return (
-                    <div className="flex flex-col items-start mb-6 w-full">
-                      <div className="flex w-full mb-2">
-                        <div className="flex justify-start w-full">{logoImg}</div>
-                      </div>
-                      <div className="flex flex-col items-center w-full">
-                        <CardTitle 
-                          className="text-5xl font-bold mb-4 bg-clip-text text-transparent text-center w-full"
-                          style={{
-                            background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent'
-                          }}
-                        >
-                          {surveyData.title}
-                        </CardTitle>
-                        {surveyData.description && (
-                          <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed text-center w-full">{surveyData.description}</p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                } else if (position === "right") {
-                  return (
-                    <div className="flex flex-col items-end mb-6 w-full">
-                      <div className="flex w-full mb-2">
-                        <div className="flex justify-end w-full">{logoImg}</div>
-                      </div>
-                      <div className="flex flex-col items-center w-full">
-                        <CardTitle 
-                          className="text-5xl font-bold mb-4 bg-clip-text text-transparent text-center w-full"
-                          style={{
-                            background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent'
-                          }}
-                        >
-                          {surveyData.title}
-                        </CardTitle>
-                        {surveyData.description && (
-                          <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed text-center w-full">{surveyData.description}</p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                } else {
-                  // fallback top
-                  return (
-                    <div className="text-center">
-                      <div className="flex justify-center mb-6">{logoImg}</div>
-                      <CardTitle 
-                        className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
-                        style={{
-                          background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent'
-                        }}
-                      >
-                        {surveyData.title}
-                      </CardTitle>
-                      {surveyData.description && (
-                        <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
-                      )}
-                    </div>
-                  );
-                }
-              })()
-            )}
-            {/* Si no hay logo, render normal */}
-            {(!surveyData.settings?.branding?.showLogo || !surveyData.settings?.branding?.logo) && (
-              <div className="text-center">
-                <CardTitle 
-                  className="text-5xl font-bold mb-4 bg-clip-text text-transparent"
-                  style={{
-                    background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent'
-                  }}
-                >
-                  {surveyData.title}
-                </CardTitle>
-                {surveyData.description && (
-                  <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
-                )}
-              </div>
-            )}
-            {/* Barra de progreso mejorada */}
-            <div className="mt-8 max-w-2xl mx-auto">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-gray-700">Progreso de la encuesta</span>
-                <span className="text-sm font-semibold text-gray-700">
-                  {currentSectionIndex + 1} de {totalSections}
-                </span>
-              </div>
-              <div className="relative">
-                <Progress 
-                  value={progress} 
-                  className="w-full h-4 rounded-full" 
-                  style={{
-                    '--progress-background': themeColors.primary
-                  } as React.CSSProperties}
-                />
-                <div 
-                  className="absolute inset-0 rounded-full opacity-30"
-                  style={{
-                    background: `linear-gradient(to right, ${themeColors.primary}40, ${themeColors.primary}60)`
-                  }}
-                ></div>
-              </div>
-              <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
-                <span>Inicio</span>
-                <span>Final</span>
+                </div>
+                <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
+                  <span>Inicio</span>
+                  <span>Final</span>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -1382,10 +1510,22 @@ function PreviewSurveyPageContent() {
       </div>
 
       {/* Contenido principal */}
-      <Card className="w-full max-w-5xl shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
+      <Card className="w-full max-w-5xl shadow-2xl border-0 preview-card">
         <CardContent className="p-10">
           {/* Header de la sección */}
-          <div className="text-center mb-10">
+          <div className="text-center mb-10 preview-content">
+      <style jsx global>{`
+        .preview-content h1 {
+          font-size: 2.25rem;
+          font-weight: bold;
+          margin: 0.5em 0;
+        }
+        .preview-content h2 {
+          font-size: 1.5rem;
+          font-weight: bold;
+          margin: 0.5em 0;
+        }
+      `}</style>
             <div 
               className="inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-semibold mb-4 shadow-sm"
               style={{
@@ -1396,10 +1536,23 @@ function PreviewSurveyPageContent() {
               <Target className="h-4 w-4" />
               Sección {currentSectionIndex + 1}
             </div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">{currentSection.title}</h2>
-            {currentSection.description && (
-              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">{currentSection.description}</p>
+            {currentSection.title_html ? (
+              <div
+                dangerouslySetInnerHTML={{ __html: currentSection.title_html }}
+              />
+            ) : (
+              <div className="text-4xl font-bold text-center mb-3">
+                {currentSection.title ? currentSection.title : `Sección ${currentSectionIndex + 1}`}
+              </div>
             )}
+            {currentSection.description && (
+              <div className="flex justify-center mt-2 mb-6">
+                <div className="max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed">
+                  {currentSection.description.replace(/<[^>]+>/g, "")}
+                </div>
+              </div>
+            )}
+      {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
           </div>
 
           {/* Indicador de lógica de visualización */}
@@ -1450,11 +1603,9 @@ function PreviewSurveyPageContent() {
                 <p className="text-muted-foreground text-lg">No hay preguntas configuradas para esta sección.</p>
               </div>
             ) : (
-                             currentSection.questions.map((question, qIndex) => (
-                 <div key={question.id}>
-                   {renderQuestion(question, qIndex)}
-                 </div>
-               ))
+              currentSection.questions.map((question, qIndex) => (
+                renderQuestion(question, qIndex)
+              ))
             )}
           </div>
 
@@ -1484,15 +1635,11 @@ function PreviewSurveyPageContent() {
         </CardContent>
       </Card>
 
-
     </div>
   )
 }
 
 export default function SurveyPreviewPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100">
-      <PreviewSurveyPageContent />
-    </div>
-  )
+  // El fondo general ahora se maneja con .preview-bg
+  return <PreviewSurveyPageContent />
 }

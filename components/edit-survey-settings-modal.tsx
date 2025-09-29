@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import ColorPicker from "./mantine-color-picker"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -54,12 +55,18 @@ interface EditSurveySettingsModalProps {
 }
 
 export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSave }: EditSurveySettingsModalProps) {
-  const [editedSettings, setEditedSettings] = useState<SurveySettings>(currentSettings)
+  // Ensure distributionMethods is always an array
+  const getSafeSettings = (settings: SurveySettings): SurveySettings => ({
+    ...settings,
+    distributionMethods: Array.isArray(settings?.distributionMethods) ? settings.distributionMethods : [],
+  })
+
+  const [editedSettings, setEditedSettings] = useState<SurveySettings>(getSafeSettings(currentSettings))
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
-      setEditedSettings(currentSettings)
+      setEditedSettings(getSafeSettings(currentSettings))
     }
   }, [isOpen, currentSettings])
 
@@ -193,7 +200,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                     <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-blue-200">
                       <Checkbox
                         id="qr_code"
-                        checked={editedSettings.distributionMethods?.includes("qr_code")}
+                        checked={editedSettings.distributionMethods.includes("qr_code")}
                         onCheckedChange={(checked) => handleDistributionMethodChange("qr_code", !!checked)}
                         className="data-[state=checked]:bg-blue-500"
                       />
@@ -289,30 +296,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Previsualización del Tema */}
-              <div className="space-y-4">
-                <h4 className="text-lg font-semibold text-purple-700">Previsualización del Tema</h4>
-                <div className="p-4 bg-white rounded-lg border-2 border-purple-200 shadow-lg">
-                  <div className="space-y-3">
-                    <Button 
-                      className="w-full"
-                      style={{ backgroundColor: editedSettings.theme?.primaryColor || "#18b0a4" }}
-                    >
-                      Título
-                    </Button>
-                    <p 
-                      className="text-center"
-                      style={{ color: editedSettings.theme?.textColor || "#1f2937" }}
-                    >
-                      Texto de ejemplo
-                    </p>
-                  </div>
-                  <div className="mt-4 text-sm text-purple-700 space-y-1">
-                    <p>• Color primario: {editedSettings.theme?.primaryColor || "#18b0a4"}</p>
-                    <p>• Color de fondo: {editedSettings.theme?.backgroundColor || "#ffffff"}</p>
-                    <p>• Color de texto: {editedSettings.theme?.textColor || "#1f2937"}</p>
-                  </div>
-                </div>
-              </div>
+             
 
               {/* Selectores de Color */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -323,11 +307,17 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       className="w-8 h-8 rounded border-2 border-purple-200"
                       style={{ backgroundColor: editedSettings.theme?.primaryColor || "#18b0a4" }}
                     />
-                    <Input
-                      value={editedSettings.theme?.primaryColor || "#18b0a4"}
-                      onChange={(e) => handleThemeChange("primaryColor", e.target.value)}
-                      className="bg-white border-purple-300 focus:border-purple-500"
-                    />
+                    <div className="flex-1">
+                      <ColorPicker
+                        value={editedSettings.theme?.primaryColor || "#18b0a4"}
+                        onChange={(color: string) => handleThemeChange("primaryColor", color)}
+                        format="hex"
+                        swatches={["#10b981", "#3b82f6", "#8b5cf6", "#f97316", "#ec4899", "#18b0a4", "#ffffff", "#1f2937"]}
+                        fullWidth
+                        size="md"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-purple-600">Color principal para botones y elementos destacados</p>
                 </div>
@@ -339,11 +329,17 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       className="w-8 h-8 rounded border-2 border-purple-200"
                       style={{ backgroundColor: editedSettings.theme?.backgroundColor || "#ffffff" }}
                     />
-                    <Input
-                      value={editedSettings.theme?.backgroundColor || "#ffffff"}
-                      onChange={(e) => handleThemeChange("backgroundColor", e.target.value)}
-                      className="bg-white border-purple-300 focus:border-purple-500"
-                    />
+                    <div className="flex-1">
+                      <ColorPicker
+                        value={editedSettings.theme?.backgroundColor || "#ffffff"}
+                        onChange={(color: string) => handleThemeChange("backgroundColor", color)}
+                        format="hex"
+                        swatches={["#ffffff", "#f0fdf4", "#eff6ff", "#faf5ff", "#fff7ed", "#fdf2f8", "#f0fdf4", "#f9fafb"]}
+                        fullWidth
+                        size="md"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-purple-600">Color de fondo principal de la encuesta</p>
                 </div>
@@ -355,11 +351,17 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                       className="w-8 h-8 rounded border-2 border-purple-200"
                       style={{ backgroundColor: editedSettings.theme?.textColor || "#1f2937" }}
                     />
-                    <Input
-                      value={editedSettings.theme?.textColor || "#1f2937"}
-                      onChange={(e) => handleThemeChange("textColor", e.target.value)}
-                      className="bg-white border-purple-300 focus:border-purple-500"
-                    />
+                    <div className="flex-1">
+                      <ColorPicker
+                        value={editedSettings.theme?.textColor || "#1f2937"}
+                        onChange={(color: string) => handleThemeChange("textColor", color)}
+                        format="hex"
+                        swatches={["#1f2937", "#064e3b", "#1e3a8a", "#5b21b6", "#9a3412", "#be185d", "#374151", "#000000"]}
+                        fullWidth
+                        size="md"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-purple-600">Color del texto principal</p>
                 </div>
@@ -386,62 +388,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
           </Card>
 
           {/* Marca */}
-          <Card className="border-2 border-orange-200 bg-gradient-to-br from-white via-orange-50/50 to-amber-100/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-800">
-                <Building2 className="h-5 w-5 text-orange-600" />
-                Marca
-              </CardTitle>
-              <CardDescription className="text-orange-700">
-                Personaliza la identidad visual de tu encuesta
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                    <Checkbox
-                      id="showLogo"
-                      checked={editedSettings.branding?.showLogo}
-                      onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
-                      className="data-[state=checked]:bg-orange-500"
-                    />
-                    <Label htmlFor="showLogo" className="font-medium text-orange-800">Mostrar logo</Label>
-                  </div>
-                  
-                  {editedSettings.branding?.showLogo && (
-                    <div className="space-y-3">
-                      <Label className="text-sm font-medium text-orange-800">Posición del logo</Label>
-                      <Select
-                        value={editedSettings.branding?.logoPosition || "top"}
-                        onValueChange={(value) => handleBrandingChange("logoPosition", value)}
-                      >
-                        <SelectTrigger className="bg-white border-orange-300 focus:border-orange-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="top">Arriba</SelectItem>
-                          <SelectItem value="center">Centro</SelectItem>
-                          <SelectItem value="bottom">Abajo</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <Label className="text-sm font-medium text-orange-800">URL del Logo</Label>
-                  <Input
-                    value={editedSettings.branding?.logo || ""}
-                    onChange={(e) => handleBrandingChange("logo", e.target.value)}
-                    placeholder="https://ejemplo.com/logo.png"
-                    className="bg-white border-orange-300 focus:border-orange-500"
-                  />
-                  <p className="text-xs text-orange-600">Ingresa la URL de tu logo</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          
 
           {/* Seguridad */}
           <Card className="border-2 border-red-200 bg-gradient-to-br from-white via-red-50/50 to-rose-100/50">

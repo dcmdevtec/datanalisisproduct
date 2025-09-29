@@ -1,0 +1,22 @@
+.font-selector {
+  width: 180px;
+  margin-right: 8px;
+}
+
+.mantine-Select-dropdown {
+  z-index: 1000;
+}
+
+.mantine-RichTextEditor-content {
+  font-family: inherit;
+}
+
+/* Estilos para las fuentes en el menú desplegable */
+.mantine-Select-item[data-value="Arial"] { font-family: Arial; }
+.mantine-Select-item[data-value="Times New Roman"] { font-family: "Times New Roman"; }
+.mantine-Select-item[data-value="Helvetica"] { font-family: Helvetica; }
+.mantine-Select-item[data-value="Georgia"] { font-family: Georgia; }
+.mantine-Select-item[data-value="Verdana"] { font-family: Verdana; }
+.mantine-Select-item[data-value="Tahoma"] { font-family: Tahoma; }
+.mantine-Select-item[data-value="Trebuchet MS"] { font-family: "Trebuchet MS"; }
+.mantine-Select-item[data-value="Impact"] { font-family: Impact; }
