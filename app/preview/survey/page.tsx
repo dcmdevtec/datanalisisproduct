@@ -849,13 +849,55 @@ function PreviewSurveyPageContent() {
               />
             )
           case "time":
+            // Mostrar formato de hora configurado
+            const timeFormat = question.config?.timeFormat || "24";
+            const ampmKey = `${question.id}_ampm`;
+            let hourValue = answers[question.id] || "";
+            let ampmValue = answers[ampmKey] || "AM";
+            // Si la respuesta es tipo "03:14 AM", separar
+            if (timeFormat === "12" && hourValue && hourValue.includes(" ")) {
+              const [h, ap] = hourValue.split(" ");
+              hourValue = h;
+              ampmValue = ap;
+            }
+            const handleTimeChange = (val: string) => {
+              if (timeFormat === "12") {
+                handleAnswerChange(question.id, val + " " + ampmValue);
+              } else {
+                handleAnswerChange(question.id, val);
+              }
+            };
+            const handleAMPMChange = (val: string) => {
+              handleAnswerChange(question.id, (hourValue || "") + " " + val);
+              handleAnswerChange(ampmKey, val);
+            };
             return (
-              <Input
-                type="time"
-                value={answers[question.id] || ""}
-                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                className="w-full"
-              />
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="time"
+                    value={hourValue}
+                    onChange={e => handleTimeChange(e.target.value)}
+                    className="w-full max-w-xs"
+                    step={60}
+                  />
+                  {timeFormat === "12" && (
+                    <select
+                      className="border rounded px-2 py-1 text-sm"
+                      value={ampmValue}
+                      onChange={e => handleAMPMChange(e.target.value)}
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {timeFormat === "24"
+                    ? "Formato 24 horas (00:00 - 23:59)"
+                    : "Formato 12 horas (AM/PM)"}
+                </div>
+              </div>
             )
           case "email":
             return (
