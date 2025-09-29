@@ -1200,8 +1200,8 @@ function PreviewSurveyPageContent() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div
-                  className="text-xl font-semibold text-gray-900 flex-1 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: question.text || "Pregunta sin texto" }}
+                  className="question-title-html flex-1"
+                  dangerouslySetInnerHTML={{ __html: question.text_html || question.text || "Pregunta sin texto" }}
                 />
                 <div className="flex gap-2">
                   {question.required && (
@@ -1465,11 +1465,9 @@ function PreviewSurveyPageContent() {
                 <p className="text-muted-foreground text-lg">No hay preguntas configuradas para esta sección.</p>
               </div>
             ) : (
-                             currentSection.questions.map((question, qIndex) => (
-                 <div key={question.id}>
-                   {renderQuestion(question, qIndex)}
-                 </div>
-               ))
+              currentSection.questions.map((question, qIndex) => (
+                renderQuestion(question, qIndex)
+              ))
             )}
           </div>
 
@@ -1498,7 +1496,6 @@ function PreviewSurveyPageContent() {
           </div>
         </CardContent>
       </Card>
-
 
     </div>
   )
