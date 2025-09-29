@@ -969,14 +969,30 @@ function PreviewSurveyPageContent() {
                 <Input
                   type="file"
                   onChange={(e) => {
-                    const file = e.target.files?.[0]
+                    const file = e.target.files?.[0];
                     if (file) {
-                      handleAnswerChange(question.id, file.name)
+                      // Validar tipo y tamaño
+                      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+                      const maxSize = 20 * 1024 * 1024; // 20 MB
+                      if (!allowedTypes.includes(file.type)) {
+                        alert("Solo se permiten archivos JPG, PNG o PDF.");
+                        e.target.value = "";
+                        return;
+                      }
+                      if (file.size > maxSize) {
+                        alert("El archivo no debe superar los 20 MB.");
+                        e.target.value = "";
+                        return;
+                      }
+                      handleAnswerChange(question.id, file.name);
                     }
                   }}
-                  accept={question.type === "image_upload" ? "image/*" : "*"}
+                  accept=".jpg,.jpeg,.png,.pdf"
                   className="w-full"
                 />
+                <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-100">
+                  Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b>
+                </div>
                 {answers[question.id] && (
                   <p className="text-sm text-muted-foreground">Archivo seleccionado: {answers[question.id]}</p>
                 )}
@@ -1380,7 +1396,11 @@ function PreviewSurveyPageContent() {
                 {surveyData.title}
               </CardTitle>
               {surveyData.description && (
-                <p className="text-xl text-muted-foreground mb-6 max-w-3xl mx-auto leading-relaxed">{surveyData.description}</p>
+                <div className="flex justify-center mb-6">
+                  <div className="max-w-3xl w-full bg-blue-50/80 rounded-xl shadow p-5 text-center text-blue-900 text-lg border border-blue-100 font-normal leading-relaxed">
+                    {surveyData.description}
+                  </div>
+                </div>
               )}
               {/* Barra de progreso mejorada */}
               <div className="mt-8 max-w-2xl mx-auto">
@@ -1452,9 +1472,11 @@ function PreviewSurveyPageContent() {
               </div>
             )}
             {currentSection.description && (
-              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-                {currentSection.description.replace(/<[^>]+>/g, "")}
-              </p>
+              <div className="flex justify-center mt-2 mb-6">
+                <div className="max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed">
+                  {currentSection.description.replace(/<[^>]+>/g, "")}
+                </div>
+              </div>
             )}
       {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
           </div>
