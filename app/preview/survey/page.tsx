@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
@@ -901,10 +902,9 @@ function PreviewSurveyPageContent() {
             )
           case "email":
             return (
-              <Input
-                type="email"
+              <EmailAutocompleteInput
                 value={answers[question.id] || ""}
-                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                onChange={val => handleAnswerChange(question.id, val)}
                 placeholder="ejemplo@email.com"
                 className="w-full"
               />
@@ -1320,7 +1320,8 @@ function PreviewSurveyPageContent() {
                 style={{
                   background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
                   WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
+                  WebkitTextFillColor: 'transparent',
+                  fontFamily: surveyData.settings?.theme?.fontFamily || undefined
                 }}
               >
                 {surveyData.title}
@@ -1383,12 +1384,20 @@ function PreviewSurveyPageContent() {
                 dangerouslySetInnerHTML={{ __html: currentSection.title_html }}
               />
             ) : (
-              <div className="section-title-html text-4xl font-bold text-center mb-3">
+              <div
+                className="section-title-html text-4xl font-bold text-center mb-3"
+              >
                 {currentSection.title ? currentSection.title : `Sección ${currentSectionIndex + 1}`}
               </div>
             )}
             {currentSection.description && (
-              <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              <p
+                className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed"
+                style={{
+                  color: themeColors.text,
+                  fontFamily: surveyData.settings?.theme?.fontFamily || undefined
+                }}
+              >
                 {currentSection.description.replace(/<[^>]+>/g, "")}
               </p>
             )}
@@ -1398,10 +1407,6 @@ function PreviewSurveyPageContent() {
           padding: 0;
           font-weight: bold;
           text-align: center;
-        }
-        .section-title-html span, .section-title-html h1, .section-title-html h2 {
-          color: inherit !important;
-          font-family: inherit !important;
         }
         .section-title-html * {
           line-height: 1.1;
