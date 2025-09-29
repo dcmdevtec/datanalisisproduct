@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Palette, Settings } from "lucide-react"
@@ -161,6 +162,8 @@ export function QuestionEditor({
     setShowConfig(false)
   }
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
+  // Estado para mostrar el picker de emoji por índice
+  const [showEmojiPicker, setShowEmojiPicker] = useState<number | null>(null)
   // Editor enriquecido para enunciado de pregunta (usa text_html si existe, nunca el texto plano si hay HTML)
   const [localQuestionTextHtml, setLocalQuestionTextHtml] = useState(question.text_html ?? "");
 
@@ -1018,40 +1021,96 @@ export function QuestionEditor({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Escala</Label>
-                <Input
-                  type="number"
-                  min={2}
-                  max={10}
-                  value={question.ratingScale || 5}
-                  onChange={e => onUpdateQuestion(sectionId, question.id, "ratingScale", Number(e.target.value))}
-                  className="w-24"
-                />
+                <div className="flex gap-2 items-center">
+                  <span>Min:</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={question.config?.ratingMax || 10}
+                    value={question.config?.ratingMin ?? 1}
+                    onChange={e => {
+                      const min = Number(e.target.value);
+                      const max = question.config?.ratingMax ?? 5;
+                      let emojis = question.config?.ratingEmojis || [];
+                      if (max - min + 1 !== emojis.length) {
+                        // Ajustar el array de emojis
+                        const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
+                        emojis = Array.from({length: max - min + 1}, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
+                      }
+                      const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                    }}
+                    className="w-16"
+                  />
+                  <span>Max:</span>
+                  <Input
+                    type="number"
+                    min={question.config?.ratingMin ?? 1}
+                    max={20}
+                    value={question.config?.ratingMax ?? 5}
+                    onChange={e => {
+                      const max = Number(e.target.value);
+                      const min = question.config?.ratingMin ?? 1;
+                      let emojis = question.config?.ratingEmojis || [];
+                      if (max - min + 1 !== emojis.length) {
+                        // Ajustar el array de emojis
+                        const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
+                        emojis = Array.from({length: max - min + 1}, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
+                      }
+                      const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                      autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                    }}
+                    className="w-16"
+                  />
+                </div>
               </div>
               <div>
-                <Label>Estilo de emoji</Label>
-                <Select
-                  value={question.config?.ratingEmojiSet || RATING_EMOJI_SETS[0].key}
-                  onValueChange={val => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, ratingEmojiSet: val })}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Estilo de emoji" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RATING_EMOJI_SETS.map(set => (
-                      <SelectItem key={set.key} value={set.key}>
-                        {set.label} {set.emojis.join(" ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Emojis de la escala</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(Array.isArray(question.config?.ratingEmojis)
+                    ? question.config.ratingEmojis
+                    : Array.from({length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1}, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
+                  ).map((emoji, idx) => (
+                    <div key={idx} className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        className="text-3xl bg-white border rounded-lg shadow px-2 py-1 hover:bg-blue-50"
+                        onClick={() => setShowEmojiPicker(idx)}
+                      >
+                        {emoji}
+                      </button>
+                      <span className="text-xs text-muted-foreground">{(question.config?.ratingMin ?? 1) + idx}</span>
+                      {showEmojiPicker === idx && (
+                        <div className="absolute z-50 mt-2">
+                          <EmojiPicker
+                            onSelect={selectedEmoji => {
+                              const emojis = [...(question.config?.ratingEmojis || [])];
+                              emojis[idx] = selectedEmoji;
+                              const newConfig = { ...question.config, ratingEmojis: emojis };
+                              onUpdateQuestion(sectionId, question.id, "config", newConfig);
+                              autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                              setShowEmojiPicker(null);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="mt-4 flex gap-2 items-center">
               <span className="text-muted-foreground text-sm mr-2">Vista previa:</span>
-              {getRatingEmojis(question.ratingScale || 5, question.config?.ratingEmojiSet).map((emoji, idx) => (
+              {(Array.isArray(question.config?.ratingEmojis)
+                ? question.config.ratingEmojis
+                : Array.from({length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1}, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
+              ).map((emoji, idx) => (
                 <span key={idx} style={{ fontSize: 28 }}>{emoji}</span>
               ))}
             </div>
+
           </div>
         )}
 
