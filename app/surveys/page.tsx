@@ -512,7 +512,7 @@ function SurveysPageContent() {
                         </TableCell>
                         <TableCell className="text-gray-700 capitalize px-2 sm:px-4">
                           <div className="truncate max-w-[60px] sm:max-w-[80px]">
-                            {survey.status}
+                            {survey.status === "draft" ? "Prueba" : survey.status}
                           </div>
                         </TableCell>
                         <TableCell className="text-center text-gray-700 px-2 sm:px-4">
@@ -580,7 +580,7 @@ function SurveysPageContent() {
                     <div className="text-sm text-gray-500 truncate mb-1" title={survey.projects?.name || 'N/A'}><span className="font-semibold">Proyecto:</span> {survey.projects?.name || 'N/A'}</div>
                     <div className="text-sm text-gray-500 truncate mb-1" title={survey.projects?.companies?.name || 'N/A'}><span className="font-semibold">Empresa:</span> {survey.projects?.companies?.name || 'N/A'}</div>
                     <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Descripción:</span> {survey.description || '-'}</div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Estado:</span> {survey.status}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Estado:</span> {survey.status === "draft" ? "Prueba" : survey.status}</div>
                     <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
                       <span className="font-semibold">Respuestas:</span> {survey.responses_count ?? 0}
                     </div>
