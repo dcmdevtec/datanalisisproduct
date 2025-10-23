@@ -200,17 +200,21 @@ function stripHtmlTags(text: string | undefined): string {
 // ...existing code...
 
 function SkipLogicVisualizer({
+  question,
   rules,
   allSections,
   allQuestions,
   onAddRule,
   onDeleteRule,
+  onUpdateRule,
 }: {
+  question: Question;
   rules: any[];
   allSections: SurveySection[];
   allQuestions: Question[];
   onAddRule: (rule: any) => void;
   onDeleteRule: (index: number) => void;
+  onUpdateRule?: (index: number, field: string, value: any) => void;
 }) {
   // Estados para la nueva regla
   const [conditionOperator, setConditionOperator] = useState("equals");
@@ -230,6 +234,19 @@ function SkipLogicVisualizer({
     { value: "is_empty", label: "está vacía" },
     { value: "is_not_empty", label: "no está vacía" },
   ];
+  
+  // Reset condition value when operator changes
+  useEffect(() => {
+    setConditionValue("");
+  }, [conditionOperator]);
+
+  // Reset condition value when question type that needs options changes
+  useEffect(() => {
+    if (question.type === 'multiple_choice' || question.type === 'checkbox') {
+        setConditionValue("");
+    }
+  }, [question.type]);
+
 
   // Mostrar selectores de destino solo si hay valor definido
   useEffect(() => {
@@ -248,106 +265,173 @@ function SkipLogicVisualizer({
 
   return (
     <div className="overflow-x-auto">
-      {/* Formulario inline para agregar nueva regla */}
-      <div className="mb-4 p-4 bg-gradient-to-br from-emerald-50 via-white to-emerald-100 border border-emerald-200 rounded-xl shadow flex flex-col gap-4 items-start">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full items-center">
-          <span className="font-semibold text-emerald-700 col-span-1 md:col-span-1">Si la respuesta de la pregunta actual</span>
-          <select
-            className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
-            value={conditionOperator}
-            onChange={e => setConditionOperator(e.target.value)}
-          >
-            {operatorOptions.map((op) => (
-              <option key={op.value} value={op.value}>{op.label}</option>
-            ))}
-          </select>
-          {(conditionOperator !== "is_empty" && conditionOperator !== "is_not_empty") && (
-            <input
-              type="text"
-              className="border border-emerald-300 rounded-lg px-3 py-2 min-w-[120px] bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
-              value={conditionValue}
-              onChange={e => setConditionValue(e.target.value)}
-              placeholder="Valor de la respuesta"
-            />
-          )}
-        </div>
-        {showDestSelectors && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full items-center mt-2">
-            <span className="font-semibold text-emerald-700 col-span-1">Entonces saltar a:</span>
-            <select
-              className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
-              value={newSectionId}
-              onChange={e => setNewSectionId(e.target.value)}
-            >
-              <option value="">Selecciona sección destino</option>
-              {allSections.map((section) => (
-                <option key={section.id} value={section.id}>{section.title}</option>
-              ))}
-            </select>
-            {/* {newSectionId && ( 
-              <select
-                className="border border-emerald-300 rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 col-span-1"
-                value={newQuestionId}
-                onChange={e => setNewQuestionId(e.target.value)}
-              >
-                <option value="">Selecciona pregunta destino (opcional)</option>
-                {sectionQuestions.map((q) => (
-                  <option key={q.id} value={q.id}>{q.text}</option>
-                ))}
-              </select>
-            )}*/}
-            <button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2 rounded-lg shadow transition disabled:bg-emerald-200 col-span-1"
-              onClick={() => {
-                onAddRule({
-                  condition: conditionOperator,
-                  value: conditionValue,
-                  targetSectionId: newSectionId,
-                  targetQuestionId: newQuestionId,
-                  enabled: true,
-                });
-                setConditionOperator("equals");
-                setConditionValue("");
-                setNewSectionId("");
-                setNewQuestionId("");
-              }}
-              disabled={!newSectionId}
-            >Agregar</button>
-          </div>
-        )}
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full border border-emerald-200 bg-white rounded-xl shadow">
-          <thead className="bg-emerald-50">
-            <tr>
-              <th className="px-4 py-2 text-left text-emerald-800 font-bold">#</th>
-              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Condición</th>
-              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Sección destino</th>
-              
-              <th className="px-4 py-2 text-left text-emerald-800 font-bold">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rules.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="text-center py-6 text-muted-foreground">No hay reglas de salto configuradas.</td>
-              </tr>
-            ) : (
-              rules.map((rule, idx) => (
-                <tr key={idx} className="hover:bg-emerald-50">
-                  <td className="px-4 py-2 font-bold text-emerald-700">{idx + 1}</td>
-                  <td className="px-4 py-2">{operatorOptions.find(op => op.value === rule.condition)?.label || rule.condition} {rule.value && `: ${rule.value}`}</td>
-                  <td className="px-4 py-2">{allSections.find(s => s.id === rule.targetSectionId)?.title || ""}</td>
-                 
-                  <td className="px-4 py-2">
-                    <button className="text-red-600 hover:underline font-semibold" onClick={() => onDeleteRule(idx)}>Eliminar</button>
-                  </td>
+      {/* If question has explicit options (multiple_choice, dropdown, checkbox), show per-option jump editor */}
+      {(question.type === 'multiple_choice' || question.type === 'dropdown' || question.type === 'checkbox') &&
+        question.options && question.options.length > 0 && (
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-emerald-800 mb-2">Saltos por opción</h4>
+          <div className="bg-white border border-emerald-100 rounded-lg shadow-sm p-3">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-xs text-emerald-700">
+                  <th className="py-2">Opción</th>
+                  <th className="py-2">Saltar a</th>
+                  <th className="py-2">Acción</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {question.options.map((option, optIdx) => {
+                  // buscar regla existente que aplique a esta opción
+                  const existingRuleIndex = rules.findIndex(
+                    (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === String(option),
+                  )
+                  const existingRule = existingRuleIndex > -1 ? rules[existingRuleIndex] : null
+                  return (
+                    <tr key={optIdx} className="border-t">
+                      <td className="py-3 align-top">
+                        <div className="text-sm text-emerald-900">{option}</div>
+                      </td>
+                      <td className="py-2">
+                        <select
+                          className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
+                          value={existingRule?.targetSectionId || ''}
+                          onChange={(e) => {
+                            const dest = e.target.value
+                            // Si existe regla, actualizar destino o eliminar si vacío
+                            if (existingRuleIndex > -1) {
+                              if (!dest) {
+                                onDeleteRule(existingRuleIndex)
+                              } else if (onUpdateRule) {
+                                onUpdateRule(existingRuleIndex, 'targetSectionId', dest)
+                              }
+                            } else {
+                              // crear nueva regla para esta opción
+                              if (dest) {
+                                onAddRule({
+                                  condition: 'equals',
+                                  operator: 'equals',
+                                  value: option,
+                                  targetSectionId: dest,
+                                  targetQuestionId: '',
+                                  targetQuestionText: '',
+                                  enabled: true,
+                                })
+                              }
+                            }
+                          }}
+                        >
+                          <option value="">-- Elegir sección --</option>
+                          {allSections.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.title}
+                            </option>
+                          ))}
+                          <option value="END_SURVEY">Finalizar Encuesta</option>
+                        </select>
+                      </td>
+                      <td className="py-2 align-top">
+                        {existingRuleIndex > -1 ? (
+                          <button className="text-red-600 hover:underline" onClick={() => onDeleteRule(existingRuleIndex)}>
+                            Eliminar
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Sin salto</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* For other question types render a generic rule editor (single rule per condition/value) */}
+      {!(question.type === 'multiple_choice' || question.type === 'dropdown' || question.type === 'checkbox') && (
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-emerald-800 mb-2">Saltos por valor</h4>
+          <div className="bg-white border border-emerald-100 rounded-lg shadow-sm p-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="text-xs text-emerald-700">Operador</label>
+                <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {operatorOptions.map((op) => (
+                      <SelectItem key={op.value} value={op.value}>
+                        {op.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs text-emerald-700">Valor</label>
+                {/* Render a context-aware value input */}
+                {question.type === 'number' ? (
+                  <Input type="number" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} />
+                ) : question.type === 'date' || question.type === 'time' ? (
+                  <Input type={question.type === 'date' ? 'date' : 'time'} value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} />
+                ) : (
+                  <Input value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} />
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs text-emerald-700">Saltar a</label>
+                <select
+                  className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
+                  value={newSectionId}
+                  onChange={(e) => setNewSectionId(e.target.value)}
+                >
+                  <option value="">-- Elegir sección --</option>
+                  {allSections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
+                  ))}
+                  <option value="END_SURVEY">Finalizar Encuesta</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-3 flex justify-end">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    if (!newSectionId) return
+                    // create or update rule: if a matching rule by operator+value exists, update it
+                    const idx = rules.findIndex((r) => r.operator === conditionOperator && String(r.value) === String(conditionValue))
+                    if (idx > -1) {
+                      if (onUpdateRule) onUpdateRule(idx, 'targetSectionId', newSectionId)
+                    } else {
+                      onAddRule({
+                        condition: conditionOperator,
+                        operator: conditionOperator,
+                        value: conditionValue,
+                        targetSectionId: newSectionId,
+                        targetQuestionId: '',
+                        targetQuestionText: '',
+                        enabled: true,
+                      })
+                    }
+                    // reset
+                    setConditionValue('')
+                    setNewSectionId('')
+                  }}
+                >
+                  Agregar/Actualizar Regla
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Formulario inline para agregar nueva regla */}
+      
     </div>
   );
 }
@@ -1005,7 +1089,7 @@ export function AdvancedQuestionConfig({
                               {/* Botón Guardar condición */}
                               <div className="flex justify-end pt-2">
                                 <Button
-                                  variant="success"
+                                  variant="default"
                                   size="sm"
                                   disabled={saving}
                                   onClick={async () => {
@@ -1062,6 +1146,7 @@ export function AdvancedQuestionConfig({
                   
 
                   <SkipLogicVisualizer
+                    question={question}
                     rules={config.skipLogic?.rules || []}
                     allSections={allSections}
                     allQuestions={allQuestions}
@@ -1075,6 +1160,7 @@ export function AdvancedQuestionConfig({
                       }));
                     }}
                     onDeleteRule={removeSkipRule}
+                    onUpdateRule={(index, field, value) => updateSkipRule(index, field, value)}
                   />
                 </div>
               )}
