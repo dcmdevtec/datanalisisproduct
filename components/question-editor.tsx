@@ -1325,94 +1325,40 @@ export function QuestionEditor({
                       className="flex-1"
                     />
 
-                    <div className="flex items-center gap-3">
-                      {imageUrl ? (
-                        <>
-                          <Input
-                            value={imageUrl}
-                            onChange={(e) => {
-                              const val = e.target.value
+                    {/* Mostrar controles de imagen solo cuando NO es tipo dropdown */}
+                    {question.type !== 'dropdown' && (
+                      <div className="flex items-center gap-3">
+                        <input
+                          id={`file-input-${question.id}-${index}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files && e.target.files[0]
+                            if (!f) return
+                            const reader = new FileReader()
+                            reader.onload = () => {
+                              const dataUrl = reader.result
                               const newOptions = question.options.map((opt: any, idx: number) => {
                                 if (idx !== index) return opt
-                                if (isObj) return { ...opt, image: val }
-                                // convert string to object with label and image
-                                return { label: label || '', image: val }
+                                if (isObj) return { ...opt, image: dataUrl }
+                                return { label: label || '', image: dataUrl }
                               })
-                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                            }}
-                            placeholder="URL de la imagen (opcional) o DataURL"
-                            className="flex-1"
-                          />
-                          <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border">
-                            <img src={imageUrl} alt={label || `Opción ${index + 1}`} className="w-full h-full object-cover" />
-                          </div>
+                              onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                            }
+                            reader.readAsDataURL(f)
+                          }}
+                        />
 
-                          {/* Hidden file input for image upload -> Base64 */}
-                          <input
-                            id={`file-input-${question.id}-${index}`}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = e.target.files && e.target.files[0]
-                              if (!f) return
-                              const reader = new FileReader()
-                              reader.onload = () => {
-                                const dataUrl = reader.result
-                                const newOptions = question.options.map((opt: any, idx: number) => {
-                                  if (idx !== index) return opt
-                                  if (isObj) return { ...opt, image: dataUrl }
-                                  return { label: label || '', image: dataUrl }
-                                })
-                                onUpdateQuestion(sectionId, question.id, 'options', newOptions)
-                              }
-                              reader.readAsDataURL(f)
-                            }}
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}
-                          >
-                            Subir imagen
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              // convert to object option with label and empty image
-                              const newOptions = question.options.map((opt: any, idx: number) => (idx === index ? { label: label } : opt))
-                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                            }}
-                          >
-                            Agregar imagen
-                          </Button>
-                          <input
-                            id={`file-input-${question.id}-${index}`}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = e.target.files && e.target.files[0]
-                              if (!f) return
-                              const reader = new FileReader()
-                              reader.onload = () => {
-                                const dataUrl = reader.result
-                                const newOptions = question.options.map((opt: any, idx: number) => (idx === index ? { label: label || '', image: dataUrl } : opt))
-                                onUpdateQuestion(sectionId, question.id, 'options', newOptions)
-                              }
-                              reader.readAsDataURL(f)
-                            }}
-                          />
-                          <Button size="sm" variant="ghost" onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}>
-                            Subir imagen
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}
+                        >
+                          Subir imagen
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                     <div>
@@ -1441,36 +1387,38 @@ export function QuestionEditor({
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
 
-            {/* Vista previa grande de opciones con imágenes */}
-            <div className="mt-4">
-              <Label className="font-medium">Vista previa de opciones</Label>
-              <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {question.options.map((option: any, idx: number) => {
-                  const isObj = option && typeof option === 'object'
-                  const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
-                  const imgFromObj = isObj ? (option.image || option.url || option.src || '') : ''
-                  const s = String(option ?? '')
-                  const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
-                  const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
-                  const imageUrl = imgFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
+            {/* Vista previa grande de opciones con imágenes. Oculta para tipo 'dropdown' */}
+            {question.type !== 'dropdown' && (
+              <div className="mt-4">
+                <Label className="font-medium">Vista previa de opciones</Label>
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {question.options.map((option: any, idx: number) => {
+                    const isObj = option && typeof option === 'object'
+                    const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
+                    const imgFromObj = isObj ? (option.image || option.url || option.src || '') : ''
+                    const s = String(option ?? '')
+                    const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+                    const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+                    const imageUrl = imgFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
 
-                  return (
-                    <div key={idx} className="border rounded-lg overflow-hidden bg-white shadow-sm">
-                      {imageUrl ? (
-                        <div className="w-full h-40 bg-gray-100">
-                          <img src={imageUrl} alt={label || `Opción ${idx + 1}`} className="w-full h-full object-cover" />
+                    return (
+                      <div key={idx} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                        {imageUrl ? (
+                          <div className="w-full h-40 bg-gray-100">
+                            <img src={imageUrl} alt={label || `Opción ${idx + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400">No image</div>
+                        )}
+                        <div className="p-3">
+                          <div className="text-sm text-emerald-900">{label || `Opción ${idx + 1}`}</div>
                         </div>
-                      ) : (
-                        <div className="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400">No image</div>
-                      )}
-                      <div className="p-3">
-                        <div className="text-sm text-emerald-900">{label || `Opción ${idx + 1}`}</div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
             {question.config?.allowOther && (
               <div className="flex items-center gap-2 mt-2">
                 <div className="w-6 h-6 flex items-center justify-center">
