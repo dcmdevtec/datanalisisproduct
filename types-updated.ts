@@ -349,8 +349,11 @@ export interface Question {
   id: string
   type: string
   text: string
-  options: string[]
+  // Options can be legacy strings or richer objects when images/metadata are used
+  options: Array<string | { value?: string; label?: string; image?: string | null; image_base64?: string | null; metadata?: any }>
   required: boolean
+  // HTML-rich text stored separately from plain text
+  text_html?: string
   image?: string | null
   matrixRows?: string[]
   matrixCols?: string[]
@@ -369,7 +372,8 @@ export interface Question {
     allowOther?: boolean
     otherText?: string
     randomizeOptions?: boolean
-    ratingEmojis?: boolean
+    // ratingEmojis historically was boolean; now may be an array of emojis for custom scales
+    ratingEmojis?: boolean | string[]
     displayLogic?: DisplayLogic
     skipLogic?: SkipLogic
     validation?: ValidationConfig

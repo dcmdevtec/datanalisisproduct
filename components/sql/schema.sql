@@ -1,3 +1,39 @@
+-- Ensure required extensions and helper functions exist
+-- Create extension for UUID generation if not present (try pgcrypto and uuid-ossp fallback)
+create extension if not exists pgcrypto;
+create extension if not exists "uuid-ossp";
+
+-- Function to update the updated_at timestamp on row updates
+create or replace function public.update_updated_at_column()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+-- Prevent accidental ID changes (no-op guard used by some tables)
+create or replace function public.prevent_questions_id_change()
+returns trigger language plpgsql as $$
+begin
+  if (old.id is distinct from new.id) then
+    raise exception 'ID change not allowed';
+  end if;
+  return new;
+end;
+$$;
+
+-- Prevent ID change for survey_sections
+create or replace function public.prevent_survey_sections_id_change()
+returns trigger language plpgsql as $$
+begin
+  if (old.id is distinct from new.id) then
+    raise exception 'ID change not allowed on survey_sections';
+  end if;
+  return new;
+end;
+$$;
+
 create table public.questions (
   id uuid not null default extensions.uuid_generate_v4 (),
   survey_id uuid not null,
@@ -181,3 +217,78 @@ create index IF not exists surveys_assigned_zones_idx on public.surveys using gi
 create trigger update_surveys_updated_at BEFORE
 update on surveys for EACH row
 execute FUNCTION update_updated_at_column ();
+
+-- ==================================================
+-- Nueva tabla: question_options (opciones normalizadas)
+-- Soporta almacenamiento de imagenes en Base64 (campo image_base64)
+-- ==================================================
+create table if not exists public.question_options (
+  id uuid not null default gen_random_uuid(),
+  question_id uuid not null,
+  value text null,
+  label text not null,
+  image_url text null,
+  image_base64 text null,
+  order_num integer not null default 0,
+  metadata jsonb null default '{}'::jsonb,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint question_options_pkey primary key (id),
+  constraint question_options_question_id_fkey foreign key (question_id) references public.questions (id) on delete cascade
+) TABLESPACE pg_default;
+
+create index if not exists idx_question_options_question_id on public.question_options using btree (question_id) TABLESPACE pg_default;
+create index if not exists idx_question_options_image_url on public.question_options using btree (image_url) TABLESPACE pg_default;
+create index if not exists idx_question_options_metadata_gin on public.question_options using gin (metadata) TABLESPACE pg_default;
+
+create trigger update_question_options_updated_at BEFORE
+update on public.question_options for EACH row
+execute FUNCTION update_updated_at_column ();
+
+-- =====================================================================
+-- Nota de migración (EJEMPLO - ejecutar en staging primero):
+-- 1) Migrar las opciones almacenadas en questions.options (jsonb) a filas
+-- 2) image_url se poblra si existía; image_base64 quedará NULL hasta que
+--    un script descargue la imagen y guarde su Base64 en image_base64.
+-- =====================================================================
+
+/*
+do $$
+declare
+  rec record;
+  opt jsonb;
+  idx int;
+  opt_value text;
+  opt_label text;
+  opt_image text;
+begin
+  for rec in select id, options from public.questions loop
+    if rec.options is null then
+      continue;
+    end if;
+    idx := 0;
+    for opt in select * from jsonb_array_elements(rec.options) loop
+      idx := idx + 1;
+      if jsonb_typeof(opt) = 'string' then
+        opt_value := opt #>> '{}';
+        opt_label := opt_value;
+        opt_image := null;
+      else
+        opt_value := (opt->>'value')::text;
+        opt_label := coalesce(opt->>'label', opt->>'value', '')::text;
+        opt_image := opt->>'image';
+      end if;
+
+      insert into public.question_options(question_id, value, label, image_url, order_num, metadata)
+      values (rec.id, opt_value, opt_label, opt_image, idx, opt)
+      on conflict do nothing;
+    end loop;
+  end loop;
+end $$;
+*/
+
+-- =====================================================================
+-- Script externo sugerido: descargar imágenes desde image_url y guardar
+-- su Base64 en image_base64 usando la API/Postgres. No realizar desde SQL
+-- puro si las imágenes están en servidores externos (usar node/python).
+-- =====================================================================

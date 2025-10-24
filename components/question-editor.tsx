@@ -185,7 +185,7 @@ export function QuestionEditor({
     setIsExpanded((prev) => !prev)
   }
 
-  const handlePasteOptions = (pastedText: string, currentOptions: string[]) => {
+  const handlePasteOptions = (pastedText: string, currentOptions: any[]) => {
     const lines = pastedText
       .split("\n")
       .map((line) => line.trim())
@@ -237,7 +237,31 @@ export function QuestionEditor({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  // Helpers for option shapes (string | {value,label,image,...})
+  const getOptionLabel = (opt: any) => {
+    if (opt && typeof opt === 'object') return opt.label ?? opt.value ?? String(opt)
+    return String(opt ?? '')
+  }
+  const getOptionValue = (opt: any) => {
+    if (opt && typeof opt === 'object') return opt.value ?? opt.label ?? String(opt)
+    return String(opt ?? '')
+  }
+
   // --- EXTRACT: Lógica de límites de selección ---
+  type SelectionLimitsConfigProps = {
+    min: number
+    max: number
+    valueMin: any
+    valueMax: any
+    onChangeMin: (e: React.ChangeEvent<HTMLInputElement>) => void
+    onChangeMax: (e: React.ChangeEvent<HTMLInputElement>) => void
+    labelMin?: string
+    labelMax?: string
+    placeholderMin?: string
+    placeholderMax?: string
+    helpText?: string
+  }
+
   const SelectionLimitsConfig = ({
     min,
     max,
@@ -250,7 +274,7 @@ export function QuestionEditor({
     placeholderMin = "0",
     placeholderMax = "",
     helpText = ""
-  }: any) => (
+  }: SelectionLimitsConfigProps) => (
     <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
       <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
       <div className="grid grid-cols-2 gap-4">
@@ -461,7 +485,7 @@ export function QuestionEditor({
             <div className="space-y-4">
               <div>
                 <Label className="font-medium">Opciones</Label>
-                {(question.options || ["Opción 1"]).map((option, idx) => (
+                {(question.options || ["Opción 1"]).map((option: any, idx: number) => (
                   <div key={idx} className="flex items-center gap-2 mt-2">
                     <div className="flex items-center justify-center gap-1 w-16">
                       <Button
@@ -499,10 +523,10 @@ export function QuestionEditor({
                     </div>
                     <div className="w-8 text-center">{idx + 1}</div>
                     <Input
-                      value={option}
+                      value={getOptionLabel(option)}
                       onChange={(e) => {
                         const newOptions = [...question.options]
-                        newOptions[idx] = e.target.value
+                        newOptions[idx] = typeof option === 'object' ? { ...option, label: e.target.value } : e.target.value
                         onUpdateQuestion(sectionId, question.id, "options", newOptions)
                       }}
                       placeholder={`Opción ${idx + 1}`}
@@ -565,7 +589,7 @@ export function QuestionEditor({
                   {(question.options || ["Opción 1"]).map((option, idx) => (
                     <div key={idx} className="flex items-center gap-2 py-2 border-b last:border-b-0">
                       <div className="w-8 text-center font-medium">{idx + 1}</div>
-                      <div className="flex-1">{option}</div>
+                      <div className="flex-1">{getOptionLabel(option)}</div>
                       <div className="flex gap-1">
                         <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
                         <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
@@ -702,7 +726,7 @@ export function QuestionEditor({
                 max={matrixCols.length}
                 valueMin={question.config?.minSelections || 0}
                 valueMax={question.config?.maxSelections || matrixCols.length}
-                onChangeMin={e => {
+                onChangeMin={(e: React.ChangeEvent<HTMLInputElement>) => {
                   const newConfig = {
                     ...question.config,
                     minSelections: Number.parseInt(e.target.value) || 0,
@@ -714,7 +738,7 @@ export function QuestionEditor({
                     order_num: question.order_num ?? qIndex ?? 0
                   }, sectionId, surveyId);
                 }}
-                onChangeMax={e => {
+                onChangeMax={(e: React.ChangeEvent<HTMLInputElement>) => {
                   const newConfig = {
                     ...question.config,
                     maxSelections: Number.parseInt(e.target.value) || matrixCols.length,
@@ -1031,7 +1055,7 @@ export function QuestionEditor({
                     onChange={e => {
                       const min = Number(e.target.value);
                       const max = question.config?.ratingMax ?? 5;
-                      let emojis = question.config?.ratingEmojis || [];
+                      let emojis: string[] = Array.isArray(question.config?.ratingEmojis) ? question.config.ratingEmojis : [];
                       if (max - min + 1 !== emojis.length) {
                         // Ajustar el array de emojis
                         const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
@@ -1052,7 +1076,7 @@ export function QuestionEditor({
                     onChange={e => {
                       const max = Number(e.target.value);
                       const min = question.config?.ratingMin ?? 1;
-                      let emojis = question.config?.ratingEmojis || [];
+                      let emojis: string[] = Array.isArray(question.config?.ratingEmojis) ? question.config.ratingEmojis : [];
                       if (max - min + 1 !== emojis.length) {
                         // Ajustar el array de emojis
                         const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
@@ -1086,7 +1110,7 @@ export function QuestionEditor({
                         <div className="absolute z-50 mt-2">
                           <EmojiPicker
                             onSelect={selectedEmoji => {
-                              const emojis = [...(question.config?.ratingEmojis || [])];
+                              const emojis = Array.isArray(question.config?.ratingEmojis) ? [...question.config.ratingEmojis] : [];
                               emojis[idx] = selectedEmoji;
                               const newConfig = { ...question.config, ratingEmojis: emojis };
                               onUpdateQuestion(sectionId, question.id, "config", newConfig);
@@ -1271,41 +1295,139 @@ export function QuestionEditor({
                       : ""
               }
             />
-            {question.options.map((option: string, index: number) => (
-              <div key={index} className="flex items-center gap-2">
-                <div className="w-6 h-6 flex items-center justify-center">
-                  {question.type === "multiple_choice" ? "○" : question.type === "checkbox" ? "☐" : `${index + 1}.`}
+            {question.options.map((option: any, index: number) => {
+              const isObj = option && typeof option === 'object'
+              const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
+              // detect image in object or string
+              const imageFromObj = isObj ? (option.image || option.url || option.src || '') : ''
+              const s = String(option ?? '')
+              const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+              const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+              const imageUrl = imageFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
+
+              return (
+                <div key={index} className="flex items-start gap-3 w-full">
+                  <div className="w-6 h-6 flex items-center justify-center mt-2">
+                    {question.type === "multiple_choice" ? "○" : question.type === "checkbox" ? "☐" : `${index + 1}.`}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Input
+                      value={label}
+                      onChange={(e) => {
+                        const newOptions = question.options.map((opt: any, idx: number) => {
+                          if (idx !== index) return opt
+                          if (isObj) return { ...opt, label: e.target.value }
+                          return e.target.value
+                        })
+                        onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                      }}
+                      placeholder={`Opción ${index + 1}`}
+                      className="flex-1"
+                    />
+
+                    <div className="flex items-center gap-3">
+                      {imageUrl ? (
+                        <>
+                          <Input
+                            value={imageUrl}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              const newOptions = question.options.map((opt: any, idx: number) => {
+                                if (idx !== index) return opt
+                                if (isObj) return { ...opt, image: val }
+                                // convert string to object with label and image
+                                return { label: label || '', image: val }
+                              })
+                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                            }}
+                            placeholder="URL de la imagen (opcional) o DataURL"
+                            className="flex-1"
+                          />
+                          <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border">
+                            <img src={imageUrl} alt={label || `Opción ${index + 1}`} className="w-full h-full object-cover" />
+                          </div>
+
+                          {/* Hidden file input for image upload -> Base64 */}
+                          <input
+                            id={`file-input-${question.id}-${index}`}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files && e.target.files[0]
+                              if (!f) return
+                              const reader = new FileReader()
+                              reader.onload = () => {
+                                const dataUrl = reader.result
+                                const newOptions = question.options.map((opt: any, idx: number) => {
+                                  if (idx !== index) return opt
+                                  if (isObj) return { ...opt, image: dataUrl }
+                                  return { label: label || '', image: dataUrl }
+                                })
+                                onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                              }
+                              reader.readAsDataURL(f)
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}
+                          >
+                            Subir imagen
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // convert to object option with label and empty image
+                              const newOptions = question.options.map((opt: any, idx: number) => (idx === index ? { label: label } : opt))
+                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                            }}
+                          >
+                            Agregar imagen
+                          </Button>
+                          <input
+                            id={`file-input-${question.id}-${index}`}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files && e.target.files[0]
+                              if (!f) return
+                              const reader = new FileReader()
+                              reader.onload = () => {
+                                const dataUrl = reader.result
+                                const newOptions = question.options.map((opt: any, idx: number) => (idx === index ? { label: label || '', image: dataUrl } : opt))
+                                onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                              }
+                              reader.readAsDataURL(f)
+                            }}
+                          />
+                          <Button size="sm" variant="ghost" onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}>
+                            Subir imagen
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                    <div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onUpdateQuestion(sectionId, question.id, "options", question.options.filter((_: any, idx: number) => idx !== index))}
+                      disabled={question.options.length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <Input
-                  value={option}
-                  onChange={(e) =>
-                    onUpdateQuestion(
-                      sectionId,
-                      question.id,
-                      "options",
-                      question.options.map((opt, idx) => (idx === index ? e.target.value : opt)),
-                    )
-                  }
-                  placeholder={`Opción ${index + 1}`}
-                  className="flex-1"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    onUpdateQuestion(
-                      sectionId,
-                      question.id,
-                      "options",
-                      question.options.filter((_, idx) => idx !== index),
-                    )
-                  }
-                  disabled={question.options.length <= 1}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+              )
+            })}
             <Button
               variant="outline"
               size="sm"
@@ -1318,6 +1440,37 @@ export function QuestionEditor({
             >
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
+
+            {/* Vista previa grande de opciones con imágenes */}
+            <div className="mt-4">
+              <Label className="font-medium">Vista previa de opciones</Label>
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {question.options.map((option: any, idx: number) => {
+                  const isObj = option && typeof option === 'object'
+                  const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
+                  const imgFromObj = isObj ? (option.image || option.url || option.src || '') : ''
+                  const s = String(option ?? '')
+                  const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+                  const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+                  const imageUrl = imgFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
+
+                  return (
+                    <div key={idx} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                      {imageUrl ? (
+                        <div className="w-full h-40 bg-gray-100">
+                          <img src={imageUrl} alt={label || `Opción ${idx + 1}`} className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400">No image</div>
+                      )}
+                      <div className="p-3">
+                        <div className="text-sm text-emerald-900">{label || `Opción ${idx + 1}`}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
             {question.config?.allowOther && (
               <div className="flex items-center gap-2 mt-2">
                 <div className="w-6 h-6 flex items-center justify-center">

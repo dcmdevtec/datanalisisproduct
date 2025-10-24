@@ -19,6 +19,16 @@ import { Checkbox } from "@/components/ui/checkbox"
 // Use imported types for props
 import type { Question, SurveySection } from "@/types-updated"
 
+// Helpers for option shapes used across this file
+const getOptionLabel = (opt: any) => {
+  if (opt && typeof opt === 'object') return opt.label ?? opt.value ?? String(opt)
+  return String(opt ?? '')
+}
+const getOptionValue = (opt: any) => {
+  if (opt && typeof opt === 'object') return opt.value ?? opt.label ?? String(opt)
+  return String(opt ?? '')
+}
+
 interface DisplayCondition {
   questionId: string
   questionText?: string // Agregar campo para mantener el texto de referencia
@@ -46,15 +56,19 @@ interface QuestionConfig {
 }
 
 function QuestionPreview({ question, isConditionMet = false }: { question: Question; isConditionMet?: boolean }) {
+  const getOptionLabel = (opt: any) => {
+    if (opt && typeof opt === 'object') return opt.label ?? opt.value ?? String(opt)
+    return String(opt ?? '')
+  }
   const renderQuestionContent = () => {
     switch (question.type) {
       case "multiple_choice":
         return (
           <div className="space-y-2">
-            {question.options.map((option, index) => (
+            {question.options.map((option: any, index: number) => (
               <div key={index} className="flex items-center space-x-2">
                 <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
-                <span className="text-sm">{option}</span>
+                <span className="text-sm">{getOptionLabel(option)}</span>
               </div>
             ))}
           </div>
@@ -62,10 +76,10 @@ function QuestionPreview({ question, isConditionMet = false }: { question: Quest
       case "checkbox":
         return (
           <div className="space-y-2">
-            {question.options.map((option, index) => (
+            {question.options.map((option: any, index: number) => (
               <div key={index} className="flex items-center space-x-2">
                 <div className="w-4 h-4 border-2 border-gray-300 rounded"></div>
-                <span className="text-sm">{option}</span>
+                <span className="text-sm">{getOptionLabel(option)}</span>
               </div>
             ))}
           </div>
@@ -131,26 +145,26 @@ function ValueSelector({
       return (
         <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
           <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-          {sourceQuestion.options.map((option, index) => (
-            <div key={index} className="flex items-center space-x-2">
-              <Checkbox
-                id={`option-${index}`}
-                checked={selectedValues.includes(option)}
-                onCheckedChange={(checked) => {
-                  let newValues = [...selectedValues]
-                  if (checked) {
-                    newValues.push(option)
-                  } else {
-                    newValues = newValues.filter((v) => v !== option)
-                  }
-                  onChange(newValues.join(","))
-                }}
-              />
-              <Label htmlFor={`option-${index}`} className="text-sm cursor-pointer">
-                {option}
-              </Label>
-            </div>
-          ))}
+              {sourceQuestion.options.map((option: any, index: number) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`option-${index}`}
+                    checked={selectedValues.includes(getOptionValue(option))}
+                    onCheckedChange={(checked) => {
+                      let newValues = [...selectedValues]
+                      if (checked) {
+                        newValues.push(getOptionValue(option))
+                      } else {
+                        newValues = newValues.filter((v) => v !== getOptionValue(option))
+                      }
+                      onChange(newValues.join(","))
+                    }}
+                  />
+                  <Label htmlFor={`option-${index}`} className="text-sm cursor-pointer">
+                    {getOptionLabel(option)}
+                  </Label>
+                </div>
+              ))}
         </div>
       )
     } else {
@@ -161,9 +175,9 @@ function ValueSelector({
             <SelectValue placeholder="Seleccionar opción" />
           </SelectTrigger>
           <SelectContent>
-            {sourceQuestion.options.map((option, index) => (
-              <SelectItem key={index} value={option}>
-                {option}
+            {sourceQuestion.options.map((option: any, index: number) => (
+                <SelectItem key={index} value={getOptionValue(option)}>
+                {getOptionLabel(option)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -288,9 +302,52 @@ function SkipLogicVisualizer({
                   const existingRule = existingRuleIndex > -1 ? rules[existingRuleIndex] : null
                   return (
                     <tr key={optIdx} className="border-t">
-                      <td className="py-3 align-top">
-                        <div className="text-sm text-emerald-900">{option}</div>
-                      </td>
+                          <td className="py-3 align-top">
+                            {/* Render option as image card when appropriate */}
+                            {(() => {
+                              const opt = option as any
+                              const isObject = opt && typeof opt === 'object'
+                              let imageUrl: string | null = null
+                              let labelText: string = ''
+
+                              if (isObject) {
+                                imageUrl = opt.image || opt.url || opt.src || null
+                                labelText = opt.label || opt.text || opt.value || ''
+                              } else {
+                                const s = String(opt || '')
+                                // detect <img src="..."> tags
+                                const imgMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+                                if (imgMatch) {
+                                  imageUrl = imgMatch[1]
+                                  labelText = stripHtmlTags(s)
+                                } else {
+                                  // detect plain image urls
+                                  const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+                                  if (urlMatch) {
+                                    imageUrl = urlMatch[0]
+                                    labelText = ''
+                                  } else {
+                                    labelText = s
+                                  }
+                                }
+                              }
+
+                              if (imageUrl) {
+                                return (
+                                  <div className="flex items-start space-x-3">
+                                    <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border">
+                                      <img src={imageUrl} alt={labelText || 'opción'} className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="text-sm text-emerald-900">{labelText || 'Opción'}</div>
+                                    </div>
+                                  </div>
+                                )
+                              }
+
+                              return <div className="text-sm text-emerald-900">{labelText}</div>
+                            })()}
+                          </td>
                       <td className="py-2">
                         <select
                           className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
@@ -1052,7 +1109,7 @@ export function AdvancedQuestionConfig({
                                       /* Para preguntas de opción múltiple y checkbox */
                                       <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
                                         <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-                                        {sourceQuestion.options.map((option: string, optionIndex: number) => (
+                                        {sourceQuestion.options.map((option: any, optionIndex: number) => (
                                           <div key={optionIndex} className="flex items-center space-x-2">
                                             <Checkbox
                                               id={`option-${index}-${optionIndex}`}
