@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertCircle, Eye, ArrowRight, Settings, ArrowDown, CheckCircle, Sliders } from "lucide-react"
+import { Plus, Trash2, AlertCircle, Eye, ArrowRight, Settings, ArrowDown, CheckCircle, Sliders, ListChecks } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -874,6 +874,80 @@ export function AdvancedQuestionConfig({
   }
 
   const tabs = [
+    {
+      id: "options",
+      label: "Opciones",
+      icon: ListChecks,
+      content: (
+        <div className="space-y-6">
+          {/* Only meaningful for questions with explicit options */}
+          {(question.type === 'multiple_choice' || question.type === 'checkbox' || question.type === 'dropdown') ? (
+            <Card className="border-2 border-gray-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListChecks className="h-5 w-5 text-gray-700" />
+                  Opciones
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Aleatorizar opciones</Label>
+                    <Switch
+                      checked={Boolean(config.appearance?.randomizeOptions)}
+                      onCheckedChange={(checked) => updateAppearance('randomizeOptions', checked)}
+                      className="data-[state=checked]:bg-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Permitir "Otro"</Label>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={Boolean(config.appearance?.allowOther)}
+                        onCheckedChange={(checked) => updateAppearance('allowOther', checked)}
+                        className="data-[state=checked]:bg-emerald-500"
+                      />
+                      <Input
+                        value={config.appearance?.otherText || ''}
+                        onChange={(e) => updateAppearance('otherText', e.target.value)}
+                        placeholder="Etiqueta para 'Otro'"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Límites de selección</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Input
+                      type="number"
+                      value={config.advanced?.minSelections ?? ''}
+                      onChange={(e) => updateAdvanced('minSelections', e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Mínimo"
+                      className="bg-white"
+                    />
+                    <Input
+                      type="number"
+                      value={config.advanced?.maxSelections ?? ''}
+                      onChange={(e) => updateAdvanced('maxSelections', e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Máximo"
+                      className="bg-white"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Dejar vacío para sin límite. Solo aplica a preguntas con múltiples opciones.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-2 border-gray-100 p-4">
+              <p className="text-sm text-muted-foreground">El panel de Opciones solo aplica para preguntas tipo "multiple_choice", "checkbox" o "dropdown".</p>
+            </Card>
+          )}
+        </div>
+      ),
+    },
     {
       id: "validation",
       label: "Validación",

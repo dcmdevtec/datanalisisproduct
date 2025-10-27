@@ -137,6 +137,7 @@ export function QuestionEditor({
   // Estado para mostrar/ocultar el textarea de pegado masivo de opciones
   const [showPasteOptions, setShowPasteOptions] = useState(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
+  // tabs removed: configuration moved to AdvancedQuestionConfig. Show inline controls instead.
 
   const {
     attributes,
@@ -247,65 +248,18 @@ export function QuestionEditor({
     return String(opt ?? '')
   }
 
-  // --- EXTRACT: Lógica de límites de selección ---
-  type SelectionLimitsConfigProps = {
-    min: number
-    max: number
-    valueMin: any
-    valueMax: any
-    onChangeMin: (e: React.ChangeEvent<HTMLInputElement>) => void
-    onChangeMax: (e: React.ChangeEvent<HTMLInputElement>) => void
-    labelMin?: string
-    labelMax?: string
-    placeholderMin?: string
-    placeholderMax?: string
-    helpText?: string
-  }
+  // NOTE: Selection limits UI moved to AdvancedQuestionConfig – keep editor minimal.
 
-  const SelectionLimitsConfig = ({
-    min,
-    max,
-    valueMin,
-    valueMax,
-    onChangeMin,
-    onChangeMax,
-    labelMin = "Mínimo de respuestas",
-    labelMax = "Máximo de respuestas",
-    placeholderMin = "0",
-    placeholderMax = "",
-    helpText = ""
-  }: SelectionLimitsConfigProps) => (
-    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-      <Label className="text-sm font-medium text-blue-800">Límites de selección</Label>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label className="text-xs text-blue-700">{labelMin}</Label>
-          <Input
-            type="number"
-            min={min}
-            max={max}
-            value={valueMin}
-            onChange={onChangeMin}
-            placeholder={placeholderMin}
-            className="h-8"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs text-blue-700">{labelMax}</Label>
-          <Input
-            type="number"
-            min={min === undefined ? 1 : min}
-            max={max}
-            value={valueMax}
-            onChange={onChangeMax}
-            placeholder={placeholderMax}
-            className="h-8"
-          />
-        </div>
-      </div>
-      <div className="text-xs text-blue-600">{helpText}</div>
-    </div>
-  );
+  // compute whether any option contains an image url/data (used by preview rendering)
+  const hasOptionImage = (question.options || []).some((option: any) => {
+    const isObj = option && typeof option === 'object'
+    const imgFromObj = isObj ? (option.image || option.url || option.src || '') : ''
+    const s = String(option ?? '')
+    const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+    const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+    const imageUrl = imgFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
+    return Boolean(imageUrl)
+  })
 
   return (
     <Card ref={setNodeRef} style={style} className="mb-6 border-l-4">
@@ -719,51 +673,7 @@ export function QuestionEditor({
                 Selecciona cómo los usuarios responderán en cada celda de la matriz
               </p>
             </div>
-            {/* Mostrar límites solo si es checkbox */}
-            {question.config?.matrixCellType === "checkbox" && (
-              <SelectionLimitsConfig
-                min={0}
-                max={matrixCols.length}
-                valueMin={question.config?.minSelections || 0}
-                valueMax={question.config?.maxSelections || matrixCols.length}
-                onChangeMin={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  const newConfig = {
-                    ...question.config,
-                    minSelections: Number.parseInt(e.target.value) || 0,
-                  };
-                  onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                  autoSaveQuestionHelper({
-                    ...question,
-                    config: newConfig,
-                    order_num: question.order_num ?? qIndex ?? 0
-                  }, sectionId, surveyId);
-                }}
-                onChangeMax={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  const newConfig = {
-                    ...question.config,
-                    maxSelections: Number.parseInt(e.target.value) || matrixCols.length,
-                  };
-                  onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                  autoSaveQuestionHelper({
-                    ...question,
-                    config: newConfig,
-                    order_num: question.order_num ?? qIndex ?? 0
-                  }, sectionId, surveyId);
-                }}
-                placeholderMax={matrixCols.length.toString()}
-                helpText={
-                  question.config?.minSelections > 0 && question.config?.maxSelections
-                    ? question.config.minSelections === question.config.maxSelections
-                      ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
-                      : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`
-                    : question.config?.minSelections === 0 && question.config?.maxSelections
-                      ? `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`
-                      : (!question.config?.minSelections || question.config.minSelections === 0) && (!question.config?.maxSelections || question.config.maxSelections === matrixCols.length)
-                        ? "Sin límite de selección por fila."
-                        : ""
-                }
-              />
-            )}
+            {/* Mostrar límites solo si es checkbox - moved to advanced configuration modal */}
             {/* Opciones para celdas tipo 'select' - per-column options */}
             {question.config?.matrixCellType === "select" && (
               <div className="space-y-2 mt-4">
@@ -1217,25 +1127,15 @@ export function QuestionEditor({
         {(question.type === "multiple_choice" || question.type === "checkbox" || question.type === "dropdown") && (
           <div className="space-y-4 p-4 bg-white border rounded-lg">
             <div className="flex gap-4 items-center mb-2">
-              <Switch
-                checked={showPasteOptions}
-                onCheckedChange={setShowPasteOptions}
-                id={`show-paste-options-${question.id}`}
-              />
-              <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
-              <Switch
-                checked={question.config?.allowOther || false}
-                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, allowOther: checked })}
-                id={`allow-other-${question.id}`}
-              />
-              <Label htmlFor={`allow-other-${question.id}`}>Permitir "Otro"</Label>
-              <Switch
-                checked={question.config?.randomizeOptions || false}
-                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "config", { ...question.config, randomizeOptions: checked })}
-                id={`randomize-options-${question.id}`}
-              />
-              <Label htmlFor={`randomize-options-${question.id}`}>Aleatorizar</Label>
-            </div>
+                  <Switch
+                    checked={showPasteOptions}
+                    onCheckedChange={setShowPasteOptions}
+                    id={`show-paste-options-${question.id}`}
+                  />
+                  <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
+                  {/* For multiple_choice we show tab buttons instead of the allow/randomize switches here */}
+                  {/* Configuración trasladada a 'Configuración avanzada' — no mostrar controles aquí */}
+                </div>
             {showPasteOptions && (
               <div>
                 <Label className="text-lg font-semibold">Opciones de respuesta</Label>
@@ -1253,48 +1153,7 @@ export function QuestionEditor({
               </div>
             )}
             
-            <SelectionLimitsConfig
-              min={0}
-              max={question.options.length}
-              valueMin={question.config?.minSelections || 0}
-              valueMax={question.config?.maxSelections || question.options.length}
-              onChangeMin={e => {
-                const newConfig = {
-                  ...question.config,
-                  minSelections: Number.parseInt(e.target.value) || 0,
-                };
-                onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                autoSaveQuestionHelper({
-                  ...question,
-                  config: newConfig,
-                  order_num: question.order_num ?? qIndex ?? 0
-                }, sectionId, surveyId);
-              }}
-              onChangeMax={e => {
-                const newConfig = {
-                  ...question.config,
-                  maxSelections: Number.parseInt(e.target.value) || question.options.length,
-                };
-                onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                autoSaveQuestionHelper({
-                  ...question,
-                  config: newConfig,
-                  order_num: question.order_num ?? qIndex ?? 0
-                }, sectionId, surveyId);
-              }}
-              placeholderMax={question.options.length.toString()}
-              helpText={
-                question.config?.minSelections > 0 && question.config?.maxSelections
-                  ? question.config.minSelections === question.config.maxSelections
-                    ? `El usuario debe seleccionar exactamente ${question.config.minSelections} opción${question.config.minSelections > 1 ? "es" : ""}`
-                    : `El usuario debe seleccionar entre ${question.config.minSelections} y ${question.config.maxSelections} opciones`
-                  : question.config?.minSelections === 0 && question.config?.maxSelections
-                    ? `El usuario puede seleccionar hasta ${question.config.maxSelections} opción${question.config.maxSelections > 1 ? "es" : ""}`
-                    : (!question.config?.minSelections || question.config.minSelections === 0) && (!question.config?.maxSelections || question.config.maxSelections === question.options.length)
-                      ? "Sin límite de selección."
-                      : ""
-              }
-            />
+            {/* Límites y opciones avanzadas ahora en el modal de Configuración avanzada; no se muestran aquí */}
             {question.options.map((option: any, index: number) => {
               const isObj = option && typeof option === 'object'
               const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
@@ -1357,6 +1216,33 @@ export function QuestionEditor({
                         >
                           Subir imagen
                         </Button>
+
+                        {/* Botón para eliminar solo la imagen de la opción (no la opción completa) */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            const newOptions = question.options.map((opt: any, idx: number) => {
+                              if (idx !== index) return opt
+                              if (opt && typeof opt === 'object') {
+                                const copy = { ...opt }
+                                delete copy.image
+                                delete copy.url
+                                delete copy.src
+                                return copy
+                              }
+                              // Si era un string con HTML o URL, reemplazar por label sin imagen
+                              const plain = String(opt ?? '')
+                              // intentar extraer texto sin tag img
+                              const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
+                              return cleaned || `Opción ${index + 1}`
+                            })
+                            onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                          }}
+                          title="Eliminar imagen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -1387,8 +1273,8 @@ export function QuestionEditor({
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
 
-            {/* Vista previa grande de opciones con imágenes. Oculta para tipo 'dropdown' */}
-            {question.type !== 'dropdown' && (
+            {/* Vista previa grande de opciones con imágenes. Oculta para tipo 'dropdown' o cuando no hay imágenes */}
+            {question.type !== 'dropdown' && hasOptionImage && (
               <div className="mt-4">
                 <Label className="font-medium">Vista previa de opciones</Label>
                 <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -1402,10 +1288,35 @@ export function QuestionEditor({
                     const imageUrl = imgFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
 
                     return (
-                      <div key={idx} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                      <div key={idx} className="border rounded-lg overflow-hidden bg-white shadow-sm relative">
                         {imageUrl ? (
-                          <div className="w-full h-40 bg-gray-100">
+                          <div className="w-full h-40 bg-gray-100 relative">
                             <img src={imageUrl} alt={label || `Opción ${idx + 1}`} className="w-full h-full object-cover" />
+                            <div className="absolute top-1 right-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const newOptions = question.options.map((opt: any, i: number) => {
+                                    if (i !== idx) return opt
+                                    if (opt && typeof opt === 'object') {
+                                      const copy = { ...opt }
+                                      delete copy.image
+                                      delete copy.url
+                                      delete copy.src
+                                      return copy
+                                    }
+                                    const plain = String(opt ?? '')
+                                    const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
+                                    return cleaned || `Opción ${idx + 1}`
+                                  })
+                                  onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                                }}
+                                title="Eliminar imagen"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         ) : (
                           <div className="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400">No image</div>
