@@ -165,6 +165,8 @@ export function QuestionEditor({
   const [isExpanded, setIsExpanded] = useState<boolean>(false)
   // Estado para mostrar el picker de emoji por índice
   const [showEmojiPicker, setShowEmojiPicker] = useState<number | null>(null)
+  // Índice de opción que se está editando con editor enriquecido (FullTiptapEditor)
+  const [editingOptionRichIndex, setEditingOptionRichIndex] = useState<number | null>(null)
   // Editor enriquecido para enunciado de pregunta (usa text_html si existe, nunca el texto plano si hay HTML)
   const [localQuestionTextHtml, setLocalQuestionTextHtml] = useState(question.text_html ?? "");
 
@@ -1170,19 +1172,50 @@ export function QuestionEditor({
                     {question.type === "multiple_choice" ? "○" : question.type === "checkbox" ? "☐" : `${index + 1}.`}
                   </div>
                   <div className="flex-1 space-y-2">
-                    <Input
-                      value={label}
-                      onChange={(e) => {
-                        const newOptions = question.options.map((opt: any, idx: number) => {
-                          if (idx !== index) return opt
-                          if (isObj) return { ...opt, label: e.target.value }
-                          return e.target.value
-                        })
-                        onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                      }}
-                      placeholder={`Opción ${index + 1}`}
-                      className="flex-1"
-                    />
+                    {/* Etiqueta: input simple o editor enriquecido según el modo */}
+                    <div className="flex-1">
+                      {editingOptionRichIndex === index ? (
+                        <div>
+                          <FullTiptapEditor
+                            value={label}
+                            onChange={(html) => {
+                              const newOptions = question.options.map((opt: any, idx: number) => {
+                                if (idx !== index) return opt
+                                if (isObj) return { ...opt, label: html }
+                                return html
+                              })
+                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                            }}
+                            autofocus={false}
+                          />
+                          <div className="flex gap-2 mt-2">
+                            <Button size="sm" variant="outline" onClick={() => setEditingOptionRichIndex(null)}>Cerrar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={String(label || '').replace(/<[^>]*>/g, '')}
+                            onChange={(e) => {
+                              const newOptions = question.options.map((opt: any, idx: number) => {
+                                if (idx !== index) return opt
+                                if (isObj) return { ...opt, label: e.target.value }
+                                return e.target.value
+                              })
+                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                            }}
+                            placeholder={`Opción ${index + 1}`}
+                            className="flex-1"
+                          />
+                          <Button variant="ghost" size="sm" onClick={() => setEditingOptionRichIndex(index)} title="Editar formato">
+                            <Type className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" title="Editar color/fuente">
+                            <Palette className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Mostrar controles de imagen solo cuando NO es tipo dropdown */}
                     {question.type !== 'dropdown' && (
@@ -1217,32 +1250,32 @@ export function QuestionEditor({
                           Subir imagen
                         </Button>
 
-                        {/* Botón para eliminar solo la imagen de la opción (no la opción completa) */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            const newOptions = question.options.map((opt: any, idx: number) => {
-                              if (idx !== index) return opt
-                              if (opt && typeof opt === 'object') {
-                                const copy = { ...opt }
-                                delete copy.image
-                                delete copy.url
-                                delete copy.src
-                                return copy
-                              }
-                              // Si era un string con HTML o URL, reemplazar por label sin imagen
-                              const plain = String(opt ?? '')
-                              // intentar extraer texto sin tag img
-                              const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
-                              return cleaned || `Opción ${index + 1}`
-                            })
-                            onUpdateQuestion(sectionId, question.id, 'options', newOptions)
-                          }}
-                          title="Eliminar imagen"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {/* Botón para eliminar solo la imagen de la opción (no la opción completa). Mostrar solo si existe imagen */}
+                        {imageUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const newOptions = question.options.map((opt: any, idx: number) => {
+                                if (idx !== index) return opt
+                                if (opt && typeof opt === 'object') {
+                                  const copy = { ...opt }
+                                  delete copy.image
+                                  delete copy.url
+                                  delete copy.src
+                                  return copy
+                                }
+                                const plain = String(opt ?? '')
+                                const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
+                                return cleaned || `Opción ${index + 1}`
+                              })
+                              onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                            }}
+                            title="Eliminar imagen"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
