@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
 import { useToast } from "@/components/ui/use-toast"
 import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
@@ -18,7 +17,7 @@ import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Palette, Settings } from "lucide-react"
 import { Dialog } from "@/components/ui/dialog"
-import FullTiptapEditor from "@/components/ui/FullTiptapEditor"
+import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
 import { Badge } from "@/components/ui/badge"
 import { useDebounce } from "use-debounce"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
@@ -1176,7 +1175,7 @@ export function QuestionEditor({
                     <div className="flex-1">
                       {editingOptionRichIndex === index ? (
                         <div>
-                          <FullTiptapEditor
+                          <AdvancedRichTextEditor
                             value={label}
                             onChange={(html) => {
                               const newOptions = question.options.map((opt: any, idx: number) => {
@@ -1186,7 +1185,8 @@ export function QuestionEditor({
                               })
                               onUpdateQuestion(sectionId, question.id, "options", newOptions)
                             }}
-                            autofocus={false}
+                            placeholder={`Opción ${index + 1}`}
+                            immediatelyRender={false}
                           />
                           <div className="flex gap-2 mt-2">
                             <Button size="sm" variant="outline" onClick={() => setEditingOptionRichIndex(null)}>Cerrar</Button>
