@@ -4,7 +4,8 @@ import type React from "react"
 import { useToast } from "@/components/ui/use-toast"
 import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
-import { useSortable } from "@dnd-kit/sortable"
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -247,6 +248,181 @@ export function QuestionEditor({
   const getOptionValue = (opt: any) => {
     if (opt && typeof opt === 'object') return opt.value ?? opt.label ?? String(opt)
     return String(opt ?? '')
+  }
+
+  // Local state + dnd-kit setup for reordering options in multiple_choice / checkbox / dropdown
+  const [optItems, setOptItems] = useState<any[]>(question.options || [])
+  useEffect(() => {
+    setOptItems(question.options || [])
+  }, [question.options])
+
+  const sensors = useSensors(useSensor(PointerSensor))
+
+  const handleOptionsDragEnd = (event: any) => {
+    const { active, over } = event
+    if (!over) return
+    // ids are in the form `${question.id}-opt-${index}`
+    const from = Number(String(active.id).split("-opt-").pop())
+    const to = Number(String(over.id).split("-opt-").pop())
+    if (!isNaN(from) && !isNaN(to) && from !== to) {
+      const newOptions = arrayMove(optItems, from, to)
+      setOptItems(newOptions)
+      onUpdateQuestion(sectionId, question.id, "options", newOptions)
+    }
+  }
+
+  // Sortable item component for options
+  function SortableOption({ id, index, option }: { id: string; index: number; option: any }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+    const style: any = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.6 : 1,
+    }
+
+    const isObj = option && typeof option === 'object'
+    const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
+    // detect image in object or string
+    const imageFromObj = isObj ? (option.image || option.url || option.src || '') : ''
+    const s = String(option ?? '')
+    const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+    const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+    const imageUrl = imageFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
+
+    return (
+      <div ref={setNodeRef} style={style} className="flex items-start gap-3 w-full p-2 rounded hover:bg-muted" {...attributes}>
+        <div className="w-6 h-6 flex items-center justify-center mt-2" {...listeners}>
+          {/* Drag handle */}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-muted-foreground cursor-grab">
+            <circle cx="9" cy="12" r="1"/>
+            <circle cx="9" cy="5" r="1"/>
+            <circle cx="9" cy="19" r="1"/>
+            <circle cx="15" cy="12" r="1"/>
+            <circle cx="15" cy="5" r="1"/>
+            <circle cx="15" cy="19" r="1"/>
+          </svg>
+        </div>
+        <div className="flex-1 space-y-2">
+          {editingOptionRichIndex === index ? (
+            <div>
+              <AdvancedRichTextEditor
+                value={label}
+                onChange={(html) => {
+                  const newOptions = optItems.map((opt: any, idx: number) => {
+                    if (idx !== index) return opt
+                    if (isObj) return { ...opt, label: html }
+                    return html
+                  })
+                  setOptItems(newOptions)
+                  onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                }}
+                placeholder={`Opción ${index + 1}`}
+                immediatelyRender={false}
+              />
+              <div className="flex gap-2 mt-2">
+                <Button size="sm" variant="outline" onClick={() => setEditingOptionRichIndex(null)}>Cerrar</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                value={String(label || '').replace(/<[^>]*>/g, '')}
+                onChange={(e) => {
+                  const newOptions = optItems.map((opt: any, idx: number) => {
+                    if (idx !== index) return opt
+                    if (isObj) return { ...opt, label: e.target.value }
+                    return e.target.value
+                  })
+                  setOptItems(newOptions)
+                  onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                }}
+                placeholder={`Opción ${index + 1}`}
+                className="flex-1"
+              />
+              <Button variant="ghost" size="sm" onClick={() => setEditingOptionRichIndex(index)} title="Editar formato">
+                <Type className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
+          {question.type !== 'dropdown' && (
+            <div className="flex items-center gap-3">
+              <input
+                id={`file-input-${question.id}-${index}`}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files && e.target.files[0]
+                  if (!f) return
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    const dataUrl = reader.result
+                    const newOptions = optItems.map((opt: any, idx: number) => {
+                      if (idx !== index) return opt
+                      if (isObj) return { ...opt, image: dataUrl }
+                      return { label: label || '', image: dataUrl }
+                    })
+                    setOptItems(newOptions)
+                    onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                  }
+                  reader.readAsDataURL(f)
+                }}
+              />
+
+              <Button size="sm" variant="ghost" onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}>
+                Subir imagen
+              </Button>
+
+              {imageUrl && (
+                <Button size="sm" variant="ghost" onClick={() => {
+                  const newOptions = optItems.map((opt: any, idx: number) => {
+                    if (idx !== index) return opt
+                    if (opt && typeof opt === 'object' && (opt.style || opt.color || opt.font)) {
+                      const copy = { ...opt }
+                      delete copy.style
+                      delete copy.color
+                      delete copy.font
+                      return copy
+                    }
+                    if (opt && typeof opt === 'object') {
+                      const copy = { ...opt }
+                      delete copy.image
+                      delete copy.url
+                      delete copy.src
+                      return copy
+                    }
+                    const plain = String(opt ?? '')
+                    const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
+                    return cleaned || `Opción ${index + 1}`
+                  })
+                  setOptItems(newOptions)
+                  onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                }} title="Quitar estilo / Eliminar imagen">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const newOptions = optItems.filter((_: any, idx: number) => idx !== index)
+              const final = newOptions.length > 0 ? newOptions : [`Opción ${question.options.length > 0 ? question.options.length : 1}`]
+              setOptItems(final)
+              onUpdateQuestion(sectionId, question.id, "options", final)
+            }}
+            disabled={optItems.length <= 1}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   // NOTE: Selection limits UI moved to AdvancedQuestionConfig – keep editor minimal.
@@ -1155,181 +1331,14 @@ export function QuestionEditor({
             )}
             
             {/* Límites y opciones avanzadas ahora en el modal de Configuración avanzada; no se muestran aquí */}
-            {question.options.map((option: any, index: number) => {
-              const isObj = option && typeof option === 'object'
-              const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
-              // detect image in object or string
-              const imageFromObj = isObj ? (option.image || option.url || option.src || '') : ''
-              const s = String(option ?? '')
-              const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
-              const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
-              const imageUrl = imageFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
-
-              return (
-                <div key={index} className="flex items-start gap-3 w-full">
-                  <div className="w-6 h-6 flex items-center justify-center mt-2">
-                    {question.type === "multiple_choice" ? "○" : question.type === "checkbox" ? "☐" : `${index + 1}.`}
-                  </div>
-                  <div
-                    className="flex-1 space-y-2"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer?.setData("text/plain", String(index))
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault()
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      const from = Number.parseInt(e.dataTransfer?.getData("text/plain") || "-1", 10)
-                      const to = index
-                      if (!isNaN(from) && from >= 0 && from !== to) {
-                        const newOptions = [...question.options]
-                        const [moved] = newOptions.splice(from, 1)
-                        newOptions.splice(to, 0, moved)
-                        onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                      }
-                    }}
-                  >
-                    {/* Etiqueta: input simple o editor enriquecido según el modo */}
-                    <div className="flex-1">
-                      {editingOptionRichIndex === index ? (
-                        <div>
-                          <AdvancedRichTextEditor
-                            value={label}
-                            onChange={(html) => {
-                              const newOptions = question.options.map((opt: any, idx: number) => {
-                                if (idx !== index) return opt
-                                if (isObj) return { ...opt, label: html }
-                                return html
-                              })
-                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                            }}
-                            placeholder={`Opción ${index + 1}`}
-                            immediatelyRender={false}
-                          />
-                          <div className="flex gap-2 mt-2">
-                            <Button size="sm" variant="outline" onClick={() => setEditingOptionRichIndex(null)}>Cerrar</Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={String(label || '').replace(/<[^>]*>/g, '')}
-                            onChange={(e) => {
-                              const newOptions = question.options.map((opt: any, idx: number) => {
-                                if (idx !== index) return opt
-                                if (isObj) return { ...opt, label: e.target.value }
-                                return e.target.value
-                              })
-                              onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                            }}
-                            placeholder={`Opción ${index + 1}`}
-                            className="flex-1"
-                          />
-                          <Button variant="ghost" size="sm" onClick={() => setEditingOptionRichIndex(index)} title="Editar formato">
-                            <Type className="h-4 w-4" />
-                          </Button>
-                          {/* Palette removed per request - only keep text editor button */}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Mostrar controles de imagen solo cuando NO es tipo dropdown */}
-                    {question.type !== 'dropdown' && (
-                      <div className="flex items-center gap-3">
-                        <input
-                          id={`file-input-${question.id}-${index}`}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files && e.target.files[0]
-                            if (!f) return
-                            const reader = new FileReader()
-                            reader.onload = () => {
-                              const dataUrl = reader.result
-                              const newOptions = question.options.map((opt: any, idx: number) => {
-                                if (idx !== index) return opt
-                                if (isObj) return { ...opt, image: dataUrl }
-                                return { label: label || '', image: dataUrl }
-                              })
-                              onUpdateQuestion(sectionId, question.id, 'options', newOptions)
-                            }
-                            reader.readAsDataURL(f)
-                          }}
-                        />
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}
-                        >
-                          Subir imagen
-                        </Button>
-
-                        {/* Botón para eliminar solo la imagen de la opción (no la opción completa). Mostrar solo si existe imagen */}
-                        {imageUrl && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              const newOptions = question.options.map((opt: any, idx: number) => {
-                                if (idx !== index) return opt
-                                // If option has style metadata, clear it (color/font)
-                                if (opt && typeof opt === 'object' && (opt.style || opt.color || opt.font)) {
-                                  const copy = { ...opt }
-                                  delete copy.style
-                                  delete copy.color
-                                  delete copy.font
-                                  return copy
-                                }
-                                // Otherwise fall back to removing image fields as before
-                                if (opt && typeof opt === 'object') {
-                                  const copy = { ...opt }
-                                  delete copy.image
-                                  delete copy.url
-                                  delete copy.src
-                                  return copy
-                                }
-                                const plain = String(opt ?? '')
-                                const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
-                                return cleaned || `Opción ${index + 1}`
-                              })
-                              onUpdateQuestion(sectionId, question.id, 'options', newOptions)
-                            }}
-                            title="Quitar estilo / Eliminar imagen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                    <div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onUpdateQuestion(sectionId, question.id, "options", question.options.filter((_: any, idx: number) => idx !== index))}
-                      disabled={question.options.length <= 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                onUpdateQuestion(sectionId, question.id, "options", [
-                  ...question.options,
-                  `Opción ${question.options.length + 1}`,
-                ])
-              }
-            >
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOptionsDragEnd}>
+              <SortableContext items={optItems.map((_: any, i: number) => `${question.id}-opt-${i}`)} strategy={verticalListSortingStrategy}>
+                {optItems.map((option: any, index: number) => (
+                  <SortableOption key={`${question.id}-opt-${index}`} id={`${question.id}-opt-${index}`} index={index} option={option} />
+                ))}
+              </SortableContext>
+            </DndContext>
+            <Button variant="outline" size="sm" onClick={() => onUpdateQuestion(sectionId, question.id, "options", [...(question.options || []), `Opción ${(question.options || []).length + 1}`])}>
               <Plus className="h-4 w-4 mr-2" /> Agregar opción
             </Button>
 
