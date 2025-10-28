@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Palette, Settings } from "lucide-react"
+import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings } from "lucide-react"
 import { Dialog } from "@/components/ui/dialog"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
 import { Badge } from "@/components/ui/badge"
@@ -1170,7 +1170,27 @@ export function QuestionEditor({
                   <div className="w-6 h-6 flex items-center justify-center mt-2">
                     {question.type === "multiple_choice" ? "○" : question.type === "checkbox" ? "☐" : `${index + 1}.`}
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div
+                    className="flex-1 space-y-2"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer?.setData("text/plain", String(index))
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const from = Number.parseInt(e.dataTransfer?.getData("text/plain") || "-1", 10)
+                      const to = index
+                      if (!isNaN(from) && from >= 0 && from !== to) {
+                        const newOptions = [...question.options]
+                        const [moved] = newOptions.splice(from, 1)
+                        newOptions.splice(to, 0, moved)
+                        onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                      }
+                    }}
+                  >
                     {/* Etiqueta: input simple o editor enriquecido según el modo */}
                     <div className="flex-1">
                       {editingOptionRichIndex === index ? (
@@ -1210,9 +1230,7 @@ export function QuestionEditor({
                           <Button variant="ghost" size="sm" onClick={() => setEditingOptionRichIndex(index)} title="Editar formato">
                             <Type className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" title="Editar color/fuente">
-                            <Palette className="h-4 w-4" />
-                          </Button>
+                          {/* Palette removed per request - only keep text editor button */}
                         </div>
                       )}
                     </div>
@@ -1258,6 +1276,15 @@ export function QuestionEditor({
                             onClick={() => {
                               const newOptions = question.options.map((opt: any, idx: number) => {
                                 if (idx !== index) return opt
+                                // If option has style metadata, clear it (color/font)
+                                if (opt && typeof opt === 'object' && (opt.style || opt.color || opt.font)) {
+                                  const copy = { ...opt }
+                                  delete copy.style
+                                  delete copy.color
+                                  delete copy.font
+                                  return copy
+                                }
+                                // Otherwise fall back to removing image fields as before
                                 if (opt && typeof opt === 'object') {
                                   const copy = { ...opt }
                                   delete copy.image
@@ -1271,7 +1298,7 @@ export function QuestionEditor({
                               })
                               onUpdateQuestion(sectionId, question.id, 'options', newOptions)
                             }}
-                            title="Eliminar imagen"
+                            title="Quitar estilo / Eliminar imagen"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -1332,6 +1359,13 @@ export function QuestionEditor({
                                 onClick={() => {
                                   const newOptions = question.options.map((opt: any, i: number) => {
                                     if (i !== idx) return opt
+                                    if (opt && typeof opt === 'object' && (opt.style || opt.color || opt.font)) {
+                                      const copy = { ...opt }
+                                      delete copy.style
+                                      delete copy.color
+                                      delete copy.font
+                                      return copy
+                                    }
                                     if (opt && typeof opt === 'object') {
                                       const copy = { ...opt }
                                       delete copy.image
@@ -1345,7 +1379,7 @@ export function QuestionEditor({
                                   })
                                   onUpdateQuestion(sectionId, question.id, 'options', newOptions)
                                 }}
-                                title="Eliminar imagen"
+                                title="Quitar estilo / Eliminar imagen"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
