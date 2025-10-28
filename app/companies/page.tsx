@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, Building2, FolderKanban, Pencil, Trash2, X } from "lucide-react"
+import { Plus, Loader2, AlertCircle, Building2, FolderKanban, Pencil, Trash2, X, LayoutList, LayoutGrid } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -207,10 +207,10 @@ export default function CompaniesPage() {
 
     let dbError = null
     if (isEditingCompany && currentCompany) {
-      const { error } = await supabase.from("companies").update(companyData).eq("id", currentCompany.id)
+      const { error } = await (supabase as any).from("companies").update(companyData).eq("id", currentCompany.id)
       dbError = error
     } else {
-      const { error } = await supabase.from("companies").insert(companyData)
+      const { error } = await (supabase as any).from("companies").insert(companyData)
       dbError = error
     }
 
@@ -286,11 +286,23 @@ export default function CompaniesPage() {
             </h1>
             <p className="mt-2 text-gray-500">Gestiona las empresas de la plataforma</p>
             <div className="flex gap-2 mt-4">
-              <Button variant={viewMode === 'table' ? 'default' : 'outline'} onClick={() => setViewMode('table')}>
-                Tabla
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'outline'}
+                onClick={() => setViewMode('table')}
+                title="Ver en lista"
+                className="h-9 w-9 flex items-center justify-center"
+              >
+                <span className="sr-only">Lista</span>
+                <LayoutList className="h-4 w-4" />
               </Button>
-              <Button variant={viewMode === 'card' ? 'default' : 'outline'} onClick={() => setViewMode('card')}>
-                Cuadricula
+              <Button
+                variant={viewMode === 'card' ? 'default' : 'outline'}
+                onClick={() => setViewMode('card')}
+                title="Ver en cuadricula"
+                className="h-9 w-9 flex items-center justify-center"
+              >
+                <span className="sr-only">Cuadrícula</span>
+                <LayoutGrid className="h-4 w-4" />
               </Button>
             </div>
           </div>

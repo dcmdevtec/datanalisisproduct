@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText } from "lucide-react"
+import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText, LayoutGrid, LayoutList } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -191,8 +191,8 @@ function SurveysPageContent() {
       surveyQuery = surveyQuery.eq("project_id", filterProjectId)
     } else if (filterCompanyId) {
       // If only company filter is present, find all projects for that company
-      const projectsForCompany = (projectsData || []).filter((p) => p.company_id === filterCompanyId)
-      const projectIds = projectsForCompany.map((p) => p.id)
+  const projectsForCompany = ((projectsData as any) || []).filter((p: any) => p.company_id === filterCompanyId)
+  const projectIds = (projectsForCompany as any[]).map((p: any) => p.id)
       if (projectIds.length > 0) {
         surveyQuery = surveyQuery.in("project_id", projectIds)
       } else {
@@ -286,9 +286,9 @@ function SurveysPageContent() {
 
     // Create a new survey object with a new title
     const newSurvey = {
-      ...originalSurvey,
+      ...(originalSurvey as any),
       id: undefined, // Let Supabase generate a new ID
-      title: `${originalSurvey.title} (Copia)`,
+      title: `${(originalSurvey as any).title} (Copia)`,
       created_at: undefined, // Let Supabase set new timestamp
       updated_at: undefined, // Let Supabase set new timestamp
       status: "draft", // Set status to draft for duplicated survey
@@ -376,10 +376,26 @@ function SurveysPageContent() {
             <Plus className="h-4 w-4 mr-2" /> Nueva Encuesta
           </Button>
         </div>
-        {/* Botones para alternar vista */}
+        {/* Botones para alternar vista (íconos estilo Google Drive) */}
         <div className="flex gap-2 mb-4">
-          <Button variant={viewType === 'table' ? 'default' : 'outline'} onClick={() => setViewType('table')}>Tabla</Button>
-          <Button variant={viewType === 'cards' ? 'default' : 'outline'} onClick={() => setViewType('cards')}>  Cuadricula</Button>
+          <Button
+            variant={viewType === 'table' ? 'default' : 'outline'}
+            onClick={() => setViewType('table')}
+            title="Ver en lista"
+            className="h-9 w-9 flex items-center justify-center"
+          >
+            <span className="sr-only">Lista</span>
+            <LayoutList className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewType === 'cards' ? 'default' : 'outline'}
+            onClick={() => setViewType('cards')}
+            title="Ver en cuadricula"
+            className="h-9 w-9 flex items-center justify-center"
+          >
+            <span className="sr-only">Cuadrícula</span>
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
         </div>
         <div className="flex flex-col gap-4 mb-6 lg:mb-8">
           <Input

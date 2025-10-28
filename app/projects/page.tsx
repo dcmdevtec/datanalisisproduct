@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, FolderKanban, Eye, Pencil, Trash2, LayoutList } from "lucide-react"
+import { Plus, Loader2, AlertCircle, FolderKanban, Eye, Pencil, Trash2, LayoutList, LayoutGrid } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -208,10 +208,26 @@ function ProjectsPageContent() {
             <Plus className="h-4 w-4 mr-2" /> Crear Proyecto
           </Button>
         </div>
-        {/* Botones para alternar vista */}
+        {/* Botones para alternar vista (íconos estilo Google Drive) */}
         <div className="flex gap-2 mb-4">
-          <Button variant={viewType === 'table' ? 'default' : 'outline'} onClick={() => setViewType('table')}>Tabla</Button>
-          <Button variant={viewType === 'cards' ? 'default' : 'outline'} onClick={() => setViewType('cards')}>  Cuadricula</Button>
+          <Button
+            variant={viewType === 'table' ? 'default' : 'outline'}
+            onClick={() => setViewType('table')}
+            title="Ver en lista"
+            className="h-9 w-9 flex items-center justify-center"
+          >
+            <span className="sr-only">Lista</span>
+            <LayoutList className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewType === 'cards' ? 'default' : 'outline'}
+            onClick={() => setViewType('cards')}
+            title="Ver en cuadricula"
+            className="h-9 w-9 flex items-center justify-center"
+          >
+            <span className="sr-only">Cuadrícula</span>
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
         </div>
         <div className="flex flex-col gap-4 mb-6 lg:mb-8">
           <Input
