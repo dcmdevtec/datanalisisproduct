@@ -1,153 +1,159 @@
 "use client"
 
-import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { useState, useEffect, useCallback } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { Zone, Surveyor } from '@/types';
+import { EmailAutocompleteInput } from './EmailAutocompleteInput';
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
-import { Loader2 } from "lucide-react"
-// Importar la instancia de supabase
-import type { Surveyor } from "@/types/surveyor"
-import { supabase } from "@/lib/supabase/browser"
-
-type AssignSurveyorsModalProps = {
-  isOpen: boolean
-  onClose: () => void
-  currentAssignedSurveyorIds: string[] // Array de UUIDs
-  onSave: (assignedIds: string[]) => void
+interface AssignSurveyorsModalProps {
+  zone: Zone | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onAssignmentUpdate: (zoneId: string, surveyorIds: string[]) => void;
 }
 
-export function AssignSurveyorsModal({
-  isOpen,
-  onClose,
-  currentAssignedSurveyorIds,
-  onSave,
+export function AssignSurveyorsModal({ 
+  zone, 
+  isOpen, 
+  onClose, 
+  onAssignmentUpdate 
 }: AssignSurveyorsModalProps) {
-  const { toast } = useToast()
-  const [loading, setLoading] = React.useState(true)
-  const [allSurveyors, setAllSurveyors] = React.useState<Surveyor[]>([])
-  const [selectedSurveyorIds, setSelectedSurveyorIds] = React.useState<string[]>(currentAssignedSurveyorIds)
-  const [popoverOpen, setPopoverOpen] = React.useState(false)
+  const [selectedSurveyors, setSelectedSurveyors] = useState<Surveyor[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const supabase = createClientComponentClient();
+  const { toast } = useToast();
 
-  React.useEffect(() => {
-    const fetchSurveyors = async () => {
-      setLoading(true)
-      try {
-        // Usar la instancia de Supabase directamente para obtener los encuestadores
-        const { data, error } = await supabase.from("surveyors").select("id, name, email")
-        if (error) {
-          throw new Error(error.message || "Error al cargar los encuestadores.")
-        }
-        setAllSurveyors(data)
-      } catch (error: any) {
-        console.error("Error fetching all surveyors:", error)
-        toast({
-          title: "Error",
-          description: error.message || "No se pudieron cargar los encuestadores disponibles.",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
+  const fetchAssignedSurveyors = useCallback(async () => {
+    if (!zone) return;
+
+    const { data, error } = await supabase
+      .from('zone_surveyors')
+      .select('surveyor_id, surveyors(id, email, full_name)')
+      .eq('zone_id', zone.id);
+
+    if (error) {
+      console.error('Error fetching assigned surveyors:', error);
+      return;
+    }
+
+    const assigned = data.map((item: any) => ({
+      id: item.surveyor_id,
+      email: item.surveyors.email,
+      full_name: item.surveyors.full_name,
+    }));
+    setSelectedSurveyors(assigned);
+  }, [zone, supabase]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchAssignedSurveyors();
+    }
+  }, [isOpen, fetchAssignedSurveyors]);
+
+  const handleAddSurveyor = (surveyor: Surveyor) => {
+    if (!selectedSurveyors.find(s => s.id === surveyor.id)) {
+      setSelectedSurveyors(prev => [...prev, surveyor]);
+    }
+  };
+
+  const handleRemoveSurveyor = (surveyorId: string) => {
+    setSelectedSurveyors(prev => prev.filter(s => s.id !== surveyorId));
+  };
+
+  const handleSaveChanges = async () => {
+    if (!zone) return;
+    setIsLoading(true);
+
+    const currentSurveyorIds = selectedSurveyors.map(s => s.id);
+
+    // Fetch current assignments to compare
+    const { data: existingAssignments, error: fetchError } = await supabase
+      .from('zone_surveyors')
+      .select('surveyor_id')
+      .eq('zone_id', zone.id);
+
+    if (fetchError) {
+      toast({ title: 'Error', description: 'No se pudieron obtener las asignaciones existentes.', variant: 'destructive' });
+      setIsLoading(false);
+      return;
+    }
+
+    const existingSurveyorIds = existingAssignments.map(a => a.surveyor_id);
+
+    const toAdd = currentSurveyorIds.filter(id => !existingSurveyorIds.includes(id));
+    const toRemove = existingSurveyorIds.filter(id => !currentSurveyorIds.includes(id));
+
+    if (toRemove.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('zone_surveyors')
+        .delete()
+        .eq('zone_id', zone.id)
+        .in('surveyor_id', toRemove);
+      if (deleteError) {
+        toast({ title: 'Error', description: 'No se pudieron eliminar los encuestadores.', variant: 'destructive' });
+        setIsLoading(false);
+        return;
       }
     }
 
-    if (isOpen) {
-      fetchSurveyors()
+    if (toAdd.length > 0) {
+      const newAssignments = toAdd.map(surveyor_id => ({ zone_id: zone.id, surveyor_id }));
+      const { error: insertError } = await supabase
+        .from('zone_surveyors')
+        .insert(newAssignments);
+      if (insertError) {
+        toast({ title: 'Error', description: 'No se pudieron asignar los nuevos encuestadores.', variant: 'destructive' });
+        setIsLoading(false);
+        return;
+      }
     }
-  }, [isOpen, toast])
 
-  const handleSelectSurveyor = (surveyorId: string) => {
-    setSelectedSurveyorIds((prev) =>
-      prev.includes(surveyorId) ? prev.filter((id) => id !== surveyorId) : [...prev, surveyorId],
-    )
-  }
-
-  const handleSave = () => {
-    onSave(selectedSurveyorIds)
-    onClose()
-  }
-
-  const getSelectedSurveyorNames = () => {
-    return allSurveyors
-      .filter((s) => selectedSurveyorIds.includes(s.id))
-      .map((s) => s.name)
-      .join(", ")
-  }
-
-  if (loading) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent>
-          <div className="flex flex-col items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Cargando encuestadores...</p>
-          </div>
-        </DialogContent>
-      </Dialog>
-    )
-  }
+    toast({ title: 'Éxito', description: 'Encuestadores actualizados correctamente.' });
+    onAssignmentUpdate(zone.id, currentSurveyorIds);
+    setIsLoading(false);
+    onClose();
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Asignar Encuestadores</DialogTitle>
+          <DialogTitle>Asignar Encuestadores a {zone?.name}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <Label htmlFor="surveyors">Encuestadores</Label>
-          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={popoverOpen}
-                className="w-full justify-between bg-transparent"
-              >
-                {selectedSurveyorIds.length > 0
-                  ? getSelectedSurveyorNames() || "Seleccionar encuestador(es)..."
-                  : "Seleccionar encuestador(es)..."}
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0 max-h-[300px] overflow-y-auto">
-              <Command>
-                <CommandInput placeholder="Buscar encuestador..." />
-                <CommandList>
-                  <CommandEmpty>No se encontraron encuestadores.</CommandEmpty>
-                  <CommandGroup>
-                    {allSurveyors.map((surveyor) => (
-                      <CommandItem
-                        key={surveyor.id}
-                        value={surveyor.name}
-                        onSelect={() => handleSelectSurveyor(surveyor.id)}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedSurveyorIds.includes(surveyor.id) ? "opacity-100" : "opacity-0",
-                          )}
-                        />
-                        {surveyor.name} ({surveyor.email})
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+        
+        <div className="py-4">
+          <EmailAutocompleteInput onSurveyorSelected={handleAddSurveyor} />
+
+          <div className="mt-4 space-y-2">
+            <h3 className="text-sm font-medium text-gray-500">Encuestadores Asignados</h3>
+            {selectedSurveyors.length > 0 ? (
+              <ul className="border rounded-md p-2 space-y-2">
+                {selectedSurveyors.map(s => (
+                  <li key={s.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
+                    <div>
+                      <p className="font-medium">{s.full_name}</p>
+                      <p className="text-sm text-gray-500">{s.email}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => handleRemoveSurveyor(s.id)}>Eliminar</Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-4">No hay encuestadores asignados.</p>
+            )}
+          </div>
         </div>
+
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancelar</Button>
+          <Button onClick={handleSaveChanges} disabled={isLoading}>
+            {isLoading ? 'Guardando...' : 'Guardar Cambios'}
           </Button>
-          <Button onClick={handleSave}>Guardar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
