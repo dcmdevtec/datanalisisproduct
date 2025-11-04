@@ -17,6 +17,7 @@ COPY . .
 
 # Compilar la aplicación
 RUN npm run build
+RUN ls -la
 
 # -------------------------------
 # 2️⃣ Etapa de ejecución
