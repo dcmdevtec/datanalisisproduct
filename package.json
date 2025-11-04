@@ -11,7 +11,7 @@
     "dev:quick": "next dev --turbo --no-lint",
     "build": "next build",
     "build:safe": "next build --config next.config.build.mjs",
-    "start": "next start",
+    "start": "next start -p 3000",
     "lint": "next lint"
   },
   "dependencies": {
