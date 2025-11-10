@@ -325,19 +325,10 @@ export function QuestionEditor({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <Input
-                value={String(label || '').replace(/<[^>]*>/g, '')}
-                onChange={(e) => {
-                  const newOptions = optItems.map((opt: any, idx: number) => {
-                    if (idx !== index) return opt
-                    if (isObj) return { ...opt, label: e.target.value }
-                    return e.target.value
-                  })
-                  setOptItems(newOptions)
-                  onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                }}
-                placeholder={`Opción ${index + 1}`}
-                className="flex-1"
+              <div
+                className="flex-1 w-full min-h-[40px] flex items-center border rounded-md px-3 py-2 text-sm bg-background cursor-text"
+                onClick={() => setEditingOptionRichIndex(index)}
+                dangerouslySetInnerHTML={{ __html: label || `Opción ${index + 1}` }}
               />
               <Button variant="ghost" size="sm" onClick={() => setEditingOptionRichIndex(index)} title="Editar formato">
                 <Type className="h-4 w-4" />
@@ -720,7 +711,7 @@ export function QuestionEditor({
                   {(question.options || ["Opción 1"]).map((option, idx) => (
                     <div key={idx} className="flex items-center gap-2 py-2 border-b last:border-b-0">
                       <div className="w-8 text-center font-medium">{idx + 1}</div>
-                      <div className="flex-1">{getOptionLabel(option)}</div>
+                      <div className="flex-1" dangerouslySetInnerHTML={{ __html: getOptionLabel(option) }} />
                       <div className="flex gap-1">
                         <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
                         <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
@@ -1398,7 +1389,7 @@ export function QuestionEditor({
                           <div className="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400">No image</div>
                         )}
                         <div className="p-3">
-                          <div className="text-sm text-emerald-900">{label || `Opción ${idx + 1}`}</div>
+                          <div className="text-sm text-emerald-900" dangerouslySetInnerHTML={{ __html: label || `Opción ${idx + 1}` }} />
                         </div>
                       </div>
                     )
