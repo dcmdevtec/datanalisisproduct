@@ -12,7 +12,9 @@
     "build": "next build",
     "build:safe": "next build --config next.config.build.mjs",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "verify:supabase": "node scripts/verify-supabase-config.js",
+    "migrate:supabase": "node scripts/migrate-supabase-imports.js"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.3",

@@ -571,12 +571,16 @@ function PreviewSurveyPageContent() {
                 onValueChange={(value) => handleAnswerChange(question.id, value)}
                 className="space-y-2"
               >
-                {(question.options || []).map((option, idx) => (
-                  <div key={idx} className="flex items-center space-x-2">
-                    <RadioGroupItem value={option} id={`${question.id}-option-${idx}`} />
-                    <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
-                  </div>
-                ))}
+                {(question.options || []).map((option, idx) => {
+                  const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
+                  const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
+                  return (
+                    <div key={idx} className="flex items-center space-x-2">
+                      <RadioGroupItem value={optionValue} id={`${question.id}-option-${idx}`} />
+                      <Label htmlFor={`${question.id}-option-${idx}`}>{optionLabel}</Label>
+                    </div>
+                  );
+                })}
                 {question.config?.allowOther && (
                   <div className="flex items-center space-x-2 mt-2">
                     <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
@@ -604,7 +608,9 @@ function PreviewSurveyPageContent() {
             return (
               <div className="space-y-2">
                 {(question.options || []).map((option, idx) => {
-                  const checked = selected.includes(option);
+                  const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
+                  const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
+                  const checked = selected.includes(optionValue);
                   const disabled = !checked && isMaxReached;
                   return (
                     <div key={idx} className="flex items-center space-x-2">
@@ -615,14 +621,14 @@ function PreviewSurveyPageContent() {
                         onCheckedChange={(checked) => {
                           const currentAnswers = new Set(selected);
                           if (checked) {
-                            currentAnswers.add(option);
+                            currentAnswers.add(optionValue);
                           } else {
-                            currentAnswers.delete(option);
+                            currentAnswers.delete(optionValue);
                           }
                           handleAnswerChange(question.id, Array.from(currentAnswers));
                         }}
                       />
-                      <Label htmlFor={`${question.id}-option-${idx}`}>{option}</Label>
+                      <Label htmlFor={`${question.id}-option-${idx}`}>{optionLabel}</Label>
                     </div>
                   );
                 })}
@@ -676,11 +682,15 @@ function PreviewSurveyPageContent() {
                     <SelectValue placeholder="Selecciona una opción..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {(question.options || []).map((option, idx) => (
-                      <SelectItem key={idx} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
+                    {(question.options || []).map((option, idx) => {
+                      const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
+                      const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
+                      return (
+                        <SelectItem key={idx} value={optionValue}>
+                          {optionLabel}
+                        </SelectItem>
+                      );
+                    })}
                     {question.config?.allowOther && (
                       <SelectItem value="__other__">{question.config.otherText || 'Otro (especificar)'}</SelectItem>
                     )}
@@ -724,7 +734,7 @@ function PreviewSurveyPageContent() {
                         }`}
                         aria-label={`Valoración ${value}`}
                       >
-                        {emoji}
+                        {typeof emoji === 'object' && emoji !== null ? (emoji as any).image || (emoji as any).label : emoji}
                       </button>
                     );
                   })}

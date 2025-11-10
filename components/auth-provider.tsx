@@ -1,9 +1,10 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import supabase from '@/lib/supabase/client'
 import { useCleanup } from '@/lib/hooks/use-cleanup'
 import type { User } from '@supabase/supabase-js'
+import { useRouter } from 'next/navigation'
 
 interface AuthContextType {
   user: User | null
@@ -26,8 +27,8 @@ export function useAuth() {
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
   const { clearAllSessionData } = useCleanup()
+  const router = useRouter()
 
   // Memoizar la función de sign out
   const handleSignOut = useCallback(async () => {
@@ -38,13 +39,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       await supabase.auth.signOut()
       setUser(null)
       clearAllSessionData()
-      
-      // El middleware y el sistema de autenticación se encargarán de la redirección
-      // No forzar redirección aquí para evitar conflictos
+      router.push('/login')
     } catch (error) {
       console.error('Error signing out:', error)
     }
-  }, [supabase.auth, clearAllSessionData])
+  }, [clearAllSessionData, router])
 
   // Memoizar la función de sign in
   const handleSignIn = useCallback(async (email: string, password: string) => {
@@ -61,13 +60,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         console.log('✅ Sign in successful:', data.user?.email)
       }
       
-      // Establecer el usuario inmediatamente para que el hook de redirección funcione
       if (data.user) {
         setUser(data.user)
-        if (process.env.NODE_ENV === 'development') {
-          console.log('👤 Usuario establecido en estado:', data.user.email)
-        }
-        // No esperar - el hook useAuthRedirect se encargará de la redirección
       }
     } catch (error) {
       console.error('❌ Error signing in:', error)
@@ -75,62 +69,58 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     } finally {
       setLoading(false)
     }
-  }, [supabase.auth])
+  }, [])
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        if (error) {
-          console.error('Error getting session:', error)
-        }
-        if (process.env.NODE_ENV === 'development') {
-          console.log('🔄 Initial session:', session?.user?.email || 'No user')
-        }
-        setUser(session?.user ?? null)
-      } catch (error) {
-        console.error('Error in getInitialSession:', error)
-      } finally {
-        setLoading(false)
+    // Obtener sesión inicial
+    setLoading(true)
+    
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Initial session:', session?.user?.email || 'No user')
       }
-    }
+      setUser(session?.user ?? null)
+      setLoading(false)
+    }).catch(error => {
+      console.error('Error getting initial session:', error)
+      setUser(null)
+      setLoading(false)
+    })
 
-    getInitialSession()
-
-    // Listen for auth changes
+    // Escuchar cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (process.env.NODE_ENV === 'development') {
           console.log('🔄 Auth state changed:', event, session?.user?.email || 'No user')
         }
-        setUser(session?.user ?? null)
+        
+        // Solo actualizar el usuario si realmente cambió
+        setUser(prevUser => {
+          const newUser = session?.user ?? null
+          // Evitar actualizaciones innecesarias
+          if (prevUser?.id === newUser?.id) {
+            return prevUser
+          }
+          return newUser
+        })
+        
         setLoading(false)
         
-        // El middleware se encargará de la redirección automática
-        if (event === 'SIGNED_IN' && session?.user) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('✅ Login exitoso - Usuario autenticado, permitiendo redirección natural')
-          }
-        }
-        
+        // Solo redirigir en sign out explícito
         if (event === 'SIGNED_OUT') {
           if (process.env.NODE_ENV === 'development') {
             console.log('👋 Sesión cerrada - Redirigiendo al login')
           }
-          // Limpiar todos los datos de sesión cuando se cierra sesión
           clearAllSessionData()
-          
-          // Redirigir al login después del logout
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login'
-          }
+          router.push('/login')
         }
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [supabase, clearAllSessionData])
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [clearAllSessionData, router])
 
   // Memoizar el contexto para evitar re-renders innecesarios
   const contextValue = useMemo(() => ({

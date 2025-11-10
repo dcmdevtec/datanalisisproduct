@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Node
+node_modules
+npm-debug.log
+.npm
+
+# Next.js
+.next
+out
+
+# Env
+.env
+.env.local
+.env.production
+.env.development
+
+# Other
+*.log
+*.lock
+README.md
