@@ -3,19 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:turbopack": "next dev --turbopack",
-    "dev:fast": "next dev --turbo",
-    "dev:minimal": "NEXT_TURBO=1 next dev --turbo --no-lint",
-    "dev:ultra": "cross-env NEXT_CONFIG_FILE=next.config.dev.mjs next dev",
-    "dev:quick": "next dev --turbo --no-lint",
-    "build": "next build",
-   "build:safe": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "verify:supabase": "node scripts/verify-supabase-config.js",
-    "migrate:supabase": "node scripts/migrate-supabase-imports.js"
-  },
+  "dev": "next dev",
+  "dev:turbopack": "next dev --turbopack",
+  "dev:fast": "next dev --turbo",
+  "dev:minimal": "NEXT_TURBO=1 next dev --turbo --no-lint",
+  "dev:ultra": "cross-env NEXT_CONFIG_FILE=next.config.dev.mjs next dev",
+  "dev:quick": "next dev --turbo --no-lint",
+
+  "build": "next build",
+
+ "build:safe": "cross-env $(cat .env.production | xargs) next build",
+
+  "start": "next start",
+  "lint": "next lint",
+  "verify:supabase": "node scripts/verify-supabase-config.js",
+  "migrate:supabase": "node scripts/migrate-supabase-imports.js"
+},
   "dependencies": {
     "@babel/runtime": "^7.28.3",
     "@babel/runtime-corejs3": "^7.28.3",
