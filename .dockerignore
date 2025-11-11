@@ -15,11 +15,7 @@ npm-debug.log
 .next
 out
 
-# Env
-.env
-.env.local
-.env.production
-.env.development
+
 
 # Other
 *.log
