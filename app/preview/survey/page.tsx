@@ -618,7 +618,7 @@ function PreviewSurveyPageContent() {
                   return (
                     <div key={idx} className="flex items-center space-x-2">
                       <RadioGroupItem value={optionValue} id={`${question.id}-option-${idx}`} />
-                      <Label htmlFor={`${question.id}-option-${idx}`}>{optionLabel}</Label>
+                      <Label htmlFor={`${question.id}-option-${idx}`} dangerouslySetInnerHTML={{ __html: optionLabel }} />
                     </div>
                   );
                 })}
