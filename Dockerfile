@@ -4,16 +4,21 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Copiamos los archivos de dependencias primero (para aprovechar cache)
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm ci
+
+# Copiamos el resto del proyecto
 COPY . .
 
+# 👇 Aseguramos que el .env.production exista antes de usarlo
+# Si no existe, no romperá la build (previene el error que tenías)
+RUN if [ -f .env.production ]; then echo ".env.production found"; else echo "" > .env.production; fi
 
-COPY .env.production .env.production
-
-# ✅ Construir usando las variables del .env.production
+# ✅ Construimos la aplicación Next.js (usando el .env.production si está presente)
 RUN npm run build:safe
 
+# Eliminamos dependencias de desarrollo para reducir tamaño
 RUN npm prune --production
 
 
@@ -23,13 +28,19 @@ RUN npm prune --production
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# Copiamos solo lo necesario desde el builder
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
+
+# Copiamos el .env.production si existe
 COPY --from=builder /app/.env.production ./.env.production
 
+# Variables de entorno del contenedor
 ENV NODE_ENV=production
 EXPOSE 3000
+
+# Comando de arranque
 CMD ["npm", "start"]
