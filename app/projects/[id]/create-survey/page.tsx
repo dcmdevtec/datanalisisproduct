@@ -89,7 +89,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { SurveyLogoUpload } from "@/components/ui/survey-logo-upload"
+import SurveyLogoUpload from "@/components/ui/survey-logo-upload"
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
