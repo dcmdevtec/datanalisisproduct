@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 RUN npm install
 COPY . .
 
-# ✅ Copiar el archivo de entorno
+
 COPY .env.production .env.production
 
 # ✅ Construir usando las variables del .env.production
