@@ -10,7 +10,7 @@
     "dev:ultra": "cross-env NEXT_CONFIG_FILE=next.config.dev.mjs next dev",
     "dev:quick": "next dev --turbo --no-lint",
     "build": "next build",
-    "build:safe": "next build --config next.config.build.mjs",
+   "build:safe": "next build",
     "start": "next start",
     "lint": "next lint",
     "verify:supabase": "node scripts/verify-supabase-config.js",
