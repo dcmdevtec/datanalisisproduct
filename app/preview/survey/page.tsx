@@ -410,21 +410,62 @@ function PreviewSurveyPageContent() {
 
 
   const validateCurrentSection = useCallback(() => {
-    if (!currentSection) return true
+    if (!currentSection) return true;
 
-    let isValid = true
-    const newErrors: { [questionId: string]: string } = {}
+    let isValid = true;
+    const newErrors: { [questionId:string]: string } = {};
 
     currentSection.questions.forEach((question) => {
-      if (question.required && (answers[question.id] === undefined || answers[question.id] === null || answers[question.id] === "")) {
-        newErrors[question.id] = "Esta pregunta es obligatoria."
-        isValid = false
+      // Don't validate questions that are hidden by display logic
+      if (!shouldShowQuestion(question)) {
+        return;
       }
-    })
 
-    setValidationErrors(newErrors)
-    return isValid
-  }, [currentSection, answers])
+      if (question.required) {
+        if (question.type === 'matrix') {
+          const config = question.config || question.settings || {};
+          const matrixRows = config.matrixRows || question.matrixRows || [];
+          
+          if (matrixRows.length > 0) {
+            const allRowsAnswered = matrixRows.every((row, i) => {
+              // Check for row-level answer (radio, checkbox)
+              const rowKey = `${question.id}_${i}`;
+              const rowAnswer = answers[rowKey];
+              if (rowAnswer !== undefined && rowAnswer !== null && rowAnswer !== "") {
+                if (Array.isArray(rowAnswer)) {
+                  return rowAnswer.length > 0;
+                }
+                return true; // It's a non-empty string or other value
+              }
+
+              // If no row-level answer, check for cell-level answers (text, number, etc.)
+              const matrixCols = config.matrixCols || question.matrixCols || [];
+              return matrixCols.some((col, j) => {
+                const cellKey = `${question.id}_${i}_${j}`;
+                const cellAnswer = answers[cellKey];
+                return cellAnswer !== undefined && cellAnswer !== null && cellAnswer !== "";
+              });
+            });
+
+            if (!allRowsAnswered) {
+              isValid = false;
+              newErrors[question.id] = "Esta pregunta es obligatoria. Por favor, responde todas las filas.";
+            }
+          }
+        } else {
+          // Standard validation for all other question types
+          const answer = answers[question.id];
+          if (answer === undefined || answer === null || answer === "" || (Array.isArray(answer) && answer.length === 0)) {
+            isValid = false;
+            newErrors[question.id] = "Esta pregunta es obligatoria.";
+          }
+        }
+      }
+    });
+
+    setValidationErrors(newErrors);
+    return isValid;
+  }, [currentSection, answers, shouldShowQuestion])
 
   const handleNextSection = useCallback(() => {
     if (!currentSection) return
@@ -904,57 +945,129 @@ function PreviewSurveyPageContent() {
                 className="w-full"
               />
             )
-          case "time":
-            // Mostrar formato de hora configurado
+          case "time": {
             const timeFormat = question.config?.timeFormat || "24";
-            const ampmKey = `${question.id}_ampm`;
-            let hourValue = answers[question.id] || "";
-            let ampmValue = answers[ampmKey] || "AM";
-            // Si la respuesta es tipo "03:14 AM", separar
-            if (timeFormat === "12" && hourValue && hourValue.includes(" ")) {
-              const [h, ap] = hourValue.split(" ");
-              hourValue = h;
-              ampmValue = ap;
-            }
-            const handleTimeChange = (val: string) => {
-              if (timeFormat === "12") {
-                handleAnswerChange(question.id, val + " " + ampmValue);
-              } else {
-                handleAnswerChange(question.id, val);
+            const value = answers[question.id] || ""; // e.g., "14:30"
+
+            if (timeFormat === "12") {
+              const [currentHourStr, currentMinuteStr] = value ? value.split(':') : ["", ""];
+              let currentHour = parseInt(currentHourStr, 10);
+              const currentMinute = parseInt(currentMinuteStr, 10);
+              let currentAmpm = 'AM';
+
+              if (!isNaN(currentHour)) {
+                  if (currentHour >= 12) {
+                      currentAmpm = 'PM';
+                      if (currentHour > 12) {
+                          currentHour -= 12;
+                      }
+                  }
+                  if (currentHour === 0) {
+                      currentHour = 12; // 12 AM
+                  }
               }
-            };
-            const handleAMPMChange = (val: string) => {
-              handleAnswerChange(question.id, (hourValue || "") + " " + val);
-              handleAnswerChange(ampmKey, val);
-            };
-            return (
-              <div className="flex flex-col gap-1">
-                <div className="flex gap-2 items-center">
-                  <Input
-                    type="time"
-                    value={hourValue}
-                    onChange={e => handleTimeChange(e.target.value)}
-                    className="w-full max-w-xs"
-                    step={60}
-                  />
-                  {timeFormat === "12" && (
-                    <select
-                      className="border rounded px-2 py-1 text-sm"
-                      value={ampmValue}
-                      onChange={e => handleAMPMChange(e.target.value)}
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  )}
+
+              const handle12hChange = (part: 'hour' | 'minute' | 'ampm', val: string) => {
+                  let h12 = !isNaN(currentHour) ? currentHour : 12;
+                  let m = !isNaN(currentMinute) ? currentMinute : 0;
+                  let ampm = currentAmpm;
+
+                  if (part === 'hour') h12 = parseInt(val, 10);
+                  if (part === 'minute') m = parseInt(val, 10);
+                  if (part === 'ampm') ampm = val;
+
+                  let h24 = h12;
+                  if (ampm === 'PM' && h12 < 12) {
+                      h24 = h12 + 12;
+                  } else if (ampm === 'AM' && h12 === 12) { // 12 AM (midnight)
+                      h24 = 0;
+                  } else if (ampm === 'PM' && h12 === 12) { // 12 PM (noon)
+                      h24 = 12;
+                  }
+
+                  const finalTime = `${h24.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                  handleAnswerChange(question.id, finalTime);
+              };
+
+              return (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                      <Select value={!isNaN(currentHour) ? currentHour.toString() : ""} onValueChange={(v) => handle12hChange('hour', v)}>
+                          <SelectTrigger className="w-[90px]">
+                              <SelectValue placeholder="Hora" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
+                                  <SelectItem key={h} value={h.toString()}>{h.toString().padStart(2, '0')}</SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                      <span className="font-bold">:</span>
+                      <Select value={!isNaN(currentMinute) ? currentMinute.toString().padStart(2, '0') : "00"} onValueChange={(v) => handle12hChange('minute', v)}>
+                          <SelectTrigger className="w-[90px]">
+                              <SelectValue placeholder="Min" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {Array.from({ length: 60 }, (_, i) => i).map(m => (
+                                  <SelectItem key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                      <Select value={currentAmpm} onValueChange={(v) => handle12hChange('ampm', v)}>
+                          <SelectTrigger className="w-[90px]">
+                              <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="AM">AM</SelectItem>
+                              <SelectItem value="PM">PM</SelectItem>
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Formato 12 horas (AM/PM)</div>
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {timeFormat === "24"
-                    ? "Formato 24 horas (00:00 - 23:59)"
-                    : "Formato 12 horas (AM/PM)"}
+              );
+
+            } else { // 24 hour format
+              const [currentHour, currentMinute] = value ? value.split(':') : ["", ""];
+
+              const handle24hChange = (part: 'hour' | 'minute', val: string) => {
+                  let h = currentHour || "00";
+                  let m = currentMinute || "00";
+                  if (part === 'hour') h = val;
+                  if (part === 'minute') m = val;
+                  handleAnswerChange(question.id, `${h}:${m}`);
+              };
+
+              return (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                      <Select value={currentHour} onValueChange={(v) => handle24hChange('hour', v)}>
+                          <SelectTrigger className="w-[90px]">
+                              <SelectValue placeholder="Hora" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                                  <SelectItem key={h} value={h.toString().padStart(2, '0')}>{h.toString().padStart(2, '0')}</SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                      <span className="font-bold">:</span>
+                      <Select value={currentMinute} onValueChange={(v) => handle24hChange('minute', v)}>
+                          <SelectTrigger className="w-[90px]">
+                              <SelectValue placeholder="Min" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {Array.from({ length: 60 }, (_, i) => i).map(m => (
+                                  <SelectItem key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Formato 24 horas (00:00 - 23:59)</div>
                 </div>
-              </div>
-            )
+              );
+            }
+          }
           case "email":
             return (
               <EmailAutocompleteInput
