@@ -6,17 +6,19 @@ WORKDIR /app
 
 # Copiamos los archivos de dependencias primero (para aprovechar cache)
 COPY package.json package-lock.json ./
+
+# Instalamos dependencias (con devDependencies para el build)
 RUN npm ci
 
 # Copiamos el resto del proyecto
 COPY . .
 
 # 👇 Aseguramos que el .env.production exista antes de usarlo
-# Si no existe, no romperá la build (previene el error que tenías)
 RUN if [ -f .env.production ]; then echo ".env.production found"; else echo "" > .env.production; fi
 
-# ✅ Construimos la aplicación Next.js (usando el .env.production si está presente)
-RUN npm run build:safe
+# ✅ Construimos la aplicación Next.js (usando las variables de .env.production)
+# Se usa "sh -c" para asegurar compatibilidad con Alpine
+RUN /bin/sh -c "npm run build:safe"
 
 # Eliminamos dependencias de desarrollo para reducir tamaño
 RUN npm prune --production
@@ -38,8 +40,10 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 # Copiamos el .env.production si existe
 COPY --from=builder /app/.env.production ./.env.production
 
-# Variables de entorno del contenedor
+# Configuración de entorno para runtime
 ENV NODE_ENV=production
+
+# Exponemos el puerto donde corre Next.js
 EXPOSE 3000
 
 # Comando de arranque

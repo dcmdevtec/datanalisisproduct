@@ -9,11 +9,8 @@
   "dev:minimal": "NEXT_TURBO=1 next dev --turbo --no-lint",
   "dev:ultra": "cross-env NEXT_CONFIG_FILE=next.config.dev.mjs next dev",
   "dev:quick": "next dev --turbo --no-lint",
-
   "build": "next build",
-
- "build:safe": "cross-env $(cat .env.production | xargs) next build",
-
+  "build:safe": "set -a && [ -f .env.production ] && . .env.production; set +a && cross-env next build",
   "start": "next start",
   "lint": "next lint",
   "verify:supabase": "node scripts/verify-supabase-config.js",
@@ -77,6 +74,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
+    "cross-env": "^10.1.0",
     "date-fns": "^3.6.0",
     "dotenv": "^17.2.1",
     "embla-carousel-react": "8.5.1",
