@@ -1,6 +1,6 @@
 import { useRef } from "react";
-import { Button } from "../../../../components/ui/button";
-import { Input } from "../../../../components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function SurveyLogoUpload({ value, onChange }: { value: string | null, onChange: (b64: string | null) => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
