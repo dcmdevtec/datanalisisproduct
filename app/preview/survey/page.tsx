@@ -178,10 +178,33 @@ function PreviewSurveyPageContent() {
   // Estado para mostrar cuando se está ejecutando la reconciliación automática
   const [isReconciling, setIsReconciling] = useState(false)
   const [hasReconciled, setHasReconciled] = useState(false)
+  const [appLoadError, setAppLoadError] = useState<string[] | null>(null)
 
 
   // Efecto para manejar la reconciliación automática
   useEffect(() => {
+    // Runtime check: detect undefined UI/component imports that would cause
+    // 'element type is invalid' React errors in production (minified -> #306).
+    const missing: string[] = []
+    const checks: { [key: string]: any } = {
+      Button,
+      Input,
+      Select,
+      Label,
+      Card,
+      CardContent,
+      CardHeader,
+      CardTitle,
+    }
+    Object.entries(checks).forEach(([name, val]) => {
+      if (typeof val === "undefined") missing.push(name)
+    })
+    if (missing.length > 0) {
+      console.error("❌ Missing UI exports detected (this will crash in production):", missing)
+      setAppLoadError(missing)
+      // Early return: avoid running other mount logic that may assume components exist
+      return
+    }
     if (surveyData && !hasReconciled) {
       const hasDisplayLogic = surveyData.sections.some(section => 
         section.questions.some(q => q.config?.displayLogic?.enabled)
@@ -1750,6 +1773,22 @@ function PreviewSurveyPageContent() {
 
   return (
     <div className="min-h-screen preview-bg flex flex-col items-center p-4 sm:p-8">
+      {appLoadError && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-6">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full text-left">
+            <h3 className="text-xl font-bold mb-2">Error de carga de la aplicación</h3>
+            <p className="mb-4 text-sm text-muted-foreground">Se detectaron exports faltantes que impedirán el render en producción. Componentes faltantes:</p>
+            <ul className="mb-4 list-disc pl-5 text-sm text-red-700">
+              {appLoadError.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+            <div className="flex justify-end">
+              <Button variant="ghost" onClick={() => setAppLoadError(null)}>Ignorar (no recomendado)</Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Verification modal shown before survey */}
       {showVerifyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
