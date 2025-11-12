@@ -34,6 +34,7 @@ import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, ArrowRight, Loader2, Star, CheckCircle, AlertCircle, Info, Target } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
+import { useToast } from "@/components/ui/use-toast"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -164,6 +165,16 @@ function PreviewSurveyPageContent() {
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
   const [skipLogicNotification, setSkipLogicNotification] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Modal / verification state
+  // We'll infer the surveyId from the path and keep respondent id per-survey using localStorage key `respondent_public_id_${surveyId}`
+  const [inferredSurveyId, setInferredSurveyId] = useState<string | null>(null)
+  const [showVerifyModal, setShowVerifyModal] = useState(true)
+  const [docType, setDocType] = useState("")
+  const [docNumber, setDocNumber] = useState("")
+  const [fullName, setFullName] = useState("")
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  const { toast } = useToast()
   // Estado para mostrar cuando se está ejecutando la reconciliación automática
   const [isReconciling, setIsReconciling] = useState(false)
   const [hasReconciled, setHasReconciled] = useState(false)
@@ -225,6 +236,91 @@ function PreviewSurveyPageContent() {
     }
     setLoading(false)
   }, [router])
+
+  // On mount, check if respondent_public_id already stored
+  useEffect(() => {
+    // Infer surveyId from pathname early so we decide storage key
+    try {
+      const parts = window.location.pathname.split("/").filter(Boolean)
+      const idx = parts.indexOf("survey")
+      if (idx !== -1 && parts.length > idx + 1) {
+        const id = parts[idx + 1]
+        setInferredSurveyId(id)
+        const perKey = `respondent_public_id_${id}`
+        const existing = localStorage.getItem(perKey)
+        if (existing) {
+          setShowVerifyModal(false)
+        } else {
+          // show modal if surveyId present and no stored respondent id
+          setShowVerifyModal(true)
+        }
+        return
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Fallback: global respondent_public_id (legacy behavior)
+    const existing = localStorage.getItem("respondent_public_id")
+    if (existing) setShowVerifyModal(false)
+  }, [])
+
+  const handleVerify = async () => {
+    setVerifyError(null)
+    if (!docType || !docNumber) {
+      setVerifyError("Tipo y número de documento son obligatorios")
+      return
+    }
+    setVerifying(true)
+    try {
+      // Try to infer surveyId from URL path: /preview/survey/[id]
+      let inferredSurveyId: string | null = null
+      try {
+        const parts = window.location.pathname.split("/").filter(Boolean)
+        const idx = parts.indexOf("survey")
+        if (idx !== -1 && parts.length > idx + 1) inferredSurveyId = parts[idx + 1]
+      } catch {}
+
+      const fetchUrl = inferredSurveyId ? `/api/surveys/${inferredSurveyId}/verify-respondent` : `/api/surveys/verify-respondent`
+      const bodyToSend: any = { document_type: docType, document_number: docNumber, full_name: fullName }
+      if (inferredSurveyId) bodyToSend.survey_id = inferredSurveyId
+
+      const res = await fetch(fetchUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyToSend),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setVerifyError(json.error || "Error del servidor")
+        setVerifying(false)
+        return
+      }
+
+      if (json.allowed_to_proceed) {
+        // store per-survey respondent id and document details when surveyId available
+        if (inferredSurveyId) {
+          localStorage.setItem(`respondent_public_id_${inferredSurveyId}`, json.respondent_public_id)
+          if (docType) localStorage.setItem(`respondent_document_type_${inferredSurveyId}`, docType)
+          if (docNumber) localStorage.setItem(`respondent_document_number_${inferredSurveyId}`, docNumber)
+          if (fullName) localStorage.setItem(`respondent_name_${inferredSurveyId}`, fullName)
+        } else {
+          localStorage.setItem("respondent_public_id", json.respondent_public_id)
+          if (docType) localStorage.setItem("respondent_document_type", docType)
+          if (docNumber) localStorage.setItem("respondent_document_number", docNumber)
+          if (fullName) localStorage.setItem("respondent_name", fullName)
+        }
+        setShowVerifyModal(false)
+      } else {
+        setVerifyError("Ya ha completado esta encuesta.")
+      }
+    } catch (err: any) {
+      console.error("Error verificando encuestado:", err)
+      setVerifyError("Error de red")
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   // Cargar respuestas guardadas al inicializar
   useEffect(() => {
@@ -467,7 +563,61 @@ function PreviewSurveyPageContent() {
     return isValid;
   }, [currentSection, answers, shouldShowQuestion])
 
-  const handleNextSection = useCallback(() => {
+  // Submit responses helper: includes respondent_public_id and document fields if available
+  const submitResponses = useCallback(async () => {
+    if (!surveyData) return
+    // infer survey id from pathname
+    let surveyId: string | null = inferredSurveyId
+    if (!surveyId) {
+      try {
+        const parts = window.location.pathname.split("/").filter(Boolean)
+        const idx = parts.indexOf("survey")
+        if (idx !== -1 && parts.length > idx + 1) surveyId = parts[idx + 1]
+      } catch {}
+    }
+
+    const respondentKey = surveyId ? `respondent_public_id_${surveyId}` : "respondent_public_id"
+    const respondentId = localStorage.getItem(respondentKey) || null
+    const docTypeKey = surveyId ? `respondent_document_type_${surveyId}` : "respondent_document_type"
+    const docNumKey = surveyId ? `respondent_document_number_${surveyId}` : "respondent_document_number"
+    const nameKey = surveyId ? `respondent_name_${surveyId}` : "respondent_name"
+
+    const payload: any = {
+      survey_id: surveyId,
+      response_answers: Object.entries(answers).map(([question_id, value]) => ({ question_id, value })),
+      timestamp: new Date().toISOString(),
+    }
+
+    if (respondentId) payload.respondent_public_id = respondentId
+    const dt = localStorage.getItem(docTypeKey)
+    const dn = localStorage.getItem(docNumKey)
+    const rn = localStorage.getItem(nameKey)
+    if (dt) payload.respondent_document_type = dt
+    if (dn) payload.respondent_document_number = dn
+    if (rn) payload.respondent_name = rn
+
+    try {
+      const res = await fetch('/api/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        console.error('Error enviando respuestas:', json)
+        toast({ title: 'Error', description: json.error || 'No se pudo enviar la respuesta', variant: 'destructive' })
+        return false
+      }
+      toast({ title: 'Encuesta completada', description: 'Gracias por tu participación' })
+      return true
+    } catch (err) {
+      console.error('Error de red al enviar respuestas:', err)
+      toast({ title: 'Error', description: 'Error de red al enviar respuestas', variant: 'destructive' })
+      return false
+    }
+  }, [answers, inferredSurveyId, surveyData, toast])
+
+  const handleNextSection = useCallback(async () => {
     if (!currentSection) return
 
     if (!validateCurrentSection()) {
@@ -566,12 +716,16 @@ function PreviewSurveyPageContent() {
      }
 
      // Si no se aplicó ningún salto, ir a la siguiente sección
-     if (currentSectionIndex < totalSections - 1) {
-       setCurrentSectionIndex(currentSectionIndex + 1)
-     } else {
-       setSubmissionStatus("success")
-     }
-  }, [currentSection, answers, currentSectionIndex, totalSections, surveyData])
+    if (currentSectionIndex < totalSections - 1) {
+      setCurrentSectionIndex(currentSectionIndex + 1)
+    } else {
+      // We're at the end: submit responses including respondent_public_id if present
+      setSubmissionStatus("idle")
+      const ok = await submitResponses()
+      if (ok) setSubmissionStatus("success")
+      else setSubmissionStatus("error")
+    }
+  }, [currentSection, answers, currentSectionIndex, totalSections, surveyData, submitResponses, validateCurrentSection])
 
   const handlePreviousSection = useCallback(() => {
     if (currentSectionIndex > 0) {
@@ -1550,6 +1704,40 @@ function PreviewSurveyPageContent() {
 
   return (
     <div className="min-h-screen preview-bg flex flex-col items-center p-4 sm:p-8">
+      {/* Verification modal shown before survey */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-lg font-semibold mb-4">Verificación de encuestado</h3>
+            <p className="text-sm text-muted-foreground mb-4">Antes de iniciar, por favor ingresa tu tipo y número de documento para verificar si ya respondiste.</p>
+            <div className="space-y-3">
+              <Input placeholder="Tipo de documento" value={docType} onChange={(e) => setDocType(e.target.value)} />
+              <Input placeholder="Número de documento" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
+              <Input placeholder="Nombre completo (opcional)" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              {verifyError && <div className="text-sm text-red-600">{verifyError}</div>}
+            </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowVerifyModal(false)
+                    if (inferredSurveyId) {
+                      localStorage.setItem(`respondent_public_id_${inferredSurveyId}`, "anonymous")
+                    } else {
+                      localStorage.setItem("respondent_public_id", "anonymous")
+                    }
+                  }}
+                  disabled={verifying}
+                >
+                  Continuar como invitado
+                </Button>
+                <Button onClick={handleVerify} disabled={verifying} className="ml-2">
+                  {verifying ? <Loader2 className="animate-spin h-4 w-4" /> : "Verificar y continuar"}
+                </Button>
+              </div>
+          </div>
+        </div>
+      )}
       {dynamicStyles}
       {/* Header principal */}
       <div className="w-full max-w-5xl mb-8 preview-header">

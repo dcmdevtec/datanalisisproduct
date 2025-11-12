@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Palette, Share2, Database, Shield, Bell, Building2, MapPin, Mic, Clock, Settings } from "lucide-react"
+import { Loader2, Palette, Share2, Database, Shield, Bell, Building2, MapPin, Mic, Clock, Settings, Copy } from "lucide-react"
 
 interface SurveySettings {
   collectLocation: boolean
@@ -51,10 +51,12 @@ interface EditSurveySettingsModalProps {
   isOpen: boolean
   onClose: () => void
   currentSettings: SurveySettings
+  previewUrl?: string
+  onCopyPreview?: () => void
   onSave: (newSettings: SurveySettings) => void
 }
 
-export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSave }: EditSurveySettingsModalProps) {
+export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, previewUrl, onCopyPreview, onSave }: EditSurveySettingsModalProps) {
   // Ensure distributionMethods is always an array
   const getSafeSettings = (settings: SurveySettings): SurveySettings => ({
     ...settings,
@@ -218,6 +220,33 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Preview Link (moved from Secciones) */}
+          <Card className="border-2 border-slate-200 bg-gradient-to-br from-white to-slate-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-slate-800">
+                <Share2 className="h-5 w-5 text-slate-600" />
+                Enlace de Preview
+              </CardTitle>
+              <CardDescription className="text-slate-700">El enlace de vista previa se genera desde el editor y se muestra aquí</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {previewUrl ? (
+                <div className="flex items-center justify-between gap-3">
+                  <a href={previewUrl} target="_blank" rel="noreferrer" className="text-sm text-primary underline truncate max-w-full block">
+                    {previewUrl}
+                  </a>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={onCopyPreview}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Aún no se ha generado un enlace de preview. Usa el botón "Vista Previa" en Secciones para crearlo.</div>
+              )}
             </CardContent>
           </Card>
 
@@ -433,11 +462,36 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, onSa
                     <Checkbox
                       id="preventMultipleSubmissions"
                       checked={editedSettings.security?.preventMultipleSubmissions}
-                      onCheckedChange={(checked) => handleSecurityChange("preventMultipleSubmissions", checked)}
+                      onCheckedChange={(checked) => {
+                        handleSecurityChange("preventMultipleSubmissions", checked)
+                        if (!checked) {
+                          // Si se desactiva, limpiar el método de prevención
+                          handleSecurityChange("preventionMethod", "cookie")
+                        }
+                      }}
                       className="data-[state=checked]:bg-red-500"
                     />
                     <Label htmlFor="preventMultipleSubmissions" className="font-medium text-red-800">Prevenir múltiples envíos</Label>
                   </div>
+
+                  {editedSettings.security?.preventMultipleSubmissions && (
+                    <div className="space-y-3 pl-6">
+                      <Label className="text-sm font-medium text-red-800">Método de verificación</Label>
+                      <Select
+                        value={editedSettings.security?.preventionMethod || "cookie"}
+                        onValueChange={(value) => handleSecurityChange("preventionMethod", value)}
+                      >
+                        <SelectTrigger className="bg-white border-red-300 focus:border-red-500">
+                          <SelectValue placeholder="Selecciona un método" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cookie">Basado en cookies (Básico)</SelectItem>
+                          <SelectItem value="user">Solo usuarios registrados (Seguro)</SelectItem>
+                          <SelectItem value="document">Requerir documento de identidad (Público)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

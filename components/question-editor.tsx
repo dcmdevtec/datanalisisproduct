@@ -305,7 +305,7 @@ export function QuestionEditor({
         <div className="flex-1 space-y-2">
           {editingOptionRichIndex === index ? (
             <div>
-              <AdvancedRichTextEditor
+              {/* <AdvancedRichTextEditor
                 value={label}
                 onChange={(html) => {
                   const newOptions = optItems.map((opt: any, idx: number) => {
@@ -318,7 +318,8 @@ export function QuestionEditor({
                 }}
                 placeholder={`Opción ${index + 1}`}
                 immediatelyRender={false}
-              />
+              /> */}
+              <div>AdvancedRichTextEditor placeholder</div>
               <div className="flex gap-2 mt-2">
                 <Button size="sm" variant="outline" onClick={() => setEditingOptionRichIndex(null)}>Cerrar</Button>
               </div>

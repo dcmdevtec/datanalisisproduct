@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerSupabase()
     const body = await request.json()
-    const { survey_id, answers, location, device_info } = body
+  const { survey_id, answers, location, device_info, respondent_public_id, respondent_document_type, respondent_document_number, respondent_name } = body
 
     if (!survey_id) {
       return NextResponse.json({ error: "ID de encuesta requerido" }, { status: 400 })
@@ -61,15 +61,23 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getSession()
 
     // Crear respuesta principal
+    const insertPayload: any = {
+      survey_id,
+      user_id: session?.user?.id || null,
+      location: location || null,
+      device_info: device_info || null,
+      status: "completed",
+    }
+
+    // Include public respondent info if provided (preview/public flows)
+    if (respondent_public_id) insertPayload.respondent_public_id = respondent_public_id
+    if (respondent_document_type) insertPayload.respondent_document_type = respondent_document_type
+    if (respondent_document_number) insertPayload.respondent_document_number = respondent_document_number
+    if (respondent_name) insertPayload.respondent_name = respondent_name
+
     const { data: responseData, error: responseError } = await supabase
       .from("responses")
-      .insert({
-        survey_id,
-        user_id: session?.user?.id || null,
-        location: location || null,
-        device_info: device_info || null,
-        status: "completed",
-      })
+      .insert(insertPayload)
       .select()
       .single()
 
@@ -93,6 +101,24 @@ export async function POST(request: NextRequest) {
       // Si hay error al guardar respuestas, eliminar la respuesta principal
       await supabase.from("responses").delete().eq("id", responseData.id)
       return NextResponse.json({ error: answersError.message }, { status: 500 })
+    }
+
+    // Si se proporcionó respondent_public_id, actualizar survey_respondent_tracking
+    try {
+      if (respondent_public_id) {
+        const { error: trackErr } = await supabase
+          .from("survey_respondent_tracking")
+          .update({ response_id: responseData.id, status: "completed", completed_at: new Date().toISOString() })
+          .eq("survey_id", survey_id)
+          .eq("respondent_public_id", respondent_public_id)
+
+        if (trackErr) {
+          // No fatal: sólo loggear
+          console.error("Error actualizando survey_respondent_tracking:", trackErr)
+        }
+      }
+    } catch (err) {
+      console.error("Error no esperado actualizando tracking:", err)
     }
 
     return NextResponse.json({

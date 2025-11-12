@@ -75,7 +75,9 @@ function stripHtml(html: string): string {
   return tmp.textContent || tmp.innerText || "";
 }
 import { QuestionEditor } from "@/components/question-editor"
-import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
+const AdvancedRichTextEditor = dynamic(() => import("@/components/ui/advanced-rich-text-editor").then((mod) => mod.AdvancedRichTextEditor), {
+  ssr: false,
+})
 import { arrayMove } from "@dnd-kit/sortable"
 
 import {
@@ -89,7 +91,11 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import SurveyLogoUpload from "@/components/ui/survey-logo-upload"
+const SurveyLogoUpload = dynamic(() => import("@/components/ui/survey-logo-upload").then((mod) => mod.SurveyLogoUpload), {
+  ssr: false,
+  })
+
+
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
@@ -187,6 +193,7 @@ interface SurveySettings {
   }
   assignedUsers?: string[]
   assignedZones?: string[]
+  publicLink?: string; // Add this new field
 }
 
 // Componente SortableSection
@@ -948,7 +955,7 @@ function SectionSkipLogicConfig({ section, allSections, onSave, onCancel }: Sect
   )
 }
 
-function CreateSurveyForProjectPageContent() {
+export function CreateSurveyForProjectPageContent() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const params = useParams()
@@ -971,6 +978,8 @@ function CreateSurveyForProjectPageContent() {
   const [deadline, setDeadline] = useState<string>("")
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [isSavingSection, setIsSavingSection] = useState<boolean>(false)
+  // State to show generated preview URL as a visible fallback
+  const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
   const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: "saved" | "not-saved" | "error" }>({})
@@ -1414,7 +1423,68 @@ function CreateSurveyForProjectPageContent() {
 
     console.log("🔍 Datos de preview con lógica de salto:", previewData)
     localStorage.setItem("surveyPreviewData", JSON.stringify(previewData))
-    window.open("/preview/survey", "_blank")
+
+    ;(async () => {
+      try {
+        // Ensure we have a surveyId to build a shareable link
+        let surveyIdToUse = currentSurveyId
+
+        if (!surveyIdToUse) {
+          // Create a minimal draft survey so the preview link can include an ID
+          if (!surveyTitle || !surveyTitle.trim()) {
+            toast({ title: 'Título requerido', description: 'Por favor ingresa un título antes de crear el link de preview', variant: 'destructive' })
+            return
+          }
+
+          const surveyDataForCreate = {
+            title: surveyTitle,
+            description: surveyDescription,
+            project_id: projectId,
+            created_by: user?.id || null,
+            status: 'draft',
+            settings: settings || {},
+          }
+
+          const { data: newSurvey, error: newSurveyError } = await supabase
+            .from('surveys')
+            .insert([surveyDataForCreate])
+            .select()
+            .single()
+
+          if (newSurveyError) {
+            console.error('Error creando draft para preview:', newSurveyError)
+            toast({ title: 'Error', description: 'No se pudo crear la encuesta para preview', variant: 'destructive' })
+            return
+          }
+
+          surveyIdToUse = newSurvey.id
+          setCurrentSurveyId(surveyIdToUse)
+          setIsEditMode(true)
+          toast({ title: 'Borrador creado', description: 'Se creó un borrador para generar el link de preview' })
+        }
+
+        // Build full URL and copy to clipboard
+        const origin = typeof window !== 'undefined' ? window.location.origin : ''
+        const previewUrl = `${origin}/preview/survey/${surveyIdToUse}`
+        try {
+          await navigator.clipboard.writeText(previewUrl)
+          toast({ title: 'Link copiado', description: 'El link de preview fue copiado al porta-papeles' })
+          // Also set visible link for users to confirm
+          setGeneratedPreviewUrl(previewUrl)
+        } catch (err) {
+          // Fallback: not allowed to write clipboard — show visible link so user can copy manually
+          console.warn('No se pudo copiar al portapapeles', err)
+          toast({ title: 'Link listo', description: 'No se pudo copiar automáticamente; usa el link mostrado debajo', variant: 'default' })
+          setGeneratedPreviewUrl(previewUrl)
+        }
+
+        // Open preview in a new tab/window regardless
+        window.open(previewUrl, '_blank')
+      } catch (err) {
+        console.error('Error preparando preview:', err)
+        toast({ title: 'Error', description: 'Error preparando el preview', variant: 'destructive' })
+      }
+    })()
   }
 
  const handleSave = async () => {
@@ -2415,6 +2485,7 @@ function CreateSurveyForProjectPageContent() {
                                   </>
                                 )}
                               </Button>
+                              {/* preview link moved to Configuración modal */}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -2942,6 +3013,16 @@ function CreateSurveyForProjectPageContent() {
               isOpen={showEditSettingsModal}
               onClose={() => setShowEditSettingsModal(false)}
               currentSettings={settings}
+              previewUrl={generatedPreviewUrl}
+              onCopyPreview={async () => {
+                if (!generatedPreviewUrl) return
+                try {
+                  await navigator.clipboard.writeText(generatedPreviewUrl)
+                  toast({ title: 'Link copiado', description: 'El link de preview fue copiado al porta-papeles' })
+                } catch (err) {
+                  toast({ title: 'Error', description: 'No se pudo copiar el link automáticamente', variant: 'destructive' })
+                }
+              }}
               onSave={(newSettings) => {
                 setSettings(newSettings)
                 setShowEditSettingsModal(false)
