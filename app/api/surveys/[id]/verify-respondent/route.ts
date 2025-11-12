@@ -54,19 +54,38 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         return NextResponse.json({ error: createErr.message }, { status: 500 })
       }
 
-      respondentId = created?.id
+      // Extract id defensively: supabase may return object or array depending on client
+      respondentId = (created && (created as any).id) || (Array.isArray(created) && created[0] && created[0].id)
 
-      // create tracking
-      const { error: trackErr } = await supabase.from("survey_respondent_tracking").insert({
+      if (!respondentId) {
+        console.error("Created public_respondent returned no id:", created)
+        return NextResponse.json({ error: "Failed to create respondent id" }, { status: 500 })
+      }
+
+      // create tracking (ensure respondentId is not null)
+      let { error: trackErr } = await supabase.from("survey_respondent_tracking").insert({
         survey_id: surveyId,
         respondent_public_id: respondentId,
         status: "started",
       })
 
       if (trackErr) {
-        console.error("Error creating tracking row:", trackErr)
-        // Not fatal for the user experience, but return error
-        return NextResponse.json({ error: trackErr.message }, { status: 500 })
+        console.error("Error creating tracking row (public_id):", trackErr)
+        // Fallback: some DB schemas may expect a column named respondent_id (legacy). Try that as fallback.
+        try {
+          const { error: fallbackErr } = await supabase.from("survey_respondent_tracking").insert({
+            survey_id: surveyId,
+            respondent_id: respondentId,
+            status: "started",
+          })
+          if (fallbackErr) {
+            console.error("Fallback creating tracking row (respondent_id) also failed:", fallbackErr)
+            return NextResponse.json({ error: fallbackErr.message || trackErr.message }, { status: 500 })
+          }
+        } catch (fallbackEx) {
+          console.error("Unexpected fallback error creating tracking:", fallbackEx)
+          return NextResponse.json({ error: String(fallbackEx) }, { status: 500 })
+        }
       }
 
       return NextResponse.json({ allowed_to_proceed: true, status: "new", respondent_public_id: respondentId })
@@ -88,15 +107,33 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     if (!tracking) {
       // No tracking found -> allow and create tracking
-      const { error: createTrackingErr } = await supabase.from("survey_respondent_tracking").insert({
+      if (!respondentId) {
+        console.error("Missing respondentId when creating tracking for existing respondent", { surveyId, existing })
+        return NextResponse.json({ error: "Missing respondent identifier" }, { status: 500 })
+      }
+
+      let { error: createTrackingErr } = await supabase.from("survey_respondent_tracking").insert({
         survey_id: surveyId,
         respondent_public_id: respondentId,
         status: "started",
       })
 
       if (createTrackingErr) {
-        console.error("Error creating tracking row:", createTrackingErr)
-        return NextResponse.json({ error: createTrackingErr.message }, { status: 500 })
+        console.error("Error creating tracking row (public_id):", createTrackingErr)
+        try {
+          const { error: fallbackErr } = await supabase.from("survey_respondent_tracking").insert({
+            survey_id: surveyId,
+            respondent_id: respondentId,
+            status: "started",
+          })
+          if (fallbackErr) {
+            console.error("Fallback creating tracking row (respondent_id) also failed:", fallbackErr)
+            return NextResponse.json({ error: fallbackErr.message || createTrackingErr.message }, { status: 500 })
+          }
+        } catch (fallbackEx) {
+          console.error("Unexpected fallback error creating tracking:", fallbackEx)
+          return NextResponse.json({ error: String(fallbackEx) }, { status: 500 })
+        }
       }
 
       return NextResponse.json({ allowed_to_proceed: true, status: "started", respondent_public_id: respondentId })

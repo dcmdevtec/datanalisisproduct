@@ -1711,7 +1711,24 @@ function PreviewSurveyPageContent() {
             <h3 className="text-lg font-semibold mb-4">Verificación de encuestado</h3>
             <p className="text-sm text-muted-foreground mb-4">Antes de iniciar, por favor ingresa tu tipo y número de documento para verificar si ya respondiste.</p>
             <div className="space-y-3">
-              <Input placeholder="Tipo de documento" value={docType} onChange={(e) => setDocType(e.target.value)} />
+              <div>
+                <Label className="mb-2">Tipo de documento</Label>
+                <Select value={docType} onValueChange={(value) => setDocType(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona el tipo de documento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
+                    <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
+                    <SelectItem value="NIT">NIT</SelectItem>
+                    <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
+                    <SelectItem value="PEP">Permiso Especial de Permanencia (PEP)</SelectItem>
+                    <SelectItem value="PA">Pasaporte (PA)</SelectItem>
+                    <SelectItem value="RC">Registro Civil (RC)</SelectItem>
+                    <SelectItem value="N/D">N/D</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Input placeholder="Número de documento" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
               <Input placeholder="Nombre completo (opcional)" value={fullName} onChange={(e) => setFullName(e.target.value)} />
               {verifyError && <div className="text-sm text-red-600">{verifyError}</div>}
