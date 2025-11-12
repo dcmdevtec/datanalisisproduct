@@ -322,6 +322,52 @@ function PreviewSurveyPageContent() {
     }
   }
 
+  // Defensive fallback: some production builds may end up with undefined imports for the
+  // Radix-based Select components (causing React error #306: element type is undefined).
+  // Render a native <select> if the Select exports are missing.
+  function DocTypeSelect() {
+    // @ts-ignore - runtime existence check
+    const HasRadixSelect = typeof Select !== "undefined" && typeof SelectTrigger !== "undefined" && typeof SelectContent !== "undefined" && typeof SelectItem !== "undefined" && typeof SelectValue !== "undefined"
+
+    if (!HasRadixSelect) {
+      return (
+        <select
+          value={docType}
+          onChange={(e) => setDocType(e.target.value)}
+          className="block w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+        >
+          <option value="">Selecciona el tipo de documento</option>
+          <option value="CC">Cédula de Ciudadanía (CC)</option>
+          <option value="CE">Cédula de Extranjería (CE)</option>
+          <option value="NIT">NIT</option>
+          <option value="TI">Tarjeta de Identidad (TI)</option>
+          <option value="PEP">Permiso Especial de Permanencia (PEP)</option>
+          <option value="PA">Pasaporte (PA)</option>
+          <option value="RC">Registro Civil (RC)</option>
+          <option value="N/D">N/D</option>
+        </select>
+      )
+    }
+
+    return (
+      <Select value={docType} onValueChange={(value: string) => setDocType(value)}>
+        <SelectTrigger>
+          <SelectValue placeholder="Selecciona el tipo de documento" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
+          <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
+          <SelectItem value="NIT">NIT</SelectItem>
+          <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
+          <SelectItem value="PEP">Permiso Especial de Permanencia (PEP)</SelectItem>
+          <SelectItem value="PA">Pasaporte (PA)</SelectItem>
+          <SelectItem value="RC">Registro Civil (RC)</SelectItem>
+          <SelectItem value="N/D">N/D</SelectItem>
+        </SelectContent>
+      </Select>
+    )
+  }
+
   // Cargar respuestas guardadas al inicializar
   useEffect(() => {
     if (surveyData) {
@@ -1713,21 +1759,7 @@ function PreviewSurveyPageContent() {
             <div className="space-y-3">
               <div>
                 <Label className="mb-2">Tipo de documento</Label>
-                <Select value={docType} onValueChange={(value) => setDocType(value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona el tipo de documento" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
-                    <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
-                    <SelectItem value="NIT">NIT</SelectItem>
-                    <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
-                    <SelectItem value="PEP">Permiso Especial de Permanencia (PEP)</SelectItem>
-                    <SelectItem value="PA">Pasaporte (PA)</SelectItem>
-                    <SelectItem value="RC">Registro Civil (RC)</SelectItem>
-                    <SelectItem value="N/D">N/D</SelectItem>
-                  </SelectContent>
-                </Select>
+                <DocTypeSelect />
               </div>
               <Input placeholder="Número de documento" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
               <Input placeholder="Nombre completo (opcional)" value={fullName} onChange={(e) => setFullName(e.target.value)} />
