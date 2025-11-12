@@ -115,21 +115,23 @@ interface SurveySettings {
   offlineMode: boolean
   distributionMethods: string[]
   theme?: {
-    primaryColor: string
-    backgroundColor: string
-    textColor: string
+    primaryColor?: string
+    backgroundColor?: string
+    textColor?: string
   }
   branding?: {
-    showLogo: boolean
-    logoPosition: string
+    showLogo?: boolean
+    logoPosition?: string
+    // Allow optional logo (base64 or URL) used by preview
+    logo?: string | null
   }
   security?: {
-    passwordProtected: boolean
+    passwordProtected?: boolean
     password?: string
-    preventMultipleSubmissions: boolean
+    preventMultipleSubmissions?: boolean
   }
   notifications?: {
-    emailOnSubmission: boolean
+    emailOnSubmission?: boolean
   }
   assignedUsers?: string[]
   assignedZones?: string[]
@@ -335,7 +337,8 @@ function PreviewSurveyPageContent() {
         }
         setShowVerifyModal(false)
       } else {
-        setVerifyError("Ya ha completado esta encuesta.")
+        // Prefer server-provided message when available
+        setVerifyError(json.message || "Ya ha completado esta encuesta.")
       }
     } catch (err: any) {
       console.error("Error verificando encuestado:", err)
@@ -671,12 +674,28 @@ function PreviewSurveyPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const json = await res.json()
+
+      const status = res.status
+      let json: any = null
+      try {
+        json = await res.json()
+      } catch (parseErr) {
+        // Body was not valid JSON; capture raw text for diagnostics
+        try {
+          const raw = await res.text()
+          json = { _raw: raw }
+        } catch (tErr) {
+          json = { _raw_error: String(tErr) }
+        }
+      }
+
       if (!res.ok) {
-        console.error('Error enviando respuestas:', json)
-        toast({ title: 'Error', description: json.error || 'No se pudo enviar la respuesta', variant: 'destructive' })
+        console.error('Error enviando respuestas:', { status, body: json })
+        const description = (json && (json.error || json.message || json.details || json._raw)) || 'No se pudo enviar la respuesta'
+        toast({ title: 'Error', description, variant: 'destructive' })
         return false
       }
+
       toast({ title: 'Encuesta completada', description: 'Gracias por tu participación' })
       return true
     } catch (err) {
