@@ -25,6 +25,7 @@ import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
 import type {  SurveySection } from "@/types-updated"
 import { supabase } from "@/lib/supabase-browser";
 import type { Question } from "@/types-updated";
+import { ContactInfoQuestion } from "./contact-info-question";
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
@@ -1808,6 +1809,18 @@ export function QuestionEditor({
                   />
                   <Label>Dirección</Label>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={question.config?.includeDocument || false}
+                    onCheckedChange={(checked) =>
+                      onUpdateQuestion(sectionId, question.id, "config", {
+                        ...question.config,
+                        includeDocument: checked,
+                      })
+                    }
+                  />
+                  <Label>Documento</Label>
+                </div>
               </div>
               <div className="mt-4">
                 <Label className="font-medium">Vista previa</Label>
@@ -1818,6 +1831,16 @@ export function QuestionEditor({
                   {question.config?.includePhone && <Input placeholder="Teléfono" type="tel" disabled />}
                   {question.config?.includeCompany && <Input placeholder="Empresa" disabled />}
                   {question.config?.includeAddress && <Textarea placeholder="Dirección" disabled rows={2} />}
+                  {question.config?.includeDocument && (
+                    <div className="flex gap-2">
+                      <Select disabled>
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="Tipo" />
+                        </SelectTrigger>
+                      </Select>
+                      <Input placeholder="Número de Documento" disabled />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -38,6 +38,7 @@ import { ArrowLeft, ArrowRight, Grip, Plus, Save, Trash2, Loader2 } from "lucide
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { generateUUID } from "@/lib/utils"
+import { ContactInfoQuestion } from "@/components/contact-info-question"
 
 export default function CreateSurveyPage() {
   const { user, loading } = useAuth()
@@ -58,9 +59,9 @@ export default function CreateSurveyPage() {
       questions: [
         {
           id: "1",
-          type: "multiple_choice",
-          text: "¿Qué tan satisfecho estás con nuestro servicio?",
-          options: ["Muy satisfecho", "Satisfecho", "Neutral", "Insatisfecho", "Muy insatisfecho"],
+          type: "contact_info",
+          text: "Información de Contacto",
+          options: [],
           required: true,
         },
       ],
@@ -344,6 +345,7 @@ export default function CreateSurveyPage() {
                   <SelectItem value="date">Fecha</SelectItem>
                   <SelectItem value="time">Hora</SelectItem>
                   <SelectItem value="scale">Escala</SelectItem>
+                  <SelectItem value="contact_info">Información de Contacto</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -362,6 +364,10 @@ export default function CreateSurveyPage() {
               placeholder="Escribe tu pregunta"
             />
           </div>
+
+          {question.type === "contact_info" && (
+            <ContactInfoQuestion surveyId="123" onChange={() => {}} />
+          )}
 
           {(question.type === "multiple_choice" || question.type === "checkbox") && (
             <div className="space-y-3">

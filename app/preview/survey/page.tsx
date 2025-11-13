@@ -41,6 +41,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ContactInfoQuestion } from "@/components/contact-info-question"
 
 // Tipos para la lógica de secciones y preguntas
 interface Question {
@@ -1416,34 +1417,10 @@ function PreviewSurveyPageContent() {
             )
           case "contact_info":
             return (
-              <div className="space-y-4">
-                <div>
-                  <Label>Nombre completo</Label>
-                  <Input
-                    value={answers[`${question.id}_name`] || ""}
-                    onChange={(e) => handleAnswerChange(`${question.id}_name`, e.target.value)}
-                    placeholder="Nombre completo"
-                  />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={answers[`${question.id}_email`] || ""}
-                    onChange={(e) => handleAnswerChange(`${question.id}_email`, e.target.value)}
-                    placeholder="ejemplo@email.com"
-                  />
-                </div>
-                <div>
-                  <Label>Teléfono</Label>
-                  <Input
-                    type="tel"
-                    value={answers[`${question.id}_phone`] || ""}
-                    onChange={(e) => handleAnswerChange(`${question.id}_phone`, e.target.value)}
-                    placeholder="+1 (555) 123-4567"
-                  />
-                </div>
-              </div>
+              <ContactInfoQuestion
+                surveyId={inferredSurveyId || ""}
+                onChange={(value) => handleAnswerChange(question.id, value)}
+              />
             )
           case "ranking": {
             // Guardar el orden en answers[question.id] como array
@@ -1809,7 +1786,7 @@ function PreviewSurveyPageContent() {
         </div>
       )}
       {/* Verification modal shown before survey */}
-      {showVerifyModal && (
+      {/* {showVerifyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">Verificación de encuestado</h3>
@@ -1844,7 +1821,7 @@ function PreviewSurveyPageContent() {
               </div>
           </div>
         </div>
-      )}
+      )} */}
       {dynamicStyles}
       {/* Header principal */}
       <div className="w-full max-w-5xl mb-8 preview-header">

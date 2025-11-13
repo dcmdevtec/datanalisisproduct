@@ -1930,7 +1930,24 @@ export function CreateSurveyForProjectPageContent() {
       if (currentSurveyId) {
         fetchSurveyForEdit()
       } else {
-        setInitialLoading(false)
+        // Si es una encuesta nueva, crear la sección y pregunta de contacto por defecto
+        const contactQuestion: Question = {
+          id: generateUUID(),
+          type: "contact_info",
+          text: "Información de Contacto",
+          options: [],
+          required: true,
+          config: {},
+        };
+        const defaultSection: SurveySection = {
+          id: generateUUID(),
+          title: "Información del Encuestado",
+          description: "Por favor, proporciona tus datos de contacto.",
+          order_num: 0,
+          questions: [contactQuestion],
+        };
+        setSections([defaultSection]);
+        setInitialLoading(false);
       }
     }
   }, [authLoading, user, projectId, currentSurveyId, fetchSurveyForEdit])
