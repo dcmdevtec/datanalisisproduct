@@ -2847,6 +2847,35 @@ export function CreateSurveyForProjectPageContent() {
                     </div>
                   </CardContent>
                 </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Marca (Branding)</CardTitle>
+                    <CardDescription>Personaliza la apariencia de tu encuesta</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="survey-logo" className="text-base font-medium">
+                        Logo de la Encuesta
+                      </Label>
+                      <SurveyLogoUpload
+                        value={settings.branding?.logo || null}
+                        onChange={(value) => handleBrandingChange("logo", value)}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        Sube un logo para tu encuesta
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="show-logo">Mostrar Logo</Label>
+                      <Switch
+                        id="show-logo"
+                        checked={settings.branding?.showLogo}
+                        onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
+                      />
+                    </div>
+                    
+                  </CardContent>
+                </Card>
     </TabsContent>
                
             </Tabs>
