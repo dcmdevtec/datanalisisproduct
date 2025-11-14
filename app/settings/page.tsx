@@ -2,7 +2,7 @@
 
 import { Textarea } from "@/components/ui/textarea"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -21,6 +21,13 @@ export default function SettingsPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
+  const isMounted = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -30,13 +37,17 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      toast({
-        title: "Configuración guardada",
-        description: "Los cambios han sido guardados correctamente.",
-      })
+    const timer = setTimeout(() => {
+      if (isMounted.current) {
+        setLoading(false)
+        toast({
+          title: "Configuración guardada",
+          description: "Los cambios han sido guardados correctamente.",
+        })
+      }
     }, 1000)
+
+    return () => clearTimeout(timer)
   }
 
   if (authLoading || !user) {
