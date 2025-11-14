@@ -858,10 +858,14 @@ function PreviewSurveyPageContent() {
                 {(question.options || []).map((option, idx) => {
                   const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
                   const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
+                  const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null;
                   return (
                     <div key={idx} className="flex items-center space-x-2">
                       <RadioGroupItem value={optionValue} id={`${question.id}-option-${idx}`} />
-                      <Label htmlFor={`${question.id}-option-${idx}`} dangerouslySetInnerHTML={{ __html: optionLabel }} />
+                      <Label htmlFor={`${question.id}-option-${idx}`} className="flex items-center gap-4">
+                        {imageUrl && <img src={imageUrl} alt={optionLabel} className="w-16 h-16 object-cover rounded-md" />}
+                        <span dangerouslySetInnerHTML={{ __html: optionLabel }} />
+                      </Label>
                     </div>
                   );
                 })}
@@ -894,6 +898,7 @@ function PreviewSurveyPageContent() {
                 {(question.options || []).map((option, idx) => {
                   const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
                   const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
+                  const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null;
                   const checked = selected.includes(optionValue);
                   const disabled = !checked && isMaxReached;
                   return (
@@ -912,7 +917,10 @@ function PreviewSurveyPageContent() {
                           handleAnswerChange(question.id, Array.from(currentAnswers));
                         }}
                       />
-                      <Label htmlFor={`${question.id}-option-${idx}`}>{optionLabel}</Label>
+                      <Label htmlFor={`${question.id}-option-${idx}`} className="flex items-center gap-4">
+                        {imageUrl && <img src={imageUrl} alt={optionLabel} className="w-16 h-16 object-cover rounded-md" />}
+                        {optionLabel}
+                      </Label>
                     </div>
                   );
                 })}
