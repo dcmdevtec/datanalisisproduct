@@ -2768,7 +2768,85 @@ export function CreateSurveyForProjectPageContent() {
                 </div>
               </TabsContent>
 <TabsContent value="settings" className="space-y-6">
-  hola
+   <Card>
+                  <CardHeader>
+                    <CardTitle>Configuración de la Encuesta</CardTitle>
+                    <CardDescription>Administra la configuración de esta encuesta</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium">Distribución</h3>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span>Enlace público</span>
+                            <Badge
+                              variant={settings.distributionMethods?.includes("public_link") ? "default" : "outline"}
+                            >
+                              {settings.distributionMethods?.includes("public_link") ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Código QR</span>
+                            <Badge variant={settings.distributionMethods?.includes("qr_code") ? "default" : "outline"}>
+                              {settings.distributionMethods?.includes("qr_code") ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Email</span>
+                            <Badge variant={settings.distributionMethods?.includes("email") ? "default" : "outline"}>
+                              {settings.distributionMethods?.includes("email") ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>WhatsApp</span>
+                            <Badge variant={settings.distributionMethods?.includes("whatsapp") ? "default" : "outline"}>
+                              {settings.distributionMethods?.includes("whatsapp") ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium">Recolección de Datos</h3>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span>Modo offline</span>
+                            <Badge variant={settings.offlineMode ? "default" : "outline"}>
+                              {settings.offlineMode ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Geolocalización</span>
+                            <Badge variant={settings.collectLocation ? "default" : "outline"}>
+                              {settings.collectLocation ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Grabación de audio</span>
+                            <Badge variant={settings.allowAudio ? "default" : "outline"}>
+                              {settings.allowAudio ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Tiempo de encuesta</span>
+                            <Badge variant="default">Activo</Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        className="gap-2 bg-transparent"
+                        onClick={() => setShowEditSettingsModal(true)}
+                      >
+                        <Edit className="h-4 w-4 mr-2" /> Editar Configuración
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
     </TabsContent>
                
             </Tabs>
