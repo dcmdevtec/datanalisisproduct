@@ -2201,7 +2201,7 @@ export function CreateSurveyForProjectPageContent() {
                 <TabsTrigger value="details">Detalles</TabsTrigger>
                 <TabsTrigger value="questions">Preguntas</TabsTrigger>
                 <TabsTrigger value="assignment">Asignación</TabsTrigger>
-
+<TabsTrigger value="settings">Configuración</TabsTrigger>
               </TabsList>
 
               <TabsContent value="details" className="space-y-6">
@@ -2767,7 +2767,9 @@ export function CreateSurveyForProjectPageContent() {
                   </Button>
                 </div>
               </TabsContent>
-
+<TabsContent value="settings" className="space-y-6">
+  hola
+    </TabsContent>
                
             </Tabs>
           </div>
