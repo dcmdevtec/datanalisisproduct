@@ -2201,7 +2201,7 @@ export function CreateSurveyForProjectPageContent() {
                 <TabsTrigger value="details">Detalles</TabsTrigger>
                 <TabsTrigger value="questions">Preguntas</TabsTrigger>
                 <TabsTrigger value="assignment">Asignación</TabsTrigger>
-                <TabsTrigger value="settings">Configuración</TabsTrigger>
+
               </TabsList>
 
               <TabsContent value="details" className="space-y-6">
@@ -2768,61 +2768,7 @@ export function CreateSurveyForProjectPageContent() {
                 </div>
               </TabsContent>
 
-               <TabsContent value="settings" className="space-y-6">
-                
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Marca (Branding)</CardTitle>
-                    <CardDescription>Personaliza la apariencia de tu encuesta</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="survey-logo" className="text-base font-medium">
-                        Logo de la Encuesta
-                      </Label>
-                      <SurveyLogoUpload
-                        value={settings.branding?.logo || null}
-                        onChange={(value) => handleBrandingChange("logo", value)}
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        Sube un logo para tu encuesta
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="show-logo">Mostrar Logo</Label>
-                      <Switch
-                        id="show-logo"
-                        checked={settings.branding?.showLogo}
-                        onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
-                      />
-                    </div>
-                    
-                  </CardContent>
-                </Card>
-
-                <div className="flex flex-col sm:flex-row justify-between gap-4 pt-6 border-t">
-                  <Button variant="outline" className="gap-2 bg-transparent" onClick={() => setActiveTab("assignment")}>
-                    <ArrowLeft className="h-4 w-4" /> Anterior: Preguntas
-                  </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-full"
-                    style={{ backgroundColor: "#18b0a4" }}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> {isEditMode ? "Actualizando..." : "Guardando..."}
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" /> {isEditMode ? "Actualizar Encuesta" : "Crear Encuesta"}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </TabsContent>
+               
             </Tabs>
           </div>
 
