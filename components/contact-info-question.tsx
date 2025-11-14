@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -11,16 +11,27 @@ import { useDebounce } from "use-debounce"
 interface ContactInfoQuestionProps {
   surveyId: string
   onChange: (value: {
-    documentType: string
-    documentNumber: string
-    name: string
-    phone: string
+    documentType?: string
+    documentNumber?: string
+    name?: string
+    phone?: string
   }) => void
+  config?: {
+    showName?: boolean
+    showPhone?: boolean
+    showDocument?: boolean
+  }
 }
 
 type VerificationStatus = "idle" | "verifying" | "verified" | "error" | "already_exists"
 
-export function ContactInfoQuestion({ surveyId, onChange }: ContactInfoQuestionProps) {
+export function ContactInfoQuestion({ surveyId, onChange, config = {} }: ContactInfoQuestionProps) {
+  const {
+    showName = true,
+    showPhone = true,
+    showDocument = true,
+  } = config;
+
   const [documentType, setDocumentType] = useState("CC")
   const [documentNumber, setDocumentNumber] = useState("")
   const [name, setName] = useState("")
@@ -30,16 +41,42 @@ export function ContactInfoQuestion({ surveyId, onChange }: ContactInfoQuestionP
   const [message, setMessage] = useState("")
 
   const documentLengthIsValid = useMemo(() => {
+    if (!showDocument) return false;
     const length = debouncedDocumentNumber.trim().length
     return length === 7 || length === 10
-  }, [debouncedDocumentNumber])
+  }, [debouncedDocumentNumber, showDocument])
+
+  const isInitialMount = useRef(true);
 
   useEffect(() => {
-    onChange({ documentType, documentNumber, name, phone })
-  }, [documentType, documentNumber, name, phone])
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    
+    const dataToChange: {
+        documentType?: string
+        documentNumber?: string
+        name?: string
+        phone?: string
+    } = {};
+
+    if (showDocument) {
+        dataToChange.documentType = documentType;
+        dataToChange.documentNumber = documentNumber;
+    }
+    if (showName) {
+        dataToChange.name = name;
+    }
+    if (showPhone) {
+        dataToChange.phone = phone;
+    }
+
+    onChange(dataToChange);
+  }, [documentType, documentNumber, name, phone, showDocument, showName, showPhone]);
 
   useEffect(() => {
-    if (!documentLengthIsValid) {
+    if (!showDocument || !documentLengthIsValid) {
       setStatus("idle")
       setMessage("")
       return
@@ -89,9 +126,10 @@ export function ContactInfoQuestion({ surveyId, onChange }: ContactInfoQuestionP
     }
 
     verifyResponse()
-  }, [debouncedDocumentNumber, documentType, surveyId, documentLengthIsValid])
+  }, [debouncedDocumentNumber, documentType, surveyId, documentLengthIsValid, showDocument])
 
   const statusIndicator = useMemo(() => {
+    if (!showDocument) return null;
     switch (status) {
       case "verifying":
         return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -104,79 +142,87 @@ export function ContactInfoQuestion({ surveyId, onChange }: ContactInfoQuestionP
       default:
         return null
     }
-  }, [status])
+  }, [status, showDocument])
 
   return (
     <div className="space-y-4 p-4 border rounded-lg bg-background">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Nombre Completo</Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ingrese su nombre completo"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="phone">Teléfono</Label>
-          <Input
-            id="phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Ingrese su número de teléfono"
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="document-type">Tipo de Documento</Label>
-          <Select value={documentType} onValueChange={setDocumentType}>
-            <SelectTrigger id="document-type">
-              <SelectValue placeholder="Seleccione..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
-              <SelectItem value="CE">Cédula de Extranjería</SelectItem>
-              <SelectItem value="TI">Tarjeta de Identidad</SelectItem>
-              <SelectItem value="PA">Pasaporte</SelectItem>
-              <SelectItem value="NIT">NIT</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="document-number">Número de Documento</Label>
-          <div className="relative">
+        {showName && (
+          <div className="space-y-2">
+            <Label htmlFor="name">Nombre Completo</Label>
             <Input
-              id="document-number"
-              type="number"
-              value={documentNumber}
-              onChange={(e) => setDocumentNumber(e.target.value)}
-              placeholder="Ingrese el número de documento"
-              className="pr-8"
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ingrese su nombre completo"
             />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-              {statusIndicator}
+          </div>
+        )}
+        {showPhone && (
+          <div className="space-y-2">
+            <Label htmlFor="phone">Teléfono</Label>
+            <Input
+              id="phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Ingrese su número de teléfono"
+            />
+          </div>
+        )}
+      </div>
+      {showDocument && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="document-type">Tipo de Documento</Label>
+              <Select value={documentType} onValueChange={setDocumentType}>
+                <SelectTrigger id="document-type">
+                  <SelectValue placeholder="Seleccione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
+                  <SelectItem value="CE">Cédula de Extranjería</SelectItem>
+                  <SelectItem value="TI">Tarjeta de Identidad</SelectItem>
+                  <SelectItem value="PA">Pasaporte</SelectItem>
+                  <SelectItem value="NIT">NIT</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="document-number">Número de Documento</Label>
+              <div className="relative">
+                <Input
+                  id="document-number"
+                  type="number"
+                  value={documentNumber}
+                  onChange={(e) => setDocumentNumber(e.target.value)}
+                  placeholder="Ingrese el número de documento"
+                  className="pr-8"
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  {statusIndicator}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      {message && (
-        <div className="text-sm flex items-center gap-2">
-          {statusIndicator}
-          <span
-            className={
-              status === "error"
-                ? "text-red-600"
-                : status === "already_exists"
-                ? "text-yellow-600"
-                : "text-muted-foreground"
-            }
-          >
-            {message}
-          </span>
-        </div>
+          {message && (
+            <div className="text-sm flex items-center gap-2">
+              {statusIndicator}
+              <span
+                className={
+                  status === "error"
+                    ? "text-red-600"
+                    : status === "already_exists"
+                    ? "text-yellow-600"
+                    : "text-muted-foreground"
+                }
+              >
+                {message}
+              </span>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

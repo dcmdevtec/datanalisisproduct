@@ -1416,10 +1416,19 @@ function PreviewSurveyPageContent() {
               </div>
             )
           case "contact_info":
+            const questionConfig = question.config || question.settings || {};
+            
+            const contactInfoConfig = {
+                showName: !!questionConfig.includeFirstName,
+                showPhone: !!questionConfig.includePhone,
+                showDocument: !!questionConfig.includeDocument,
+            };
+
             return (
               <ContactInfoQuestion
                 surveyId={inferredSurveyId || ""}
                 onChange={(value) => handleAnswerChange(question.id, value)}
+                config={contactInfoConfig}
               />
             )
           case "ranking": {
