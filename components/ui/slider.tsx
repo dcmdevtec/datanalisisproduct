@@ -8,13 +8,14 @@ import { cn } from "@/lib/utils"
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(({ className, ...props }, ref) => (
+>(({ className, step = 1, ...props }, ref) => ( // Añadir step = 1 como valor por defecto
   <SliderPrimitive.Root
     ref={ref}
     className={cn(
       "relative flex w-full touch-none select-none items-center",
       className
     )}
+    step={step} // Asegurar que el step se aplique
     {...props}
   >
     <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">

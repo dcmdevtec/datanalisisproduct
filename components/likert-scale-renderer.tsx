@@ -114,10 +114,57 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
     const steps = range / config.step
     const showCenter = config.labels.center && range > 2
 
-    const points = Array.from({ length: steps + 1 }, (_, i) => config.min + i * config.step)
+    // 🐛 DEBUG: Ver configuración recibida
+    console.log('🎯 LIKERT CONFIG:', {
+      min: config.min,
+      max: config.max,
+      step: config.step,
+      showZero: config.showZero,
+      labels: config.labels,
+      range,
+      steps
+    })
+
+    // Generar SOLO los puntos que tienen labels configurados
+    const points: number[] = []
+    
+    // Si showZero, agregar 0 primero (siempre tiene label)
     if (config.showZero) {
-      points.unshift(0)
+      points.push(0)
     }
+    
+    // Agregar puntos que tienen labels configurados
+    // Left label (siempre en config.min)
+    if (config.labels.left) {
+      points.push(config.min)
+    }
+    
+    // Center label (en el punto medio si existe)
+    if (config.labels.center && showCenter) {
+      const centerValue = Math.ceil((config.min + config.max) / 2)
+      if (!points.includes(centerValue)) {
+        points.push(centerValue)
+      }
+    }
+    
+    // Right label (siempre en config.max)
+    if (config.labels.right) {
+      if (!points.includes(config.max)) {
+        points.push(config.max)
+      }
+    }
+    
+    // Ordenar los puntos
+    points.sort((a, b) => a - b)
+
+    console.log('🎯 PUNTOS GENERADOS:', points)
+
+    // Función para calcular la posición real en porcentaje basada en el valor
+    const getPointPosition = (pointValue: number): number => {
+      const min = config.showZero ? 0 : config.min;
+      const max = config.max;
+      return ((pointValue - min) / (max - min)) * 100;
+    };
 
     const getPointColor = (pointValue: number) => {
       if (localValue === null) return 'bg-gray-300'
@@ -132,16 +179,16 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
         <div className="relative flex items-center">
           <div className="h-1 flex-grow bg-gray-200 rounded-full">
             <div 
-              className="h-1 rounded-full"
+              className="h-1 rounded-full transition-all duration-200"
               style={{ 
                 backgroundColor: config.appearance.color,
                 width: localValue !== null 
-                  ? `${((localValue - (config.showZero ? 0 : config.min)) / (config.max - (config.showZero ? 0 : config.min))) * 100}%` 
+                  ? `${getPointPosition(localValue)}%` 
                   : '0%'
               }}
             ></div>
           </div>
-          <div className="absolute w-full flex justify-between top-1/2 -translate-y-1/2">
+          <div className="absolute w-full h-5 top-1/2 -translate-y-1/2">
             {points.map((point) => (
               <button
                 key={point}
@@ -154,6 +201,11 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
                   ${getPointColor(point)}
                   ${localValue === point ? 'transform scale-125 shadow-lg' : 'hover:scale-110'}
                 `}
+                style={{
+                  position: 'absolute',
+                  left: `${getPointPosition(point)}%`,
+                  transform: 'translateX(-50%)'
+                }}
                 disabled={disabled}
               >
                 {config.showNumbers && (
@@ -167,7 +219,7 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
         </div>
 
         {/* Etiquetas y números */}
-        <div className="flex justify-between items-start text-sm -mx-2">
+        <div className="relative w-full" style={{ minHeight: '50px' }}>
           {points.map((point) => {
             let label = ''
             if (point === 0 && config.showZero) label = config.zeroLabel
@@ -176,14 +228,22 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
             if (point === config.max) label = config.labels.right
 
             return (
-              <div key={point} className="text-center flex-1 px-1">
+              <div 
+                key={point} 
+                className="absolute text-center"
+                style={{
+                  left: `${getPointPosition(point)}%`,
+                  transform: 'translateX(-50%)',
+                  width: '80px'
+                }}
+              >
                 {config.showNumbers && (
                   <div className={`font-bold ${getSizeClasses()} ${localValue === point ? 'text-green-600' : ''}`}>
                     {point}
                   </div>
                 )}
                 {config.showLabels && label && (
-                  <div className="text-xs text-gray-600 max-w-[80px] mx-auto mt-1">
+                  <div className="text-xs text-gray-600 max-w-[80px] mx-auto mt-1 break-words">
                     {label}
                   </div>
                 )}
@@ -212,19 +272,43 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
       <div className="flex items-center space-x-4">
         {/* Control deslizante vertical */}
         <div className="py-2">
-          <Slider
-            value={localValue !== null ? [localValue] : undefined}
-            onValueChange={(values) => handleValueChange(values[0] || null)}
-            min={config.showZero ? 0 : config.min}
-            max={config.max}
-            step={config.step}
-            disabled={disabled}
-            orientation="vertical"
-            className={`h-32 ${getSliderSize()}`}
-            style={{
-              '--slider-color': config.appearance.color,
-            } as React.CSSProperties}
-          />
+          {/* Función helper para forzar snapping al step más cercano */}
+          {(() => {
+            const min = config.showZero ? 0 : config.min;
+            const snapToStep = (rawValue: number): number => {
+              const rounded = Math.round((rawValue - min) / config.step) * config.step + min;
+              return Math.max(min, Math.min(config.max, rounded));
+            };
+            
+            return (
+              <Slider
+                value={localValue !== null ? [localValue] : undefined}
+                onValueChange={(values) => {
+                  const rawValue = values[0];
+                  if (rawValue !== undefined) {
+                    const snappedValue = snapToStep(rawValue);
+                    handleValueChange(snappedValue);
+                  }
+                }}
+                onValueCommit={(values) => {
+                  const rawValue = values[0];
+                  if (rawValue !== undefined) {
+                    const snappedValue = snapToStep(rawValue);
+                    handleValueChange(snappedValue);
+                  }
+                }}
+                min={min}
+                max={config.max}
+                step={config.step}
+                disabled={disabled}
+                orientation="vertical"
+                className={`h-32 ${getSliderSize()}`}
+                style={{
+                  '--slider-color': config.appearance.color,
+                } as React.CSSProperties}
+              />
+            );
+          })()}
         </div>
 
         {/* Etiquetas verticales */}

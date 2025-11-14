@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import React, { useEffect, useState, useCallback, useRef } from "react"
 // Utilidad para extraer fuentes de un HTML
 function extractFontFamilies(html: string): string[] {
   if (!html) return [];
@@ -822,6 +822,257 @@ function PreviewSurveyPageContent() {
     }
   }, [currentSectionIndex])
 
+  // Componente Likert con segmentos clickeables - GARANTIZA que nunca quede entre opciones
+  const LikertSliderWithDivisions = ({ 
+    questionId,
+    min, 
+    max, 
+    step, 
+    value, 
+    onValueChange,
+    labels,
+    showZero,
+    zeroLabel,
+    themeColors,
+    originalMin
+  }: { 
+    questionId: string
+    min: number
+    max: number
+    step: number
+    value: number
+    onValueChange: (value: number) => void
+    labels: string[]
+    showZero: boolean
+    zeroLabel: string
+    themeColors: { primary: string; background: string; text: string }
+    originalMin?: number
+  }) => {
+    // Si no se pasa originalMin, calcularlo: si showZero es true, entonces originalMin es 1
+    const actualOriginalMin = originalMin !== undefined ? originalMin : (showZero ? 1 : min)
+    const [localValue, setLocalValue] = useState<number>(value)
+    
+    // Sincronizar con valor externo
+    useEffect(() => {
+      setLocalValue(value)
+    }, [value])
+    
+    // Generar SOLO valores que tienen labels configurados (left, center, right)
+    const allValues: number[] = []
+    // Si showZero, agregar 0 primero (siempre tiene label)
+    if (showZero) {
+      allValues.push(0)
+    }
+    // Agregar valores que tienen labels configurados explícitamente
+    for (let i = originalMin !== undefined ? originalMin : min; i <= max; i += step) {
+      const labelIndex = i - actualOriginalMin
+      // Solo incluir valores que tienen label configurado (no vacío)
+      const hasLabel = labelIndex >= 0 && labelIndex < labels.length && labels[labelIndex] && labels[labelIndex].trim()
+      
+      if (hasLabel) {
+        if (!showZero || i !== 0) {
+          allValues.push(i)
+        }
+      }
+    }
+    
+    const handleClick = (val: number) => {
+      setLocalValue(val)
+      onValueChange(val)
+    }
+    
+    // Calcular posición del valor seleccionado (0-100%)
+    const selectedValue = localValue
+    // Usar el rango basado en los valores reales que existen, no en min/max
+    const actualMinValue = allValues.length > 0 ? allValues[0] : (showZero ? 0 : min)
+    const actualMaxValue = allValues.length > 0 ? allValues[allValues.length - 1] : max
+    const actualRange = actualMaxValue - actualMinValue
+    
+    // Obtener el label de la opción seleccionada
+    const getSelectedLabel = () => {
+      if (selectedValue === 0 && showZero) {
+        return zeroLabel
+      }
+      const labelIndex = selectedValue - actualOriginalMin
+      if (labelIndex >= 0 && labelIndex < labels.length) {
+        return labels[labelIndex] || String(selectedValue)
+      }
+      return String(selectedValue)
+    }
+    
+    const selectedLabel = getSelectedLabel()
+    
+    return (
+      <div className="space-y-4">
+        {/* Track con segmentos clickeables */}
+        <div className="relative px-2 py-4">
+          {/* Track base */}
+          <div className="relative h-2 w-full flex items-center">
+            {/* Fondo del track */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gray-200 rounded-full"></div>
+            
+            {/* Rango seleccionado - solo hasta la opción seleccionada */}
+            {(() => {
+              const selectedIndex = allValues.findIndex(v => v === selectedValue)
+              if (selectedIndex === -1 || allValues.length === 0) return null
+              
+              const startPosition = 0
+              const endPosition = actualRange > 0 ? ((selectedValue - actualMinValue) / actualRange) * 100 : 0
+              
+              return (
+                <div
+                  className="absolute top-0 h-2 rounded-full transition-all duration-200"
+                  style={{
+                    left: `${startPosition}%`,
+                    width: `${endPosition}%`,
+                    backgroundColor: themeColors.primary,
+                  }}
+                ></div>
+              )
+            })()}
+            
+            {/* Segmentos clickeables para cada opción */}
+            {allValues.map((val, index) => {
+              const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
+              const nextPosition = index === allValues.length - 1 
+                ? 100 
+                : (actualRange > 0 ? ((allValues[index + 1] - actualMinValue) / actualRange) * 100 : 0)
+              const width = nextPosition - valPosition
+              const isSelected = selectedValue === val
+              
+              return (
+                <button
+                  key={`segment-${val}`}
+                  type="button"
+                  onClick={() => handleClick(val)}
+                  className="absolute top-0 h-2 rounded-full transition-all duration-200 hover:bg-opacity-80 z-10"
+                  style={{
+                    left: `${valPosition}%`,
+                    width: `${width}%`,
+                    backgroundColor: isSelected ? themeColors.primary : 'transparent',
+                    cursor: 'pointer'
+                  }}
+                  aria-label={`Seleccionar opción ${val}`}
+                >
+                  {/* Marcador visual para opción seleccionada */}
+                  {isSelected && (
+                    <div 
+                      className="absolute -top-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border-4 bg-white shadow-lg transition-all duration-200"
+                      style={{
+                        borderColor: themeColors.primary,
+                      }}
+                    >
+                      <div 
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-bold"
+                        style={{ color: themeColors.primary }}
+                      >
+                        {val}
+                      </div>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+            
+            {/* Marcadores para todas las opciones (no solo la seleccionada) */}
+            {allValues.map((val, index) => {
+              const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
+              const isSelected = selectedValue === val
+              
+              if (isSelected) return null // Ya se muestra arriba
+              
+              return (
+                <button
+                  key={`marker-${val}`}
+                  type="button"
+                  onClick={() => handleClick(val)}
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border-2 bg-white hover:border-gray-400 hover:scale-110 transition-all duration-200 z-20 cursor-pointer"
+                  style={{
+                    left: `${valPosition}%`,
+                    borderColor: '#d1d5db',
+                  }}
+                  aria-label={`Seleccionar opción ${val}`}
+                >
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-medium text-gray-600">
+                    {val}
+                  </div>
+                </button>
+              )
+            })}
+            
+            {/* Líneas de división entre segmentos */}
+            {allValues.slice(1).map((val, index) => {
+              const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
+              return (
+                <div
+                  key={`divider-${index}-${val}`}
+                  className="absolute top-0 w-px h-2 bg-gray-300 z-0"
+                  style={{
+                    left: `${valPosition}%`,
+                  }}
+                ></div>
+              )
+            })}
+          </div>
+          
+          {/* Labels debajo del slider - SOLO mostrar valores con labels */}
+          <div className="flex justify-between text-xs text-muted-foreground mt-6">
+            {allValues.map((val, index) => {
+              const labelIndex = val === 0 ? -1 : val - actualOriginalMin
+              const label = val === 0 ? zeroLabel : (labelIndex >= 0 && labelIndex < labels.length ? labels[labelIndex] || "" : "")
+              const isSelected = selectedValue === val
+              
+              // Solo mostrar si tiene label (ya está filtrado arriba)
+              if (val === 0 || (label && label.trim())) {
+                const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
+                
+                return (
+                  <div 
+                    key={`label-${val}`}
+                    className="text-center absolute"
+                    style={{ 
+                      left: `${valPosition}%`,
+                      transform: 'translateX(-50%)',
+                      color: isSelected ? themeColors.primary : undefined,
+                      fontWeight: isSelected ? 'bold' : 'normal',
+                      minWidth: '80px'
+                    }}
+                  >
+                    <div className="font-medium">{val}</div>
+                    {label && label.trim() && (
+                      <div className="text-xs mt-1 max-w-[100px] mx-auto whitespace-nowrap">{label}</div>
+                    )}
+                  </div>
+                )
+              }
+              return null
+            })}
+          </div>
+        </div>
+        
+        {/* Indicador siempre visible de la opción seleccionada */}
+        <div className="text-center pt-4 border-t border-gray-200">
+          <div 
+            className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-semibold shadow-sm"
+            style={{
+              backgroundColor: `${themeColors.primary}15`,
+              color: themeColors.primary,
+              border: `2px solid ${themeColors.primary}30`
+            }}
+          >
+            <span className="text-sm">Opción seleccionada:</span>
+            <span className="text-2xl font-bold">{selectedValue}</span>
+            {selectedLabel && selectedLabel.trim() && (
+              <span className="text-sm font-medium opacity-90">
+                ({selectedLabel})
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderQuestion = useCallback(
     (question: Question, questionIndex: number) => {
       // Verificar si la pregunta debe mostrarse según la lógica de visualización
@@ -1087,21 +1338,31 @@ function PreviewSurveyPageContent() {
             const likertScale = question.config?.likertScale || {};
             const showZero = !!likertScale.showZero;
             const zeroLabel = likertScale.zeroLabel || 'No Sabe / No Responde';
-            const min = showZero ? 0 : (typeof likertScale.min === 'number' ? likertScale.min : 1);
-            const max = typeof likertScale.max === 'number' ? likertScale.max : 5;
+            
+            // Obtener min/max originales para el cálculo de labels (sin considerar showZero)
+            const originalMin = typeof likertScale.min === 'number' ? likertScale.min : 
+                               typeof question.config?.scaleMin === 'number' ? question.config.scaleMin : 1;
+            const originalMax = typeof likertScale.max === 'number' ? likertScale.max : 
+                               typeof question.config?.scaleMax === 'number' ? question.config.scaleMax : 5;
             const step = typeof likertScale.step === 'number' ? likertScale.step : 1;
+            
+            // min para el slider (0 si showZero, sino originalMin)
+            const min = showZero ? 0 : originalMin;
+            const max = originalMax;
+            
             let labels = [];
             // Si labels es un objeto tipo {left, center, right}, mapearlo a un array para el slider
             if (likertScale.labels && typeof likertScale.labels === 'object' && !Array.isArray(likertScale.labels)) {
-              const totalSteps = Math.floor((max - min) / step) + 1;
+              // Calcular totalSteps usando originalMin (no 0) para los labels
+              const totalSteps = Math.floor((originalMax - originalMin) / step) + 1;
               labels = Array(totalSteps).fill("");
-              // left
-              labels[showZero ? 1 : 0] = likertScale.labels.left || "";
-              // right
+              // left - siempre en índice 0 del array de labels (corresponde a valor originalMin)
+              labels[0] = likertScale.labels.left || "";
+              // right - siempre en el último índice
               labels[labels.length - 1] = likertScale.labels.right || "";
-              // center (solo si hay un punto medio)
-              if (typeof likertScale.labels.center === 'string' && labels.length % 2 === 1) {
-                const centerIdx = Math.floor(labels.length / 2);
+              // center - solo si hay un punto medio y el número de pasos es impar
+              if (typeof likertScale.labels.center === 'string' && totalSteps % 2 === 1) {
+                const centerIdx = Math.floor(totalSteps / 2);
                 labels[centerIdx] = likertScale.labels.center;
               }
             } else if (Array.isArray(likertScale.labels)) {
@@ -1110,20 +1371,21 @@ function PreviewSurveyPageContent() {
               // fallback
               labels = defaultLabels;
             }
-            // Si la cantidad de labels no coincide con el rango, ajustar a default
-            const totalSteps = Math.floor((max - min) / step) + 1;
+            
+            // Validar que los labels tengan la cantidad correcta
+            const totalSteps = Math.floor((originalMax - originalMin) / step) + 1;
             if (labels.length !== totalSteps) {
               // Si hay 3 labels y muchos pasos, solo poner left/center/right
               if (labels.length === 3 && totalSteps > 3) {
                 const arr = Array(totalSteps).fill("");
-                arr[showZero ? 1 : 0] = labels[0];
-                arr[Math.floor(arr.length / 2)] = labels[1];
-                arr[arr.length - 1] = labels[2];
+                arr[0] = labels[0]; // left
+                arr[Math.floor(arr.length / 2)] = labels[1]; // center
+                arr[arr.length - 1] = labels[2]; // right
                 labels = arr;
               } else {
-                // Si no, rellenar con vacíos
+                // Si no, rellenar con vacíos y poner defaults
                 labels = Array(totalSteps).fill("");
-                labels[showZero ? 1 : 0] = defaultLabels[0];
+                labels[0] = defaultLabels[0];
                 labels[labels.length - 1] = defaultLabels[2];
                 if (labels.length % 2 === 1) {
                   labels[Math.floor(labels.length / 2)] = defaultLabels[1];
@@ -1132,35 +1394,21 @@ function PreviewSurveyPageContent() {
             }
             // Si showZero, agregar el label de 0 al inicio visualmente
             const value = answers[question.id] !== undefined ? answers[question.id] : min;
+            
             return (
-              <div className="space-y-4">
-                <Slider
-                  value={[value]}
-                  onValueChange={(val) => handleAnswerChange(question.id, val[0])}
-                  max={max}
-                  min={min}
-                  step={step}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                  {showZero && (
-                    <span className="text-center" style={{ width: `${100 / (labels.length + 1)}%` }}>
-                      <div className="font-medium">0</div>
-                      <div className="text-xs">{zeroLabel}</div>
-                    </span>
-                  )}
-                  {labels.map((label, index) => (
-                    <span key={index} className="text-center" style={{ width: `${100 / (labels.length + (showZero ? 1 : 0))}%` }}>{label}</span>
-                  ))}
-                </div>
-                <div className="text-center mt-4">
-                  <span className="text-lg font-semibold" style={{ color: themeColors.primary }}>
-                    {showZero && value === 0
-                      ? zeroLabel
-                      : labels[Math.floor((value - min) / step) - (showZero ? 0 : 0)]}
-                  </span>
-                </div>
-              </div>
+              <LikertSliderWithDivisions
+                questionId={question.id}
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onValueChange={(val) => handleAnswerChange(question.id, val)}
+                labels={labels}
+                showZero={showZero}
+                zeroLabel={zeroLabel}
+                themeColors={themeColors}
+                originalMin={originalMin}
+              />
             )
           case "net_promoter":
             return (

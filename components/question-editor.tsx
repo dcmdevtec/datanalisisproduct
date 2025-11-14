@@ -1518,6 +1518,7 @@ export function QuestionEditor({
                 <h4 className="font-medium text-blue-800 mb-3">Vista Previa Rápida:</h4>
                 <div className="space-y-4">
                   <div className="px-2">
+                    {/* Vista previa deshabilitada - el step se mantiene para consistencia visual */}
                     <Slider
                       defaultValue={[Math.ceil((question.config?.likertScale?.max || 5) / 2)]}
                       min={question.config?.likertScale?.showZero ? 0 : question.config?.likertScale?.min || 1}
