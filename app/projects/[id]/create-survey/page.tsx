@@ -97,7 +97,7 @@ const SurveyLogoUpload = dynamic(() => import("@/components/ui/survey-logo-uploa
 
 
 
-const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
+const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing").then(mod => mod.default), {
   ssr: false,
 })
 
