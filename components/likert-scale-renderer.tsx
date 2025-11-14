@@ -110,69 +110,93 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
   }
 
   const renderHorizontalScale = () => {
-    const range = config.max - config.min + 1
+    const range = config.max - config.min
+    const steps = range / config.step
     const showCenter = config.labels.center && range > 2
-    
+
+    const points = Array.from({ length: steps + 1 }, (_, i) => config.min + i * config.step)
+    if (config.showZero) {
+      points.unshift(0)
+    }
+
+    const getPointColor = (pointValue: number) => {
+      if (localValue === null) return 'bg-gray-300'
+      if (pointValue === localValue) return `bg-green-500` // Color más brillante para el seleccionado
+      if (pointValue < localValue) return `bg-green-400`
+      return 'bg-gray-300'
+    }
+
     return (
-      <div className="space-y-4">
-        {/* Control deslizante */}
-        <div className="px-2">
-          <Slider
-            value={localValue !== null ? [localValue] : undefined}
-            onValueChange={(values) => handleValueChange(values[0] || null)}
-            min={config.showZero ? 0 : config.min}
-            max={config.max}
-            step={config.step}
-            disabled={disabled}
-            className={`w-full ${getSliderSize()}`}
-            style={{
-              '--slider-color': config.appearance.color,
-            } as React.CSSProperties}
-          />
+      <div className="space-y-6">
+        {/* Control deslizante visual con puntos */}
+        <div className="relative flex items-center">
+          <div className="h-1 flex-grow bg-gray-200 rounded-full">
+            <div 
+              className="h-1 rounded-full"
+              style={{ 
+                backgroundColor: config.appearance.color,
+                width: localValue !== null 
+                  ? `${((localValue - (config.showZero ? 0 : config.min)) / (config.max - (config.showZero ? 0 : config.min))) * 100}%` 
+                  : '0%'
+              }}
+            ></div>
+          </div>
+          <div className="absolute w-full flex justify-between top-1/2 -translate-y-1/2">
+            {points.map((point) => (
+              <button
+                key={point}
+                type="button"
+                onClick={() => handleValueChange(point)}
+                className={`
+                  w-5 h-5 rounded-full flex items-center justify-center 
+                  transition-all duration-150 ease-in-out
+                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                  ${getPointColor(point)}
+                  ${localValue === point ? 'transform scale-125 shadow-lg' : 'hover:scale-110'}
+                `}
+                disabled={disabled}
+              >
+                {config.showNumbers && (
+                  <span className={`text-xs ${localValue === point ? 'text-white font-bold' : 'text-gray-600'}`}>
+                    {/* No mostramos el número dentro del punto para no sobrecargar */}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Etiquetas y números */}
-        <div className="flex justify-between items-end text-sm">
-          {config.showZero && (
-            <div className="text-center flex-1">
-              <div className={`font-bold ${getSizeClasses()}`}>0</div>
-              <div className="text-xs text-gray-600 max-w-[80px] mx-auto">
-                {config.zeroLabel}
-              </div>
-            </div>
-          )}
-          
-          <div className="text-center flex-1">
-            <div className={`font-bold ${getSizeClasses()}`}>{config.min}</div>
-            <div className="text-xs text-gray-600 max-w-[80px] mx-auto">
-              {config.labels.left}
-            </div>
-          </div>
+        <div className="flex justify-between items-start text-sm -mx-2">
+          {points.map((point) => {
+            let label = ''
+            if (point === 0 && config.showZero) label = config.zeroLabel
+            if (point === config.min) label = config.labels.left
+            if (showCenter && point === Math.ceil((config.min + config.max) / 2)) label = config.labels.center || ''
+            if (point === config.max) label = config.labels.right
 
-          {showCenter && (
-            <div className="text-center flex-1">
-              <div className={`font-bold ${getSizeClasses()}`}>
-                {Math.ceil((config.min + config.max) / 2)}
+            return (
+              <div key={point} className="text-center flex-1 px-1">
+                {config.showNumbers && (
+                  <div className={`font-bold ${getSizeClasses()} ${localValue === point ? 'text-green-600' : ''}`}>
+                    {point}
+                  </div>
+                )}
+                {config.showLabels && label && (
+                  <div className="text-xs text-gray-600 max-w-[80px] mx-auto mt-1">
+                    {label}
+                  </div>
+                )}
               </div>
-              <div className="text-xs text-gray-600 max-w-[80px] mx-auto">
-                {config.labels.center}
-              </div>
-            </div>
-          )}
-
-          <div className="text-center flex-1">
-            <div className={`font-bold ${getSizeClasses()}`}>{config.max}</div>
-            <div className="text-xs text-gray-600 max-w-[80px] mx-auto">
-              {config.labels.right}
-            </div>
-          </div>
+            )
+          })}
         </div>
 
         {/* Valor seleccionado */}
         {config.appearance.showValue && localValue !== null && (
-          <div className="text-center">
-            <Badge variant="outline" className="text-lg px-4 py-2">
-              Valor seleccionado: {localValue}
+          <div className="text-center pt-2">
+            <Badge variant="outline" className="text-lg px-4 py-2 border-green-500 bg-green-50">
+              Valor seleccionado: <span className="font-bold ml-2">{localValue}</span>
             </Badge>
           </div>
         )}

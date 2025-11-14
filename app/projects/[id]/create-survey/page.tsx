@@ -75,8 +75,10 @@ function stripHtml(html: string): string {
   return tmp.textContent || tmp.innerText || "";
 }
 import { QuestionEditor } from "@/components/question-editor"
+import { SectionSkipLogicConfig } from "@/components/survey/SectionSkipLogicConfig"
 const AdvancedRichTextEditor = dynamic(() => import("@/components/ui/advanced-rich-text-editor").then((mod) => mod.AdvancedRichTextEditor), {
   ssr: false,
+  loading: () => <div className="h-20 bg-muted animate-pulse rounded" />,
 })
 import { arrayMove } from "@dnd-kit/sortable"
 
@@ -93,12 +95,14 @@ import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 const SurveyLogoUpload = dynamic(() => import("@/components/ui/survey-logo-upload").then((mod) => mod.SurveyLogoUpload), {
   ssr: false,
-  })
+  loading: () => <div className="h-32 bg-muted animate-pulse rounded" />,
+})
 
 
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing").then(mod => mod.default), {
   ssr: false,
+  loading: () => <div className="h-48 bg-muted animate-pulse rounded flex items-center justify-center"><Map className="h-8 w-8 text-muted-foreground" /></div>,
 })
 
 // Tipos para la lógica de secciones y preguntas
@@ -838,122 +842,7 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
   return validatedSections
 }
 
-interface SectionSkipLogicConfigProps {
-  section: SurveySection
-  allSections: SurveySection[]
-  onSave: (skipLogic: SectionSkipLogic) => void
-  onCancel: () => void
-}
-
-function SectionSkipLogicConfig({ section, allSections, onSave, onCancel }: SectionSkipLogicConfigProps) {
-  const [enabled, setEnabled] = useState(section.skipLogic?.enabled || false)
-  const [action, setAction] = useState<SectionSkipLogic["action"]>(section.skipLogic?.action || "next_section")
-  const [targetSectionId, setTargetSectionId] = useState(section.skipLogic?.targetSectionId || "")
-  const [targetQuestionId, setTargetQuestionId] = useState(section.skipLogic?.targetQuestionId || "")
-
-  const handleSave = () => {
-    const skipLogic: SectionSkipLogic = {
-      enabled,
-      action,
-      targetSectionId: action === "specific_section" || action === "specific_question" ? targetSectionId : undefined,
-      targetQuestionId: action === "specific_question" ? targetQuestionId : undefined,
-    }
-    onSave(skipLogic)
-  }
-
-  const selectedSection = allSections.find((s) => s.id === targetSectionId)
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium">Lógica de Salto de Sección</h3>
-          <p className="text-sm text-muted-foreground">Controla el flujo cuando el usuario completa esta sección</p>
-        </div>
-        <Switch checked={enabled} onCheckedChange={setEnabled} />
-      </div>
-
-      {enabled && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Acción al completar la sección</Label>
-            <Select value={action} onValueChange={(value: SectionSkipLogic["action"]) => setAction(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="next_section">Continuar a la siguiente sección</SelectItem>
-                <SelectItem value="specific_section">Saltar a una sección específica</SelectItem>
-                <SelectItem value="specific_question">Saltar a una pregunta específica</SelectItem>
-                <SelectItem value="end_survey">Finalizar la encuesta</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {(action === "specific_section" || action === "specific_question") && (
-            <div className="space-y-2">
-              <Label>Sección destino</Label>
-              <Select value={targetSectionId} onValueChange={setTargetSectionId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar sección..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {allSections.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.title || `Sección ${allSections.indexOf(s) + 1}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {action === "specific_question" && selectedSection && (
-            <div className="space-y-2">
-              <Label>Pregunta específica</Label>
-              <Select value={targetQuestionId} onValueChange={setTargetQuestionId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar pregunta..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedSection.questions.map((q, index) => (
-                    <SelectItem key={q.id} value={q.id}>
-                      Pregunta {index + 1}: {q.text.replace(/<[^>]*>/g, "").substring(0, 50)}...
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Preview */}
-          <div className="p-4 bg-muted/50 rounded-lg">
-            <h4 className="font-medium mb-2">Vista previa del flujo:</h4>
-            <div className="flex items-center gap-2 text-sm">
-              <Badge variant="outline">{section.title}</Badge>
-              <ArrowRight className="h-4 w-4" />
-              {action === "next_section" && <Badge variant="secondary">Siguiente sección</Badge>}
-              {action === "end_survey" && <Badge variant="destructive">Fin de encuesta</Badge>}
-              {action === "specific_section" && selectedSection && (
-                <Badge variant="default">{selectedSection.title}</Badge>
-              )}
-              {action === "specific_question" && selectedSection && (
-                <Badge variant="default">{selectedSection.title} - Pregunta específica</Badge>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex justify-end gap-2 pt-4 border-t">
-        <Button variant="outline" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button onClick={handleSave}>Guardar Configuración</Button>
-      </div>
-    </div>
-  )
-}
+// SectionSkipLogicConfig component moved to @/components/survey/SectionSkipLogicConfig
 
 export function CreateSurveyForProjectPageContent() {
   const { user, loading: authLoading } = useAuth()
