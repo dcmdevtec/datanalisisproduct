@@ -14,7 +14,7 @@ interface SurveyLogoUploadProps {
   onChange: (base64Image: string | null) => void
 }
 
-export function SurveyLogoUpload({ value, onChange }: SurveyLogoUploadProps) {
+export default function SurveyLogoUpload({ value, onChange }: SurveyLogoUploadProps) {
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 

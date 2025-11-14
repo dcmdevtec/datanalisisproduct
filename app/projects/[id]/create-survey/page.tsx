@@ -95,7 +95,7 @@ import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 const SurveyLogoUpload = dynamic(async () => {
   const mod = await import("@/components/ui/survey-logo-upload")
-  return mod.SurveyLogoUpload
+  return mod.default
 }, {
   ssr: false,
   loading: () => <div className="h-32 bg-muted animate-pulse rounded" />,
