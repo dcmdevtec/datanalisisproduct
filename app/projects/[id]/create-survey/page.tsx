@@ -93,10 +93,14 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SectionOrganizer } from "@/components/section-organizer"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-const SurveyLogoUpload = dynamic(() => import("@/components/ui/survey-logo-upload").then((mod) => mod.SurveyLogoUpload), {
+const SurveyLogoUpload = dynamic(async () => {
+  const mod = await import("@/components/ui/survey-logo-upload")
+  return mod.SurveyLogoUpload
+}, {
   ssr: false,
   loading: () => <div className="h-32 bg-muted animate-pulse rounded" />,
 })
+
 
 
 
