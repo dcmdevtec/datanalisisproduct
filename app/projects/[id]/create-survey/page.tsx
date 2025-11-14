@@ -2880,6 +2880,27 @@ export function CreateSurveyForProjectPageContent() {
                     
                   </CardContent>
                 </Card>
+                <div className="flex flex-col sm:flex-row justify-between gap-4 pt-6 border-t">
+                  <Button variant="outline" className="gap-2 bg-transparent" onClick={() => setActiveTab("assignment")}>
+                    <ArrowLeft className="h-4 w-4" /> Anterior: Preguntas
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-full"
+                    style={{ backgroundColor: "#18b0a4" }}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> {isEditMode ? "Actualizando..." : "Guardando..."}
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" /> {isEditMode ? "Actualizar Encuesta" : "Crear Encuesta"}
+                      </>
+                    )}
+                  </Button>
+                </div>
     </TabsContent>
                
             </Tabs>
