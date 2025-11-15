@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput";
+import LikertSlider from "@/components/LikertSlider"
 
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -160,6 +161,7 @@ interface PreviewSurveyData {
 
 
 function PreviewSurveyPageContent() {
+  // ...existing code...
   const router = useRouter()
   const [surveyData, setSurveyData] = useState<PreviewSurveyData | null>(null)
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0)
@@ -835,7 +837,8 @@ function PreviewSurveyPageContent() {
     showZero,
     zeroLabel,
     themeColors,
-    originalMin
+    originalMin,
+    showNumbers
   }: { 
     questionId: string
     min: number
@@ -848,6 +851,7 @@ function PreviewSurveyPageContent() {
     zeroLabel: string
     themeColors: { primary: string; background: string; text: string }
     originalMin?: number
+    showNumbers?: boolean
   }) => {
     // Si no se pasa originalMin, calcularlo: si showZero es true, entonces originalMin es 1
     const actualOriginalMin = originalMin !== undefined ? originalMin : (showZero ? 1 : min)
@@ -858,21 +862,33 @@ function PreviewSurveyPageContent() {
       setLocalValue(value)
     }, [value])
     
-    // Generar SOLO valores que tienen labels configurados (left, center, right)
+    // Decide si mostrar números en cada marcador.
+    const totalStepsCount = Math.floor((max - (showZero ? 0 : actualOriginalMin)) / step) + 1
+    const smallRange = (max - (showZero ? 0 : actualOriginalMin)) / step <= 10
+    const showMarkersNumbers = !!showNumbers || smallRange
+
+    // Generar la lista completa de pasos (todos los valores del rango) para que
+    // los segmentos interactivos cubran todo el rango y permitan seleccionar cualquier número.
     const allValues: number[] = []
-    // Si showZero, agregar 0 primero (siempre tiene label)
-    if (showZero) {
-      allValues.push(0)
-    }
-    // Agregar valores que tienen labels configurados explícitamente
+    if (showZero) allValues.push(0)
     for (let i = originalMin !== undefined ? originalMin : min; i <= max; i += step) {
-      const labelIndex = i - actualOriginalMin
-      // Solo incluir valores que tienen label configurado (no vacío)
-      const hasLabel = labelIndex >= 0 && labelIndex < labels.length && labels[labelIndex] && labels[labelIndex].trim()
-      
-      if (hasLabel) {
-        if (!showZero || i !== 0) {
-          allValues.push(i)
+      if (!showZero || i !== 0) allValues.push(i)
+    }
+
+    // Generar la lista de valores que mostrarán etiquetas/ números visuales según configuración.
+    // Si showMarkersNumbers es true mostramos números para cada paso; en caso contrario solo mostramos
+    // aquellos valores que tengan una etiqueta definida (left/center/right) y 0 si corresponde.
+    const labeledValues: number[] = []
+    if (showZero) labeledValues.push(0)
+    if (showMarkersNumbers) {
+      // copiar allValues en labeledValues
+      for (const v of allValues) labeledValues.push(v)
+    } else {
+      for (let i = originalMin !== undefined ? originalMin : min; i <= max; i += step) {
+        const labelIndex = i - actualOriginalMin
+        const hasLabel = labelIndex >= 0 && labelIndex < labels.length && labels[labelIndex] && labels[labelIndex].trim()
+        if (hasLabel) {
+          if (!showZero || i !== 0) labeledValues.push(i)
         }
       }
     }
@@ -941,7 +957,7 @@ function PreviewSurveyPageContent() {
               const width = nextPosition - valPosition
               const isSelected = selectedValue === val
               
-              return (
+                  return (
                 <button
                   key={`segment-${val}`}
                   type="button"
@@ -958,16 +974,17 @@ function PreviewSurveyPageContent() {
                   {/* Marcador visual para opción seleccionada */}
                   {isSelected && (
                     <div 
-                      className="absolute -top-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border-4 bg-white shadow-lg transition-all duration-200"
+                      className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full border-4 bg-white shadow-lg transition-all duration-200 flex items-center justify-center"
                       style={{
                         borderColor: themeColors.primary,
                       }}
                     >
                       <div 
-                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-bold"
+                        className="text-sm font-bold"
                         style={{ color: themeColors.primary }}
                       >
-                        {val}
+                        {/* Si se pidió mostrar números, mostrar el número; si no, mostrar la etiqueta si existe, sino el número */}
+                        {showMarkersNumbers ? String(val) : (labels[(val === 0 ? -1 : val - actualOriginalMin)] || String(val))}
                       </div>
                     </div>
                   )}
@@ -981,22 +998,25 @@ function PreviewSurveyPageContent() {
               const isSelected = selectedValue === val
               
               if (isSelected) return null // Ya se muestra arriba
-              
+
+              // Mostrar marcador compacto: número si showMarkersNumbers, sino un punto pequeño
               return (
                 <button
                   key={`marker-${val}`}
                   type="button"
                   onClick={() => handleClick(val)}
-                  className="absolute -top-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border-2 bg-white hover:border-gray-400 hover:scale-110 transition-all duration-200 z-20 cursor-pointer"
+                  className={`absolute -top-2 ${showMarkersNumbers ? 'left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border-2 bg-white hover:border-gray-400 hover:scale-110' : 'w-3 h-3 rounded-full bg-white border'} transition-all duration-200 z-20 cursor-pointer`}
                   style={{
                     left: `${valPosition}%`,
                     borderColor: '#d1d5db',
                   }}
                   aria-label={`Seleccionar opción ${val}`}
                 >
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-medium text-gray-600">
-                    {val}
-                  </div>
+                  {showMarkersNumbers ? (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-medium text-gray-600">
+                      {val}
+                    </div>
+                  ) : null}
                 </button>
               )
             })}
@@ -1016,9 +1036,9 @@ function PreviewSurveyPageContent() {
             })}
           </div>
           
-          {/* Labels debajo del slider - SOLO mostrar valores con labels */}
-          <div className="flex justify-between text-xs text-muted-foreground mt-6">
-            {allValues.map((val, index) => {
+            {/* Labels debajo del slider - SOLO mostrar valores con labels (labeledValues) */}
+          <div className="flex justify-between text-xs text-muted-foreground mt-6 relative">
+            {labeledValues.map((val, index) => {
               const labelIndex = val === 0 ? -1 : val - actualOriginalMin
               const label = val === 0 ? zeroLabel : (labelIndex >= 0 && labelIndex < labels.length ? labels[labelIndex] || "" : "")
               const isSelected = selectedValue === val
@@ -1039,8 +1059,9 @@ function PreviewSurveyPageContent() {
                       minWidth: '80px'
                     }}
                   >
-                    <div className="font-medium">{val}</div>
-                    {label && label.trim() && (
+                    {/* Mostrar número o etiqueta según configuración. Si no hay etiqueta, mostrar número */}
+                    <div className="font-medium">{showMarkersNumbers ? String(val) : (label && label.trim() ? label : String(val))}</div>
+                    {label && label.trim() && showMarkersNumbers && (
                       <div className="text-xs mt-1 max-w-[100px] mx-auto whitespace-nowrap">{label}</div>
                     )}
                   </div>
@@ -1053,7 +1074,7 @@ function PreviewSurveyPageContent() {
         
         {/* Indicador siempre visible de la opción seleccionada */}
         <div className="text-center pt-4 border-t border-gray-200">
-          <div 
+            <div 
             className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-semibold shadow-sm"
             style={{
               backgroundColor: `${themeColors.primary}15`,
@@ -1063,11 +1084,18 @@ function PreviewSurveyPageContent() {
           >
             <span className="text-sm">Opción seleccionada:</span>
             <span className="text-2xl font-bold">{selectedValue}</span>
-            {selectedLabel && selectedLabel.trim() && (
+            {/* Mostrar etiqueta solo si existe y no estamos mostrando números como principal */}
+            {(!showMarkersNumbers && selectedLabel && selectedLabel.trim()) ? (
               <span className="text-sm font-medium opacity-90">
                 ({selectedLabel})
               </span>
-            )}
+            ) : null}
+            {/* Si mostramos números y también hay etiqueta, mostrar label en pequeño */}
+            {(showMarkersNumbers && selectedLabel && selectedLabel.trim()) ? (
+              <span className="text-sm font-medium opacity-70">
+                {selectedLabel}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1397,18 +1425,19 @@ function PreviewSurveyPageContent() {
             const value = answers[question.id] !== undefined ? answers[question.id] : min;
             
             return (
-              <LikertSliderWithDivisions
-                questionId={question.id}
+              <LikertSlider
                 min={min}
                 max={max}
                 step={step}
                 value={value}
-                onValueChange={(val) => handleAnswerChange(question.id, val)}
+                onChange={(val) => handleAnswerChange(question.id, val)}
                 labels={labels}
                 showZero={showZero}
                 zeroLabel={zeroLabel}
+                showNumbers={true}
+                showSelectedPanel={false}
+                showTicks={true}
                 themeColors={themeColors}
-                originalMin={originalMin}
               />
             )
           case "net_promoter":
