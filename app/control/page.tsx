@@ -113,7 +113,38 @@ export default function ReportsPage() {
                   <li> Corrección de preguntas mal configuradas, ahora funcionando correctamente.</li>
                 </ul>
               </div>
+              
             </div>
+            <div>
+            <h3 className="font-bold text-green-700 mb-1">📋 Notas de la Versión:</h3>
+                <ul className="list-disc ml-6 text-gray-700">
+               
+                  <li>Se realizaron los cambios presentado en la revision 1.0.3, algunos consta de explicación</li>
+                </ul>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.3 - Mejoras y Correcciones</h2>
+                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 14 de noviembre del 2025</p>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades y Correcciones:</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li> Corrección en la creación de zonas, explicación detallada de este modulo</li>
+
+                  <li> Mejora en las configuraciones de las preguntas, se agregaron a la ventana de configuracion avanzada</li>
+                  <li> Correciones de bugs en el preview</li>
+                  <li> Mejoras en la organzacion de las preguntas y secciones</li>
+                  <li> Se realizaron los cambios solcitados para el tipo de preguntas de opciones multiple</li>
+                  <li> Mejoras en el componente de salto de logica y visualización</li>
+                  <li> Mejoras en la escala likert</li>
+                  <li> Mejoras en el tipo de pregunta email, hora</li>
+                  <li> Mejoras en la organzacion de las preguntas y secciones</li>
+                  <li> Se creo la validacion en el campo tipo de documento y numero en el tipo de pregunta contacto información esto para Validar
+                    si la persona ya fue encuestada
+                  </li>
+             
+                </ul>
+              </div>
+              
+            
           </CardContent>
         </Card>
       </div>
