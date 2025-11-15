@@ -554,6 +554,8 @@ export function AdvancedQuestionConfig({
         timeLimit: 0,
         autoAdvance: false,
       },
+      // Ensure likertScale always present with defaults
+      likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
     }
     
     console.log("✅ Configuración inicial creada:", initialConfig)
@@ -648,6 +650,7 @@ export function AdvancedQuestionConfig({
           timeLimit: 0,
           autoAdvance: false,
         },
+        likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
       }
       
       console.log("🔄 Configuración actualizada en useEffect:", updatedConfig)
@@ -865,11 +868,39 @@ export function AdvancedQuestionConfig({
         rules: config.skipLogic?.rules || []
       }
     }
-    
-    console.log("✅ Configuración validada a guardar:", validatedConfig)
-    
+
+    // Ensure likertScale normalized and labels coerced to object form
+    const rawLikert = config.likertScale || {}
+    // Accept labels as array or object; persist as { left, center, right }
+    let labelsObj: any = {}
+    if (Array.isArray(rawLikert.labels)) {
+      const arr = rawLikert.labels as string[]
+      if (arr.length >= 1) labelsObj.left = arr[0]
+      if (arr.length >= 2) labelsObj.right = arr[arr.length - 1]
+      if (arr.length >= 3) labelsObj.center = arr[Math.floor(arr.length / 2)]
+    } else if (rawLikert.labels && typeof rawLikert.labels === 'object') {
+      labelsObj = { ...(rawLikert.labels as any) }
+    }
+
+    const normalizedLikert = {
+      min: Number.isFinite(Number(rawLikert.min)) ? Number(rawLikert.min) : 1,
+      max: Number.isFinite(Number(rawLikert.max)) ? Number(rawLikert.max) : 5,
+      step: Number.isFinite(Number(rawLikert.step)) ? Number(rawLikert.step) : 1,
+      labels: labelsObj,
+      showZero: !!rawLikert.showZero,
+      zeroLabel: rawLikert.zeroLabel || 'No Sabe / No Responde',
+      startPosition: rawLikert.startPosition || 'left'
+    }
+
+    const finalConfig = {
+      ...validatedConfig,
+      likertScale: normalizedLikert
+    }
+
+    console.log("✅ Configuración validada a guardar:", finalConfig)
+
     // Llamar a la función onSave con la configuración validada
-    onSave(validatedConfig)
+    onSave(finalConfig)
     onClose()
   }
 
@@ -1357,16 +1388,17 @@ export function AdvancedQuestionConfig({
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const updatedConfig = {
-                            ...config,
+                          // Apply preset but preserve existing likert metadata (labels, showZero, zeroLabel, startPosition)
+                          setConfig((prev) => ({
+                            ...prev,
                             likertScale: {
+                              ...(prev.likertScale || {}),
                               min: scale.min,
                               max: scale.max,
                               step: 1,
-                              startPosition: 'left'
+                              startPosition: prev.likertScale?.startPosition || 'left'
                             }
-                          }
-                          setConfig(updatedConfig)
+                          }))
                         }}
                         className={`border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 ${
                           config.likertScale?.min === scale.min && config.likertScale?.max === scale.max 
@@ -1391,12 +1423,12 @@ export function AdvancedQuestionConfig({
                       <Label>Valor mínimo</Label>
                       <Input
                         type="number"
-                        value={config.likertScale?.min || 1}
+                        value={config.likertScale?.min ?? 1}
                         onChange={(e) => {
                           const updatedConfig = {
                             ...config,
                             likertScale: {
-                              ...config.likertScale,
+                              ...(config.likertScale || {}),
                               min: parseInt(e.target.value) || 1
                             }
                           }
@@ -1412,12 +1444,12 @@ export function AdvancedQuestionConfig({
                       <Label>Valor máximo</Label>
                       <Input
                         type="number"
-                        value={config.likertScale?.max || 5}
+                        value={config.likertScale?.max ?? 5}
                         onChange={(e) => {
                           const updatedConfig = {
                             ...config,
                             likertScale: {
-                              ...config.likertScale,
+                              ...(config.likertScale || {}),
                               max: parseInt(e.target.value) || 5
                             }
                           }
@@ -1433,12 +1465,12 @@ export function AdvancedQuestionConfig({
                       <Label>Tamaño del paso</Label>
                       <Input
                         type="number"
-                        value={config.likertScale?.step || 1}
+                        value={config.likertScale?.step ?? 1}
                         onChange={(e) => {
                           const updatedConfig = {
                             ...config,
                             likertScale: {
-                              ...config.likertScale,
+                              ...(config.likertScale || {}),
                               step: parseInt(e.target.value) || 1
                             }
                           }
@@ -1467,9 +1499,9 @@ export function AdvancedQuestionConfig({
                         const updatedConfig = {
                           ...config,
                           likertScale: {
-                            ...config.likertScale,
+                            ...(config.likertScale || {}),
                             labels: {
-                              ...config.likertScale?.labels,
+                              ...(config.likertScale?.labels || {}),
                               left: e.target.value
                             }
                           }
@@ -1490,9 +1522,9 @@ export function AdvancedQuestionConfig({
                         const updatedConfig = {
                           ...config,
                           likertScale: {
-                            ...config.likertScale,
+                            ...(config.likertScale || {}),
                             labels: {
-                              ...config.likertScale?.labels,
+                              ...(config.likertScale?.labels || {}),
                               center: e.target.value
                             }
                           }
@@ -1513,9 +1545,9 @@ export function AdvancedQuestionConfig({
                         const updatedConfig = {
                           ...config,
                           likertScale: {
-                            ...config.likertScale,
+                            ...(config.likertScale || {}),
                             labels: {
-                              ...config.likertScale?.labels,
+                              ...(config.likertScale?.labels || {}),
                               right: e.target.value
                             }
                           }
@@ -1544,7 +1576,7 @@ export function AdvancedQuestionConfig({
                         const updatedConfig = {
                           ...config,
                           likertScale: {
-                            ...config.likertScale,
+                            ...(config.likertScale || {}),
                             showZero: checked
                           }
                         }
@@ -1566,7 +1598,7 @@ export function AdvancedQuestionConfig({
                           const updatedConfig = {
                             ...config,
                             likertScale: {
-                              ...config.likertScale,
+                              ...(config.likertScale || {}),
                               zeroLabel: e.target.value
                             }
                           }
@@ -1578,6 +1610,22 @@ export function AdvancedQuestionConfig({
                       <p className="text-xs text-blue-600">Esta opción aparecerá como "0 = [tu texto]" en la escala</p>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Visualización adicional - mostrar números */}
+              <div className="space-y-4 mt-4">
+                <h4 className="text-lg font-semibold text-blue-800">Visualización</h4>
+                <div className="flex items-center justify-between p-3 bg-white border rounded">
+                  <div>
+                    <div className="font-medium">Mostrar números en la burbuja</div>
+                    <div className="text-xs text-muted-foreground">Si está activo, la burbuja mostrará el número seleccionado; si no, mostrará la etiqueta correspondiente.</div>
+                  </div>
+                  <Switch
+                    checked={Boolean(config.appearance?.showNumbers)}
+                    onCheckedChange={(checked) => updateAppearance('showNumbers', checked)}
+                    className="data-[state=checked]:bg-blue-500"
+                  />
                 </div>
               </div>
 
@@ -1596,7 +1644,7 @@ export function AdvancedQuestionConfig({
                           const updatedConfig = {
                             ...config,
                             likertScale: {
-                              ...config.likertScale,
+                              ...(config.likertScale || {}),
                               startPosition: value
                             }
                           }

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useLayoutEffect, useState, useRef } from "react"
 
 interface LikertSliderProps {
   min: number
@@ -34,6 +34,9 @@ export default function LikertSlider({
 }: LikertSliderProps) {
   const [local, setLocal] = useState<number>(value)
   const trackRef = useRef<HTMLDivElement | null>(null)
+  const [bubbleLeftPx, setBubbleLeftPx] = useState<number | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const draggingPointerId = useRef<number | null>(null)
 
   useEffect(() => setLocal(value), [value])
 
@@ -72,12 +75,91 @@ export default function LikertSlider({
     }
   }
 
+  // Determine start value that corresponds to labels[0].
+  // When showZero is true the labels array usually represents the original range (e.g. 1..N),
+  // while min === 0 for the slider. Compute labelStart accordingly so indexing stays stable.
+  const labelStart = showZero ? (min + 1) : min
   const selectedLabel = (() => {
     if (local === 0 && showZero) return zeroLabel
-    const offset = showZero ? 1 : 0
-    const idx = Math.round((local - min) / (step || 1)) - offset
+    const idx = Math.round((local - labelStart) / (step || 1))
     return labels && labels[idx] ? labels[idx] : String(local)
   })()
+
+  // Calculate precise bubble pixel position so it lines up with the labels below.
+  const updateBubblePos = () => {
+    const track = trackRef.current
+    if (!track) return setBubbleLeftPx(null)
+    const width = track.offsetWidth || 0
+    const percent = toPercent(local)
+    let px = (percent / 100) * width
+    // clamp to [0, width]
+    if (px < 0) px = 0
+    if (px > width) px = width
+    setBubbleLeftPx(px)
+  }
+
+  // helper: compute nearest value from clientX on the track
+  const updateValueFromClientX = (clientX: number) => {
+    const track = trackRef.current
+    if (!track) return
+    const rect = track.getBoundingClientRect()
+    let pct = (clientX - rect.left) / (rect.width || 1)
+    if (pct < 0) pct = 0
+    if (pct > 1) pct = 1
+    // map percent to raw value and then choose nearest available value
+    const rawVal = actualMin + pct * range
+    let nearest = allValues[0]
+    let bestDiff = Math.abs(rawVal - nearest)
+    for (const v of allValues) {
+      const d = Math.abs(rawVal - v)
+      if (d < bestDiff) {
+        bestDiff = d
+        nearest = v
+      }
+    }
+    handleSelect(nearest)
+    // update bubble px to immediate position
+    setBubbleLeftPx(pct * rect.width)
+  }
+
+  // Pointer drag handlers
+  const onPointerDown = (e: React.PointerEvent) => {
+    // Only handle primary button
+    if (e.button && e.button !== 0) return
+    const track = trackRef.current
+    if (!track) return
+    draggingPointerId.current = e.pointerId
+    track.setPointerCapture(e.pointerId)
+    setIsDragging(true)
+    updateValueFromClientX(e.clientX)
+
+    const onMove = (ev: PointerEvent) => {
+      if (draggingPointerId.current !== null && ev.pointerId !== draggingPointerId.current) return
+      updateValueFromClientX(ev.clientX)
+    }
+
+    const onUp = (ev: PointerEvent) => {
+      if (draggingPointerId.current !== null && ev.pointerId !== draggingPointerId.current) return
+      try { track.releasePointerCapture(ev.pointerId) } catch (_) {}
+      draggingPointerId.current = null
+      setIsDragging(false)
+      // cleanup
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  useLayoutEffect(() => {
+    updateBubblePos()
+    const onResize = () => updateBubblePos()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [local, min, max, step, showZero])
 
   return (
     <div className="space-y-4">
@@ -126,8 +208,9 @@ export default function LikertSlider({
           {/* SurveyMonkey-style value bubble positioned above the selected value */}
           <div
             aria-hidden
-            className="absolute -top-10 transform -translate-x-1/2 flex flex-col items-center pointer-events-none"
-            style={{ left: `${toPercent(local)}%` }}
+            className={`absolute -top-10 flex flex-col items-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+            style={bubbleLeftPx !== null ? { left: bubbleLeftPx, transform: 'translateX(-50%)' } : { left: `${toPercent(local)}%`, transform: 'translateX(-50%)' }}
+            onPointerDown={onPointerDown}
           >
             <div className="px-3 py-1 rounded-full text-white font-semibold shadow" style={{ backgroundColor: themeColors.primary }}>
               {showNumbers ? String(local) : selectedLabel}
@@ -163,7 +246,7 @@ export default function LikertSlider({
               }
 
               return anchors.map((v) => {
-                const idx = v === 0 ? -1 : v - min
+                const idx = v === 0 ? -1 : Math.round((v - labelStart) / (step || 1))
                 const label = v === 0 ? zeroLabel : (labels && labels[idx] ? labels[idx] : '')
                 const left = toPercent(v)
                 return (
