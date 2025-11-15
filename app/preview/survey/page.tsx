@@ -1129,53 +1129,153 @@ function PreviewSurveyPageContent() {
           case "comment_box":
             return <Textarea {...commonProps} rows={4} />
           case "multiple_choice":
-            return (
-              <RadioGroup
-                value={answers[question.id] || ""}
-                onValueChange={(value) => handleAnswerChange(question.id, value)}
-                className="space-y-2"
-              >
-                {(question.options || []).map((option, idx) => {
-                  const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
-                  const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
-                  const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null;
-                  return (
-                    <div key={idx} className="flex items-center space-x-2">
-                      <RadioGroupItem value={optionValue} id={`${question.id}-option-${idx}`} />
-                      <Label htmlFor={`${question.id}-option-${idx}`} className="flex items-center gap-4">
-                        {imageUrl && <img src={imageUrl} alt={optionLabel} className="w-16 h-16 object-cover rounded-md" />}
-                        <span dangerouslySetInnerHTML={{ __html: optionLabel }} />
-                      </Label>
+            {
+              const opts = question.options || []
+              const hasImages = opts.some((option: any) => typeof option === 'object' && option !== null && (option.image || option.url || option.src))
+              // If options include images, render a grid of image cards; otherwise fallback to list
+              if (hasImages) {
+                return (
+                  <RadioGroup
+                    value={answers[question.id] || ""}
+                    onValueChange={(value) => handleAnswerChange(question.id, value)}
+                    className=""
+                  >
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {opts.map((option: any, idx: number) => {
+                        const optionLabel = typeof option === 'object' && option !== null ? (option as any).label || (option as any).value || '' : String(option || '')
+                        const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option
+                        const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null
+                        const id = `${question.id}-option-${idx}`
+                        return (
+                          <div key={idx} className="flex flex-col items-center bg-white border rounded-lg p-3 hover:shadow-lg transition-shadow">
+                            <RadioGroupItem value={optionValue} id={id} className="sr-only" />
+                            <label htmlFor={id} className="flex flex-col items-center cursor-pointer select-none">
+                              {imageUrl ? (
+                                <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
+                              ) : (
+                                <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
+                              )}
+                              <div className="mt-3 text-sm text-center text-gray-800" dangerouslySetInnerHTML={{ __html: optionLabel }} />
+                            </label>
+                          </div>
+                        )
+                      })}
                     </div>
-                  );
-                })}
-                {question.config?.allowOther && (
-                  <div className="flex items-center space-x-2 mt-2">
-                    <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
-                    <Label htmlFor={`${question.id}-option-other`}>
-                      {question.config.otherText || 'Otro (especificar)'}
-                    </Label>
-                    {answers[question.id] === "__other__" && (
-                      <input
-                        type="text"
-                        className="ml-2 border rounded px-2 py-1"
-                        value={answers[`${question.id}_other`] || ""}
-                        onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
-                        placeholder="Especifica..."
-                      />
+                    {question.config?.allowOther && (
+                      <div className="mt-4">
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
+                          <Label htmlFor={`${question.id}-option-other`}>
+                            {question.config.otherText || 'Otro (especificar)'}
+                          </Label>
+                        </div>
+                        {answers[question.id] === "__other__" && (
+                          <input
+                            type="text"
+                            className="mt-2 w-full border rounded px-2 py-1"
+                            value={answers[`${question.id}_other`] || ""}
+                            onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                            placeholder="Especifica..."
+                          />
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
-              </RadioGroup>
-            )
+                  </RadioGroup>
+                )
+              }
+              // fallback to original list rendering when there are no images
+              return (
+                <RadioGroup
+                  value={answers[question.id] || ""}
+                  onValueChange={(value) => handleAnswerChange(question.id, value)}
+                  className="space-y-2"
+                >
+                  {opts.map((option, idx) => {
+                    const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
+                    const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
+                    const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null;
+                    return (
+                      <div key={idx} className="flex items-center space-x-2">
+                        <RadioGroupItem value={optionValue} id={`${question.id}-option-${idx}`} />
+                        <Label htmlFor={`${question.id}-option-${idx}`} className="flex items-center gap-4">
+                          {imageUrl && <img src={imageUrl} alt={optionLabel} className="w-16 h-16 object-cover rounded-md" />}
+                          <span dangerouslySetInnerHTML={{ __html: optionLabel }} />
+                        </Label>
+                      </div>
+                    )
+                  })}
+                  {question.config?.allowOther && (
+                    <div className="flex items-center space-x-2 mt-2">
+                      <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
+                      <Label htmlFor={`${question.id}-option-other`}>
+                        {question.config.otherText || 'Otro (especificar)'}
+                      </Label>
+                      {answers[question.id] === "__other__" && (
+                        <input
+                          type="text"
+                          className="ml-2 border rounded px-2 py-1"
+                          value={answers[`${question.id}_other`] || ""}
+                          onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                          placeholder="Especifica..."
+                        />
+                      )}
+                    </div>
+                  )}
+                </RadioGroup>
+              )
+            }
           case "checkbox": {
             const selected = Array.isArray(answers[question.id]) ? answers[question.id] : [];
             const minSel = question.config?.minSelections ?? 0;
             const maxSel = question.config?.maxSelections ?? (question.options?.length || 99);
             const isMaxReached = selected.length >= maxSel;
+            // If any option includes an image, show grid cards; otherwise keep list
+            const opts = question.options || []
+            const hasImages = opts.some((option: any) => typeof option === 'object' && option !== null && (option.image || option.url || option.src))
+            if (hasImages) {
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {opts.map((option: any, idx: number) => {
+                    const optionLabel = typeof option === 'object' && option !== null ? (option as any).label || (option as any).value || '' : String(option || '')
+                    const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option
+                    const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null
+                    const checked = selected.includes(optionValue)
+                    const disabled = !checked && isMaxReached
+                    const id = `${question.id}-option-${idx}`
+                    return (
+                      <div key={idx} className={`flex flex-col items-center p-3 bg-white border rounded-lg ${disabled ? 'opacity-60' : ''}`}>
+                        <Checkbox
+                          id={id}
+                          checked={checked}
+                          disabled={disabled}
+                          className="sr-only"
+                          onCheckedChange={(checked) => {
+                            const currentAnswers = new Set(selected);
+                            if (checked) {
+                              currentAnswers.add(optionValue);
+                            } else {
+                              currentAnswers.delete(optionValue);
+                            }
+                            handleAnswerChange(question.id, Array.from(currentAnswers));
+                          }}
+                        />
+                        <label htmlFor={id} className="flex flex-col items-center cursor-pointer select-none">
+                          {imageUrl ? (
+                            <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
+                          ) : (
+                            <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
+                          )}
+                          <div className="mt-3 text-sm text-center text-gray-800">{optionLabel}</div>
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            }
             return (
               <div className="space-y-2">
-                {(question.options || []).map((option, idx) => {
+                {opts.map((option, idx) => {
                   const optionLabel = typeof option === 'object' && option !== null ? (option as any).label : option;
                   const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option;
                   const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null;
