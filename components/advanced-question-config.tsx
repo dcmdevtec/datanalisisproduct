@@ -1310,26 +1310,31 @@ export function AdvancedQuestionConfig({
                                       /* Para preguntas de opción múltiple y checkbox */
                                       <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
                                         <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-                                        {sourceQuestion.options.map((option: any, optionIndex: number) => (
-                                          <div key={optionIndex} className="flex items-center space-x-2">
-                                            <Checkbox
-                                              id={`option-${index}-${optionIndex}`}
-                                              checked={condition.value.includes(option)}
-                                              onCheckedChange={(checked) => {
-                                                let newValues = condition.value ? condition.value.split(",") : []
-                                                if (checked) {
-                                                  newValues.push(option)
-                                                } else {
-                                                  newValues = newValues.filter((v) => v !== option)
-                                                }
-                                                updateDisplayCondition(index, "value", newValues.join(","))
-                                              }}
-                                            />
-                                            <Label htmlFor={`option-${index}-${optionIndex}`} className="text-sm cursor-pointer">
-                                              {option}
-                                            </Label>
-                                          </div>
-                                        ))}
+                                            {sourceQuestion.options.map((option: any, optionIndex: number) => {
+                                              const optLabel = stripHtmlTags(getOptionLabel(option))
+                                              const optValue = getOptionValue(option)
+                                              const checked = (condition.value || '').split(',').includes(optValue)
+                                              return (
+                                                <div key={optionIndex} className="flex items-center space-x-2">
+                                                  <Checkbox
+                                                    id={`option-${index}-${optionIndex}`}
+                                                    checked={checked}
+                                                    onCheckedChange={(checked) => {
+                                                      let newValues = condition.value ? condition.value.split(",") : []
+                                                      if (checked) {
+                                                        newValues.push(optValue)
+                                                      } else {
+                                                        newValues = newValues.filter((v) => v !== optValue)
+                                                      }
+                                                      updateDisplayCondition(index, "value", newValues.join(","))
+                                                    }}
+                                                  />
+                                                  <Label htmlFor={`option-${index}-${optionIndex}`} className="text-sm cursor-pointer">
+                                                    {optLabel}
+                                                  </Label>
+                                                </div>
+                                              )
+                                            })}
                                       </div>
                                     ) : (
                                       /* Para preguntas de texto o número */
