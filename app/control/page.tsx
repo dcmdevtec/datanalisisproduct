@@ -129,14 +129,14 @@ export default function ReportsPage() {
                 <ul className="list-disc ml-6 text-gray-700 mb-2">
                   <li> Corrección en la creación de zonas, explicación detallada de este modulo</li>
 
-                  <li> Mejora en las configuraciones de las preguntas, se agregaron a la ventana de configuracion avanzada</li>
+                  <li> Mejora en las configuraciones de las preguntas, se agregaron a la ventana de configuración avanzada</li>
                   <li> Correciones de bugs en el preview</li>
-                  <li> Mejoras en la organzacion de las preguntas y secciones</li>
+                  <li> Mejoras en la organización de las preguntas y secciones</li>
                   <li> Se realizaron los cambios solcitados para el tipo de preguntas de opciones multiple</li>
                   <li> Mejoras en el componente de salto de logica y visualización</li>
                   <li> Mejoras en la escala likert</li>
                   <li> Mejoras en el tipo de pregunta email, hora</li>
-                  <li> Mejoras en la organzacion de las preguntas y secciones</li>
+                  <li> Mejoras en la organzación de las preguntas y secciones</li>
                   <li> Se creo la validacion en el campo tipo de documento y numero en el tipo de pregunta contacto información esto para Validar
                     si la persona ya fue encuestada
                   </li>
