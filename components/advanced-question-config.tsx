@@ -873,6 +873,20 @@ export function AdvancedQuestionConfig({
     onClose()
   }
 
+  const inputBasedTypes = [
+    "text",
+    "textarea",
+    "email",
+    "phone",
+    "number",
+    "comment_box",
+    "multiple_textboxes",
+    "contact_info",
+    "demographic",
+    "date",
+    "time",
+  ];
+
   const tabs = [
     {
       id: "options",
@@ -954,48 +968,54 @@ export function AdvancedQuestionConfig({
       icon: AlertCircle,
       content: (
         <div className="space-y-6">
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-green-500" />
-                Validación de Longitud
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-green-800">Longitud mínima</label>
-                  <Input
-                    type="number"
-                    value={config.validation?.minLength || ""}
-                    onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Sin límite"
-                    className="bg-white border-green-300 focus:border-green-500"
-                  />
+          {inputBasedTypes.includes(question.type) ? (
+            <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-green-500" />
+                  Validación de Longitud
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-green-800">Longitud mínima</label>
+                    <Input
+                      type="number"
+                      value={config.validation?.minLength || ""}
+                      onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Sin límite"
+                      className="bg-white border-green-300 focus:border-green-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-green-800">Longitud máxima</label>
+                    <Input
+                      type="number"
+                      value={config.validation?.maxLength || ""}
+                      onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Sin límite"
+                      className="bg-white border-green-300 focus:border-green-500"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-green-800">Longitud máxima</label>
-                  <Input
-                    type="number"
-                    value={config.validation?.maxLength || ""}
-                    onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Sin límite"
+                  <label className="text-sm font-medium text-green-800">Mensaje de error personalizado</label>
+                  <Textarea
+                    value={config.validation?.customMessage || ""}
+                    onChange={(e) => updateValidation("customMessage", e.target.value)}
+                    placeholder="Mensaje que se mostrará cuando la validación falle"
                     className="bg-white border-green-300 focus:border-green-500"
+                    rows={2}
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-green-800">Mensaje de error personalizado</label>
-                <Textarea
-                  value={config.validation?.customMessage || ""}
-                  onChange={(e) => updateValidation("customMessage", e.target.value)}
-                  placeholder="Mensaje que se mostrará cuando la validación falle"
-                  className="bg-white border-green-300 focus:border-green-500"
-                  rows={2}
-                />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-2 border-gray-100 p-4">
+              <p className="text-sm text-muted-foreground">La validación de longitud solo aplica para preguntas que requieren una entrada de texto del usuario.</p>
+            </Card>
+          )}
         </div>
       ),
     },
@@ -1614,9 +1634,20 @@ export function AdvancedQuestionConfig({
     },
     
   ]
-const visibleTabs = question.type === 'likert'
-  ? tabs
-  : tabs.filter(tab => tab.id !== 'likert');
+const visibleTabs = tabs.filter(tab => {
+    if (tab.id === 'validation' && !inputBasedTypes.includes(question.type)) {
+      return false;
+    }
+    if (tab.id === 'likert') {
+      return question.type === 'likert';
+    }
+    // For likert questions, only 'logic' and 'likert' tabs are shown.
+    // 'likert' is handled above. 'validation' is handled above.
+    if (question.type === 'likert') {
+      return tab.id === 'logic';
+    }
+    return true;
+  });
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
