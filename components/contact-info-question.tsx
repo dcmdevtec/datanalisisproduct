@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react"
-import { useDebounce } from "use-debounce"
+import { useDebounce } from "@/hooks/use-debounce"
+import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput"
 
 // Asumimos que el ID de la encuesta está disponible a través de un contexto o props
 interface ContactInfoQuestionProps {
@@ -53,13 +54,13 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
   const [email, setEmail] = useState("")
   const [company, setCompany] = useState("")
   const [address, setAddress] = useState("")
-  const [debouncedDocumentNumber] = useDebounce(documentNumber, 500)
+  const debouncedDocumentNumber = useDebounce(documentNumber, 500)
   const [status, setStatus] = useState<VerificationStatus>("idle")
   const [message, setMessage] = useState("")
 
   const documentLengthIsValid = useMemo(() => {
     if (!includeDocument) return false
-    const length = debouncedDocumentNumber.trim().length
+    const length = (debouncedDocumentNumber || "").trim().length
     return length === 7 || length === 10
   }, [debouncedDocumentNumber, includeDocument])
 
@@ -232,9 +233,8 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
         {includeEmail && (
           <div className="space-y-2">
             <Label htmlFor="email">Correo Electrónico</Label>
-            <Input
+            <EmailAutocompleteInput
               id="email"
-              type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="Ingrese su correo electrónico"

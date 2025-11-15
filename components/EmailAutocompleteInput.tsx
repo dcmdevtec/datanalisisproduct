@@ -1,111 +1,102 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import * as React from "react"
+import { useState, useEffect } from "react"
+import { Input } from "@/components/ui/input"
 
-const COMMON_DOMAINS = [
-  "gmail.com", "hotmail.com", "outlook.com", "yahoo.com",
-  "icloud.com", "proton.me", "live.com", "aol.com"
-]
-
-export default function EmailAutocompleteInput({
-  value,
-  onChange,
-  placeholder = "",
-  className = ""
-}: {
+interface EmailAutocompleteInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string
-  onChange: (v: string) => void
-  placeholder?: string
-  className?: string
-}) {
-  const [show, setShow] = useState(false)
-  const [filtered, setFiltered] = useState<string[]>([])
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const hoveringDropdown = useRef(false)
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+}
 
-  // --- Maneja escribir en el input
-  const handleInput = (v: string) => {
-    onChange(v)
+const COMMON_DOMAINS = ["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "aol.com", "icloud.com"]
 
-    const atIdx = v.indexOf("@")
+export function EmailAutocompleteInput({ value, onChange, ...props }: EmailAutocompleteInputProps) {
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [activeSuggestion, setActiveSuggestion] = useState(0)
 
-    if (atIdx === -1) {
-      setShow(false)
-      return
-    }
-
-    const domainPart = v.slice(atIdx + 1).toLowerCase()
-
-    const list = COMMON_DOMAINS.filter((d) =>
-      d.startsWith(domainPart)
-    )
-
-    setFiltered(list)
-    setShow(true)
-  }
-
-  // --- Clic fuera → cerrar
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setShow(false)
+    if (value.includes("@")) {
+      const [localPart, domainPart] = value.split("@")
+      if (domainPart) {
+        const filteredDomains = COMMON_DOMAINS.filter(domain =>
+          domain.startsWith(domainPart)
+        )
+        setSuggestions(filteredDomains.map(domain => `${localPart}@${domain}`))
+      } else {
+        setSuggestions(COMMON_DOMAINS.map(domain => `${localPart}@${domain}`))
       }
+    } else {
+      setSuggestions([])
     }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+    setActiveSuggestion(0)
+  }, [value])
 
-  // --- Blur: NO cerrar si el mouse está sobre el dropdown
-  const handleBlur = () => {
-    setTimeout(() => {
-      if (!hoveringDropdown.current) {
-        setShow(false)
+  const handleSuggestionClick = (suggestion: string) => {
+    const syntheticEvent = {
+      target: { value: suggestion, name: props.name || "email" },
+    } as React.ChangeEvent<HTMLInputElement>
+    onChange(syntheticEvent)
+    setSuggestions([])
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (suggestions.length === 0) return
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setActiveSuggestion(prev => (prev < suggestions.length - 1 ? prev + 1 : 0))
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setActiveSuggestion(prev => (prev > 0 ? prev - 1 : suggestions.length - 1))
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (suggestions[activeSuggestion]) {
+        e.preventDefault()
+        handleSuggestionClick(suggestions[activeSuggestion])
       }
-    }, 120)
+    } else if (e.key === "Escape") {
+      setSuggestions([])
+    }
   }
 
-  const applyDomain = (domain: string) => {
-    const atIdx = value.indexOf("@")
-    if (atIdx === -1) return
-
-    const local = value.slice(0, atIdx)
-    onChange(`${local}@${domain}`)
-    setShow(false)
-
-    // devolver el foco al input
-    setTimeout(() => {
-      inputRef.current?.focus()
-    }, 0)
-  }
+  const listboxId = "email-suggestions"
 
   return (
-    <div ref={wrapperRef} className={`relative w-full ${className}`}>
-      <input
-        ref={inputRef}
+    <div className="relative">
+      <Input
+        type="email"
         value={value}
-        placeholder={placeholder}
-        onChange={(e) => handleInput(e.target.value)}
-        onBlur={handleBlur}
-        className="w-full border rounded-md p-2"
+        onChange={onChange}
+        onKeyDown={handleKeyDown}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={suggestions.length > 0}
+        aria-controls={listboxId}
+        aria-activedescendant={`suggestion-${activeSuggestion}`}
+        {...props}
       />
-
-      {show && filtered.length > 0 && (
-        <div
-          className="absolute left-0 right-0 mt-1 bg-white shadow-lg rounded-md border z-50"
-          onMouseEnter={() => (hoveringDropdown.current = true)}
-          onMouseLeave={() => (hoveringDropdown.current = false)}
+      {suggestions.length > 0 && (
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute z-10 w-full bg-background border border-t-0 rounded-b-md shadow-lg"
         >
-          {filtered.map((domain) => (
-            <div
-              key={domain}
-              onClick={() => applyDomain(domain)}
-              className="p-2 cursor-pointer hover:bg-gray-200"
+          {suggestions.map((suggestion, index) => (
+            <li
+              key={suggestion}
+              id={`suggestion-${index}`}
+              role="option"
+              aria-selected={index === activeSuggestion}
+              onClick={() => handleSuggestionClick(suggestion)}
+              onMouseEnter={() => setActiveSuggestion(index)}
+              className={`p-2 cursor-pointer hover:bg-muted ${
+                index === activeSuggestion ? "bg-muted" : ""
+              }`}
             >
-              {value.split("@")[0]}@{domain}
-            </div>
+              {suggestion}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   )
