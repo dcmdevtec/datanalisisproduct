@@ -566,6 +566,13 @@ export function AdvancedQuestionConfig({
   
   const [activeTab, setActiveTab] = useState("validation")
 
+  // Track saving state for each display condition by its index to avoid
+  // declaring hooks inside a loop (fixes Hooks order errors).
+  const [conditionSavingMap, setConditionSavingMap] = useState<Record<number, boolean>>({})
+  const setConditionSaving = (index: number, value: boolean) => {
+    setConditionSavingMap((prev) => ({ ...prev, [index]: value }))
+  }
+
   // Función para reconciliación automática de IDs obsoletos
   const reconcileObsoleteIds = useCallback(() => {
     if (!allQuestions || allQuestions.length === 0) return
@@ -1163,7 +1170,8 @@ export function AdvancedQuestionConfig({
                       
                       console.log(`✅ Pregunta fuente encontrada:`, sourceQuestion)
                       
-                      const [saving, setSaving] = useState(false);
+                      // Use centralized map for per-condition saving state
+                      const saving = Boolean(conditionSavingMap[index])
                       return (
                         <Card key={index} className="bg-gradient-to-br from-white via-green-50/30 to-emerald-100/30 border-2 border-green-200 shadow-lg hover:shadow-xl transition-all duration-300">
                           <CardContent className="pt-6">
@@ -1326,10 +1334,10 @@ export function AdvancedQuestionConfig({
                                   size="sm"
                                   disabled={saving}
                                   onClick={async () => {
-                                    setSaving(true);
+                                    setConditionSaving(index, true);
                                     // Simula guardado (puedes poner aquí lógica real de guardado si lo necesitas)
                                     await new Promise(res => setTimeout(res, 1000));
-                                    setSaving(false);
+                                    setConditionSaving(index, false);
                                   }}
                                   className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
                                 >
