@@ -1573,7 +1573,12 @@ function PreviewSurveyPageContent() {
             return (
               <EmailAutocompleteInput
                 value={answers[question.id] || ""}
-                onChange={val => handleAnswerChange(question.id, val)}
+                onChange={(eOrVal: any) => {
+                  // EmailAutocompleteInput may call onChange with the native event
+                  // or (in some callers) with a raw string. Normalize to a string.
+                  const val = typeof eOrVal === "string" ? eOrVal : eOrVal?.target?.value ?? ""
+                  handleAnswerChange(question.id, val)
+                }}
                 placeholder="ejemplo@email.com"
                 className="w-full"
               />

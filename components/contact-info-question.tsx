@@ -236,7 +236,10 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
             <EmailAutocompleteInput
               id="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(eOrVal: any) => {
+                const val = typeof eOrVal === "string" ? eOrVal : eOrVal?.target?.value ?? ""
+                setEmail(val)
+              }}
               placeholder="Ingrese su correo electrónico"
             />
           </div>
