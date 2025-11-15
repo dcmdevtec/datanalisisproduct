@@ -931,8 +931,7 @@ export function AdvancedQuestionConfig({
     "multiple_textboxes",
     "contact_info",
     "demographic",
-    "date",
-    "time",
+    // Exclude non-textual types (date/time handled by native pickers) so length validation is not shown
   ];
 
   const tabs = [
@@ -1058,48 +1057,63 @@ export function AdvancedQuestionConfig({
       content: (
         <div className="space-y-6">
           {inputBasedTypes.includes(question.type) ? (
-            <Card className="border-2 border-green-200 bg-gradient-to-br from-white via-green-50/50 to-emerald-100/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-green-500" />
-                  Validación de Longitud
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-green-800">Longitud mínima</label>
-                    <Input
-                      type="number"
-                      value={config.validation?.minLength || ""}
-                      onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
-                      placeholder="Sin límite"
-                      className="bg-white border-green-300 focus:border-green-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-green-800">Longitud máxima</label>
-                    <Input
-                      type="number"
-                      value={config.validation?.maxLength || ""}
-                      onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
-                      placeholder="Sin límite"
-                      className="bg-white border-green-300 focus:border-green-500"
-                    />
+            <div className="rounded-lg shadow-md bg-white border border-green-100 overflow-hidden">
+              <div className="px-6 py-4 flex items-start gap-4 bg-gradient-to-r from-white to-emerald-50">
+                <div className="flex-shrink-0 mt-1">
+                  <div className="w-10 h-10 rounded-md bg-emerald-100 flex items-center justify-center">
+                    <AlertCircle className="h-5 w-5 text-emerald-600" />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-green-800">Mensaje de error personalizado</label>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-emerald-800 leading-tight">Validación de Longitud</h3>
+                      <p className="text-sm text-muted-foreground mt-1">Aplicable a entradas de texto. Limita la longitud permitida por el encuestado.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="text-sm font-medium text-emerald-800 block mb-2">Longitud mínima</label>
+                    <Input
+                      type="number"
+                      value={config.validation?.minLength ?? ""}
+                      onChange={(e) => updateValidation("minLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Sin límite"
+                      className="bg-white border-emerald-200 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-shadow"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">Si se establece, el texto deberá tener al menos este número de caracteres.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-emerald-800 block mb-2">Longitud máxima</label>
+                    <Input
+                      type="number"
+                      value={config.validation?.maxLength ?? ""}
+                      onChange={(e) => updateValidation("maxLength", e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Sin límite"
+                      className="bg-white border-emerald-200 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-shadow"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">Si se establece, el texto no podrá exceder este número de caracteres.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-sm font-medium text-emerald-800 block mb-2">Mensaje de error personalizado</label>
                   <Textarea
                     value={config.validation?.customMessage || ""}
                     onChange={(e) => updateValidation("customMessage", e.target.value)}
                     placeholder="Mensaje que se mostrará cuando la validación falle"
-                    className="bg-white border-green-300 focus:border-green-500"
+                    className="bg-white border-emerald-200 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-shadow"
                     rows={2}
                   />
+                  <p className="text-xs text-muted-foreground mt-2">Si dejas esto vacío se usará el mensaje por defecto del sistema.</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ) : (
             <Card className="border-2 border-gray-100 p-4">
               <p className="text-sm text-muted-foreground">La validación de longitud solo aplica para preguntas que requieren una entrada de texto del usuario.</p>

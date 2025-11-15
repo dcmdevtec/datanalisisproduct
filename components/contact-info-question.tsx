@@ -137,35 +137,27 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
       setMessage("Verificando...")
 
       try {
-        // TODO: Reemplazar con la llamada real a la API
-        // const response = await fetch(`/api/surveys/${surveyId}/verify-respondent`, {
-        //   method: "POST",
-        //   headers: { "Content-Type": "application/json" },
-        //   body: JSON.stringify({ documentType, documentNumber: debouncedDocumentNumber }),
-        // })
+        const fetchUrl = surveyId ? `/api/surveys/${surveyId}/verify-respondent` : `/api/surveys/verify-respondent`
+        const response = await fetch(fetchUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ document_type: documentType, document_number: debouncedDocumentNumber, survey_id: surveyId || undefined }),
+        })
 
-        // --- INICIO: Lógica de simulación ---
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        const mockResponse = {
-          ok: Math.random() > 0.5,
-          json: async () => {
-            if (mockResponse.ok) {
-              return { message: "Puede continuar." }
-            }
-            return { error: "Este número de documento ya ha completado la encuesta." }
-          },
+        // parse response safely
+        let jsonBody: any = null
+        try {
+          jsonBody = await response.json()
+        } catch (e) {
+          // non-json response
         }
-        const response = mockResponse
-        // --- FIN: Lógica de simulación ---
 
         if (response.ok) {
-          const data = await response.json()
           setStatus("verified")
-          setMessage(data.message || "Puede continuar.")
+          setMessage((jsonBody && (jsonBody.message || jsonBody.msg)) || "Puede continuar.")
         } else {
-          const errorData = await response.json()
           setStatus("already_exists")
-          setMessage(errorData.error || "Este número de documento ya ha completado la encuesta.")
+          setMessage((jsonBody && (jsonBody.error || jsonBody.message)) || "Este número de documento ya ha completado la encuesta.")
         }
       } catch (error) {
         setStatus("error")
