@@ -1640,17 +1640,25 @@ function PreviewSurveyPageContent() {
               const currentFiles: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
               return (
                 <div className="space-y-2">
-                  <Input
+                  {/* hidden file input to allow programmatic click for "Agregar archivos" */}
+                  <input
                     type="file"
+                    id={`file-input-${question.id}`}
+                    style={{ display: 'none' }}
                     multiple={maxFilesAllowed > 1}
                     onChange={(e) => {
                       const files = Array.from(e.target.files || [])
                       if (files.length === 0) return
 
-                      // Validar cantidad
-                      if (files.length > maxFilesAllowed) {
-                        alert(`Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Has seleccionado ${files.length}.`)
-                        e.target.value = ""
+                      const existing: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
+                      // Merge names while keeping order
+                      const newNames = files.map(f => f.name)
+                      const combined = [...existing, ...newNames]
+
+                      // Validar cantidad total
+                      if (combined.length > maxFilesAllowed) {
+                        alert(`Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Tienes ${existing.length} y seleccionaste ${newNames.length}.`)
+                        e.currentTarget.value = ""
                         return
                       }
 
@@ -1659,32 +1667,63 @@ function PreviewSurveyPageContent() {
                       for (const file of files) {
                         if (!allowedTypes.includes(file.type)) {
                           alert("Solo se permiten archivos JPG, PNG o PDF.")
-                          e.target.value = ""
+                          e.currentTarget.value = ""
                           return
                         }
                         if (file.size > maxSize) {
                           alert("El archivo no debe superar los 20 MB.")
-                          e.target.value = ""
+                          e.currentTarget.value = ""
                           return
                         }
                       }
 
                       // Guardar solo nombres de archivos en el preview (no subir archivos aquí)
-                      const names = files.map(f => f.name)
-                      handleAnswerChange(question.id, names)
+                      handleAnswerChange(question.id, combined)
+                      e.currentTarget.value = ""
                     }}
                     accept=".jpg,.jpeg,.png,.pdf"
-                    className="w-full"
                   />
-                  <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-100">
-                    Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b> &nbsp;|&nbsp; Máx archivos: <b>{maxFilesAllowed}</b>
+
+                  <div className="flex items-center space-x-3">
+                    <label htmlFor={`file-input-${question.id}`} className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
+                      Agregar archivos
+                    </label>
+                    <div className="text-xs text-muted-foreground">Máx archivos: <b>{maxFilesAllowed}</b></div>
                   </div>
+
+                  <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-100">
+                    Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b>
+                  </div>
+
                   {currentFiles && currentFiles.length > 0 && (
                     <div className="text-sm text-muted-foreground">
-                      <div>Archivos seleccionados:</div>
+                      <div className="flex items-center justify-between">
+                        <div>Archivos seleccionados:</div>
+                        <button
+                          type="button"
+                          className="text-sm text-red-600 hover:underline"
+                          onClick={() => {
+                            // Vaciar lista
+                            handleAnswerChange(question.id, [])
+                          }}
+                        >
+                          Eliminar todos
+                        </button>
+                      </div>
                       <ul className="mt-2 list-disc list-inside">
                         {currentFiles.map((n, i) => (
-                          <li key={i}>{n}</li>
+                          <li key={i} className="flex items-center justify-between">
+                            <span>{n}</span>
+                            <button
+                              type="button"
+                              className="text-sm text-red-600 ml-4"
+                              onClick={() => {
+                                const arr = Array.isArray(answers[question.id]) ? [...answers[question.id]] : (answers[question.id] ? [answers[question.id]] : [])
+                                arr.splice(i, 1)
+                                handleAnswerChange(question.id, arr)
+                              }}
+                            >Eliminar</button>
+                          </li>
                         ))}
                       </ul>
                     </div>
