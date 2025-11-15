@@ -134,56 +134,57 @@ function ValueSelector({
   }
 
   // For multiple choice and checkbox questions, show option selector
-  if (
-    (sourceQuestion.type === "multiple_choice" || sourceQuestion.type === "checkbox") &&
-    sourceQuestion.options?.length > 0
-  ) {
+  if ((sourceQuestion.type === "multiple_choice" || sourceQuestion.type === "checkbox") && sourceQuestion.options?.length > 0) {
+    // Checkbox + contains/not_contains -> multi-select checkboxes
     if (sourceQuestion.type === "checkbox" && (operator === "contains" || operator === "not_contains")) {
-      // For checkbox with contains/not_contains, allow multiple selection
       const selectedValues = value ? value.split(",") : []
-
       return (
         <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
           <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-              {sourceQuestion.options.map((option: any, index: number) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`option-${index}`}
-                    checked={selectedValues.includes(getOptionValue(option))}
-                    onCheckedChange={(checked) => {
-                      let newValues = [...selectedValues]
-                      if (checked) {
-                        newValues.push(getOptionValue(option))
-                      } else {
-                        newValues = newValues.filter((v) => v !== getOptionValue(option))
-                      }
-                      onChange(newValues.join(","))
-                    }}
-                  />
-                  <Label htmlFor={`option-${index}`} className="text-sm cursor-pointer">
-                    {getOptionLabel(option)}
-                  </Label>
-                </div>
-              ))}
+          {sourceQuestion.options.map((option: any, optionIndex: number) => {
+            const optLabel = stripHtmlTags(getOptionLabel(option))
+            const optValue = getOptionValue(option)
+            const checked = selectedValues.includes(optValue)
+            return (
+              <div key={optionIndex} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`option-${optionIndex}`}
+                  checked={checked}
+                  onCheckedChange={(checked) => {
+                    let newValues = [...selectedValues]
+                    if (checked) {
+                      newValues.push(optValue)
+                    } else {
+                      newValues = newValues.filter((v) => v !== optValue)
+                    }
+                    onChange(newValues.join(","))
+                  }}
+                />
+                <Label htmlFor={`option-${optionIndex}`} className="text-sm cursor-pointer">
+                  {optLabel}
+                </Label>
+              </div>
+            )
+          })}
         </div>
       )
-    } else {
-      // For single selection
-      return (
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Seleccionar opción" />
-          </SelectTrigger>
-          <SelectContent>
-            {sourceQuestion.options.map((option: any, index: number) => (
-                <SelectItem key={index} value={getOptionValue(option)}>
-                {getOptionLabel(option)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )
     }
+
+    // Single selection -> Select
+    return (
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-[200px]">
+          <SelectValue placeholder="Seleccionar opción" />
+        </SelectTrigger>
+        <SelectContent>
+          {sourceQuestion.options.map((option: any, index: number) => (
+            <SelectItem key={index} value={getOptionValue(option)}>
+              {stripHtmlTags(getOptionLabel(option))}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )
   }
 
   // For number questions with range operators, show number input
@@ -331,6 +332,8 @@ function SkipLogicVisualizer({
                                   }
                                 }
                               }
+                              // Always strip HTML tags from the computed labelText so we display only inner text
+                              labelText = stripHtmlTags(labelText)
 
                               if (imageUrl) {
                                 return (

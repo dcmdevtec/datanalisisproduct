@@ -1553,64 +1553,7 @@ export function QuestionEditor({
                 </div>
               </div>
 
-              {/* Botones de acceso rápido */}
-              <div className="grid grid-cols-2 gap-4">
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      likertScale: {
-                        min: 1,
-                        max: 5,
-                        step: 1,
-                        labels: {
-                          left: "Totalmente en desacuerdo",
-                          right: "Totalmente de acuerdo",
-                        },
-                        showZero: true,
-                        zeroLabel: "No Sabe / No Responde",
-                        startPosition: "left",
-                      },
-                    })
-                  }
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-                >
-                  🎯 Usar Escala Estándar (1-5)
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      likertScale: {
-                        min: 1,
-                        max: 7,
-                        step: 1,
-                        labels: {
-                          left: "Completamente en desacuerdo",
-                          center: "Neutral",
-                          right: "Completamente de acuerdo",
-                        },
-                        showZero: true,
-                        zeroLabel: "No Sabe / No Responde",
-                        startPosition: "center",
-                      },
-                    })
-                  }
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-                >
-                  🎯 Usar Escala Extendida (1-7)
-                </Button>
-              </div>
-
-              {/* Mensaje de ayuda */}
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-700">
-                  💡 <strong>Para configuración avanzada:</strong> Usa el botón "Configuración avanzada" arriba y
-                  selecciona la pestaña "Escala Likert". Allí podrás personalizar completamente tu escala.
-                </p>
-              </div>
+             
             </div>
           </div>
         )}
