@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react"
 import { useDebounce } from "use-debounce"
@@ -13,13 +14,21 @@ interface ContactInfoQuestionProps {
   onChange: (value: {
     documentType?: string
     documentNumber?: string
-    name?: string
+    firstName?: string
+    lastName?: string
     phone?: string
+    email?: string
+    company?: string
+    address?: string
   }) => void
   config?: {
-    showName?: boolean
-    showPhone?: boolean
-    showDocument?: boolean
+    includeFirstName?: boolean
+    includeLastName?: boolean
+    includePhone?: boolean
+    includeDocument?: boolean
+    includeEmail?: boolean
+    includeCompany?: boolean
+    includeAddress?: boolean
   }
 }
 
@@ -27,56 +36,96 @@ type VerificationStatus = "idle" | "verifying" | "verified" | "error" | "already
 
 export function ContactInfoQuestion({ surveyId, onChange, config = {} }: ContactInfoQuestionProps) {
   const {
-    showName = true,
-    showPhone = true,
-    showDocument = true,
-  } = config;
+    includeFirstName = true,
+    includeLastName = true,
+    includePhone = true,
+    includeDocument = true,
+    includeEmail = true,
+    includeCompany = true,
+    includeAddress = true,
+  } = config
 
   const [documentType, setDocumentType] = useState("CC")
   const [documentNumber, setDocumentNumber] = useState("")
-  const [name, setName] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
   const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
+  const [company, setCompany] = useState("")
+  const [address, setAddress] = useState("")
   const [debouncedDocumentNumber] = useDebounce(documentNumber, 500)
   const [status, setStatus] = useState<VerificationStatus>("idle")
   const [message, setMessage] = useState("")
 
   const documentLengthIsValid = useMemo(() => {
-    if (!showDocument) return false;
+    if (!includeDocument) return false
     const length = debouncedDocumentNumber.trim().length
     return length === 7 || length === 10
-  }, [debouncedDocumentNumber, showDocument])
+  }, [debouncedDocumentNumber, includeDocument])
 
-  const isInitialMount = useRef(true);
+  const isInitialMount = useRef(true)
 
   useEffect(() => {
     if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
+      isInitialMount.current = false
+      return
     }
-    
+
     const dataToChange: {
-        documentType?: string
-        documentNumber?: string
-        name?: string
-        phone?: string
-    } = {};
+      documentType?: string
+      documentNumber?: string
+      firstName?: string
+      lastName?: string
+      phone?: string
+      email?: string
+      company?: string
+      address?: string
+    } = {}
 
-    if (showDocument) {
-        dataToChange.documentType = documentType;
-        dataToChange.documentNumber = documentNumber;
+    if (includeDocument) {
+      dataToChange.documentType = documentType
+      dataToChange.documentNumber = documentNumber
     }
-    if (showName) {
-        dataToChange.name = name;
+    if (includeFirstName) {
+      dataToChange.firstName = firstName
     }
-    if (showPhone) {
-        dataToChange.phone = phone;
+    if (includeLastName) {
+      dataToChange.lastName = lastName
+    }
+    if (includePhone) {
+      dataToChange.phone = phone
+    }
+    if (includeEmail) {
+      dataToChange.email = email
+    }
+    if (includeCompany) {
+      dataToChange.company = company
+    }
+    if (includeAddress) {
+      dataToChange.address = address
     }
 
-    onChange(dataToChange);
-  }, [documentType, documentNumber, name, phone, showDocument, showName, showPhone]);
+    onChange(dataToChange)
+  }, [
+    documentType,
+    documentNumber,
+    firstName,
+    lastName,
+    phone,
+    email,
+    company,
+    address,
+    includeDocument,
+    includeFirstName,
+    includeLastName,
+    includePhone,
+    includeEmail,
+    includeCompany,
+    includeAddress,
+  ])
 
   useEffect(() => {
-    if (!showDocument || !documentLengthIsValid) {
+    if (!includeDocument || !documentLengthIsValid) {
       setStatus("idle")
       setMessage("")
       return
@@ -95,19 +144,18 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
         // })
 
         // --- INICIO: Lógica de simulación ---
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000))
         const mockResponse = {
-            ok: Math.random() > 0.5,
-            json: async () => {
-                if (mockResponse.ok) {
-                    return { message: "Puede continuar." };
-                }
-                return { error: "Este número de documento ya ha completado la encuesta." };
+          ok: Math.random() > 0.5,
+          json: async () => {
+            if (mockResponse.ok) {
+              return { message: "Puede continuar." }
             }
-        };
-        const response = mockResponse;
+            return { error: "Este número de documento ya ha completado la encuesta." }
+          },
+        }
+        const response = mockResponse
         // --- FIN: Lógica de simulación ---
-
 
         if (response.ok) {
           const data = await response.json()
@@ -126,10 +174,10 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
     }
 
     verifyResponse()
-  }, [debouncedDocumentNumber, documentType, surveyId, documentLengthIsValid, showDocument])
+  }, [debouncedDocumentNumber, documentType, surveyId, documentLengthIsValid, includeDocument])
 
   const statusIndicator = useMemo(() => {
-    if (!showDocument) return null;
+    if (!includeDocument) return null
     switch (status) {
       case "verifying":
         return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -142,36 +190,81 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
       default:
         return null
     }
-  }, [status, showDocument])
+  }, [status, includeDocument])
 
   return (
     <div className="space-y-4 p-4 border rounded-lg bg-background">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {showName && (
+        {includeFirstName && (
           <div className="space-y-2">
-            <Label htmlFor="name">Nombre Completo</Label>
+            <Label htmlFor="firstName">Nombre</Label>
             <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ingrese su nombre completo"
+              id="firstName"
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              placeholder="Ingrese su nombre"
             />
           </div>
         )}
-        {showPhone && (
+        {includeLastName && (
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Apellido</Label>
+            <Input
+              id="lastName"
+              value={lastName}
+              onChange={e => setLastName(e.target.value)}
+              placeholder="Ingrese su apellido"
+            />
+          </div>
+        )}
+        {includePhone && (
           <div className="space-y-2">
             <Label htmlFor="phone">Teléfono</Label>
             <Input
               id="phone"
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={e => setPhone(e.target.value)}
               placeholder="Ingrese su número de teléfono"
             />
           </div>
         )}
+        {includeEmail && (
+          <div className="space-y-2">
+            <Label htmlFor="email">Correo Electrónico</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="Ingrese su correo electrónico"
+            />
+          </div>
+        )}
+        {includeCompany && (
+          <div className="space-y-2">
+            <Label htmlFor="company">Empresa</Label>
+            <Input
+              id="company"
+              value={company}
+              onChange={e => setCompany(e.target.value)}
+              placeholder="Ingrese el nombre de su empresa"
+            />
+          </div>
+        )}
+        {includeAddress && (
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="address">Dirección</Label>
+            <Textarea
+              id="address"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="Ingrese su dirección"
+            />
+          </div>
+        )}
       </div>
-      {showDocument && (
+      {includeDocument && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
@@ -196,7 +289,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
                   id="document-number"
                   type="number"
                   value={documentNumber}
-                  onChange={(e) => setDocumentNumber(e.target.value)}
+                  onChange={e => setDocumentNumber(e.target.value)}
                   placeholder="Ingrese el número de documento"
                   className="pr-8"
                 />

@@ -1775,7 +1775,7 @@ export function QuestionEditor({
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
-                    checked={question.config?.includePhone || false}
+                    checked={question.config?.includePhone !== false}
                     onCheckedChange={(checked) =>
                       onUpdateQuestion(sectionId, question.id, "config", {
                         ...question.config,
@@ -1787,7 +1787,7 @@ export function QuestionEditor({
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
-                    checked={question.config?.includeCompany || false}
+                    checked={question.config?.includeCompany !== false}
                     onCheckedChange={(checked) =>
                       onUpdateQuestion(sectionId, question.id, "config", {
                         ...question.config,
@@ -1799,7 +1799,7 @@ export function QuestionEditor({
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
-                    checked={question.config?.includeAddress || false}
+                    checked={question.config?.includeAddress !== false}
                     onCheckedChange={(checked) =>
                       onUpdateQuestion(sectionId, question.id, "config", {
                         ...question.config,
@@ -1811,7 +1811,7 @@ export function QuestionEditor({
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
-                    checked={question.config?.includeDocument || false}
+                    checked={question.config?.includeDocument !== false}
                     onCheckedChange={(checked) =>
                       onUpdateQuestion(sectionId, question.id, "config", {
                         ...question.config,
@@ -1828,10 +1828,10 @@ export function QuestionEditor({
                   {question.config?.includeFirstName !== false && <Input placeholder="Nombre" disabled />}
                   {question.config?.includeLastName !== false && <Input placeholder="Apellido" disabled />}
                   {question.config?.includeEmail !== false && <Input placeholder="Email" type="email" disabled />}
-                  {question.config?.includePhone && <Input placeholder="Teléfono" type="tel" disabled />}
-                  {question.config?.includeCompany && <Input placeholder="Empresa" disabled />}
-                  {question.config?.includeAddress && <Textarea placeholder="Dirección" disabled rows={2} />}
-                  {question.config?.includeDocument && (
+                  {question.config?.includePhone !== false && <Input placeholder="Teléfono" type="tel" disabled />}
+                  {question.config?.includeCompany !== false && <Input placeholder="Empresa" disabled />}
+                  {question.config?.includeAddress !== false && <Textarea placeholder="Dirección" disabled rows={2} />}
+                  {question.config?.includeDocument !== false && (
                     <div className="flex gap-2">
                       <Select disabled>
                         <SelectTrigger className="w-[150px]">
