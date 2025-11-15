@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText, LayoutGrid, LayoutList } from "lucide-react"
+import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText, LayoutGrid, LayoutList, Download } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -582,6 +582,16 @@ function SurveysPageContent() {
                             <span className="sr-only">Eliminar Encuesta</span>
                             <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
+                            onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")}
+                            title="Descargar PDF"
+                          >
+                            <span className="sr-only">Descargar Encuesta (PDF)</span>
+                            <Download className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -613,6 +623,9 @@ function SurveysPageContent() {
                       </Button>
                       <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-500/10" onClick={() => handleDeleteClick(survey.id)} title="Eliminar Encuesta">
                         <Trash2 className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")} title="Descargar PDF">
+                        <Download className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
