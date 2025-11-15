@@ -554,6 +554,8 @@ export function AdvancedQuestionConfig({
         timeLimit: 0,
         autoAdvance: false,
       },
+      // Configuración de cargas de archivo (solo para preguntas tipo file)
+      fileUploadConfig: baseConfig.fileUploadConfig || { maxFiles: 1 },
       // Ensure likertScale always present with defaults
       likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
     }
@@ -650,6 +652,7 @@ export function AdvancedQuestionConfig({
           timeLimit: 0,
           autoAdvance: false,
         },
+        fileUploadConfig: baseConfig.fileUploadConfig || { maxFiles: 1 },
         likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
       }
       
@@ -892,9 +895,16 @@ export function AdvancedQuestionConfig({
       startPosition: rawLikert.startPosition || 'left'
     }
 
+    // Normalize file upload config (if present)
+    const rawFileCfg = config.fileUploadConfig || {}
+    const normalizedFileUploadConfig = {
+      maxFiles: Number.isFinite(Number(rawFileCfg.maxFiles)) ? Number(rawFileCfg.maxFiles) : 1,
+    }
+
     const finalConfig = {
       ...validatedConfig,
       likertScale: normalizedLikert
+      ,fileUploadConfig: normalizedFileUploadConfig
     }
 
     console.log("✅ Configuración validada a guardar:", finalConfig)
@@ -990,6 +1000,47 @@ export function AdvancedQuestionConfig({
               <p className="text-sm text-muted-foreground">El panel de Opciones solo aplica para preguntas tipo "multiple_choice", "checkbox" o "dropdown".</p>
             </Card>
           )}
+        </div>
+      ),
+    },
+    {
+      id: "files",
+      label: "Archivos",
+      icon: ArrowDown,
+      content: (
+        <div className="space-y-6">
+          <Card className="border-2 border-sky-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowDown className="h-5 w-5 text-sky-600" />
+                Configuración de Archivos
+              </CardTitle>
+              <CardDescription>
+                Controla cuántos archivos puede subir el encuestado para esta pregunta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Máximo de archivos</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={config.fileUploadConfig?.maxFiles ?? 1}
+                    onChange={(e) => setConfig((prev) => ({
+                      ...prev,
+                      fileUploadConfig: {
+                        ...(prev.fileUploadConfig || {}),
+                        maxFiles: e.target.value ? parseInt(e.target.value) : 1,
+                      }
+                    }))}
+                    className="bg-white"
+                  />
+                  <p className="text-xs text-muted-foreground">Establece cuántos archivos puede adjuntar el encuestado. Valor mínimo 1.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       ),
     },
@@ -1688,6 +1739,9 @@ const visibleTabs = tabs.filter(tab => {
     }
     if (tab.id === 'likert') {
       return question.type === 'likert';
+    }
+    if (tab.id === 'files') {
+      return question.type === 'file' || question.type === 'image_upload';
     }
     // For likert questions, only 'logic' and 'likert' tabs are shown.
     // 'likert' is handled above. 'validation' is handled above.

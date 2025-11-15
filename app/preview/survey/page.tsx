@@ -1634,40 +1634,64 @@ function PreviewSurveyPageContent() {
             )
           case "file":
           case "image_upload":
-            return (
-              <div className="space-y-2">
-                <Input
-                  type="file"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      // Validar tipo y tamaño
-                      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-                      const maxSize = 20 * 1024 * 1024; // 20 MB
-                      if (!allowedTypes.includes(file.type)) {
-                        alert("Solo se permiten archivos JPG, PNG o PDF.");
-                        e.target.value = "";
-                        return;
+            {
+              const fileCfg = question.config?.fileUploadConfig || { maxFiles: 1 }
+              const maxFilesAllowed = typeof fileCfg.maxFiles === 'number' ? fileCfg.maxFiles : Number(fileCfg.maxFiles) || 1
+              const currentFiles: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
+              return (
+                <div className="space-y-2">
+                  <Input
+                    type="file"
+                    multiple={maxFilesAllowed > 1}
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || [])
+                      if (files.length === 0) return
+
+                      // Validar cantidad
+                      if (files.length > maxFilesAllowed) {
+                        alert(`Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Has seleccionado ${files.length}.`)
+                        e.target.value = ""
+                        return
                       }
-                      if (file.size > maxSize) {
-                        alert("El archivo no debe superar los 20 MB.");
-                        e.target.value = "";
-                        return;
+
+                      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"]
+                      const maxSize = 20 * 1024 * 1024 // 20 MB
+                      for (const file of files) {
+                        if (!allowedTypes.includes(file.type)) {
+                          alert("Solo se permiten archivos JPG, PNG o PDF.")
+                          e.target.value = ""
+                          return
+                        }
+                        if (file.size > maxSize) {
+                          alert("El archivo no debe superar los 20 MB.")
+                          e.target.value = ""
+                          return
+                        }
                       }
-                      handleAnswerChange(question.id, file.name);
-                    }
-                  }}
-                  accept=".jpg,.jpeg,.png,.pdf"
-                  className="w-full"
-                />
-                <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-100">
-                  Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b>
+
+                      // Guardar solo nombres de archivos en el preview (no subir archivos aquí)
+                      const names = files.map(f => f.name)
+                      handleAnswerChange(question.id, names)
+                    }}
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="w-full"
+                  />
+                  <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-100">
+                    Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b> &nbsp;|&nbsp; Máx archivos: <b>{maxFilesAllowed}</b>
+                  </div>
+                  {currentFiles && currentFiles.length > 0 && (
+                    <div className="text-sm text-muted-foreground">
+                      <div>Archivos seleccionados:</div>
+                      <ul className="mt-2 list-disc list-inside">
+                        {currentFiles.map((n, i) => (
+                          <li key={i}>{n}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
-                {answers[question.id] && (
-                  <p className="text-sm text-muted-foreground">Archivo seleccionado: {answers[question.id]}</p>
-                )}
-              </div>
-            )
+              )
+            }
           case "signature":
             return (
               <div className="space-y-2">
