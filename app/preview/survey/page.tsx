@@ -1146,17 +1146,47 @@ function PreviewSurveyPageContent() {
                         const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option
                         const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null
                         const id = `${question.id}-option-${idx}`
+                        const selectedValue = answers[question.id]
+                        const isSelected = selectedValue === optionValue
                         return (
-                          <div key={idx} className="flex flex-col items-center bg-white border rounded-lg p-3 hover:shadow-lg transition-shadow">
+                          <div
+                            key={idx}
+                            className={`flex flex-col items-center bg-white border rounded-lg p-3 transition-shadow ${isSelected ? 'ring-2 ring-emerald-300 shadow-lg border-emerald-200' : 'hover:shadow-lg'}`}
+                          >
                             <RadioGroupItem value={optionValue} id={id} className="sr-only" />
-                            <label htmlFor={id} className="flex flex-col items-center cursor-pointer select-none">
-                              {imageUrl ? (
-                                <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
-                              ) : (
-                                <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
-                              )}
-                              <div className="mt-3 text-sm text-center text-gray-800" dangerouslySetInnerHTML={{ __html: optionLabel }} />
-                            </label>
+                                <label
+                                  htmlFor={id}
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === ' ' || e.key === 'Enter') {
+                                      e.preventDefault()
+                                      handleAnswerChange(question.id, optionValue)
+                                    }
+                                  }}
+                                  className="relative flex flex-col items-center cursor-pointer select-none focus:outline-none"
+                                >
+                                  {/* selection indicator */}
+                                    {imageUrl ? (
+                                      <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
+                                    ) : (
+                                      <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
+                                    )}
+                                    <div className="mt-3 flex items-center justify-center gap-2">
+                                      {/* inline radio indicator next to label */}
+                                      <span className="w-5 h-5 rounded-full flex items-center justify-center border bg-white">
+                                        {answers[question.id] === optionValue ? (
+                                          <svg className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="6" fill="currentColor" />
+                                          </svg>
+                                        ) : (
+                                          <svg className="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" />
+                                          </svg>
+                                        )}
+                                      </span>
+                                      <div className="text-sm text-center text-gray-800" dangerouslySetInnerHTML={{ __html: optionLabel }} />
+                                    </div>
+                                </label>
                           </div>
                         )
                       })}
@@ -1239,35 +1269,61 @@ function PreviewSurveyPageContent() {
                     const optionLabel = typeof option === 'object' && option !== null ? (option as any).label || (option as any).value || '' : String(option || '')
                     const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option
                     const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null
-                    const checked = selected.includes(optionValue)
-                    const disabled = !checked && isMaxReached
-                    const id = `${question.id}-option-${idx}`
-                    return (
-                      <div key={idx} className={`flex flex-col items-center p-3 bg-white border rounded-lg ${disabled ? 'opacity-60' : ''}`}>
-                        <Checkbox
-                          id={id}
-                          checked={checked}
-                          disabled={disabled}
-                          className="sr-only"
-                          onCheckedChange={(checked) => {
-                            const currentAnswers = new Set(selected);
-                            if (checked) {
-                              currentAnswers.add(optionValue);
-                            } else {
-                              currentAnswers.delete(optionValue);
-                            }
-                            handleAnswerChange(question.id, Array.from(currentAnswers));
-                          }}
-                        />
-                        <label htmlFor={id} className="flex flex-col items-center cursor-pointer select-none">
-                          {imageUrl ? (
-                            <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
-                          ) : (
-                            <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
-                          )}
-                          <div className="mt-3 text-sm text-center text-gray-800">{optionLabel}</div>
-                        </label>
-                      </div>
+          const checked = selected.includes(optionValue)
+          const disabled = !checked && isMaxReached
+          const id = `${question.id}-option-${idx}`
+            return (
+                      <div key={idx} className={`relative flex flex-col items-center p-3 bg-white border rounded-lg ${disabled ? 'opacity-60' : ''} ${checked ? 'ring-2 ring-emerald-300 shadow-lg border-emerald-200' : 'hover:shadow-lg'}`}>
+                          <Checkbox
+                            id={id}
+                            checked={checked}
+                            disabled={disabled}
+                            className="sr-only"
+                            onCheckedChange={(checked) => {
+                              const currentAnswers = new Set(selected);
+                              if (checked) {
+                                currentAnswers.add(optionValue);
+                              } else {
+                                currentAnswers.delete(optionValue);
+                              }
+                              handleAnswerChange(question.id, Array.from(currentAnswers));
+                            }}
+                          />
+                          <label
+                            htmlFor={id}
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === ' ' || e.key === 'Enter') {
+                                e.preventDefault()
+                                const currentAnswers = new Set(selected);
+                                if (!checked) currentAnswers.add(optionValue); else currentAnswers.delete(optionValue);
+                                handleAnswerChange(question.id, Array.from(currentAnswers));
+                              }
+                            }}
+                            className="flex flex-col items-center cursor-pointer select-none"
+                          >
+                            {/* selection indicator for checkbox */}
+                            {imageUrl ? (
+                              <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
+                            ) : (
+                              <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
+                            )}
+                            <div className="mt-3 flex items-center justify-center gap-2">
+                              <span className="w-5 h-5 rounded-sm flex items-center justify-center border bg-white">
+                                {checked ? (
+                                  <svg className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M5 12l4 4L19 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                                  </svg>
+                                )}
+                              </span>
+                              <div className="mt-0 text-sm text-center text-gray-800">{optionLabel}</div>
+                            </div>
+                          </label>
+                        </div>
                     )
                   })}
                 </div>
