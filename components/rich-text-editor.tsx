@@ -1,6 +1,7 @@
 "use client"
 
 import { useEditor, EditorContent } from "@tiptap/react"
+import { useEffect, useRef } from 'react'
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import TextAlign from "@tiptap/extension-text-align"
@@ -37,9 +38,8 @@ export function RichTextEditor({
     ],
     immediatelyRender: false,
     content: value,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
-    },
+    // We'll handle updates with a debounced effect below to avoid calling onChange every keystroke
+    onUpdate: () => {},
     editorProps: {
       attributes: {
         class: cn(
@@ -54,6 +54,63 @@ export function RichTextEditor({
   if (!editor) {
     return null
   }
+
+  // Debounce onChange and flush on blur
+  const pendingRef = useRef<string | null>(null)
+  const timeoutRef = useRef<number | null>(null)
+  const debounceMs = 200
+
+  useEffect(() => {
+    if (!editor) return
+
+    const handleUpdate = () => {
+      const html = editor.getHTML()
+      pendingRef.current = html
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        if (pendingRef.current !== null) {
+          onChange(pendingRef.current)
+          pendingRef.current = null
+        }
+        timeoutRef.current = null
+      }, debounceMs) as unknown as number
+    }
+
+    const handleBlur = () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      if (pendingRef.current !== null) {
+        onChange(pendingRef.current)
+        pendingRef.current = null
+      }
+    }
+
+    editor.on('update', handleUpdate)
+    editor.on('blur', handleBlur)
+
+    return () => {
+      editor.off('update', handleUpdate)
+      editor.off('blur', handleBlur)
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      pendingRef.current = null
+    }
+  }, [editor, onChange])
+
+  // Sync external value into editor if it changes
+  useEffect(() => {
+    if (!editor) return
+    const current = editor.getHTML()
+    if (value !== current) {
+      editor.commands.setContent(value, { emitUpdate: false })
+    }
+  }, [value, editor])
 
   return (
     <div className={cn("border rounded-md", className)}>

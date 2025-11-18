@@ -2,6 +2,7 @@
 
 import { RichTextEditor, Link } from '@mantine/tiptap';
 import { useEditor, Extension } from '@tiptap/react';
+import { useEffect, useRef } from 'react'
 import Highlight from '@tiptap/extension-highlight';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -65,9 +66,11 @@ interface Props {
   onChange: (html: string) => void;
   placeholder?: string;
   immediatelyRender?: boolean;
+  /** Debounce time (ms) before calling onChange. Defaults to 200 */
+  debounceMs?: number;
 }
 
-export function AdvancedRichTextEditor({ value, onChange, placeholder = 'Escribe aquí...', immediatelyRender = false }: Props) {
+export function AdvancedRichTextEditor({ value, onChange, placeholder = 'Escribe aquí...', immediatelyRender = false, debounceMs = 200 }: Props) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -81,16 +84,67 @@ export function AdvancedRichTextEditor({ value, onChange, placeholder = 'Escribe
       Placeholder.configure({ placeholder }),
     ],
     content: value,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
-    },
     immediatelyRender,
   });
+  // Implement debouncing of onChange and flush on blur using local refs
+  const pendingRef = useRef<string | null>(null)
+  const timeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!editor) return
+
+    const handleUpdate = () => {
+      const html = editor.getHTML()
+      pendingRef.current = html
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        if (pendingRef.current !== null) {
+          onChange(pendingRef.current)
+          pendingRef.current = null
+        }
+        timeoutRef.current = null
+      }, debounceMs) as unknown as number
+    }
+
+    const handleBlur = () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      if (pendingRef.current !== null) {
+        onChange(pendingRef.current)
+        pendingRef.current = null
+      }
+    }
+
+    editor.on('update', handleUpdate)
+    editor.on('blur', handleBlur)
+
+    return () => {
+      editor.off('update', handleUpdate)
+      editor.off('blur', handleBlur)
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      pendingRef.current = null
+    }
+  }, [editor, debounceMs, onChange])
+
+  // Keep editor content in sync when external value changes
+  useEffect(() => {
+    if (!editor) return
+    const current = editor.getHTML()
+      if (value !== current) {
+        editor.commands.setContent(value, { emitUpdate: false })
+    }
+  }, [value, editor])
 
   if (!editor) {
     return null;
   }
-
   return (
     <MantineProvider>
       <RichTextEditor editor={editor} className="min-h-[200px]">
