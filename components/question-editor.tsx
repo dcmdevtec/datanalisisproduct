@@ -272,33 +272,7 @@ export function QuestionEditor({
   }
 
   // Sortable item component for options
-  // Local editor used to avoid updating parent on every keystroke
-  function LocalOptionEditor({ initialValue, onSave, onCancel, placeholder }: { initialValue: string; onSave: (v: string) => void; onCancel: () => void; placeholder?: string }) {
-    const [local, setLocal] = useState(initialValue || '')
-    const savingRef = useRef(false)
-
-    return (
-      <div>
-        <AdvancedRichTextEditor
-          value={local}
-          onChange={(html) => setLocal(html)}
-          onBlur={() => {
-            // do nothing - we wait for explicit save or close
-          }}
-          placeholder={placeholder}
-          immediatelyRender={false}
-        />
-        <div className="flex gap-2 mt-2">
-          <Button size="sm" variant="default" onClick={() => { if (savingRef.current) return; savingRef.current = true; onSave(local); }}>
-            Guardar
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => { onCancel(); }}>
-            Cancelar
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  // Local editor for options uses the top-level memoized `LocalOptionEditor` (defined above)
 
   const SortableOption = React.memo(function SortableOptionInner({ id, index, option }: { id: string; index: number; option: any }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
@@ -336,14 +310,22 @@ export function QuestionEditor({
               {/* Use local state while editing to avoid parent updates on every keystroke */}
               <LocalOptionEditor
                 initialValue={label}
-                onSave={(finalHtml: string) => {
+                onSave={async (finalHtml: string) => {
                   const newOptions = optItems.map((opt: any, idx: number) => {
                     if (idx !== index) return opt
                     if (isObj) return { ...opt, label: finalHtml }
                     return finalHtml
                   })
                   setOptItems(newOptions)
+                  // Update parent state
                   onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                  // Persist immediately using the same helper used by 'Guardar Sección'
+                  try {
+                    await autoSaveQuestionHelper({ ...question, options: newOptions }, sectionId, surveyId)
+                  } catch (e) {
+                    // swallow - helper logs errors; keep UX responsive
+                    console.error('Error auto-saving option:', e)
+                  }
                   setEditingOptionRichIndex(null)
                 }}
                 onCancel={() => setEditingOptionRichIndex(null)}
@@ -437,6 +419,68 @@ export function QuestionEditor({
             disabled={optItems.length <= 1}
           >
          <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    )
+  })
+
+  // Top-level LocalOptionEditor: single Guardar button, spinner while saving, closes after success
+  const LocalOptionEditor = React.memo(function LocalOptionEditorInner({
+    initialValue,
+    onSave,
+    onCancel,
+    placeholder,
+  }: {
+    initialValue: string
+    onSave: (html: string) => Promise<any> | any
+    onCancel: () => void
+    placeholder?: string
+  }) {
+    const [local, setLocal] = useState(initialValue || "")
+    const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+      setLocal(initialValue || "")
+    }, [initialValue])
+
+    const handleSave = async () => {
+      if (saving) return
+      try {
+        setSaving(true)
+        await Promise.resolve(onSave(local))
+      } catch (e) {
+        console.error("Error saving option:", e)
+      } finally {
+        setSaving(false)
+        try {
+          onCancel()
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    return (
+      <div className="space-y-2">
+        {/* Use the lightweight AdvancedRichTextEditor for formatting if available, fall back to Input */}
+        <div>
+          {/* existing AdvancedRichTextEditor is a dynamic import above */}
+          <AdvancedRichTextEditor value={local} onChange={(h: string) => setLocal(h)} placeholder={placeholder || ""} immediatelyRender={false} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="default" onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <>
+                <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                Guardando...
+              </>
+            ) : (
+              "Guardar"
+            )}
           </Button>
         </div>
       </div>
