@@ -32,19 +32,23 @@ WORKDIR /app
 
 # Copiamos solo lo necesario desde el builder
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package-lock.json ./package-lock.json
+
+# Install only production dependencies in the runner to avoid copying the whole node_modules
+RUN npm ci --omit=dev
+
+# Copy built app files and public assets
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
-# Copiamos el .env.production si existe
+# Copy the production env if provided
 COPY --from=builder /app/.env.production ./.env.production
 
-# Configuración de entorno para runtime
+# Set node environment
 ENV NODE_ENV=production
 
-# Exponemos el puerto donde corre Next.js
+# Expose port and start
 EXPOSE 3000
 
-# Comando de arranque
 CMD ["npm", "start"]

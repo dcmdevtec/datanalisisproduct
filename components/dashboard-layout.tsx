@@ -70,7 +70,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       name: "Usuarios", 
       href: "/users", 
       icon: Users,
-      disabled: true
+    
     },
     { 
       name: "Zonas", 
