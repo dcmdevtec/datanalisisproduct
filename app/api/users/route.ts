@@ -19,19 +19,17 @@
  * On failure inserting the profile, the code attempts to delete the created auth user to avoid orphaned auth records.
  */
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/supabase"
 
 type UserRow = Database["public"]["Tables"]["users"]["Row"]
 
 export async function GET(request: Request) {
-  // Use server client (respects RLS & session cookies)
+  // Use admin client to bypass RLS and list all users
   try {
-    const cookieStore = cookies()
-    const supabase = createClient(cookieStore)
+    const supabaseAdmin = createAdminClient()
 
-  const { data, error } = await supabase.from("users").select("id, email, name, role, status, created_at, updated_at")
+    const { data, error } = await supabaseAdmin.from("users").select("id, email, name, role, status, created_at, updated_at")
 
     if (error) {
       console.error("Error fetching users:", error.message)
@@ -91,7 +89,7 @@ export async function POST(request: Request) {
 
     if (userInsertError) {
       // Rollback auth user
-      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {})
+      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => { })
       console.error("DB error inserting into users:", userInsertError.message)
       return NextResponse.json({ error: userInsertError.message }, { status: 500 })
     }
