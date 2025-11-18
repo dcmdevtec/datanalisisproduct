@@ -2298,7 +2298,250 @@ export function CreateSurveyForProjectPageContent() {
               </TabsContent>
 
               <TabsContent value="questions" className="space-y-6">
-               loading...
+               <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <MessageSquareText className="h-5 w-5" />
+                          Secciones y Preguntas
+                        </CardTitle>
+                        <CardDescription>
+                          Organiza tu encuesta en secciones temáticas y agrega preguntas específicas
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        {/* Botón Organizar movido al bloque 'Trabajando en:' */}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {sections.length > 0 && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                          <Section className="h-4 w-4" />
+                          <span>
+                            {sections.length} sección{sections.length !== 1 ? "es" : ""}
+                          </span>
+                          <span>•</span>
+                          <span>
+                            {sections.reduce((total, section) => total + section.questions.length, 0)} pregunta
+                            {sections.reduce((total, section) => total + section.questions.length, 0) !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                      )}
+
+                      {sections.length > 0 ? (
+                        <div className="space-y-6">
+                          {/* Selector de secciones */}
+                          <div className="sticky top-0 z-50 flex items-center justify-between p-4 bg-muted/30 rounded-lg border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
+                            <div className="flex items-center gap-4">
+                              <Label className="text-sm font-medium">Trabajando en:</Label>
+                              <Select
+                                value={activeSectionIndex.toString()}
+                                onValueChange={(value) => setActiveSectionIndex(Number.parseInt(value))}
+                              >
+                                <SelectTrigger className="w-[400px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {sections.map((section, index) => (
+                                    <SelectItem key={section.id} value={index.toString()}>
+                                      <div className="flex items-center gap-2">
+                                        <Badge variant="secondary" className="text-xs">
+                                          {index + 1}
+                                        </Badge>
+                                        <span>{stripHtml(section.title) || `Sección ${index + 1}`}</span>
+                                        <span className="text-muted-foreground">
+                                          ({section.questions.length} pregunta
+                                          {section.questions.length !== 1 ? "s" : ""})
+                                        </span>
+                                        {sectionSaveStates[section.id] && (
+                                          <Badge
+                                            variant={
+                                              sectionSaveStates[section.id] === "saved" ? "default" : "destructive"
+                                            }
+                                            className="ml-2 text-xs"
+                                          >
+                                            {sectionSaveStates[section.id] === "saved"
+                                              ? "Guardado"
+                                              : sectionSaveStates[section.id] === "error"
+                                                ? "Error"
+                                                : "Sin guardar"}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSaveSection(sections[activeSectionIndex].id)}
+                                disabled={isSavingSection}
+                              >
+                                {isSavingSection ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                    Guardando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Save className="h-4 w-4 mr-1" />
+                                    Guardar Sección
+                                  </>
+                                )}
+                              </Button>
+                              {/* preview link moved to Configuración modal */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  for (const section of sections) {
+                                    if (sectionSaveStates[section.id] !== "saved") {
+                                      await handleSaveSection(section.id);
+                                    }
+                                  }
+                                }}
+                                disabled={isSavingSection}
+                              >
+                                <Save className="h-4 w-4 mr-1" />
+                                Guardar todas las secciones
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const newSection: SurveySection = {
+                                    id: generateUUID(),
+                                    title: `Nueva Sección ${sections.length + 1}`,
+                                    description: "",
+                                    order_num: sections.length,
+                                    questions: [],
+                                    skipLogic: undefined,
+                                  }
+                                  setSections([...sections, newSection])
+                                  setActiveSectionIndex(sections.length) // Cambiar a la nueva sección
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Nueva Sección
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handlePreview}
+                                className="gap-2 bg-transparent"
+                                disabled={sections.length === 0}
+                              >
+                                <Eye className="h-4 w-4" />
+                                Vista Previa
+                              </Button>
+                              <Button
+                                onClick={() => setShowSectionOrganizer(true)}
+                                variant="outline"
+                                size="sm"
+                                disabled={sections.length === 0}
+                              >
+                                <ArrowUpDown className="h-4 w-4 mr-2" />
+                                Organizar
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Sección activa */}
+                          {sections[activeSectionIndex] && (
+                            <SortableSection
+                              key={sections[activeSectionIndex].id}
+                              section={sections[activeSectionIndex]}
+                              index={activeSectionIndex}
+                              onRemoveSection={(sectionId) => {
+                                removeSection(sectionId)
+                                // Ajustar el índice activo si es necesario
+                                if (activeSectionIndex >= sections.length - 1) {
+                                  setActiveSectionIndex(Math.max(0, sections.length - 2))
+                                }
+                              }}
+                              onUpdateSection={updateSection}
+                              onAddQuestion={addQuestionToSection}
+                              onRemoveQuestion={removeQuestionFromSection}
+                              onUpdateQuestion={updateQuestionInSection}
+                              onDuplicateQuestion={handleDuplicateQuestion}
+                              allSections={sections}
+                              sections={sections}
+                              setSections={setSections}
+                              currentSurveyId={currentSurveyId}
+                            />
+                          )}
+
+                          {/* Navegación entre secciones */}
+                          <div className="flex items-center justify-between p-4 bg-muted/20 rounded-lg">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setActiveSectionIndex(Math.max(0, activeSectionIndex - 1))}
+                              disabled={activeSectionIndex === 0}
+                            >
+                              <ArrowLeft className="h-4 w-4 mr-1" />
+                              Sección Anterior
+                            </Button>
+
+                            <div className="text-sm text-muted-foreground">
+                              Sección {activeSectionIndex + 1} de {sections.length}
+                            </div>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setActiveSectionIndex(Math.min(sections.length - 1, activeSectionIndex + 1))
+                              }
+                              disabled={activeSectionIndex === sections.length - 1}
+                            >
+                              Sección Siguiente
+                              <ArrowRight className="h-4 w-4 ml-1" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        // Estado vacío cuando no hay secciones
+                        <div className="border-2 border-dashed border-muted rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                              <Section className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <h3 className="font-medium">Agregar primera sección</h3>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Organiza tus preguntas en bloques temáticos
+                              </p>
+                            </div>
+                            <Button variant="outline" onClick={addSection} className="mt-2 bg-transparent">
+                              <Plus className="h-4 w-4 mr-2" />
+                              Crear sección
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-between gap-4 pt-6 border-t">
+                      <Button
+                        variant="outline"
+                        className="gap-2 bg-transparent"
+                        onClick={() => setActiveTab("details")}
+                      >
+                        <ArrowLeft className="h-4 w-4" /> Anterior: Detalles
+                      </Button>
+                      <Button className="gap-2" onClick={() => setActiveTab("assignment")}>
+                        Siguiente: Asignación <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 <TabsContent value="assignment" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
