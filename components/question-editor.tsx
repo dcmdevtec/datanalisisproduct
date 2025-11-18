@@ -1,8 +1,7 @@
 "use client"
 
-import type React from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { useToast } from "@/components/ui/use-toast"
-import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
