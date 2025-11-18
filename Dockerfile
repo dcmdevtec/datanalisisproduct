@@ -4,22 +4,28 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# 🔥 AUMENTAR MEMORIA PARA NEXT BUILD
+ENV NODE_OPTIONS="--max_old_space_size=4096"
+
+# 🔥 DESACTIVAR CACHE DE WEBPACK
 ENV NEXT_PRIVATE_DISABLE_WEBPACK_CACHE=1
 ENV NEXT_PRIVATE_SKIP_CLOUD_CACHE=1
 ENV DISABLE_V8_COMPILE_CACHE=1
-ENV NODE_OPTIONS="--max_old_space_size=512"
 
 COPY package.json package-lock.json ./
 
+# Instalar TODAS las dependencias
 RUN npm ci
 
 COPY . .
 
+# Garantizar archivo env
 RUN if [ -f .env.production ]; then echo ".env.production found"; else echo "" > .env.production; fi
 
-# Usa el nuevo script build:safe
+# ⚡ Build con tu script corregido
 RUN npm run build:safe
 
+# Eliminar dependencias de desarrollo
 RUN npm prune --production
 
 
