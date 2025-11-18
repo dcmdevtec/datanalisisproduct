@@ -50,7 +50,66 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-8">
+              
+               <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.3 - Mejoras y Correcciones</h2>
+              <p className="text-gray-700 mb-2">📅 Fecha de liberación: 14 de noviembre del 2025</p>
+              <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades y Correcciones:</h3>
+              <ul className="list-disc ml-6 text-gray-700 mb-2">
+                <li> Corrección en la creación de zonas, explicación detallada de este modulo</li>
+                <li> Se creo la validacion en el campo tipo de documento y numero en el tipo de pregunta contacto información esto para Validar
+                  si la persona ya fue encuestada
+                </li>
+                <li> Mejora en las configuraciones de las preguntas, se agregaron a la ventana de configuración avanzada</li>
+                <li> Correciones de bugs en el preview</li>
+                <li> Mejoras en la organización de las preguntas y secciones</li>
+                <li> Se realizaron los cambios solcitados para el tipo de preguntas de opciones multiple</li>
+                <li> Mejoras en el componente de salto de logica y visualización</li>
+                <li> Mejoras en la escala likert</li>
+                <li> Mejoras en el tipo de pregunta email, hora</li>
+                <li> Mejoras en la organzación de las preguntas y secciones</li>
+
+
+              </ul>
+            </div>
+              
+              
               <div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.2 - Mejoras y Correcciones</h2>
+                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 29 de septiembre del 2025</p>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades y Correcciones:</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li> Corrección en la creación de zonas.</li>
+                  <li> Agregado el estado “modo prueba” en las encuestas.</li>
+                  <li> Implementado un guardado de encuestas más sencillo.</li>
+                  <li> El enunciado ahora se muestra completamente.</li>
+                  <li> Configuración del tipo de fuente para el enunciado.</li>
+                  <li> Posibilidad de definir color u otros estilos visuales para el enunciado.</li>
+                  <li> Ajustes en la interfaz para mejorar la usabilidad y la ubicación de los botones.</li>
+                  <li> Corrección de preguntas mal configuradas, ahora funcionando correctamente.</li>
+                </ul>
+              </div>
+<div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.1 - Expansión de Tipos de Preguntas</h2>
+                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 09 de septiembre del 2025</p>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades:</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li>Tipos de Preguntas:</li>
+                  <ul className="list-disc ml-8">
+
+                    <li>Escala Likert</li>
+                    <li>Preguntas tipo Matriz</li>
+
+                  </ul>
+                </ul>
+                <h3 className="font-bold text-green-700 mb-1">📋 Notas de la Versión:</h3>
+                <ul className="list-disc ml-6 text-gray-700">
+                  <li>Ampliación de opciones para creación de encuestas más complejas</li>
+                  <li>Mejora en la versatilidad del sistema de encuestas</li>
+                </ul>
+               
+              </div>
+               <div>
                 <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.0 - Despliegue Inicial</h2>
                 <p className="text-gray-700 mb-2">📅 Fecha de liberación: 29 de agosto del 2025</p>
                 <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades:</h3>
@@ -79,70 +138,9 @@ export default function ReportsPage() {
 
                 </ul>
               </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.1 - Expansión de Tipos de Preguntas</h2>
-                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 09 de septiembre del 2025</p>
-                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades:</h3>
-                <ul className="list-disc ml-6 text-gray-700 mb-2">
-                  <li>Tipos de Preguntas:</li>
-                  <ul className="list-disc ml-8">
-
-                    <li>Escala Likert</li>
-                    <li>Preguntas tipo Matriz</li>
-
-                  </ul>
-                </ul>
-                <h3 className="font-bold text-green-700 mb-1">📋 Notas de la Versión:</h3>
-                <ul className="list-disc ml-6 text-gray-700">
-                  <li>Ampliación de opciones para creación de encuestas más complejas</li>
-                  <li>Mejora en la versatilidad del sistema de encuestas</li>
-                </ul>
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.2 - Mejoras y Correcciones</h2>
-                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 29 de septiembre del 2025</p>
-                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades y Correcciones:</h3>
-                <ul className="list-disc ml-6 text-gray-700 mb-2">
-                  <li> Corrección en la creación de zonas.</li>
-                  <li> Agregado el estado “modo prueba” en las encuestas.</li>
-                  <li> Implementado un guardado de encuestas más sencillo.</li>
-                  <li> El enunciado ahora se muestra completamente.</li>
-                  <li> Configuración del tipo de fuente para el enunciado.</li>
-                  <li> Posibilidad de definir color u otros estilos visuales para el enunciado.</li>
-                  <li> Ajustes en la interfaz para mejorar la usabilidad y la ubicación de los botones.</li>
-                  <li> Corrección de preguntas mal configuradas, ahora funcionando correctamente.</li>
-                </ul>
-              </div>
-
             </div>
-            <div>
-              <h3 className="font-bold text-green-700 mb-1">📋 Notas de la Versión:</h3>
-              <ul className="list-disc ml-6 text-gray-700">
-
-                <li>Se realizaron los cambios presentado en la revision 1.0.3, algunos consta de explicación</li>
-              </ul>
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.3 - Mejoras y Correcciones</h2>
-              <p className="text-gray-700 mb-2">📅 Fecha de liberación: 14 de noviembre del 2025</p>
-              <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades y Correcciones:</h3>
-              <ul className="list-disc ml-6 text-gray-700 mb-2">
-                <li> Corrección en la creación de zonas, explicación detallada de este modulo</li>
-                <li> Se creo la validacion en el campo tipo de documento y numero en el tipo de pregunta contacto información esto para Validar
-                  si la persona ya fue encuestada
-                </li>
-                <li> Mejora en las configuraciones de las preguntas, se agregaron a la ventana de configuración avanzada</li>
-                <li> Correciones de bugs en el preview</li>
-                <li> Mejoras en la organización de las preguntas y secciones</li>
-                <li> Se realizaron los cambios solcitados para el tipo de preguntas de opciones multiple</li>
-                <li> Mejoras en el componente de salto de logica y visualización</li>
-                <li> Mejoras en la escala likert</li>
-                <li> Mejoras en el tipo de pregunta email, hora</li>
-                <li> Mejoras en la organzación de las preguntas y secciones</li>
-
-
-              </ul>
-            </div>
+           
+           
 
 
           </CardContent>
