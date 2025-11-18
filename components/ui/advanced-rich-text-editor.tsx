@@ -68,6 +68,8 @@ interface Props {
   immediatelyRender?: boolean;
   /** Debounce time (ms) before calling onChange. Defaults to 200 */
   debounceMs?: number;
+  /** Optional callback invoked when the editor loses focus (after flush) */
+  onBlur?: () => void;
 }
 
 export function AdvancedRichTextEditor({ value, onChange, placeholder = 'Escribe aquí...', immediatelyRender = false, debounceMs = 200 }: Props) {
@@ -116,6 +118,12 @@ export function AdvancedRichTextEditor({ value, onChange, placeholder = 'Escribe
       if (pendingRef.current !== null) {
         onChange(pendingRef.current)
         pendingRef.current = null
+      }
+      // notify parent that blur happened (after flush)
+      try {
+        if (typeof onBlur === 'function') onBlur()
+      } catch (e) {
+        // ignore
       }
     }
 

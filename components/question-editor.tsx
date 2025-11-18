@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { useToast } from "@/components/ui/use-toast"
 import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
@@ -273,7 +273,35 @@ export function QuestionEditor({
   }
 
   // Sortable item component for options
-  function SortableOption({ id, index, option }: { id: string; index: number; option: any }) {
+  // Local editor used to avoid updating parent on every keystroke
+  function LocalOptionEditor({ initialValue, onSave, onCancel, placeholder }: { initialValue: string; onSave: (v: string) => void; onCancel: () => void; placeholder?: string }) {
+    const [local, setLocal] = useState(initialValue || '')
+    const savingRef = useRef(false)
+
+    return (
+      <div>
+        <AdvancedRichTextEditor
+          value={local}
+          onChange={(html) => setLocal(html)}
+          onBlur={() => {
+            // do nothing - we wait for explicit save or close
+          }}
+          placeholder={placeholder}
+          immediatelyRender={false}
+        />
+        <div className="flex gap-2 mt-2">
+          <Button size="sm" variant="default" onClick={() => { if (savingRef.current) return; savingRef.current = true; onSave(local); }}>
+            Guardar
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { onCancel(); }}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const SortableOption = React.memo(function SortableOptionInner({ id, index, option }: { id: string; index: number; option: any }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
     const style: any = {
       transform: CSS.Transform.toString(transform),
@@ -306,23 +334,22 @@ export function QuestionEditor({
         <div className="flex-1 space-y-2">
           {editingOptionRichIndex === index ? (
             <div>
-              <AdvancedRichTextEditor
-                value={label}
-                onChange={(html) => {
+              {/* Use local state while editing to avoid parent updates on every keystroke */}
+              <LocalOptionEditor
+                initialValue={label}
+                onSave={(finalHtml: string) => {
                   const newOptions = optItems.map((opt: any, idx: number) => {
                     if (idx !== index) return opt
-                    if (isObj) return { ...opt, label: html }
-                    return html
+                    if (isObj) return { ...opt, label: finalHtml }
+                    return finalHtml
                   })
                   setOptItems(newOptions)
                   onUpdateQuestion(sectionId, question.id, "options", newOptions)
+                  setEditingOptionRichIndex(null)
                 }}
+                onCancel={() => setEditingOptionRichIndex(null)}
                 placeholder={`Opción ${index + 1}`}
-                immediatelyRender={false}
               />
-              <div className="flex gap-2 mt-2">
-                <Button size="sm" variant="outline" onClick={() => setEditingOptionRichIndex(null)}>Cerrar</Button>
-              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -415,7 +442,7 @@ export function QuestionEditor({
         </div>
       </div>
     )
-  }
+  })
 
   // NOTE: Selection limits UI moved to AdvancedQuestionConfig – keep editor minimal.
 
