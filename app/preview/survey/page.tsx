@@ -37,6 +37,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, ArrowRight, Loader2, Star, CheckCircle, AlertCircle, Info, Target } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -175,6 +176,7 @@ function PreviewSurveyPageContent() {
   // We'll infer the surveyId from the path and keep respondent id per-survey using localStorage key `respondent_public_id_${surveyId}`
   const [inferredSurveyId, setInferredSurveyId] = useState<string | null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(true)
+  const [showFinishedDialog, setShowFinishedDialog] = useState(false)
   const [docType, setDocType] = useState("")
   const [docNumber, setDocNumber] = useState("")
   const [fullName, setFullName] = useState("")
@@ -814,8 +816,11 @@ function PreviewSurveyPageContent() {
       // We're at the end: submit responses including respondent_public_id if present
       setSubmissionStatus("idle")
       const ok = await submitResponses()
-      if (ok) setSubmissionStatus("success")
-      else setSubmissionStatus("error")
+      if (ok) {
+        setSubmissionStatus("success")
+        // Show finished dialog to indicate success and offer to start another
+        setShowFinishedDialog(true)
+      } else setSubmissionStatus("error")
     }
   }, [currentSection, answers, currentSectionIndex, totalSections, surveyData, submitResponses, validateCurrentSection])
 
@@ -824,6 +829,42 @@ function PreviewSurveyPageContent() {
       setCurrentSectionIndex((prev) => prev - 1)
     }
   }, [currentSectionIndex])
+
+  const clearAndResetSurvey = useCallback(() => {
+    // Clear in-memory answers
+    setAnswers({})
+    // Remove persisted preview answers
+    try {
+      localStorage.removeItem('surveyPreviewAnswers')
+    } catch (e) {
+      console.warn('Error clearing localStorage surveyPreviewAnswers', e)
+    }
+
+    // Optionally clear respondent ids for this preview survey
+    if (inferredSurveyId) {
+      try {
+        localStorage.removeItem(`respondent_public_id_${inferredSurveyId}`)
+        localStorage.removeItem(`respondent_document_type_${inferredSurveyId}`)
+        localStorage.removeItem(`respondent_document_number_${inferredSurveyId}`)
+        localStorage.removeItem(`respondent_name_${inferredSurveyId}`)
+      } catch (e) {
+        console.warn('Error clearing respondent keys', e)
+      }
+    }
+
+    // Reset to first section
+    setCurrentSectionIndex(0)
+    setValidationErrors({})
+    setSubmissionStatus('idle')
+    setShowFinishedDialog(false)
+
+    // Show a toast confirming reset
+    try {
+      toast({ title: 'Listo', description: 'Respuestas limpiadas. Puedes iniciar otra encuesta.' })
+    } catch (e) {
+      // ignore
+    }
+  }, [inferredSurveyId, toast])
 
   // Componente Likert con segmentos clickeables - GARANTIZA que nunca quede entre opciones
   const LikertSliderWithDivisions = ({ 
@@ -2541,6 +2582,25 @@ function PreviewSurveyPageContent() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Finished dialog shown after successful submission */}
+      <Dialog open={showFinishedDialog} onOpenChange={(open) => setShowFinishedDialog(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Encuesta finalizada</DialogTitle>
+            <DialogDescription className="text-base">La encuesta fue enviada correctamente. ¿Deseas iniciar otra?</DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 flex justify-end gap-3">
+            <Button variant="outline" onClick={() => {
+              // go back to start without clearing (close dialog)
+              setShowFinishedDialog(false)
+              setCurrentSectionIndex(0)
+            }}>Ver respuestas</Button>
+            <Button onClick={() => clearAndResetSurvey()}>Iniciar otra</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )
