@@ -188,12 +188,8 @@ export default function UsersPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => router.push(`/users/${user.id}`)}>
-                              Ver detalles
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push(`/users/${user.id}/edit`)}>
-                              Editar
-                            </DropdownMenuItem>
+                           
+                           
                             <DropdownMenuItem
                               onClick={() =>
                                 toast({
