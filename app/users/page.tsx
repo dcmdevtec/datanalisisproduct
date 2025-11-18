@@ -17,6 +17,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Search, MoreHorizontal, Loader2, UserPlus } from "lucide-react"
+import dynamic from "next/dynamic"
+import CreateUserModal from "@/components/create-user-modal"
 import { useToast } from "@/components/ui/use-toast"
 
 type User = {
@@ -25,7 +27,10 @@ type User = {
   email: string
   role: string
   status: string
-  lastActive: string
+  // The API may return created_at / updated_at instead of lastActive
+  lastActive?: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export default function UsersPage() {
@@ -35,6 +40,21 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+
+  const refreshUsers = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch("/api/users")
+      if (!response.ok) throw new Error("Error al cargar usuarios")
+      const data = await response.json()
+      setUsers(data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -43,30 +63,10 @@ export default function UsersPage() {
   }, [user, authLoading, router])
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const response = await fetch("/api/users")
-        if (!response.ok) {
-          throw new Error("Error al cargar usuarios")
-        }
-        const data = await response.json()
-        setUsers(data)
-      } catch (error) {
-        console.error("Error fetching users:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los usuarios",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (user) {
-      fetchUsers()
-    }
-  }, [user, toast])
+    if (!user) return
+    refreshUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   const filteredUsers = users.filter(
     (u) =>
@@ -75,8 +75,10 @@ export default function UsersPage() {
       u.role.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return "-"
     const date = new Date(dateString)
+    if (Number.isNaN(date.getTime())) return "-"
     return new Intl.DateTimeFormat("es-ES", {
       day: "2-digit",
       month: "2-digit",
@@ -126,9 +128,14 @@ export default function UsersPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <Button className="gap-2 mt-10">
+            <Button className="gap-2 mt-10" onClick={() => setIsCreateOpen(true)}>
               <UserPlus className="h-4 w-4" /> Añadir Usuario
             </Button>
+            <CreateUserModal
+              isOpen={isCreateOpen}
+              onOpenChange={(open) => setIsCreateOpen(open)}
+              onCreated={() => refreshUsers()}
+            />
           </div>
         </div>
 
@@ -167,7 +174,9 @@ export default function UsersPage() {
                           {user.status === "active" ? "Activo" : "Inactivo"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatDate(user.lastActive)}</TableCell>
+                      <TableCell>
+                        {formatDate(user.lastActive ?? user.updated_at ?? user.created_at)}
+                      </TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

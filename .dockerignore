@@ -1,23 +1,48 @@
-# Git
-.git
-.gitignore
-
-# Docker
-Dockerfile
-.dockerignore
-
-# Node
+# Node / package
 node_modules
 npm-debug.log
 .npm
+yarn-error.log
+.pnp.*
+.pnpm-debug.log
 
 # Next.js
 .next
+.next/cache
+.next/build
+.next/standalone
 out
+.next/static
 
+# Build output / local builds
+dist
+build
+.cache
+coverage
 
+# VCS
+.git
+.gitignore
 
-# Other
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production.local
+
+# Docker / CI / editor
+.DS_Store
+.vscode
+.idea
 *.log
 *.lock
-README.md
+docker-compose*.yml
+*.pem
+
+# Deployment / platform specific
+.vercel
+.netlify
+firebase.json
+.now
