@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import type React from "react"
 import { useToast } from "@/components/ui/use-toast"
 import { useState, useEffect, useRef } from "react"
 import dynamic from "next/dynamic"
@@ -437,7 +437,7 @@ export function QuestionEditor({
             }}
             disabled={optItems.length <= 1}
           >
-            <Trash2 className="h-4 w-4" />
+         <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
