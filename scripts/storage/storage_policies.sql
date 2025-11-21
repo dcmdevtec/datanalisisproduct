@@ -100,6 +100,17 @@ WITH CHECK (
 );
 
 -- ========================================
+-- POLÍTICAS DE LECTURA (SELECT) - PRIVADO
+-- ========================================
+
+-- Lectura para response-media (solo archivos propios)
+DROP POLICY IF EXISTS "response_media_select" ON storage.objects;
+CREATE POLICY "response_media_select"
+ON storage.objects FOR SELECT
+TO authenticated
+USING (bucket_id = 'response-media' AND auth.uid() = owner);
+
+-- ========================================
 -- POLÍTICAS DE ACTUALIZACIÓN (UPDATE)
 -- ========================================
 

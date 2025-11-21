@@ -708,9 +708,61 @@ function PreviewSurveyPageContent() {
     const docNumKey = surveyId ? `respondent_document_number_${surveyId}` : "respondent_document_number"
     const nameKey = surveyId ? `respondent_name_${surveyId}` : "respondent_name"
 
+    // Filter answers to only include valid UUID question_ids (for questions that actually exist in the database)
+    // Also consolidate matrix-related keys (e.g., ${uuid}_0, ${uuid}_0_1) into their parent UUID
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i
+    const uuidPrefixRegex = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_/i
+    
+    const normalizedAnswers: { [questionId: string]: any } = {}
+    const matrixAnswers: { [matrixId: string]: any } = {}
+    
+    // First pass: collect pure UUID answers and identify matrix cell/row keys
+    for (const [key, value] of Object.entries(answers)) {
+      if (uuidRegex.test(key)) {
+        // Pure UUID - keep it
+        normalizedAnswers[key] = value
+      } else {
+        // Check if it's a matrix-related key (contains a UUID prefix)
+        const match = key.match(uuidPrefixRegex)
+        if (match && match[1]) {
+          const matrixId = match[1]
+          if (!matrixAnswers[matrixId]) {
+            matrixAnswers[matrixId] = {}
+          }
+          // Store the composite key data under the matrix ID
+          const suffix = key.substring(matrixId.length + 1) // Remove UUID and underscore
+          matrixAnswers[matrixId][suffix] = value
+        }
+      }
+    }
+    
+    // Second pass: add matrix answers (grouped by matrix question ID)
+    for (const [matrixId, matrixData] of Object.entries(matrixAnswers)) {
+      if (!normalizedAnswers[matrixId]) {
+        normalizedAnswers[matrixId] = matrixData
+      }
+    }
+    
+    const validAnswers = Object.entries(normalizedAnswers)
+      .map(([question_id, value]) => ({ question_id, value }))
+
+    if (validAnswers.length === 0) {
+      console.warn('⚠️ No valid answers to submit (all question_ids appear to be composite keys)')
+      toast({ title: 'Error', description: 'No hay respuestas válidas para enviar', variant: 'destructive' })
+      return false
+    }
+    
+    // Debug: log answer normalization
+    console.log('📊 Answer normalization:', {
+      originalCount: Object.keys(answers).length,
+      uuidAnswers: Object.keys(normalizedAnswers).length,
+      matrixQuestions: Object.keys(matrixAnswers).length,
+      validAnswersToSubmit: validAnswers.length,
+    })
+
     const payload: any = {
       survey_id: surveyId,
-      response_answers: Object.entries(answers).map(([question_id, value]) => ({ question_id, value })),
+      response_answers: validAnswers,
       timestamp: new Date().toISOString(),
     }
 

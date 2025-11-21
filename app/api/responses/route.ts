@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
     const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/
     const answersToInsert: any[] = []
     const skipped: any[] = []
+    const candidateQuestionIds: string[] = []
 
     for (const answer of (effectiveAnswers || [])) {
       let qid = answer.question_id
@@ -144,10 +145,11 @@ export async function POST(request: NextRequest) {
       if (match && match[0]) {
         qid = match[0]
       } else {
-        skipped.push({ reason: 'invalid_question_id_uuid', original: answer })
+        skipped.push({ reason: 'invalid_question_id_uuid', original: answer, hint: 'Check if this is a matrix cell or composite key' })
         continue
       }
 
+      candidateQuestionIds.push(qid)
       answersToInsert.push({
         response_id: responseData.id,
         question_id: qid,
@@ -155,17 +157,65 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Validate that all question_ids exist in the questions table for this survey
+    if (answersToInsert.length > 0) {
+      const { data: existingQuestions, error: qError } = await supabase
+        .from("questions")
+        .select("id")
+        .eq("survey_id", survey_id)
+        .in("id", Array.from(new Set(candidateQuestionIds)))
+
+      if (qError) {
+        console.error("❌ Error validating question IDs:", qError)
+        // Don't fail hard on validation error; continue with insert
+      } else {
+        const existingIds = new Set((existingQuestions || []).map((q: any) => q.id))
+        const invalidAnswers = answersToInsert.filter(a => !existingIds.has(a.question_id))
+        
+        if (invalidAnswers.length > 0) {
+          console.error("❌ Invalid question_ids detected (not found in survey):", {
+            invalid: invalidAnswers.map(a => a.question_id).slice(0, 5),
+            invalidCount: invalidAnswers.length,
+            surveyId: survey_id,
+          })
+          // Filter out invalid answers to prevent foreign key constraint error
+          answersToInsert.splice(0, answersToInsert.length, ...answersToInsert.filter(a => existingIds.has(a.question_id)))
+          invalidAnswers.forEach(a => {
+            skipped.push({ reason: 'question_id_not_in_survey', question_id: a.question_id })
+          })
+        }
+      }
+    }
+
     if (answersToInsert.length > 0) {
       const { error: answersError } = await supabase.from("answers").insert(answersToInsert)
       if (answersError) {
-        console.error("Error al guardar answers:", answersError)
+        console.error("❌ Error al guardar answers:", {
+          error: answersError,
+          attemptedCount: answersToInsert.length,
+          skippedCount: skipped.length,
+          skipped: skipped.slice(0, 5), // Show first 5 skipped for diagnostics
+        })
+        
+        // If it's a foreign key error, include diagnostic info
+        if (answersError.code === '23503' || answersError.message?.includes('foreign key')) {
+          console.error("🔗 Foreign key constraint violation - some question_ids may not exist in the database")
+          console.error("Attempted question_ids:", answersToInsert.map(a => a.question_id).slice(0, 5))
+        }
+        
         // Si hay error al guardar respuestas, eliminar la respuesta principal
         try {
           await supabase.from("responses").delete().eq("id", responseData.id)
         } catch (delErr) {
           console.error('Error al eliminar respuesta fallida:', delErr)
         }
-        return NextResponse.json({ error: answersError.message || 'Error guardando answers', details: answersError }, { status: 500 })
+        return NextResponse.json({ 
+          error: answersError.message || 'Error guardando answers', 
+          details: answersError, 
+          attempted_count: answersToInsert.length,
+          skipped_count: skipped.length, 
+          diagnostic: 'Check if all question_ids exist in the questions table'
+        }, { status: 500 })
       }
     }
 
