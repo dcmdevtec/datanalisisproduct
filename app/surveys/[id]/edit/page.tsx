@@ -31,6 +31,7 @@ type Question = {
   required: boolean
   image?: string | null
   matrixCols?: string[]
+  rating?: number | null
   config?: {
     dropdownMulti?: boolean;
     matrixCellType?: string;
@@ -84,12 +85,15 @@ export default function EditSurveyPage() {
 
   useEffect(() => {
     const fetchSurvey = async () => {
-      const { id } = params
-      const { data: survey, error: surveyError } = await supabase
+      const id = params.id as string
+      const { data: surveyData, error: surveyError } = await supabase
         .from("surveys")
         .select("*")
         .eq("id", id)
         .single()
+
+      const survey = surveyData as any
+
       if (surveyError) {
         setError(surveyError.message)
         return
@@ -158,9 +162,9 @@ export default function EditSurveyPage() {
       questions.map((q) =>
         q.id === questionId
           ? {
-              ...q,
-              options: q.options.map((opt, idx) => (idx === optionIndex ? value : opt)),
-            }
+            ...q,
+            options: q.options.map((opt, idx) => (idx === optionIndex ? value : opt)),
+          }
           : q,
       ),
     )
@@ -170,9 +174,9 @@ export default function EditSurveyPage() {
       questions.map((q) =>
         q.id === questionId
           ? {
-              ...q,
-              options: q.options.filter((_, idx) => idx !== optionIndex),
-            }
+            ...q,
+            options: q.options.filter((_, idx) => idx !== optionIndex),
+          }
           : q,
       ),
     )
@@ -279,14 +283,27 @@ export default function EditSurveyPage() {
 
   const renderQuestionEditor = (question: Question): React.ReactElement => {
     // Imagen
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          updateQuestion(question.id, "image", ev.target?.result as string);
-        };
-        reader.readAsDataURL(file);
+        try {
+          const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import('@/lib/supabase-storage');
+
+          const resized = await resizeImage(file, 800, 600);
+          const extension = getExtensionFromMimeType(file.type);
+          const fileName = generateUniqueFileName(`question_${question.id}`, extension);
+
+          const publicUrl = await uploadImage('survey-images', `${question.id}/${fileName}`, resized);
+
+          updateQuestion(question.id, "image", publicUrl);
+        } catch (error: any) {
+          console.error('Error uploading image:', error);
+          toast({
+            title: "Error",
+            description: `No se pudo subir la imagen: ${error.message}`,
+            variant: "destructive",
+          });
+        }
       }
     };
     const matrixRows = question.options?.length ? question.options : ["Fila 1"];
@@ -331,12 +348,12 @@ export default function EditSurveyPage() {
               <div className="flex-1">
                 <div className="border rounded p-2 bg-background text-foreground min-h-[48px]" dangerouslySetInnerHTML={{ __html: question.text || '<span class="text-muted-foreground">Haz click en editar formato</span>' }} />
               </div>
-                             <Button size="sm" variant="outline" onClick={() => openQuillEditor(question.id)}>Editar formato</Button>
-               <Button size="sm" variant="secondary" onClick={() => openConfigEditor(question.id)}>Configuración avanzada</Button>
+              <Button size="sm" variant="outline" onClick={() => openQuillEditor(question.id)}>Editar formato</Button>
+              <Button size="sm" variant="secondary" onClick={() => openConfigEditor(question.id)}>Configuración avanzada</Button>
             </div>
-                         <Dialog open={!!showQuill[question.id]} onOpenChange={open => {
-               if (!open) closeQuillEditor(question.id)
-             }}>
+            <Dialog open={!!showQuill[question.id]} onOpenChange={open => {
+              if (!open) closeQuillEditor(question.id)
+            }}>
               {showQuill[question.id] && (
                 <div className="fixed inset-0 bg-black/40 dark:bg-black/60 z-50 flex items-center justify-center">
                   <div className="rounded-lg shadow-lg p-6 w-full max-w-2xl bg-background text-foreground">
@@ -348,16 +365,16 @@ export default function EditSurveyPage() {
                       onChange={html => updateQuestion(question.id, "text", html)}
                       autofocus
                     />
-                                         <div className="flex justify-end mt-4">
-                       <Button onClick={() => closeQuillEditor(question.id)}>Cerrar</Button>
-                     </div>
+                    <div className="flex justify-end mt-4">
+                      <Button onClick={() => closeQuillEditor(question.id)}>Cerrar</Button>
+                    </div>
                   </div>
                 </div>
               )}
             </Dialog>
-                         <Dialog open={!!showConfig[question.id]} onOpenChange={open => {
-               if (!open) closeConfigEditor(question.id)
-             }}>
+            <Dialog open={!!showConfig[question.id]} onOpenChange={open => {
+              if (!open) closeConfigEditor(question.id)
+            }}>
               {showConfig[question.id] && (
                 <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center">
                   <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg">
@@ -403,9 +420,9 @@ export default function EditSurveyPage() {
                       </div>
                     )}
                     {/* Aquí puedes agregar más configuraciones para otros tipos */}
-                                         <div className="flex justify-end mt-4">
-                       <Button onClick={() => closeConfigEditor(question.id)}>Cerrar</Button>
-                     </div>
+                    <div className="flex justify-end mt-4">
+                      <Button onClick={() => closeConfigEditor(question.id)}>Cerrar</Button>
+                    </div>
                   </div>
                 </div>
               )}

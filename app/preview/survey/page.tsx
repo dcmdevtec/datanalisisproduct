@@ -334,12 +334,25 @@ function PreviewSurveyPageContent() {
           localStorage.setItem(`respondent_public_id_${inferredSurveyId}`, json.respondent_public_id)
           if (docType) localStorage.setItem(`respondent_document_type_${inferredSurveyId}`, docType)
           if (docNumber) localStorage.setItem(`respondent_document_number_${inferredSurveyId}`, docNumber)
-          if (fullName) localStorage.setItem(`respondent_name_${inferredSurveyId}`, fullName)
+          // Prefer server-provided name (json.respondent_name or json.full_name) to autofill
+          const serverName = json.respondent_name || json.full_name || null
+          if (serverName) {
+            localStorage.setItem(`respondent_name_${inferredSurveyId}`, serverName)
+            setFullName(serverName)
+          } else if (fullName) {
+            localStorage.setItem(`respondent_name_${inferredSurveyId}`, fullName)
+          }
         } else {
           localStorage.setItem("respondent_public_id", json.respondent_public_id)
           if (docType) localStorage.setItem("respondent_document_type", docType)
           if (docNumber) localStorage.setItem("respondent_document_number", docNumber)
-          if (fullName) localStorage.setItem("respondent_name", fullName)
+          const serverName = json.respondent_name || json.full_name || null
+          if (serverName) {
+            localStorage.setItem("respondent_name", serverName)
+            setFullName(serverName)
+          } else if (fullName) {
+            localStorage.setItem("respondent_name", fullName)
+          }
         }
         setShowVerifyModal(false)
       } else {
@@ -353,6 +366,41 @@ function PreviewSurveyPageContent() {
       setVerifying(false)
     }
   }
+
+  // Debounced lookup: when user types docType/docNumber, try to autofill fullName from historical data
+  useEffect(() => {
+    if (!docType || !docNumber) return
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      try {
+        // prefer passing survey id when available to check per-survey records first
+        const q = new URLSearchParams({ document_type: docType, document_number: docNumber })
+        if (inferredSurveyId) q.set('survey_id', inferredSurveyId)
+        const res = await fetch(`/api/surveys/lookup-respondent?${q.toString()}`)
+        if (!res.ok) return
+        const json = await res.json()
+        if (cancelled) return
+        if (json.found && (json.respondent_name || json.full_name)) {
+          const name = json.respondent_name || json.full_name
+          setFullName(name)
+          // store per-survey name if inferredSurveyId
+          try {
+            if (inferredSurveyId) localStorage.setItem(`respondent_name_${inferredSurveyId}`, name)
+            else localStorage.setItem('respondent_name', name)
+          } catch (e) {
+            // ignore storage errors
+          }
+        }
+      } catch (e) {
+        // ignore lookup errors silently
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [docType, docNumber, inferredSurveyId])
 
   // Defensive fallback: some production builds may end up with undefined imports for the
   // Radix-based Select components (causing React error #306: element type is undefined).

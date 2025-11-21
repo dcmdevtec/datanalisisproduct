@@ -159,18 +159,47 @@ export default function CompaniesPage() {
     setShowCompanyModal(true)
   }
 
-  const handleCompanyLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCompanyLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      setCompanyLogoFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setCompanyLogo(reader.result as string) // Store base64 string
+      try {
+        setCompanyLogoFile(file)
+
+        // Importar utilidades de storage
+        const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
+          "@/lib/supabase-storage"
+        )
+
+        // Redimensionar imagen
+        const resized = await resizeImage(file, 500, 500)
+
+        // Generar nombre único
+        const extension = getExtensionFromMimeType(file.type)
+        const fileName = currentCompany?.id
+          ? `company_${currentCompany.id}.${extension}`
+          : generateUniqueFileName("company_logo", extension)
+
+        // Subir a Storage
+        const publicUrl = await uploadImage("company-logos", fileName, resized)
+
+        setCompanyLogo(publicUrl)
+        toast({
+          title: "Logo subido",
+          description: "El logo se ha cargado correctamente.",
+        })
+      } catch (error: any) {
+        console.error("Error uploading logo:", error)
+        toast({
+          title: "Error de subida",
+          description: `No se pudo subir el logo: ${error.message}`,
+          variant: "destructive",
+        })
+        setCompanyLogoFile(null)
+        setCompanyLogo(isEditingCompany ? currentCompany?.logo || null : null)
       }
-      reader.readAsDataURL(file)
     } else {
       setCompanyLogoFile(null)
-      setCompanyLogo(currentCompany?.logo || null) // Revert to original if no new file
+      setCompanyLogo(currentCompany?.logo || null)
     }
   }
 
@@ -178,7 +207,7 @@ export default function CompaniesPage() {
     setCompanyLogo(null)
     setCompanyLogoFile(null)
     if (currentCompany) {
-      setCurrentCompany({ ...currentCompany, logo: null }) // Update currentCompany state for immediate preview
+      setCurrentCompany({ ...currentCompany, logo: null })
     }
   }
 
@@ -200,7 +229,7 @@ export default function CompaniesPage() {
     const companyData = {
       name: companyName,
       description: companyDescription,
-      logo: companyLogo, // This will be the base64 string or null
+      logo: companyLogo, // This will be the Storage URL or null
       website: companyWebsite || null,
       contact: companyContact || null,
     }

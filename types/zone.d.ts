@@ -14,5 +14,6 @@ declare module "@/types/zone" {
     created_by?: string
     created_at?: string
     updated_at?: string
+    zone_color?: string
   }
 }

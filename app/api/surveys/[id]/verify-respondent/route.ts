@@ -42,9 +42,41 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     let respondentPublicId: string | null = existing?.id ?? null
 
     if (!respondentPublicId) {
+      // If no public_respondent exists for this survey, try to find the person in other tables
+      // 1) Check other public_respondents (across surveys) for same document
+      const { data: otherPublic, error: otherPubErr } = await supabase
+        .from('public_respondents')
+        .select('id, survey_id, full_name')
+        .eq('document_type', document_type)
+        .eq('document_number', document_number)
+        .limit(1)
+        .maybeSingle()
+
+      if (otherPubErr) {
+        console.error('Error querying other public_respondents:', otherPubErr)
+      }
+
+      // 2) Check responses table globally for a prior response with this document (most recent)
+      const { data: otherResp, error: otherRespErr } = await supabase
+        .from('responses')
+        .select('id, survey_id, respondent_name, respondent_document_type, respondent_document_number, completed_at')
+        .eq('respondent_document_type', document_type)
+        .eq('respondent_document_number', document_number)
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (otherRespErr) {
+        console.error('Error querying responses for other surveys:', otherRespErr)
+      }
+
+      // Choose a candidate full_name from otherPublic or otherResp if available
+      const candidateName = (otherPublic && (otherPublic as any).full_name) || (otherResp && (otherResp as any).respondent_name) || null
+
       const { data: created, error: createErr } = await supabase
         .from("public_respondents")
-        .insert({ survey_id: surveyId, document_type, document_number, full_name: full_name || null })
+        // If we found a candidate name from other surveys, use it to prefill full_name
+        .insert({ survey_id: surveyId, document_type, document_number, full_name: full_name || candidateName || null })
         .select("id")
         .single()
 

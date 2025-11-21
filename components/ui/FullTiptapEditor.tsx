@@ -95,46 +95,41 @@ export default function FullTiptapEditor({
 
 
   // Handler for uploading image from device with size/weight limits
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    // Limit: 1MB and max 800x800px
-    const maxSize = 1024 * 1024; // 1MB
-    const maxDim = 800;
+
+    // Limit: 2MB
+    const maxSize = 2 * 1024 * 1024; // 2MB
     if (file.size > maxSize) {
-      setErrorMessage('La imagen no debe superar 1MB.');
+      setErrorMessage('La imagen no debe superar 2MB.');
       setShowErrorAlert(true);
       event.target.value = '';
       return;
     }
-    const img = new window.Image();
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (!e?.target || !e.target.result) return;
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          // Resize
-          const scale = Math.min(maxDim / width, maxDim / height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const resized = canvas.toDataURL('image/jpeg', 0.92);
-            editor?.chain().focus().setImage({ src: resized }).run();
-          }
-        } else {
-          editor?.chain().focus().setImage({ src: e.target.result as string }).run();
-        }
-      };
-      img.src = e.target.result as string;
-    };
-    reader.readAsDataURL(file);
-    event.target.value = '';
+
+    try {
+      // Importar dinámicamente para evitar problemas de SSR o dependencias circulares
+      const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import('@/lib/supabase-storage');
+
+      // Redimensionar si es necesario (opcional, pero recomendado para optimizar)
+      const resized = await resizeImage(file, 800, 800);
+      const extension = getExtensionFromMimeType(file.type);
+      const fileName = generateUniqueFileName('content_image', extension);
+
+      // Subir a 'survey-images' (o un bucket general de contenido si existiera)
+      const publicUrl = await uploadImage('survey-images', `content/${fileName}`, resized);
+
+      // Insertar imagen con la URL pública
+      editor?.chain().focus().setImage({ src: publicUrl }).run();
+
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      setErrorMessage(`Error subiendo imagen: ${error.message || 'Error desconocido'}`);
+      setShowErrorAlert(true);
+    } finally {
+      event.target.value = '';
+    }
   };
 
   // Open file picker
@@ -221,14 +216,14 @@ export default function FullTiptapEditor({
             </div>
           </div>
           <DialogFooter className="flex gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setShowLinkDialog(false)}
               className="rounded-full"
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={setLink}
               disabled={!linkUrl.trim()}
               className="rounded-full text-white"

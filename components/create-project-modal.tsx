@@ -106,15 +106,44 @@ export function CreateProjectModal({
     label: c.name,
   }))
 
-  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      setProjectLogoFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setProjectLogo(reader.result as string) // Store base64 string
+      try {
+        setProjectLogoFile(file)
+
+        // Importar utilidades de storage
+        const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
+          "@/lib/supabase-storage"
+        )
+
+        // Redimensionar imagen para preview
+        const resized = await resizeImage(file, 500, 500)
+
+        // Generar nombre único
+        const extension = getExtensionFromMimeType(file.type)
+        const fileName = currentProject?.id
+          ? `project_${currentProject.id}.${extension}`
+          : generateUniqueFileName("project_logo", extension)
+
+        // Subir a Storage
+        const publicUrl = await uploadImage("project-logos", fileName, resized)
+
+        setProjectLogo(publicUrl)
+        toast({
+          title: "Logo subido",
+          description: "El logo se ha actualizado correctamente.",
+        })
+      } catch (error: any) {
+        console.error("Error uploading logo:", error)
+        toast({
+          title: "Error de subida",
+          description: `No se pudo subir el logo: ${error.message || "Error desconocido"}`,
+          variant: "destructive",
+        })
+        setProjectLogoFile(null)
+        setProjectLogo(isEditing ? currentProject?.logo || null : null)
       }
-      reader.readAsDataURL(file)
     } else {
       setProjectLogoFile(null)
       setProjectLogo(isEditing ? currentProject?.logo || null : null) // Revert to original if no new file
@@ -145,29 +174,31 @@ export function CreateProjectModal({
       description: projectDescription || null,
       objective: projectObjective || null,
       company_id: projectCompanyId,
-      logo: projectLogo, // This will be the base64 string or null
+      logo: projectLogo, // This will be the Storage URL or null
     }
 
     let result
     if (isEditing && currentProject) {
+      // @ts-ignore
       result = await supabase.from("projects").update(projectData).eq("id", currentProject.id).select().single()
     } else {
+      // @ts-ignore
       result = await supabase.from("projects").insert(projectData).select().single()
     }
 
-    if (result.error) {
+    if ((result as any).error) {
       toast({
         title: "Error",
-        description: `Hubo un error al guardar el proyecto: ${result.error.message}`,
+        description: `Hubo un error al guardar el proyecto: ${(result as any).error.message}`,
         variant: "destructive",
       })
     } else {
       toast({
         title: "Éxito",
-        description: `Proyecto "${result.data.name}" ha sido ${isEditing ? "actualizado" : "creado"} correctamente.`,
+        description: `Proyecto "${(result as any).data.name}" ha sido ${isEditing ? "actualizado" : "creado"} correctamente.`,
         variant: "default",
       })
-      onProjectCreated?.(result.data) // Notify parent component
+      onProjectCreated?.((result as any).data) // Notify parent component
       onClose() // Close the modal
     }
     setIsSubmitting(false)

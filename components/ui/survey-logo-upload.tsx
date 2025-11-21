@@ -11,15 +11,16 @@ import { useToast } from "@/components/ui/use-toast"
 
 interface SurveyLogoUploadProps {
   value: string | null
-  onChange: (base64Image: string | null) => void
+  onChange: (imageUrl: string | null) => void // Ahora recibe URL en lugar de base64
+  surveyId?: string // Opcional: para nombre único del archivo
 }
 
-export default function SurveyLogoUpload({ value, onChange }: SurveyLogoUploadProps) {
+export default function SurveyLogoUpload({ value, onChange, surveyId }: SurveyLogoUploadProps) {
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 
   const handleFileChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
       if (!file) return
 
@@ -33,23 +34,43 @@ export default function SurveyLogoUpload({ value, onChange }: SurveyLogoUploadPr
         return
       }
 
-      setIsLoading(true)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        onChange(reader.result as string)
-        setIsLoading(false)
-      }
-      reader.onerror = () => {
+      try {
+        setIsLoading(true)
+
+        // Importar utilidades de storage
+        const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
+          "@/lib/supabase-storage"
+        )
+
+        // Redimensionar imagen
+        const resized = await resizeImage(file, 500, 500)
+
+        // Generar nombre único
+        const extension = getExtensionFromMimeType(file.type)
+        const fileName = surveyId
+          ? `survey_${surveyId}.${extension}`
+          : generateUniqueFileName("survey_logo", extension)
+
+        // Subir a Storage
+        const publicUrl = await uploadImage("survey-logos", fileName, resized)
+
+        onChange(publicUrl)
         toast({
-          title: "Error de lectura",
-          description: "No se pudo leer el archivo de imagen.",
+          title: "Logo subido",
+          description: "El logo se ha subido correctamente.",
+        })
+      } catch (error: any) {
+        console.error("Error uploading logo:", error)
+        toast({
+          title: "Error de subida",
+          description: `No se pudo subir el logo: ${error.message || "Error desconocido"}`,
           variant: "destructive",
         })
+      } finally {
         setIsLoading(false)
       }
-      reader.readAsDataURL(file)
     },
-    [onChange, toast],
+    [onChange, toast, surveyId],
   )
 
   const handleRemoveImage = useCallback(() => {
@@ -79,14 +100,14 @@ export default function SurveyLogoUpload({ value, onChange }: SurveyLogoUploadPr
           ) : (
             <ImagePlus className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
           )}
-         <Input
-  id="logo-upload"
-  type="file"
-  accept="image/*"
-  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-  onChange={handleFileChange}
-  disabled={isLoading}
-/>
+          <Input
+            id="logo-upload"
+            type="file"
+            accept="image/*"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            onChange={handleFileChange}
+            disabled={isLoading}
+          />
 
           <Label htmlFor="logo-upload" className="sr-only">
             Subir logo

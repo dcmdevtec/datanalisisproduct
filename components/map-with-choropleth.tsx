@@ -1,13 +1,14 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import "leaflet-geosearch/dist/geosearch.css"
 import { GeoSearchControl, OpenStreetMapProvider } from "leaflet-geosearch"
 import * as turf from "@turf/turf"
 import barranquillaGeoJSON from "@/lib/geo-barranquilla.json"
+
 interface MapWithChoroplethProps {
   initialGeometry?: any
   onGeometryChange?: (geometry: any) => void
@@ -16,13 +17,13 @@ interface MapWithChoroplethProps {
   onNeighborhoodSelect: (neighborhoods: string[]) => void
 }
 
-const MapWithChoropleth: React.FC<MapWithChoroplethProps> = ({
+const MapWithChoropleth = forwardRef<any, MapWithChoroplethProps>(({
   initialGeometry,
   onGeometryChange,
   zoneColor,
   selectedNeighborhoods,
   onNeighborhoodSelect,
-}) => {
+}, ref) => {
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.GeoJSON | null>(null)
 
@@ -87,42 +88,43 @@ const MapWithChoropleth: React.FC<MapWithChoroplethProps> = ({
       }).addTo(mapRef.current)
 
       // GeoSearch
-const provider = new OpenStreetMapProvider()
-const searchControl = new GeoSearchControl({
-  provider,
-  style: "bar",
-  showMarker: true,
-  showPopup: false,
-  marker: {
-    icon: new L.Icon.Default(),
-    draggable: false,
-  },
-  autoClose: true,
-  keepResult: true,
-})
+      const provider = new OpenStreetMapProvider()
+      const searchControl = new GeoSearchControl({
+        provider,
+        style: "bar",
+        showMarker: true,
+        showPopup: false,
+        marker: {
+          // @ts-ignore
+          icon: new L.Icon.Default(),
+          draggable: false,
+        },
+        autoClose: true,
+        keepResult: true,
+      })
 
-mapRef.current.addControl(searchControl as any)
+      mapRef.current.addControl(searchControl as any)
 
-// 📌 Capturar evento cuando se selecciona algo en el buscador
-mapRef.current.on("geosearch/showlocation", (e: any) => {
-  const { x: lng, y: lat } = e.location
-  const point = turf.point([lng, lat])
+      // 📌 Capturar evento cuando se selecciona algo en el buscador
+      mapRef.current.on("geosearch/showlocation", (e: any) => {
+        const { x: lng, y: lat } = e.location
+        const point = turf.point([lng, lat])
 
-  // Buscar el barrio que contiene ese punto
-  const barrioEncontrado = barranquillaGeoJSON.features.find((f: any) =>
-    turf.booleanPointInPolygon(point, f as any)
-  )
+        // Buscar el barrio que contiene ese punto
+        const barrioEncontrado = barranquillaGeoJSON.features.find((f: any) =>
+          turf.booleanPointInPolygon(point, f as any)
+        )
 
-  if (barrioEncontrado) {
-    const barrioNombre = barrioEncontrado.properties?.nombre
-    console.log("Barrio encontrado:", barrioNombre)
+        if (barrioEncontrado) {
+          const barrioNombre = barrioEncontrado.properties?.nombre
+          console.log("Barrio encontrado:", barrioNombre)
 
-    // Actualizar selección → dispara pintado
-    onNeighborhoodSelect([barrioNombre])
-  } else {
-    console.log("No se encontró un barrio para esa ubicación")
-  }
-})
+          // Actualizar selección → dispara pintado
+          onNeighborhoodSelect([barrioNombre])
+        } else {
+          console.log("No se encontró un barrio para esa ubicación")
+        }
+      })
     }
   }, [])
 
@@ -146,7 +148,10 @@ mapRef.current.on("geosearch/showlocation", (e: any) => {
     }
   }, [createChoroplethLayer, selectedNeighborhoods, zoneColor])
 
+  // Expose map instance to parent
+  useImperativeHandle(ref, () => mapRef.current)
+
   return <div id="map" className="h-[500px] w-full rounded-lg shadow-md" />
-}
+})
 
 export default MapWithChoropleth

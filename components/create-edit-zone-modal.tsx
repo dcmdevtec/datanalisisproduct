@@ -138,11 +138,14 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
       })
 
       const base64Image = canvas.toDataURL("image/jpeg", 0.8)
+
+      // Subir a Storage inmediatamente para mostrar preview (opcional) o solo guardar en estado
+      // Para optimizar, subiremos al guardar, pero aquí podemos mostrar preview con base64
       setMapSnapshot(base64Image)
 
       toast({
         title: "Captura realizada",
-        description: "La captura del mapa se ha guardado correctamente.",
+        description: "La captura del mapa se ha generado correctamente.",
       })
     } catch (error) {
       console.error("Error capturing map snapshot:", error)
@@ -166,13 +169,32 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
       return
     }
 
-   
-
     setIsSaving(true)
     try {
-      let finalSnapshot = mapSnapshot
+      let finalSnapshotUrl = mapSnapshot
 
-      if (!finalSnapshot && mapContainerRef.current) {
+      // Si tenemos un snapshot en base64 (nuevo o actualizado), subirlo a Storage
+      if (mapSnapshot && mapSnapshot.startsWith('data:image/')) {
+        try {
+          const { migrateBase64ToStorage, generateUniqueFileName } = await import("@/lib/supabase-storage")
+
+          const fileName = initialZone?.id
+            ? `zone_${initialZone.id}_${Date.now()}.jpg`
+            : generateUniqueFileName("zone_map", "jpg")
+
+          finalSnapshotUrl = await migrateBase64ToStorage("zone-maps", fileName, mapSnapshot)
+        } catch (uploadError) {
+          console.error("Error uploading map snapshot:", uploadError)
+          // Fallback: intentar guardar sin snapshot o mostrar error
+          toast({
+            title: "Advertencia",
+            description: "No se pudo subir la imagen del mapa, se guardará sin ella.",
+            variant: "destructive"
+          })
+          finalSnapshotUrl = null
+        }
+      } else if (!mapSnapshot && mapContainerRef.current) {
+        // Intentar capturar y subir si no hay snapshot
         try {
           const html2canvas = (await import("html2canvas")).default
           await new Promise((resolve) => setTimeout(resolve, 300))
@@ -186,9 +208,12 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
             backgroundColor: "#f8f9fa",
           })
 
-          finalSnapshot = canvas.toDataURL("image/jpeg", 0.8)
+          const base64 = canvas.toDataURL("image/jpeg", 0.8)
+          const { migrateBase64ToStorage, generateUniqueFileName } = await import("@/lib/supabase-storage")
+          const fileName = generateUniqueFileName("zone_map", "jpg")
+          finalSnapshotUrl = await migrateBase64ToStorage("zone-maps", fileName, base64)
         } catch (error) {
-          console.warn("Auto-capture failed, saving without snapshot:", error)
+          console.warn("Auto-capture and upload failed:", error)
         }
       }
 
@@ -196,7 +221,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
         name,
         description,
         geometry,
-        map_snapshot: finalSnapshot,
+        map_snapshot: finalSnapshotUrl, // URL de Storage
         zone_color: zoneColor,
         selected_neighborhoods: selectedNeighborhoods,
       }

@@ -9,8 +9,7 @@ import Link from "@tiptap/extension-link"
 import Image from "@tiptap/extension-image"
 import Placeholder from "@tiptap/extension-placeholder"
 import TextAlign from "@tiptap/extension-text-align"
-import TextStyle from "@tiptap/extension-text-style"
-import FontFamily from "@tiptap/extension-font-family"
+import { TextStyle } from "@tiptap/extension-text-style"
 import Color from "@tiptap/extension-color"
 import Highlight from "@tiptap/extension-highlight"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -66,9 +65,7 @@ export function ProfessionalRichTextEditor({
       StarterKit,
       Underline,
       TextStyle,
-      FontFamily.configure({
-        types: ["textStyle"],
-      }),
+
       Color.configure({
         types: ["textStyle"],
       }),
@@ -137,7 +134,7 @@ export function ProfessionalRichTextEditor({
   }, [editor])
 
   const handleImageUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
       if (!file) return
 
@@ -147,15 +144,24 @@ export function ProfessionalRichTextEditor({
         return
       }
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        if (result) {
-          editor?.chain().focus().setImage({ src: result }).run()
-        }
+      try {
+        const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
+          "@/lib/supabase-storage"
+        )
+
+        const resized = await resizeImage(file, 800, 800)
+        const extension = getExtensionFromMimeType(file.type)
+        const fileName = generateUniqueFileName("content_image", extension)
+
+        const publicUrl = await uploadImage("survey-images", `content/${fileName}`, resized)
+
+        editor?.chain().focus().setImage({ src: publicUrl }).run()
+      } catch (error: any) {
+        console.error("Error uploading image:", error)
+        alert(`Error subiendo imagen: ${error.message || "Error desconocido"}`)
+      } finally {
+        event.target.value = ""
       }
-      reader.readAsDataURL(file)
-      event.target.value = ""
     },
     [editor],
   )

@@ -21,7 +21,7 @@ import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-edito
 import { Badge } from "@/components/ui/badge"
 import { useDebounce } from "use-debounce"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
-import type {  SurveySection } from "@/types-updated"
+import type { SurveySection } from "@/types-updated"
 import { supabase } from "@/lib/supabase-browser";
 import type { Question } from "@/types-updated";
 import { ContactInfoQuestion } from "./contact-info-question";
@@ -296,12 +296,12 @@ export function QuestionEditor({
         <div className="w-6 h-6 flex items-center justify-center mt-2" {...listeners}>
           {/* Drag handle */}
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-muted-foreground cursor-grab">
-            <circle cx="9" cy="12" r="1"/>
-            <circle cx="9" cy="5" r="1"/>
-            <circle cx="9" cy="19" r="1"/>
-            <circle cx="15" cy="12" r="1"/>
-            <circle cx="15" cy="5" r="1"/>
-            <circle cx="15" cy="19" r="1"/>
+            <circle cx="9" cy="12" r="1" />
+            <circle cx="9" cy="5" r="1" />
+            <circle cx="9" cy="19" r="1" />
+            <circle cx="15" cy="12" r="1" />
+            <circle cx="15" cy="5" r="1" />
+            <circle cx="15" cy="19" r="1" />
           </svg>
         </div>
         <div className="flex-1 space-y-2">
@@ -352,23 +352,39 @@ export function QuestionEditor({
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const f = e.target.files && e.target.files[0]
                   if (!f) return
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    const dataUrl = reader.result
+
+                  try {
+                    // Importar utilidades de storage
+                    const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import('@/lib/supabase-storage')
+
+                    // Redimensionar imagen si es muy grande
+                    const resized = await resizeImage(f, 800, 600)
+
+                    // Generar nombre único
+                    const extension = getExtensionFromMimeType(f.type)
+                    const fileName = generateUniqueFileName(`question_${question.id}_opt_${index}`, extension)
+
+                    // Subir a Storage
+                    const publicUrl = await uploadImage('survey-images', `${question.id}/${fileName}`, resized)
+
+                    // Actualizar opciones con la URL
                     const newOptions = optItems.map((opt: any, idx: number) => {
                       if (idx !== index) return opt
-                      if (isObj) return { ...opt, image: dataUrl }
-                      return { label: label || '', image: dataUrl }
+                      if (isObj) return { ...opt, image: publicUrl }
+                      return { label: label || '', image: publicUrl }
                     })
                     setOptItems(newOptions)
                     onUpdateQuestion(sectionId, question.id, 'options', newOptions)
+                  } catch (error: any) {
+                    console.error('Error uploading image:', error)
+                    alert(`Error subiendo imagen: ${error.message || 'Error desconocido'}`)
                   }
-                  reader.readAsDataURL(f)
                 }}
               />
+
 
               <Button size="sm" variant="ghost" onClick={() => document.getElementById(`file-input-${question.id}-${index}`)?.click()}>
                 Subir imagen
@@ -418,7 +434,7 @@ export function QuestionEditor({
             }}
             disabled={optItems.length <= 1}
           >
-         <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -522,12 +538,12 @@ export function QuestionEditor({
                 strokeLinejoin="round"
                 className="h-5 w-5 text-muted-foreground"
               >
-                <circle cx="9" cy="12" r="1"/>
-                <circle cx="9" cy="5" r="1"/>
-                <circle cx="9" cy="19" r="1"/>
-                <circle cx="15" cy="12" r="1"/>
-                <circle cx="15" cy="5" r="1"/>
-                <circle cx="15" cy="19" r="1"/>
+                <circle cx="9" cy="12" r="1" />
+                <circle cx="9" cy="5" r="1" />
+                <circle cx="9" cy="19" r="1" />
+                <circle cx="15" cy="12" r="1" />
+                <circle cx="15" cy="5" r="1" />
+                <circle cx="15" cy="19" r="1" />
               </svg>
             </div>
             <Select
@@ -571,7 +587,7 @@ export function QuestionEditor({
                 id={`required-switch-${question.id}`}
               />
             </div>
-           
+
             <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)} title="Copiar pregunta">
               <Copy className="h-4 w-4" />
             </Button>
@@ -590,14 +606,14 @@ export function QuestionEditor({
           </div>
         </div>
       </CardHeader>
- <AdvancedQuestionConfig
-          isOpen={showConfig}
-          onClose={closeConfigEditor}
-          question={question}
-          allSections={allSections}
-          allQuestions={allSections.flatMap((s) => s.questions)}
-          onSave={handleAdvancedConfigSave}
-        />
+      <AdvancedQuestionConfig
+        isOpen={showConfig}
+        onClose={closeConfigEditor}
+        question={question}
+        allSections={allSections}
+        allQuestions={allSections.flatMap((s) => s.questions)}
+        onSave={handleAdvancedConfigSave}
+      />
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor={`question-${question.id}`}>Enunciado de la pregunta</Label>
@@ -979,66 +995,66 @@ export function QuestionEditor({
                           (u: { opts: string[]; idx: number }) => JSON.stringify(u.opts) === JSON.stringify(colOptions),
                         )?.idx === colIdx ||
                         isDefault) && (
-                        <>
-                          {colOptions.map((option: string, optIdx: number) => (
-                            <div key={optIdx} className="flex items-center gap-2 mb-1">
-                              <MatrixOptionInput
-                                value={option}
-                                onChange={(val) => {
-                                  const newColOptions = allColOptions ? [...allColOptions] : []
-                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
-                                  const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
-                                  opts[optIdx] = val
-                                  newColOptions[colIdx] = opts
-                                  onUpdateQuestion(sectionId, question.id, "config", {
-                                    ...question.config,
-                                    matrixColOptions: newColOptions,
-                                  })
-                                }}
-                                placeholder={`Opción ${optIdx + 1}`}
-                              />
+                          <>
+                            {colOptions.map((option: string, optIdx: number) => (
+                              <div key={optIdx} className="flex items-center gap-2 mb-1">
+                                <MatrixOptionInput
+                                  value={option}
+                                  onChange={(val) => {
+                                    const newColOptions = allColOptions ? [...allColOptions] : []
+                                    while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                                    const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
+                                    opts[optIdx] = val
+                                    newColOptions[colIdx] = opts
+                                    onUpdateQuestion(sectionId, question.id, "config", {
+                                      ...question.config,
+                                      matrixColOptions: newColOptions,
+                                    })
+                                  }}
+                                  placeholder={`Opción ${optIdx + 1}`}
+                                />
 
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  const newColOptions = allColOptions ? [...allColOptions] : []
-                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
-                                  const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
-                                  opts.splice(optIdx, 1)
-                                  newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"]
-                                  onUpdateQuestion(sectionId, question.id, "config", {
-                                    ...question.config,
-                                    matrixColOptions: newColOptions,
-                                  })
-                                }}
-                                disabled={colOptions.length <= 1}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const newColOptions = allColOptions ? [...allColOptions] : []
-                              while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
-                              const opts = [
-                                ...(newColOptions[colIdx] || ["Opción 1"]),
-                                `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`,
-                              ]
-                              newColOptions[colIdx] = opts
-                              onUpdateQuestion(sectionId, question.id, "config", {
-                                ...question.config,
-                                matrixColOptions: newColOptions,
-                              })
-                            }}
-                          >
-                            <Plus className="h-4 w-4 mr-2" /> Agregar opción
-                          </Button>
-                        </>
-                      )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newColOptions = allColOptions ? [...allColOptions] : []
+                                    while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                                    const opts = [...(newColOptions[colIdx] || ["Opción 1"])]
+                                    opts.splice(optIdx, 1)
+                                    newColOptions[colIdx] = opts.length > 0 ? opts : ["Opción 1"]
+                                    onUpdateQuestion(sectionId, question.id, "config", {
+                                      ...question.config,
+                                      matrixColOptions: newColOptions,
+                                    })
+                                  }}
+                                  disabled={colOptions.length <= 1}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const newColOptions = allColOptions ? [...allColOptions] : []
+                                while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                                const opts = [
+                                  ...(newColOptions[colIdx] || ["Opción 1"]),
+                                  `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`,
+                                ]
+                                newColOptions[colIdx] = opts
+                                onUpdateQuestion(sectionId, question.id, "config", {
+                                  ...question.config,
+                                  matrixColOptions: newColOptions,
+                                })
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-2" /> Agregar opción
+                            </Button>
+                          </>
+                        )}
                     </div>
                   )
                 })}
@@ -1208,7 +1224,7 @@ export function QuestionEditor({
                       if (max - min + 1 !== emojis.length) {
                         // Ajustar el array de emojis
                         const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
-                        emojis = Array.from({length: max - min + 1}, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
+                        emojis = Array.from({ length: max - min + 1 }, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
                       }
                       const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
@@ -1229,7 +1245,7 @@ export function QuestionEditor({
                       if (max - min + 1 !== emojis.length) {
                         // Ajustar el array de emojis
                         const defaultEmojis = ["😞", "😐", "😊", "😁", "😍", "🤩", "🥳", "😡", "😭", "😱"];
-                        emojis = Array.from({length: max - min + 1}, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
+                        emojis = Array.from({ length: max - min + 1 }, (_, i) => emojis[i] || defaultEmojis[i] || "⭐");
                       }
                       const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
@@ -1244,7 +1260,7 @@ export function QuestionEditor({
                 <div className="flex flex-wrap gap-2 mt-2">
                   {(Array.isArray(question.config?.ratingEmojis)
                     ? question.config.ratingEmojis
-                    : Array.from({length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1}, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
+                    : Array.from({ length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1 }, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
                   ).map((emoji, idx) => (
                     <div key={idx} className="flex flex-col items-center">
                       <button
@@ -1278,7 +1294,7 @@ export function QuestionEditor({
               <span className="text-muted-foreground text-sm mr-2">Vista previa:</span>
               {(Array.isArray(question.config?.ratingEmojis)
                 ? question.config.ratingEmojis
-                : Array.from({length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1}, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
+                : Array.from({ length: (question.config?.ratingMax ?? 5) - (question.config?.ratingMin ?? 1) + 1 }, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐")
               ).map((emoji, idx) => (
                 <span key={idx} style={{ fontSize: 28 }}>{emoji}</span>
               ))}
@@ -1366,15 +1382,15 @@ export function QuestionEditor({
         {(question.type === "multiple_choice" || question.type === "checkbox" || question.type === "dropdown") && (
           <div className="space-y-4 p-4 bg-white border rounded-lg">
             <div className="flex gap-4 items-center mb-2">
-                  <Switch
-                    checked={showPasteOptions}
-                    onCheckedChange={setShowPasteOptions}
-                    id={`show-paste-options-${question.id}`}
-                  />
-                  <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
-                  {/* For multiple_choice we show tab buttons instead of the allow/randomize switches here */}
-                  {/* Configuración trasladada a 'Configuración avanzada' — no mostrar controles aquí */}
-                </div>
+              <Switch
+                checked={showPasteOptions}
+                onCheckedChange={setShowPasteOptions}
+                id={`show-paste-options-${question.id}`}
+              />
+              <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
+              {/* For multiple_choice we show tab buttons instead of the allow/randomize switches here */}
+              {/* Configuración trasladada a 'Configuración avanzada' — no mostrar controles aquí */}
+            </div>
             {showPasteOptions && (
               <div>
                 <Label className="text-lg font-semibold">Opciones de respuesta</Label>
@@ -1391,7 +1407,7 @@ export function QuestionEditor({
                 <div className="text-xs text-muted-foreground mb-2">Puedes pegar múltiples opciones separadas por saltos de línea</div>
               </div>
             )}
-            
+
             {/* Límites y opciones avanzadas ahora en el modal de Configuración avanzada; no se muestran aquí */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOptionsDragEnd}>
               <SortableContext items={optItems.map((_: any, i: number) => `${question.id}-opt-${i}`)} strategy={verticalListSortingStrategy}>
@@ -1623,7 +1639,7 @@ export function QuestionEditor({
                 </div>
               </div>
 
-             
+
             </div>
           </div>
         )}
@@ -1974,7 +1990,7 @@ export function QuestionEditor({
                     <SelectItem value="24">24 horas</SelectItem>
                     <SelectItem value="12">12 horas (AM/PM)</SelectItem>
                   </SelectContent>
-                               </Select>
+                </Select>
               </div>
               {question.config?.timeFormat === "12" && (
                 <div>
@@ -2044,7 +2060,7 @@ export function QuestionEditor({
             <Label className="font-medium">Vista previa</Label>
             <Input type="file" accept="image/*" disabled className="mt-2" />
           </div>
-        )} 
+        )}
 
         {question.type === "signature" && (
           <div className="p-4 border rounded-lg bg-muted/20">
