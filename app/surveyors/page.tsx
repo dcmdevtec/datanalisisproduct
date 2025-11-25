@@ -132,8 +132,17 @@ export default function SurveyorsPage() {
         body: JSON.stringify(payload),
       })
 
-      const text = await response.text()
-      const result = text ? JSON.parse(text) : null
+      let result = null
+      try {
+        const text = await response.text()
+        if (text) {
+          result = JSON.parse(text)
+        }
+      } catch (e) {
+        // Maybe it wasn't JSON, but if the response was OK, we might not care.
+        // If not OK, we throw the generic error below.
+        console.error("Could not parse response as JSON on surveyor save", e)
+      }
 
       if (!response.ok) {
         throw new Error(result?.error || "Error al guardar encuestador.")
@@ -172,8 +181,16 @@ export default function SurveyorsPage() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Error al eliminar encuestador.")
+        let errorMessage = "Error al eliminar encuestador."
+        try {
+          const errorData = await response.json()
+          if (errorData && errorData.error) {
+            errorMessage = errorData.error
+          }
+        } catch (e) {
+          // Non-JSON error response, use default message
+        }
+        throw new Error(errorMessage)
       }
 
       toast({

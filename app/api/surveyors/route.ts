@@ -124,7 +124,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const supabaseAdmin = createAdminSupabaseClient() // Use admin client for DELETE
+  const supabaseAdmin = createAdminClient() // Use admin client for DELETE
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id") // This is the surveyor's ID (which is also the auth user ID)
 
