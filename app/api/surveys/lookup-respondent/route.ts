@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     if (survey_id) {
       const { data: perSurvey, error: perErr } = await supabase
         .from('public_respondents')
-        .select('id, full_name')
+        .select('id, full_name, email, phone, address, company, metadata')
         .eq('survey_id', survey_id)
         .eq('document_type', document_type)
         .eq('document_number', document_number)
@@ -27,14 +27,24 @@ export async function GET(request: NextRequest) {
 
       if (perErr) console.error('lookup perSurvey err', perErr)
       if (perSurvey) {
-        return NextResponse.json({ found: true, scope: 'survey', respondent_id: perSurvey.id, respondent_name: perSurvey.full_name || null })
+        return NextResponse.json({
+          found: true,
+          scope: 'survey',
+          respondent_id: perSurvey.id,
+          respondent_name: perSurvey.full_name || null,
+          email: perSurvey.email,
+          phone: perSurvey.phone,
+          address: perSurvey.address,
+          company: perSurvey.company,
+          metadata: perSurvey.metadata
+        })
       }
     }
 
     // 2) Search other public_respondents globally
     const { data: otherPub, error: otherPubErr } = await supabase
       .from('public_respondents')
-      .select('id, survey_id, full_name')
+      .select('id, survey_id, full_name, email, phone, address, company, metadata')
       .eq('document_type', document_type)
       .eq('document_number', document_number)
       .limit(1)
@@ -42,7 +52,18 @@ export async function GET(request: NextRequest) {
 
     if (otherPubErr) console.error('lookup otherPub err', otherPubErr)
     if (otherPub) {
-      return NextResponse.json({ found: true, scope: 'other_public', respondent_id: otherPub.id, respondent_name: otherPub.full_name || null, source_survey_id: otherPub.survey_id })
+      return NextResponse.json({
+        found: true,
+        scope: 'other_public',
+        respondent_id: otherPub.id,
+        respondent_name: otherPub.full_name || null,
+        source_survey_id: otherPub.survey_id,
+        email: otherPub.email,
+        phone: otherPub.phone,
+        address: otherPub.address,
+        company: otherPub.company,
+        metadata: otherPub.metadata
+      })
     }
 
     // 3) Search most recent response by document

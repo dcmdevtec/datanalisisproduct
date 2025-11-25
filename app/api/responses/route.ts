@@ -45,9 +45,9 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerSupabase()
     const body = await request.json()
-  // Accept both `answers` and `response_answers` (frontend uses response_answers)
-  const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name } = body
-  const effectiveAnswers = answers || response_answers
+    // Accept both `answers` and `response_answers` (frontend uses response_answers)
+    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name } = body
+    const effectiveAnswers = answers || response_answers
 
     if (!survey_id) {
       return NextResponse.json({ error: "ID de encuesta requerido" }, { status: 400 })
@@ -58,9 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Obtener usuario actual
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+    const { data: { session } } = await supabase.auth.getSession()
 
     // Crear respuesta principal
     const insertPayload: any = {
@@ -72,52 +70,81 @@ export async function POST(request: NextRequest) {
       completed_at: new Date().toISOString(),
     }
 
-    // Include public respondent info if provided (preview/public flows)
-    if (respondent_document_type) insertPayload.respondent_document_type = respondent_document_type
-    if (respondent_document_number) insertPayload.respondent_document_number = respondent_document_number
-    if (respondent_name) insertPayload.respondent_name = respondent_name
+    // ---------------------------------------------------------------
+    // Lógica para guardar/actualizar Public Respondent (Contact Info)
+    // ---------------------------------------------------------------
+    // Obtener IDs de preguntas presentes en la respuesta
+    const questionIds = effectiveAnswers.map((a: any) => a.question_id).filter(Boolean)
+    // Buscar preguntas de tipo 'contact_info'
+    const { data: contactQuestions } = await supabase
+      .from('questions')
+      .select('id, type')
+      .in('id', questionIds)
+      .eq('type', 'contact_info')
 
-    // Try insert, and if Supabase complains about missing columns in the schema cache
-    // (PGRST204: Could not find the 'X' column...), remove those keys and retry once.
+    if (contactQuestions && contactQuestions.length > 0) {
+      const contactQId = contactQuestions[0].id
+      const answerPayload = effectiveAnswers.find((a: any) => a.question_id === contactQId)
+      if (answerPayload && answerPayload.value) {
+        const val = answerPayload.value
+        const docType = val.documentType || respondent_document_type
+        const docNum = val.documentNumber || respondent_document_number
+        if (docType && docNum) {
+          const fullName = val.fullName || [val.firstName, val.lastName].filter(Boolean).join(' ').trim() || respondent_name || ''
+          const respondentData = {
+            survey_id,
+            document_type: docType,
+            document_number: docNum,
+            full_name: fullName,
+            email: val.email || null,
+            phone: val.phone || null,
+            address: val.address || null,
+            company: val.company || null,
+            updated_at: new Date().toISOString(),
+          }
+          const { data: upsertData, error: upsertError } = await supabase
+            .from('public_respondents')
+            .upsert(respondentData, { onConflict: 'survey_id,document_type,document_number', ignoreDuplicates: false })
+            .select('id')
+            .single()
+          if (upsertError) {
+            console.error('Error upserting public_respondent:', upsertError)
+          } else if (upsertData) {
+            insertPayload.respondent_id = upsertData.id
+          }
+        }
+      }
+    }
+
+    // Insertar la respuesta principal (tabla responses)
     let responseData: any = null
     let responseError: any = null
-    let attemptedPayload = { ...insertPayload }
     const maxRetries = 2
+    let attemptedPayload = { ...insertPayload }
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const resAttempt = await supabase.from("responses").insert(attemptedPayload).select().single()
+      const resAttempt = await supabase.from('responses').insert(attemptedPayload).select().single()
       responseData = resAttempt.data
       responseError = resAttempt.error
-
       if (!responseError) break
-
-      // If Supabase reports missing column(s) in the schema cache, try to drop them and retry
+      // Si hay error por columnas faltantes, los removemos y reintentamos
       const msg = responseError.message || ''
       const missingCols: string[] = []
-      // Match patterns like: Could not find the 'device_info' column of 'responses' in the schema cache
       const regex = /Could not find the '([^']+)' column/gi
       let m: RegExpExecArray | null
       while ((m = regex.exec(msg)) !== null) {
         if (m[1]) missingCols.push(m[1])
       }
-
-      if (missingCols.length === 0) {
-        // No missing-column info => don't retry
-        break
-      }
-
-      // Remove missing columns from attemptedPayload and retry
+      if (missingCols.length === 0) break
       missingCols.forEach((c) => {
         if (c in attemptedPayload) {
           delete attemptedPayload[c]
           console.warn(`Removing missing column from payload before retry: ${c}`)
         }
       })
-
-      // Continue to next attempt
     }
 
     if (responseError) {
-      console.error("Error al crear respuesta después de reintentos:", responseError)
+      console.error('Error al crear respuesta después de reintentos:', responseError)
       return NextResponse.json({ error: responseError.message || 'Error creando respuesta', details: responseError }, { status: 500 })
     }
 
@@ -126,29 +153,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Insert no devolvió id de respuesta', details: responseData }, { status: 500 })
     }
 
-    // Crear respuestas individuales en la tabla existente `answers` (response_id, question_id, value jsonb)
-    // Validate and normalize question_id (answers from preview can contain keys like `${uuid}_0`)
-    const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/
+    // ---------------------------------------------------------------
+    // Insertar respuestas individuales en la tabla answers
+    // ---------------------------------------------------------------
     const answersToInsert: any[] = []
     const skipped: any[] = []
     const candidateQuestionIds: string[] = []
-
-    for (const answer of (effectiveAnswers || [])) {
-      let qid = answer.question_id
+    for (const answer of effectiveAnswers) {
+      const qid = answer.question_id
       if (typeof qid !== 'string') {
         skipped.push({ reason: 'question_id_not_string', original: answer })
         continue
       }
-
-      // If qid is exactly a UUID, keep it. Otherwise try to extract a leading UUID.
-      let match = qid.match(uuidRegex)
-      if (match && match[0]) {
-        qid = match[0]
-      } else {
-        skipped.push({ reason: 'invalid_question_id_uuid', original: answer, hint: 'Check if this is a matrix cell or composite key' })
-        continue
-      }
-
       candidateQuestionIds.push(qid)
       answersToInsert.push({
         response_id: responseData.id,
@@ -157,28 +173,25 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Validate that all question_ids exist in the questions table for this survey
+    // Validar que todos los question_id existan en la encuesta
     if (answersToInsert.length > 0) {
       const { data: existingQuestions, error: qError } = await supabase
-        .from("questions")
-        .select("id")
-        .eq("survey_id", survey_id)
-        .in("id", Array.from(new Set(candidateQuestionIds)))
-
+        .from('questions')
+        .select('id')
+        .eq('survey_id', survey_id)
+        .in('id', Array.from(new Set(candidateQuestionIds)))
       if (qError) {
-        console.error("❌ Error validating question IDs:", qError)
-        // Don't fail hard on validation error; continue with insert
+        console.error('❌ Error validating question IDs:', qError)
       } else {
         const existingIds = new Set((existingQuestions || []).map((q: any) => q.id))
         const invalidAnswers = answersToInsert.filter(a => !existingIds.has(a.question_id))
-        
         if (invalidAnswers.length > 0) {
-          console.error("❌ Invalid question_ids detected (not found in survey):", {
+          console.error('❌ Invalid question_ids detected (not found in survey):', {
             invalid: invalidAnswers.map(a => a.question_id).slice(0, 5),
             invalidCount: invalidAnswers.length,
             surveyId: survey_id,
           })
-          // Filter out invalid answers to prevent foreign key constraint error
+          // Filtrar los inválidos
           answersToInsert.splice(0, answersToInsert.length, ...answersToInsert.filter(a => existingIds.has(a.question_id)))
           invalidAnswers.forEach(a => {
             skipped.push({ reason: 'question_id_not_in_survey', question_id: a.question_id })
@@ -188,43 +201,37 @@ export async function POST(request: NextRequest) {
     }
 
     if (answersToInsert.length > 0) {
-      const { error: answersError } = await supabase.from("answers").insert(answersToInsert)
+      const { error: answersError } = await supabase.from('answers').insert(answersToInsert)
       if (answersError) {
-        console.error("❌ Error al guardar answers:", {
+        console.error('❌ Error al guardar answers:', {
           error: answersError,
           attemptedCount: answersToInsert.length,
           skippedCount: skipped.length,
-          skipped: skipped.slice(0, 5), // Show first 5 skipped for diagnostics
+          skipped: skipped.slice(0, 5),
         })
-        
-        // If it's a foreign key error, include diagnostic info
         if (answersError.code === '23503' || answersError.message?.includes('foreign key')) {
-          console.error("🔗 Foreign key constraint violation - some question_ids may not exist in the database")
-          console.error("Attempted question_ids:", answersToInsert.map(a => a.question_id).slice(0, 5))
+          console.error('🔗 Foreign key constraint violation - some question_ids may not exist in the database')
+          console.error('Attempted question_ids:', answersToInsert.map(a => a.question_id).slice(0, 5))
         }
-        
-        // Si hay error al guardar respuestas, eliminar la respuesta principal
+        // Intentar limpiar la respuesta principal si falla la inserción de answers
         try {
-          await supabase.from("responses").delete().eq("id", responseData.id)
+          await supabase.from('responses').delete().eq('id', responseData.id)
         } catch (delErr) {
           console.error('Error al eliminar respuesta fallida:', delErr)
         }
-        return NextResponse.json({ 
-          error: answersError.message || 'Error guardando answers', 
-          details: answersError, 
+        return NextResponse.json({
+          error: answersError.message || 'Error guardando answers',
+          details: answersError,
           attempted_count: answersToInsert.length,
-          skipped_count: skipped.length, 
-          diagnostic: 'Check if all question_ids exist in the questions table'
+          skipped_count: skipped.length,
+          diagnostic: 'Check if all question_ids exist in the questions table',
         }, { status: 500 })
       }
     }
 
-    // Return success but note skipped answers (if any) so client can debug
     if (skipped.length > 0) {
       return NextResponse.json({ success: true, message: 'Respuesta guardada, pero algunas respuestas fueron omitidas', skipped_count: skipped.length, skipped }, { status: 200 })
     }
-
-    // No usamos survey_respondent_tracking en la lógica actual; no actualizarla.
 
     return NextResponse.json({
       success: true,
@@ -232,7 +239,7 @@ export async function POST(request: NextRequest) {
       response_id: responseData.id,
     })
   } catch (error) {
-    console.error("Error al guardar respuesta:", error)
+    console.error('Error al guardar respuesta:', error)
     return NextResponse.json({ error: "Error al guardar la respuesta" }, { status: 500 })
   }
 }

@@ -214,7 +214,7 @@ function PreviewSurveyPageContent() {
       return
     }
     if (surveyData && !hasReconciled) {
-      const hasDisplayLogic = surveyData.sections.some(section => 
+      const hasDisplayLogic = surveyData.sections.some(section =>
         section.questions.some(q => q.config?.displayLogic?.enabled)
       )
       if (hasDisplayLogic) {
@@ -243,14 +243,14 @@ function PreviewSurveyPageContent() {
   useEffect(() => {
     const storedData = localStorage.getItem("surveyPreviewData")
     if (storedData) {
-            const parsedData = JSON.parse(storedData)
-  
-      
+      const parsedData = JSON.parse(storedData)
+
+
       // Debug: Verificar estructura de skip logic
       if (parsedData.sections) {
 
         parsedData.sections.forEach((section: any, sectionIndex: number) => {
-          
+
           if (section.questions) {
             section.questions.forEach((question: any, questionIndex: number) => {
               if (question.config?.skipLogic?.enabled) {
@@ -260,7 +260,7 @@ function PreviewSurveyPageContent() {
           }
         })
       }
-      
+
       setSurveyData(parsedData)
     } else {
       router.push("/")
@@ -310,7 +310,7 @@ function PreviewSurveyPageContent() {
         const parts = window.location.pathname.split("/").filter(Boolean)
         const idx = parts.indexOf("survey")
         if (idx !== -1 && parts.length > idx + 1) inferredSurveyId = parts[idx + 1]
-      } catch {}
+      } catch { }
 
       const fetchUrl = inferredSurveyId ? `/api/surveys/${inferredSurveyId}/verify-respondent` : `/api/surveys/verify-respondent`
       const bodyToSend: any = { document_type: docType, document_number: docNumber, full_name: fullName }
@@ -383,6 +383,39 @@ function PreviewSurveyPageContent() {
         if (json.found && (json.respondent_name || json.full_name)) {
           const name = json.respondent_name || json.full_name
           setFullName(name)
+
+          // Auto-rellenar preguntas de tipo contact_info
+          if (surveyData && surveyData.sections) {
+            setAnswers((prev) => {
+              const updated = { ...prev }
+              let changed = false
+
+              surveyData.sections.forEach((section: any) => {
+                section.questions.forEach((q: any) => {
+                  if (q.type === 'contact_info') {
+                    // Construir objeto de respuesta para contact_info
+                    const contactAnswer = {
+                      fullName: name,
+                      documentType: docType,
+                      documentNumber: docNumber,
+                      email: json.email || '',
+                      phone: json.phone || '',
+                      address: json.address || '',
+                      company: json.company || '',
+                      // Preservar valores existentes si el usuario ya editó algo específico podría ser complejo,
+                      // pero al hacer lookup explícito (cambiar cédula), el usuario espera que se carguen los datos.
+                    }
+
+                    updated[q.id] = contactAnswer
+                    changed = true
+                  }
+                })
+              })
+
+              return changed ? updated : prev
+            })
+          }
+
           // store per-survey name if inferredSurveyId
           try {
             if (inferredSurveyId) localStorage.setItem(`respondent_name_${inferredSurveyId}`, name)
@@ -455,7 +488,7 @@ function PreviewSurveyPageContent() {
       if (storedAnswers) {
         try {
           const parsedAnswers = JSON.parse(storedAnswers)
-  
+
           setAnswers(parsedAnswers)
         } catch (error) {
           console.error("❌ Error cargando respuestas guardadas:", error)
@@ -484,7 +517,7 @@ function PreviewSurveyPageContent() {
     }
 
     const { conditions } = question.config.displayLogic
-    
+
     // Si no hay condiciones, mostrar la pregunta
     if (!conditions || conditions.length === 0) {
       return true
@@ -493,44 +526,44 @@ function PreviewSurveyPageContent() {
     // La reconciliación automática se maneja en un efecto separado
 
     // Debug: Mostrar información de la lógica de visualización
-    
+
 
     // Evaluar cada condición
     for (const condition of conditions) {
       const { questionId, operator, value } = condition
-      
+
       // RECONCILIACIÓN AUTOMÁTICA: Si el questionId no se encuentra, intentar por texto
       let actualQuestionId = questionId
       let answer = answers[questionId]
-      
+
       // Si no hay respuesta para este ID, intentar reconciliación automática
       if (answer === undefined || answer === null || answer === "") {
 
-        
+
         // Buscar la pregunta por texto en todas las secciones
         let foundQuestion: Question | null = null
         for (const section of surveyData?.sections || []) {
           const found = section.questions.find(q => q.text === condition.questionText)
           if (found) {
             foundQuestion = found
-    
+
             actualQuestionId = foundQuestion.id
             answer = answers[foundQuestion.id]
             break
           }
         }
-        
+
         // Si aún no se encuentra, intentar por ID similar o buscar en respuestas existentes
         if (!foundQuestion) {
-  
-          
+
+
           // Buscar en las respuestas existentes para encontrar la pregunta correcta
           for (const [responseId, responseValue] of Object.entries(answers)) {
             // Buscar la pregunta que corresponde a esta respuesta
             for (const section of surveyData?.sections || []) {
               const responseQuestion = section.questions.find(q => q.id === responseId)
               if (responseQuestion && responseQuestion.text === condition.questionText) {
-        
+
                 actualQuestionId = responseId
                 answer = responseValue
                 foundQuestion = responseQuestion
@@ -540,22 +573,22 @@ function PreviewSurveyPageContent() {
             if (foundQuestion) break
           }
         }
-        
+
         if (!foundQuestion) {
-  
+
           return false
         }
       }
-      
-      
-      
+
+
+
       if (answer === undefined || answer === null || answer === "") {
 
         return false // Si no hay respuesta, no mostrar la pregunta
       }
 
       let conditionMet = false
-      
+
       switch (operator) {
         case "equals":
           conditionMet = answer === value
@@ -622,7 +655,7 @@ function PreviewSurveyPageContent() {
     }
     return {
       primary: '#10b981',
-      background: '#f0fdf4', 
+      background: '#f0fdf4',
       text: '#1f2937'
     }
   }
@@ -635,7 +668,7 @@ function PreviewSurveyPageContent() {
     if (!currentSection) return true;
 
     let isValid = true;
-    const newErrors: { [questionId:string]: string } = {};
+    const newErrors: { [questionId: string]: string } = {};
 
     currentSection.questions.forEach((question) => {
       // Don't validate questions that are hidden by display logic
@@ -647,7 +680,7 @@ function PreviewSurveyPageContent() {
         if (question.type === 'matrix') {
           const config = question.config || question.settings || {};
           const matrixRows = config.matrixRows || question.matrixRows || [];
-          
+
           if (matrixRows.length > 0) {
             const allRowsAnswered = matrixRows.every((row, i) => {
               // Check for row-level answer (radio, checkbox)
@@ -699,7 +732,7 @@ function PreviewSurveyPageContent() {
         const parts = window.location.pathname.split("/").filter(Boolean)
         const idx = parts.indexOf("survey")
         if (idx !== -1 && parts.length > idx + 1) surveyId = parts[idx + 1]
-      } catch {}
+      } catch { }
     }
 
     const respondentKey = surveyId ? `respondent_public_id_${surveyId}` : "respondent_public_id"
@@ -712,10 +745,10 @@ function PreviewSurveyPageContent() {
     // Also consolidate matrix-related keys (e.g., ${uuid}_0, ${uuid}_0_1) into their parent UUID
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i
     const uuidPrefixRegex = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_/i
-    
+
     const normalizedAnswers: { [questionId: string]: any } = {}
     const matrixAnswers: { [matrixId: string]: any } = {}
-    
+
     // First pass: collect pure UUID answers and identify matrix cell/row keys
     for (const [key, value] of Object.entries(answers)) {
       if (uuidRegex.test(key)) {
@@ -735,14 +768,14 @@ function PreviewSurveyPageContent() {
         }
       }
     }
-    
+
     // Second pass: add matrix answers (grouped by matrix question ID)
     for (const [matrixId, matrixData] of Object.entries(matrixAnswers)) {
       if (!normalizedAnswers[matrixId]) {
         normalizedAnswers[matrixId] = matrixData
       }
     }
-    
+
     const validAnswers = Object.entries(normalizedAnswers)
       .map(([question_id, value]) => ({ question_id, value }))
 
@@ -751,7 +784,7 @@ function PreviewSurveyPageContent() {
       toast({ title: 'Error', description: 'No hay respuestas válidas para enviar', variant: 'destructive' })
       return false
     }
-    
+
     // Debug: log answer normalization
     console.log('📊 Answer normalization:', {
       originalCount: Object.keys(answers).length,
@@ -786,7 +819,6 @@ function PreviewSurveyPageContent() {
       try {
         json = await res.json()
       } catch (parseErr) {
-        // Body was not valid JSON; capture raw text for diagnostics
         try {
           const raw = await res.text()
           json = { _raw: raw }
@@ -797,9 +829,36 @@ function PreviewSurveyPageContent() {
 
       if (!res.ok) {
         console.error('Error enviando respuestas:', { status, body: json })
+
+        // Manejo específico para cédula duplicada
+        if (status === 400 && json) {
+          const errorMsg = json.error || json.message || json.details || ''
+
+          if (errorMsg.toLowerCase().includes('cédula') &&
+            (errorMsg.toLowerCase().includes('ya') || errorMsg.toLowerCase().includes('existe') || errorMsg.toLowerCase().includes('duplicad'))) {
+            toast({
+              title: 'Cédula ya registrada',
+              description: 'Esta cédula ya ha respondido esta encuesta. Por favor verifica el número de documento.',
+              variant: 'destructive',
+              duration: 6000
+            })
+            return false
+          }
+        }
+
         const description = (json && (json.error || json.message || json.details || json._raw)) || 'No se pudo enviar la respuesta'
         toast({ title: 'Error', description, variant: 'destructive' })
         return false
+      }
+
+      // Guardar respondent_id si viene en la respuesta
+      if (json && json.respondent_id && surveyId) {
+        try {
+          const respondentKey = `respondent_public_id_${surveyId}`
+          localStorage.setItem(respondentKey, json.respondent_id)
+        } catch (e) {
+          console.warn('No se pudo guardar respondent_id en localStorage', e)
+        }
       }
 
       toast({ title: 'Encuesta completada', description: 'Gracias por tu participación' })
@@ -818,98 +877,98 @@ function PreviewSurveyPageContent() {
       return
     }
 
-              // Verificar skip logic en todas las preguntas de la sección actual
-     for (const question of currentSection.questions) {
-       if (question.config?.skipLogic?.enabled && question.config.skipLogic.rules) {
-         const answer = answers[question.id]
-         
-         if (answer !== undefined && answer !== null && answer !== "") {
-           for (const rule of question.config.skipLogic.rules) {
-             // Verificar si la regla está habilitada
-             if (rule.enabled === false) {
-               continue
-             }
-             
-             // Verificar que la regla tenga los campos necesarios
-             if (!rule.targetSectionId) {
-               continue
-             }
+    // Verificar skip logic en todas las preguntas de la sección actual
+    for (const question of currentSection.questions) {
+      if (question.config?.skipLogic?.enabled && question.config.skipLogic.rules) {
+        const answer = answers[question.id]
 
-             try {
-               let conditionMet = false
+        if (answer !== undefined && answer !== null && answer !== "") {
+          for (const rule of question.config.skipLogic.rules) {
+            // Verificar si la regla está habilitada
+            if (rule.enabled === false) {
+              continue
+            }
 
-               // Evaluar condición de manera más robusta
-               if (rule.operator === "equals") {
-                 if (Array.isArray(answer)) {
-                   // Para checkbox, verificar si el valor está en el array
-                   conditionMet = answer.includes(rule.value)
-                 } else {
-                   conditionMet = String(answer) === String(rule.value)
-                 }
-               } else if (rule.operator === "not_equals") {
-                 if (Array.isArray(answer)) {
-                   conditionMet = !answer.includes(rule.value)
-                 } else {
-                   conditionMet = String(answer) !== String(rule.value)
-                 }
-               } else if (rule.operator === "contains") {
-                 if (Array.isArray(answer)) {
-                   // Para checkbox, verificar si el valor está en el array
-                   conditionMet = answer.includes(rule.value)
-                 } else {
-                   conditionMet = String(answer).includes(String(rule.value))
-                 }
-               } else if (rule.operator === "not_contains") {
-                 if (Array.isArray(answer)) {
-                   conditionMet = !answer.includes(rule.value)
-                 } else {
-                   conditionMet = !String(answer).includes(String(rule.value))
-                 }
-               } else if (rule.operator === "greater_than") {
-                 conditionMet = Number(answer) > Number(rule.value)
-               } else if (rule.operator === "less_than") {
-                 conditionMet = Number(answer) < Number(rule.value)
-               } else if (rule.operator === "is_empty") {
-                 conditionMet = !answer || (Array.isArray(answer) ? answer.length === 0 : String(answer).trim() === "")
-               } else if (rule.operator === "is_not_empty") {
-                 conditionMet = answer && (Array.isArray(answer) ? answer.length > 0 : String(answer).trim() !== "")
-               }
+            // Verificar que la regla tenga los campos necesarios
+            if (!rule.targetSectionId) {
+              continue
+            }
 
-               if (conditionMet) {
-                 // Si hay una sección objetivo, calcular el índice
-                 if (rule.targetSectionId) {
-                   const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === rule.targetSectionId)
-                   if (foundSectionIndex !== -1) {
-                     // Aplicar el salto inmediatamente
-                     setCurrentSectionIndex(foundSectionIndex)
-                     
-                     // Si hay una pregunta específica, hacer scroll a ella después de un breve delay
-                     if (rule.targetQuestionId) {
-                       setTimeout(() => {
-                         const questionElement = document.getElementById(`question-${rule.targetQuestionId}`)
-                         if (questionElement) {
-                           questionElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                           questionElement.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50', 'animate-pulse')
-                           setTimeout(() => {
-                             questionElement.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50', 'animate-pulse')
-                           }, 3000)
-                         }
-                       }, 100)
-                     }
-                     
-                     return // Salir después de aplicar el primer salto válido
-                   }
-                 }
-               }
-             } catch (error) {
-               console.error(`❌ Error evaluando lógica de salto para pregunta "${question.text}":`, error)
-             }
-           }
-         }
-       }
-     }
+            try {
+              let conditionMet = false
 
-     // Si no se aplicó ningún salto, ir a la siguiente sección
+              // Evaluar condición de manera más robusta
+              if (rule.operator === "equals") {
+                if (Array.isArray(answer)) {
+                  // Para checkbox, verificar si el valor está en el array
+                  conditionMet = answer.includes(rule.value)
+                } else {
+                  conditionMet = String(answer) === String(rule.value)
+                }
+              } else if (rule.operator === "not_equals") {
+                if (Array.isArray(answer)) {
+                  conditionMet = !answer.includes(rule.value)
+                } else {
+                  conditionMet = String(answer) !== String(rule.value)
+                }
+              } else if (rule.operator === "contains") {
+                if (Array.isArray(answer)) {
+                  // Para checkbox, verificar si el valor está en el array
+                  conditionMet = answer.includes(rule.value)
+                } else {
+                  conditionMet = String(answer).includes(String(rule.value))
+                }
+              } else if (rule.operator === "not_contains") {
+                if (Array.isArray(answer)) {
+                  conditionMet = !answer.includes(rule.value)
+                } else {
+                  conditionMet = !String(answer).includes(String(rule.value))
+                }
+              } else if (rule.operator === "greater_than") {
+                conditionMet = Number(answer) > Number(rule.value)
+              } else if (rule.operator === "less_than") {
+                conditionMet = Number(answer) < Number(rule.value)
+              } else if (rule.operator === "is_empty") {
+                conditionMet = !answer || (Array.isArray(answer) ? answer.length === 0 : String(answer).trim() === "")
+              } else if (rule.operator === "is_not_empty") {
+                conditionMet = answer && (Array.isArray(answer) ? answer.length > 0 : String(answer).trim() !== "")
+              }
+
+              if (conditionMet) {
+                // Si hay una sección objetivo, calcular el índice
+                if (rule.targetSectionId) {
+                  const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === rule.targetSectionId)
+                  if (foundSectionIndex !== -1) {
+                    // Aplicar el salto inmediatamente
+                    setCurrentSectionIndex(foundSectionIndex)
+
+                    // Si hay una pregunta específica, hacer scroll a ella después de un breve delay
+                    if (rule.targetQuestionId) {
+                      setTimeout(() => {
+                        const questionElement = document.getElementById(`question-${rule.targetQuestionId}`)
+                        if (questionElement) {
+                          questionElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          questionElement.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50', 'animate-pulse')
+                          setTimeout(() => {
+                            questionElement.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50', 'animate-pulse')
+                          }, 3000)
+                        }
+                      }, 100)
+                    }
+
+                    return // Salir después de aplicar el primer salto válido
+                  }
+                }
+              }
+            } catch (error) {
+              console.error(`❌ Error evaluando lógica de salto para pregunta "${question.text}":`, error)
+            }
+          }
+        }
+      }
+    }
+
+    // Si no se aplicó ningún salto, ir a la siguiente sección
     if (currentSectionIndex < totalSections - 1) {
       setCurrentSectionIndex(currentSectionIndex + 1)
     } else {
@@ -967,12 +1026,12 @@ function PreviewSurveyPageContent() {
   }, [inferredSurveyId, toast])
 
   // Componente Likert con segmentos clickeables - GARANTIZA que nunca quede entre opciones
-  const LikertSliderWithDivisions = ({ 
+  const LikertSliderWithDivisions = ({
     questionId,
-    min, 
-    max, 
-    step, 
-    value, 
+    min,
+    max,
+    step,
+    value,
     onValueChange,
     labels,
     showZero,
@@ -980,7 +1039,7 @@ function PreviewSurveyPageContent() {
     themeColors,
     originalMin,
     showNumbers
-  }: { 
+  }: {
     questionId: string
     min: number
     max: number
@@ -997,12 +1056,12 @@ function PreviewSurveyPageContent() {
     // Si no se pasa originalMin, calcularlo: si showZero es true, entonces originalMin es 1
     const actualOriginalMin = originalMin !== undefined ? originalMin : (showZero ? 1 : min)
     const [localValue, setLocalValue] = useState<number>(value)
-    
+
     // Sincronizar con valor externo
     useEffect(() => {
       setLocalValue(value)
     }, [value])
-    
+
     // Decide si mostrar números en cada marcador.
     const totalStepsCount = Math.floor((max - (showZero ? 0 : actualOriginalMin)) / step) + 1
     const smallRange = (max - (showZero ? 0 : actualOriginalMin)) / step <= 10
@@ -1033,19 +1092,19 @@ function PreviewSurveyPageContent() {
         }
       }
     }
-    
+
     const handleClick = (val: number) => {
       setLocalValue(val)
       onValueChange(val)
     }
-    
+
     // Calcular posición del valor seleccionado (0-100%)
     const selectedValue = localValue
     // Usar el rango basado en los valores reales que existen, no en min/max
     const actualMinValue = allValues.length > 0 ? allValues[0] : (showZero ? 0 : min)
     const actualMaxValue = allValues.length > 0 ? allValues[allValues.length - 1] : max
     const actualRange = actualMaxValue - actualMinValue
-    
+
     // Obtener el label de la opción seleccionada
     const getSelectedLabel = () => {
       if (selectedValue === 0 && showZero) {
@@ -1057,9 +1116,9 @@ function PreviewSurveyPageContent() {
       }
       return String(selectedValue)
     }
-    
+
     const selectedLabel = getSelectedLabel()
-    
+
     return (
       <div className="space-y-4">
         {/* Track con segmentos clickeables */}
@@ -1068,15 +1127,15 @@ function PreviewSurveyPageContent() {
           <div className="relative h-2 w-full flex items-center">
             {/* Fondo del track */}
             <div className="absolute top-0 left-0 right-0 h-2 bg-gray-200 rounded-full"></div>
-            
+
             {/* Rango seleccionado - solo hasta la opción seleccionada */}
             {(() => {
               const selectedIndex = allValues.findIndex(v => v === selectedValue)
               if (selectedIndex === -1 || allValues.length === 0) return null
-              
+
               const startPosition = 0
               const endPosition = actualRange > 0 ? ((selectedValue - actualMinValue) / actualRange) * 100 : 0
-              
+
               return (
                 <div
                   className="absolute top-0 h-2 rounded-full transition-all duration-200"
@@ -1088,17 +1147,17 @@ function PreviewSurveyPageContent() {
                 ></div>
               )
             })()}
-            
+
             {/* Segmentos clickeables para cada opción */}
             {allValues.map((val, index) => {
               const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
-              const nextPosition = index === allValues.length - 1 
-                ? 100 
+              const nextPosition = index === allValues.length - 1
+                ? 100
                 : (actualRange > 0 ? ((allValues[index + 1] - actualMinValue) / actualRange) * 100 : 0)
               const width = nextPosition - valPosition
               const isSelected = selectedValue === val
-              
-                  return (
+
+              return (
                 <button
                   key={`segment-${val}`}
                   type="button"
@@ -1114,13 +1173,13 @@ function PreviewSurveyPageContent() {
                 >
                   {/* Marcador visual para opción seleccionada */}
                   {isSelected && (
-                    <div 
+                    <div
                       className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full border-4 bg-white shadow-lg transition-all duration-200 flex items-center justify-center"
                       style={{
                         borderColor: themeColors.primary,
                       }}
                     >
-                      <div 
+                      <div
                         className="text-sm font-bold"
                         style={{ color: themeColors.primary }}
                       >
@@ -1132,12 +1191,12 @@ function PreviewSurveyPageContent() {
                 </button>
               )
             })}
-            
+
             {/* Marcadores para todas las opciones (no solo la seleccionada) */}
             {allValues.map((val, index) => {
               const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
               const isSelected = selectedValue === val
-              
+
               if (isSelected) return null // Ya se muestra arriba
 
               // Mostrar marcador compacto: número si showMarkersNumbers, sino un punto pequeño
@@ -1161,7 +1220,7 @@ function PreviewSurveyPageContent() {
                 </button>
               )
             })}
-            
+
             {/* Líneas de división entre segmentos */}
             {allValues.slice(1).map((val, index) => {
               const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
@@ -1176,23 +1235,23 @@ function PreviewSurveyPageContent() {
               )
             })}
           </div>
-          
-            {/* Labels debajo del slider - SOLO mostrar valores con labels (labeledValues) */}
+
+          {/* Labels debajo del slider - SOLO mostrar valores con labels (labeledValues) */}
           <div className="flex justify-between text-xs text-muted-foreground mt-6 relative">
             {labeledValues.map((val, index) => {
               const labelIndex = val === 0 ? -1 : val - actualOriginalMin
               const label = val === 0 ? zeroLabel : (labelIndex >= 0 && labelIndex < labels.length ? labels[labelIndex] || "" : "")
               const isSelected = selectedValue === val
-              
+
               // Solo mostrar si tiene label (ya está filtrado arriba)
               if (val === 0 || (label && label.trim())) {
                 const valPosition = actualRange > 0 ? ((val - actualMinValue) / actualRange) * 100 : 0
-                
+
                 return (
-                  <div 
+                  <div
                     key={`label-${val}`}
                     className="text-center absolute"
-                    style={{ 
+                    style={{
                       left: `${valPosition}%`,
                       transform: 'translateX(-50%)',
                       color: isSelected ? themeColors.primary : undefined,
@@ -1212,10 +1271,10 @@ function PreviewSurveyPageContent() {
             })}
           </div>
         </div>
-        
+
         {/* Indicador siempre visible de la opción seleccionada */}
         <div className="text-center pt-4 border-t border-gray-200">
-            <div 
+          <div
             className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-semibold shadow-sm"
             style={{
               backgroundColor: `${themeColors.primary}15`,
@@ -1295,39 +1354,39 @@ function PreviewSurveyPageContent() {
                             className={`flex flex-col items-center bg-white border rounded-lg p-3 transition-shadow ${isSelected ? 'ring-2 ring-emerald-300 shadow-lg border-emerald-200' : 'hover:shadow-lg'}`}
                           >
                             <RadioGroupItem value={optionValue} id={id} className="sr-only" />
-                                <label
-                                  htmlFor={id}
-                                  tabIndex={0}
-                                  onKeyDown={(e) => {
-                                    if (e.key === ' ' || e.key === 'Enter') {
-                                      e.preventDefault()
-                                      handleAnswerChange(question.id, optionValue)
-                                    }
-                                  }}
-                                  className="relative flex flex-col items-center cursor-pointer select-none focus:outline-none"
-                                >
-                                  {/* selection indicator */}
-                                    {imageUrl ? (
-                                      <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
-                                    ) : (
-                                      <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
-                                    )}
-                                    <div className="mt-3 flex items-center justify-center gap-2">
-                                      {/* inline radio indicator next to label */}
-                                      <span className="w-5 h-5 rounded-full flex items-center justify-center border bg-white">
-                                        {answers[question.id] === optionValue ? (
-                                          <svg className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <circle cx="12" cy="12" r="6" fill="currentColor" />
-                                          </svg>
-                                        ) : (
-                                          <svg className="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" />
-                                          </svg>
-                                        )}
-                                      </span>
-                                      <div className="text-sm text-center text-gray-800" dangerouslySetInnerHTML={{ __html: optionLabel }} />
-                                    </div>
-                                </label>
+                            <label
+                              htmlFor={id}
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === ' ' || e.key === 'Enter') {
+                                  e.preventDefault()
+                                  handleAnswerChange(question.id, optionValue)
+                                }
+                              }}
+                              className="relative flex flex-col items-center cursor-pointer select-none focus:outline-none"
+                            >
+                              {/* selection indicator */}
+                              {imageUrl ? (
+                                <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
+                              ) : (
+                                <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
+                              )}
+                              <div className="mt-3 flex items-center justify-center gap-2">
+                                {/* inline radio indicator next to label */}
+                                <span className="w-5 h-5 rounded-full flex items-center justify-center border bg-white">
+                                  {answers[question.id] === optionValue ? (
+                                    <svg className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <circle cx="12" cy="12" r="6" fill="currentColor" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" />
+                                    </svg>
+                                  )}
+                                </span>
+                                <div className="text-sm text-center text-gray-800" dangerouslySetInnerHTML={{ __html: optionLabel }} />
+                              </div>
+                            </label>
                           </div>
                         )
                       })}
@@ -1410,61 +1469,61 @@ function PreviewSurveyPageContent() {
                     const optionLabel = typeof option === 'object' && option !== null ? (option as any).label || (option as any).value || '' : String(option || '')
                     const optionValue = typeof option === 'object' && option !== null ? ((option as any).value || optionLabel) : option
                     const imageUrl = typeof option === 'object' && option !== null ? ((option as any).image || (option as any).url || (option as any).src) : null
-          const checked = selected.includes(optionValue)
-          const disabled = !checked && isMaxReached
-          const id = `${question.id}-option-${idx}`
-            return (
+                    const checked = selected.includes(optionValue)
+                    const disabled = !checked && isMaxReached
+                    const id = `${question.id}-option-${idx}`
+                    return (
                       <div key={idx} className={`relative flex flex-col items-center p-3 bg-white border rounded-lg ${disabled ? 'opacity-60' : ''} ${checked ? 'ring-2 ring-emerald-300 shadow-lg border-emerald-200' : 'hover:shadow-lg'}`}>
-                          <Checkbox
-                            id={id}
-                            checked={checked}
-                            disabled={disabled}
-                            className="sr-only"
-                            onCheckedChange={(checked) => {
+                        <Checkbox
+                          id={id}
+                          checked={checked}
+                          disabled={disabled}
+                          className="sr-only"
+                          onCheckedChange={(checked) => {
+                            const currentAnswers = new Set(selected);
+                            if (checked) {
+                              currentAnswers.add(optionValue);
+                            } else {
+                              currentAnswers.delete(optionValue);
+                            }
+                            handleAnswerChange(question.id, Array.from(currentAnswers));
+                          }}
+                        />
+                        <label
+                          htmlFor={id}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === ' ' || e.key === 'Enter') {
+                              e.preventDefault()
                               const currentAnswers = new Set(selected);
-                              if (checked) {
-                                currentAnswers.add(optionValue);
-                              } else {
-                                currentAnswers.delete(optionValue);
-                              }
+                              if (!checked) currentAnswers.add(optionValue); else currentAnswers.delete(optionValue);
                               handleAnswerChange(question.id, Array.from(currentAnswers));
-                            }}
-                          />
-                          <label
-                            htmlFor={id}
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === ' ' || e.key === 'Enter') {
-                                e.preventDefault()
-                                const currentAnswers = new Set(selected);
-                                if (!checked) currentAnswers.add(optionValue); else currentAnswers.delete(optionValue);
-                                handleAnswerChange(question.id, Array.from(currentAnswers));
-                              }
-                            }}
-                            className="flex flex-col items-center cursor-pointer select-none"
-                          >
-                            {/* selection indicator for checkbox */}
-                            {imageUrl ? (
-                              <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
-                            ) : (
-                              <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
-                            )}
-                            <div className="mt-3 flex items-center justify-center gap-2">
-                              <span className="w-5 h-5 rounded-sm flex items-center justify-center border bg-white">
-                                {checked ? (
-                                  <svg className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M5 12l4 4L19 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.5" />
-                                  </svg>
-                                )}
-                              </span>
-                              <div className="mt-0 text-sm text-center text-gray-800">{optionLabel}</div>
-                            </div>
-                          </label>
-                        </div>
+                            }
+                          }}
+                          className="flex flex-col items-center cursor-pointer select-none"
+                        >
+                          {/* selection indicator for checkbox */}
+                          {imageUrl ? (
+                            <img src={imageUrl} alt={optionLabel} className="w-36 h-36 md:w-44 md:h-44 object-contain rounded-md bg-gray-50 border" />
+                          ) : (
+                            <div className="w-36 h-36 md:w-44 md:h-44 flex items-center justify-center rounded-md bg-gray-50 border text-sm text-gray-700">Sin imagen</div>
+                          )}
+                          <div className="mt-3 flex items-center justify-center gap-2">
+                            <span className="w-5 h-5 rounded-sm flex items-center justify-center border bg-white">
+                              {checked ? (
+                                <svg className="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M5 12l4 4L19 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                                </svg>
+                              )}
+                            </span>
+                            <div className="mt-0 text-sm text-center text-gray-800">{optionLabel}</div>
+                          </div>
+                        </label>
+                      </div>
                     )
                   })}
                 </div>
@@ -1596,11 +1655,10 @@ function PreviewSurveyPageContent() {
                         key={value}
                         type="button"
                         onClick={() => handleAnswerChange(question.id, value)}
-                        className={`p-2 rounded-lg transition-colors text-2xl ${
-                          isActive
-                            ? "bg-primary text-primary-foreground scale-110 shadow-lg"
-                            : "bg-muted hover:bg-muted/80"
-                        }`}
+                        className={`p-2 rounded-lg transition-colors text-2xl ${isActive
+                          ? "bg-primary text-primary-foreground scale-110 shadow-lg"
+                          : "bg-muted hover:bg-muted/80"
+                          }`}
                         aria-label={`Valoración ${value}`}
                       >
                         {typeof emoji === 'object' && emoji !== null ? (emoji as any).image || (emoji as any).label : emoji}
@@ -1643,11 +1701,10 @@ function PreviewSurveyPageContent() {
                       key={scale}
                       type="button"
                       onClick={() => handleAnswerChange(question.id, scale)}
-                      className={`w-10 h-10 rounded-full transition-colors ${
-                        answers[question.id] === scale
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted/80"
-                      }`}
+                      className={`w-10 h-10 rounded-full transition-colors ${answers[question.id] === scale
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted hover:bg-muted/80"
+                        }`}
                     >
                       {scale}
                     </button>
@@ -1664,18 +1721,18 @@ function PreviewSurveyPageContent() {
             const likertScale = question.config?.likertScale || {};
             const showZero = !!likertScale.showZero;
             const zeroLabel = likertScale.zeroLabel || 'No Sabe / No Responde';
-            
+
             // Obtener min/max originales para el cálculo de labels (sin considerar showZero)
-            const originalMin = typeof likertScale.min === 'number' ? likertScale.min : 
-                               typeof question.config?.scaleMin === 'number' ? question.config.scaleMin : 1;
-            const originalMax = typeof likertScale.max === 'number' ? likertScale.max : 
-                               typeof question.config?.scaleMax === 'number' ? question.config.scaleMax : 5;
+            const originalMin = typeof likertScale.min === 'number' ? likertScale.min :
+              typeof question.config?.scaleMin === 'number' ? question.config.scaleMin : 1;
+            const originalMax = typeof likertScale.max === 'number' ? likertScale.max :
+              typeof question.config?.scaleMax === 'number' ? question.config.scaleMax : 5;
             const step = typeof likertScale.step === 'number' ? likertScale.step : 1;
-            
+
             // min para el slider (0 si showZero, sino originalMin)
             const min = showZero ? 0 : originalMin;
             const max = originalMax;
-            
+
             let labels = [];
             // Si labels es un objeto tipo {left, center, right}, mapearlo a un array para el slider
             if (likertScale.labels && typeof likertScale.labels === 'object' && !Array.isArray(likertScale.labels)) {
@@ -1697,7 +1754,7 @@ function PreviewSurveyPageContent() {
               // fallback
               labels = defaultLabels;
             }
-            
+
             // Validar que los labels tengan la cantidad correcta
             const totalSteps = Math.floor((originalMax - originalMin) / step) + 1;
             if (labels.length !== totalSteps) {
@@ -1720,7 +1777,7 @@ function PreviewSurveyPageContent() {
             }
             // Si showZero, agregar el label de 0 al inicio visualmente
             const value = answers[question.id] !== undefined ? answers[question.id] : min;
-            
+
             return (
               <LikertSlider
                 min={min}
@@ -1746,11 +1803,10 @@ function PreviewSurveyPageContent() {
                       key={score}
                       type="button"
                       onClick={() => handleAnswerChange(question.id, score)}
-                      className={`w-12 h-12 rounded-full transition-colors ${
-                        answers[question.id] === score
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted/80"
-                      }`}
+                      className={`w-12 h-12 rounded-full transition-colors ${answers[question.id] === score
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted hover:bg-muted/80"
+                        }`}
                     >
                       {score}
                     </button>
@@ -1782,72 +1838,72 @@ function PreviewSurveyPageContent() {
               let currentAmpm = 'AM';
 
               if (!isNaN(currentHour)) {
-                  if (currentHour >= 12) {
-                      currentAmpm = 'PM';
-                      if (currentHour > 12) {
-                          currentHour -= 12;
-                      }
+                if (currentHour >= 12) {
+                  currentAmpm = 'PM';
+                  if (currentHour > 12) {
+                    currentHour -= 12;
                   }
-                  if (currentHour === 0) {
-                      currentHour = 12; // 12 AM
-                  }
+                }
+                if (currentHour === 0) {
+                  currentHour = 12; // 12 AM
+                }
               }
 
               const handle12hChange = (part: 'hour' | 'minute' | 'ampm', val: string) => {
-                  let h12 = !isNaN(currentHour) ? currentHour : 12;
-                  let m = !isNaN(currentMinute) ? currentMinute : 0;
-                  let ampm = currentAmpm;
+                let h12 = !isNaN(currentHour) ? currentHour : 12;
+                let m = !isNaN(currentMinute) ? currentMinute : 0;
+                let ampm = currentAmpm;
 
-                  if (part === 'hour') h12 = parseInt(val, 10);
-                  if (part === 'minute') m = parseInt(val, 10);
-                  if (part === 'ampm') ampm = val;
+                if (part === 'hour') h12 = parseInt(val, 10);
+                if (part === 'minute') m = parseInt(val, 10);
+                if (part === 'ampm') ampm = val;
 
-                  let h24 = h12;
-                  if (ampm === 'PM' && h12 < 12) {
-                      h24 = h12 + 12;
-                  } else if (ampm === 'AM' && h12 === 12) { // 12 AM (midnight)
-                      h24 = 0;
-                  } else if (ampm === 'PM' && h12 === 12) { // 12 PM (noon)
-                      h24 = 12;
-                  }
+                let h24 = h12;
+                if (ampm === 'PM' && h12 < 12) {
+                  h24 = h12 + 12;
+                } else if (ampm === 'AM' && h12 === 12) { // 12 AM (midnight)
+                  h24 = 0;
+                } else if (ampm === 'PM' && h12 === 12) { // 12 PM (noon)
+                  h24 = 12;
+                }
 
-                  const finalTime = `${h24.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-                  handleAnswerChange(question.id, finalTime);
+                const finalTime = `${h24.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                handleAnswerChange(question.id, finalTime);
               };
 
               return (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                      <Select value={!isNaN(currentHour) ? currentHour.toString() : ""} onValueChange={(v) => handle12hChange('hour', v)}>
-                          <SelectTrigger className="w-[90px]">
-                              <SelectValue placeholder="Hora" />
-                          </SelectTrigger>
-                          <SelectContent>
-                              {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
-                                  <SelectItem key={h} value={h.toString()}>{h.toString().padStart(2, '0')}</SelectItem>
-                              ))}
-                          </SelectContent>
-                      </Select>
-                      <span className="font-bold">:</span>
-                      <Select value={!isNaN(currentMinute) ? currentMinute.toString().padStart(2, '0') : "00"} onValueChange={(v) => handle12hChange('minute', v)}>
-                          <SelectTrigger className="w-[90px]">
-                              <SelectValue placeholder="Min" />
-                          </SelectTrigger>
-                          <SelectContent>
-                              {Array.from({ length: 60 }, (_, i) => i).map(m => (
-                                  <SelectItem key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</SelectItem>
-                              ))}
-                          </SelectContent>
-                      </Select>
-                      <Select value={currentAmpm} onValueChange={(v) => handle12hChange('ampm', v)}>
-                          <SelectTrigger className="w-[90px]">
-                              <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                              <SelectItem value="AM">AM</SelectItem>
-                              <SelectItem value="PM">PM</SelectItem>
-                          </SelectContent>
-                      </Select>
+                    <Select value={!isNaN(currentHour) ? currentHour.toString() : ""} onValueChange={(v) => handle12hChange('hour', v)}>
+                      <SelectTrigger className="w-[90px]">
+                        <SelectValue placeholder="Hora" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
+                          <SelectItem key={h} value={h.toString()}>{h.toString().padStart(2, '0')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="font-bold">:</span>
+                    <Select value={!isNaN(currentMinute) ? currentMinute.toString().padStart(2, '0') : "00"} onValueChange={(v) => handle12hChange('minute', v)}>
+                      <SelectTrigger className="w-[90px]">
+                        <SelectValue placeholder="Min" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 60 }, (_, i) => i).map(m => (
+                          <SelectItem key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={currentAmpm} onValueChange={(v) => handle12hChange('ampm', v)}>
+                      <SelectTrigger className="w-[90px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AM">AM</SelectItem>
+                        <SelectItem value="PM">PM</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Formato 12 horas (AM/PM)</div>
                 </div>
@@ -1857,37 +1913,37 @@ function PreviewSurveyPageContent() {
               const [currentHour, currentMinute] = value ? value.split(':') : ["", ""];
 
               const handle24hChange = (part: 'hour' | 'minute', val: string) => {
-                  let h = currentHour || "00";
-                  let m = currentMinute || "00";
-                  if (part === 'hour') h = val;
-                  if (part === 'minute') m = val;
-                  handleAnswerChange(question.id, `${h}:${m}`);
+                let h = currentHour || "00";
+                let m = currentMinute || "00";
+                if (part === 'hour') h = val;
+                if (part === 'minute') m = val;
+                handleAnswerChange(question.id, `${h}:${m}`);
               };
 
               return (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                      <Select value={currentHour} onValueChange={(v) => handle24hChange('hour', v)}>
-                          <SelectTrigger className="w-[90px]">
-                              <SelectValue placeholder="Hora" />
-                          </SelectTrigger>
-                          <SelectContent>
-                              {Array.from({ length: 24 }, (_, i) => i).map(h => (
-                                  <SelectItem key={h} value={h.toString().padStart(2, '0')}>{h.toString().padStart(2, '0')}</SelectItem>
-                              ))}
-                          </SelectContent>
-                      </Select>
-                      <span className="font-bold">:</span>
-                      <Select value={currentMinute} onValueChange={(v) => handle24hChange('minute', v)}>
-                          <SelectTrigger className="w-[90px]">
-                              <SelectValue placeholder="Min" />
-                          </SelectTrigger>
-                          <SelectContent>
-                              {Array.from({ length: 60 }, (_, i) => i).map(m => (
-                                  <SelectItem key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</SelectItem>
-                              ))}
-                          </SelectContent>
-                      </Select>
+                    <Select value={currentHour} onValueChange={(v) => handle24hChange('hour', v)}>
+                      <SelectTrigger className="w-[90px]">
+                        <SelectValue placeholder="Hora" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                          <SelectItem key={h} value={h.toString().padStart(2, '0')}>{h.toString().padStart(2, '0')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="font-bold">:</span>
+                    <Select value={currentMinute} onValueChange={(v) => handle24hChange('minute', v)}>
+                      <SelectTrigger className="w-[90px]">
+                        <SelectValue placeholder="Min" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 60 }, (_, i) => i).map(m => (
+                          <SelectItem key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Formato 24 horas (00:00 - 23:59)</div>
                 </div>
@@ -1895,7 +1951,7 @@ function PreviewSurveyPageContent() {
             }
           }
           case "email":
-    
+
             return (
               <EmailAutocompleteInput
                 value={answers[question.id] || ""}
@@ -2073,6 +2129,7 @@ function PreviewSurveyPageContent() {
                 surveyId={inferredSurveyId || ""}
                 onChange={(value) => handleAnswerChange(question.id, value)}
                 config={question.config}
+                initialData={answers[question.id]}
               />
             )
           case "ranking": {
@@ -2294,7 +2351,7 @@ function PreviewSurveyPageContent() {
           {/* Header de la pregunta */}
           <div className="flex items-start gap-4 mb-6">
             <div className="flex-shrink-0">
-              <div 
+              <div
                 className="w-12 h-12 text-white rounded-2xl flex items-center justify-center text-lg font-bold shadow-lg"
                 style={{
                   background: `linear-gradient(135deg, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`
@@ -2322,8 +2379,8 @@ function PreviewSurveyPageContent() {
                   )}
                 </div>
               </div>
-              
-              
+
+
             </div>
           </div>
 
@@ -2374,7 +2431,7 @@ function PreviewSurveyPageContent() {
           </div>
           <h2 className="text-3xl font-bold mb-4 text-gray-700 bg-gradient-to-r from-gray-700 to-gray-500 bg-clip-text text-transparent">No hay secciones o preguntas para previsualizar.</h2>
           <p className="text-lg text-muted-foreground mb-6">La encuesta no tiene contenido configurado para mostrar en la vista previa.</p>
-          <Button 
+          <Button
             onClick={() => router.push(`/projects/${surveyData.projectData?.id}/create-survey`)}
             className="px-8 py-3 text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
             style={{
@@ -2481,16 +2538,16 @@ function PreviewSurveyPageContent() {
         <Card className="border-0 shadow-2xl preview-card">
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between mb-6">
-              <Button 
-                variant="ghost" 
-                onClick={() => router.back()} 
+              <Button
+                variant="ghost"
+                onClick={() => router.back()}
                 className="text-muted-foreground hover:bg-green-100/80 transition-all duration-200 rounded-xl px-4 py-2"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" /> Volver
               </Button>
               {/* Botón para limpiar respuestas (testing) */}
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   localStorage.removeItem("surveyPreviewAnswers")
                   setAnswers({})
@@ -2513,7 +2570,7 @@ function PreviewSurveyPageContent() {
                   }}
                 />
               )}
-              <CardTitle 
+              <CardTitle
                 className="text-5xl font-bold mb-4 preview-title"
                 style={{
                   color: themeColors.text
@@ -2562,7 +2619,7 @@ function PreviewSurveyPageContent() {
         <CardContent className="p-10">
           {/* Header de la sección */}
           <div className="text-center mb-10 preview-content">
-      <style jsx global>{`
+            <style jsx global>{`
         .preview-content h1 {
           font-size: 2.25rem;
           font-weight: bold;
@@ -2574,7 +2631,7 @@ function PreviewSurveyPageContent() {
           margin: 0.5em 0;
         }
       `}</style>
-            <div 
+            <div
               className="inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-semibold mb-4 shadow-sm"
               style={{
                 background: `linear-gradient(to right, ${themeColors.primary}20, ${themeColors.primary}30)`,
@@ -2600,7 +2657,7 @@ function PreviewSurveyPageContent() {
                 </div>
               </div>
             )}
-      {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
+            {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
           </div>
 
           {/* Indicador de lógica de visualización */}
@@ -2659,16 +2716,16 @@ function PreviewSurveyPageContent() {
 
           {/* Navegación */}
           <div className="flex justify-between mt-16 pt-10 border-t border-gray-200">
-            <Button 
-              onClick={handlePreviousSection} 
-              disabled={currentSectionIndex === 0} 
+            <Button
+              onClick={handlePreviousSection}
+              disabled={currentSectionIndex === 0}
               variant="outline"
               className="px-8 py-4 text-base rounded-xl border-2 hover:bg-gray-50 transition-all duration-200 disabled:opacity-50"
             >
               <ArrowLeft className="h-5 w-5 mr-2" /> Anterior
             </Button>
-            
-            <Button 
+
+            <Button
               onClick={handleNextSection}
               className="px-10 py-4 text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
               style={{

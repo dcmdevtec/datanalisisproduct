@@ -21,6 +21,7 @@ interface ContactInfoQuestionProps {
     email?: string
     company?: string
     address?: string
+    fullName?: string
   }) => void
   config?: {
     includeFirstName?: boolean
@@ -31,11 +32,22 @@ interface ContactInfoQuestionProps {
     includeCompany?: boolean
     includeAddress?: boolean
   }
+  initialData?: {
+    documentType?: string
+    documentNumber?: string
+    firstName?: string
+    lastName?: string
+    phone?: string
+    email?: string
+    company?: string
+    address?: string
+    fullName?: string
+  }
 }
 
 type VerificationStatus = "idle" | "verifying" | "verified" | "error" | "already_exists"
 
-export function ContactInfoQuestion({ surveyId, onChange, config = {} }: ContactInfoQuestionProps) {
+export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialData }: ContactInfoQuestionProps) {
   const {
     includeFirstName = true,
     includeLastName = true,
@@ -57,6 +69,33 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
   const debouncedDocumentNumber = useDebounce(documentNumber, 500)
   const [status, setStatus] = useState<VerificationStatus>("idle")
   const [message, setMessage] = useState("")
+
+  // Efecto para cargar datos iniciales si cambian (auto-relleno)
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.documentType) setDocumentType(initialData.documentType)
+      if (initialData.documentNumber) setDocumentNumber(initialData.documentNumber)
+      if (initialData.phone) setPhone(initialData.phone)
+      if (initialData.email) setEmail(initialData.email)
+      if (initialData.company) setCompany(initialData.company)
+      if (initialData.address) setAddress(initialData.address)
+
+      // Manejo inteligente de nombres
+      if (initialData.firstName) setFirstName(initialData.firstName)
+      if (initialData.lastName) setLastName(initialData.lastName)
+
+      // Si viene fullName pero no firstName/lastName, intentar dividir
+      if (initialData.fullName && !initialData.firstName && !initialData.lastName) {
+        const parts = initialData.fullName.trim().split(' ')
+        if (parts.length > 0) {
+          setFirstName(parts[0])
+          if (parts.length > 1) {
+            setLastName(parts.slice(1).join(' '))
+          }
+        }
+      }
+    }
+  }, [initialData])
 
   const documentLengthIsValid = useMemo(() => {
     if (!includeDocument) return false
@@ -81,6 +120,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
       email?: string
       company?: string
       address?: string
+      fullName?: string // Enviamos también fullName combinado para el backend
     } = {}
 
     if (includeDocument) {
@@ -93,6 +133,10 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
     if (includeLastName) {
       dataToChange.lastName = lastName
     }
+    // Construir fullName combinado siempre
+    const full = [firstName, lastName].filter(Boolean).join(' ').trim()
+    if (full) dataToChange.fullName = full
+
     if (includePhone) {
       dataToChange.phone = phone
     }
@@ -138,10 +182,22 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
 
       try {
         const fetchUrl = surveyId ? `/api/surveys/${surveyId}/verify-respondent` : `/api/surveys/verify-respondent`
+        // build payload matching public_respondents schema
+        const payload: any = {
+          survey_id: surveyId || undefined,
+          document_type: documentType,
+          document_number: debouncedDocumentNumber,
+          full_name: [firstName, lastName].filter(Boolean).join(' ').trim() || undefined,
+        }
+        if (email) payload.email = email
+        if (phone) payload.phone = phone
+        if (company) payload.company = company
+        if (address) payload.address = address
+
         const response = await fetch(fetchUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ document_type: documentType, document_number: debouncedDocumentNumber, survey_id: surveyId || undefined }),
+          body: JSON.stringify(payload),
         })
 
         // parse response safely
@@ -155,6 +211,28 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
         if (response.ok) {
           setStatus("verified")
           setMessage((jsonBody && (jsonBody.message || jsonBody.msg)) || "Puede continuar.")
+          
+          // Auto-fill contact info from prefilled_data if available
+          if (jsonBody?.prefilled_data) {
+            const prefilled = jsonBody.prefilled_data
+            
+            // Parse full_name into firstName and lastName if available
+            if (prefilled.full_name && !firstName && !lastName) {
+              const parts = prefilled.full_name.trim().split(' ')
+              if (parts.length > 0) {
+                setFirstName(parts[0])
+                if (parts.length > 1) {
+                  setLastName(parts.slice(1).join(' '))
+                }
+              }
+            }
+            
+            // Auto-fill other contact fields if empty
+            if (prefilled.email && !email) setEmail(prefilled.email)
+            if (prefilled.phone && !phone) setPhone(prefilled.phone)
+            if (prefilled.address && !address) setAddress(prefilled.address)
+            if (prefilled.company && !company) setCompany(prefilled.company)
+          }
         } else {
           setStatus("already_exists")
           setMessage((jsonBody && (jsonBody.error || jsonBody.message)) || "Este número de documento ya ha completado la encuesta.")
@@ -302,8 +380,8 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {} }: Contact
                   status === "error"
                     ? "text-red-600"
                     : status === "already_exists"
-                    ? "text-yellow-600"
-                    : "text-muted-foreground"
+                      ? "text-yellow-600"
+                      : "text-muted-foreground"
                 }
               >
                 {message}
