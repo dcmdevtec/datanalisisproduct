@@ -1729,11 +1729,24 @@ function PreviewSurveyPageContent() {
                 </div>
               </div>
             )
-          case "scale":
+          case "scale": {
+            // Get configuration from question.config
+            const scaleMin = question.config?.scaleMin ?? 1;
+            const scaleMax = question.config?.scaleMax ?? 5;
+            const scaleLabels = question.config?.scaleLabels || {};
+            const minLabel = scaleLabels.min || "Muy en desacuerdo";
+            const maxLabel = scaleLabels.max || "Muy de acuerdo";
+
+            // Generate array of scale values
+            const scaleValues = Array.from(
+              { length: scaleMax - scaleMin + 1 },
+              (_, i) => scaleMin + i
+            );
+
             return (
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((scale) => (
+                  {scaleValues.map((scale) => (
                     <button
                       key={scale}
                       type="button"
@@ -1748,11 +1761,12 @@ function PreviewSurveyPageContent() {
                   ))}
                 </div>
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Muy en desacuerdo</span>
-                  <span>Muy de acuerdo</span>
+                  <span>{minLabel}</span>
+                  <span>{maxLabel}</span>
                 </div>
               </div>
             )
+          }
           case "likert":
             const defaultLabels = ["Muy en desacuerdo", "Neutral", "Muy de acuerdo"];
             const likertScale = question.config?.likertScale || {};
@@ -2007,7 +2021,17 @@ function PreviewSurveyPageContent() {
               <Input
                 type="tel"
                 value={answers[question.id] || ""}
-                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                onChange={(e) => {
+                  // Only allow numbers, spaces, dashes, parentheses, and plus sign
+                  const value = e.target.value.replace(/[^0-9\s\-\(\)\+]/g, '')
+                  handleAnswerChange(question.id, value)
+                }}
+                onKeyDown={(e) => {
+                  // Prevent letters except for allowed characters
+                  if (!/[0-9\s\-\(\)\+]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                    e.preventDefault()
+                  }
+                }}
                 placeholder="+1 (555) 123-4567"
                 className="w-full"
               />
@@ -2018,6 +2042,12 @@ function PreviewSurveyPageContent() {
                 type="number"
                 value={answers[question.id] || ""}
                 onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                onKeyDown={(e) => {
+                  // Prevent 'e', 'E', '+', '-' in number input
+                  if (['e', 'E', '+', '-'].includes(e.key)) {
+                    e.preventDefault()
+                  }
+                }}
                 placeholder="Ingresa un número"
                 className="w-full"
               />

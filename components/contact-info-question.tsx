@@ -307,7 +307,17 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
               id="phone"
               type="tel"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={(e) => {
+                // Only allow numbers, spaces, dashes, parentheses, and plus sign
+                const value = e.target.value.replace(/[^0-9\s\-\(\)\+]/g, '')
+                setPhone(value)
+              }}
+              onKeyDown={(e) => {
+                // Prevent letters except for allowed characters
+                if (!/[0-9\s\-\(\)\+]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                  e.preventDefault()
+                }
+              }}
               placeholder="Ingrese su número de teléfono"
             />
           </div>
@@ -372,9 +382,20 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
               <div className="relative">
                 <Input
                   id="document-number"
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={documentNumber}
-                  onChange={e => setDocumentNumber(e.target.value)}
+                  onChange={(e) => {
+                    // Only allow numbers
+                    const value = e.target.value.replace(/[^0-9]/g, '')
+                    setDocumentNumber(value)
+                  }}
+                  onKeyDown={(e) => {
+                    // Prevent non-numeric characters
+                    if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                      e.preventDefault()
+                    }
+                  }}
                   placeholder="Ingrese el número de documento"
                   className="pr-8"
                 />
