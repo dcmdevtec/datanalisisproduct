@@ -1493,8 +1493,9 @@ function PreviewSurveyPageContent() {
             }
           case "checkbox": {
             const selected = Array.isArray(answers[question.id]) ? answers[question.id] : [];
-            const minSel = question.config?.minSelections ?? 0;
-            const maxSel = question.config?.maxSelections ?? (question.options?.length || 99);
+            // Check both possible paths for min/max selections
+            const minSel = question.config?.minSelections ?? question.config?.advanced?.minSelections ?? 0;
+            const maxSel = question.config?.maxSelections ?? question.config?.advanced?.maxSelections ?? (question.options?.length || 99);
             const isMaxReached = selected.length >= maxSel;
             // If any option includes an image, show grid cards; otherwise keep list
             const opts = question.options || []
