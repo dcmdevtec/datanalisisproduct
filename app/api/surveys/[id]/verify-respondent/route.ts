@@ -93,52 +93,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     // Build insert payload with incoming data or candidate data from other surveys
-    const insertPayload: any = {
-      survey_id: surveyId,
-      document_type,
-      document_number,
-      full_name: full_name || (otherPublic?.full_name as string) || (otherResp?.respondent_name as string) || null
-    }
+    // Note: We do NOT insert into public_respondents here anymore. 
+    // We only use this data to prefill the form. The record will be created on submission.
 
-    // Add optional contact fields from payload
-    if (email) insertPayload.email = email
-    else if (otherPublic?.email) insertPayload.email = otherPublic.email
+    const candidateFullName = full_name || (otherPublic?.full_name as string) || (otherResp?.respondent_name as string) || null
 
-    if (phone) insertPayload.phone = phone
-    else if (otherPublic?.phone) insertPayload.phone = otherPublic.phone
-
-    if (address) insertPayload.address = address
-    else if (otherPublic?.address) insertPayload.address = otherPublic.address
-
-    if (company) insertPayload.company = company
-    else if (otherPublic?.company) insertPayload.company = otherPublic.company
-
-    const { data: created, error: createErr } = await supabase
-      .from("public_respondents")
-      .insert(insertPayload)
-      .select()
-      .single()
-
-    if (createErr) {
-      console.error("Error creating public_respondent:", createErr)
-      return NextResponse.json({ error: createErr.message }, { status: 500 })
-    }
-
-    respondentPublicId = (created && (created as any).id) || null
-    if (!respondentPublicId) {
-      console.error("Created public_respondent returned no id:", created)
-      return NextResponse.json({ error: "Failed to create respondent id" }, { status: 500 })
-    }
-
-    // Set prefilled data from created record
-    if (created) {
-      prefilledData = {
-        full_name: (created as any).full_name || undefined,
-        email: (created as any).email || undefined,
-        phone: (created as any).phone || undefined,
-        address: (created as any).address || undefined,
-        company: (created as any).company || undefined,
-      }
+    prefilledData = {
+      full_name: candidateFullName || undefined,
+      email: email || (otherPublic?.email as string) || undefined,
+      phone: phone || (otherPublic?.phone as string) || undefined,
+      address: address || (otherPublic?.address as string) || undefined,
+      company: company || (otherPublic?.company as string) || undefined,
     }
 
     // 4) Allow to proceed
