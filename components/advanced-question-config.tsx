@@ -95,9 +95,8 @@ function QuestionPreview({ question, isConditionMet = false }: { question: Quest
 
   return (
     <div
-      className={`p-4 border-2 rounded-lg transition-all ${
-        isConditionMet ? "border-green-300 bg-green-50" : "border-gray-200 bg-white"
-      }`}
+      className={`p-4 border-2 rounded-lg transition-all ${isConditionMet ? "border-green-300 bg-green-50" : "border-gray-200 bg-white"
+        }`}
     >
       <div className="flex items-start justify-between mb-3">
         <h4 className="font-medium text-sm">{question.text.replace(/<[^>]*>/g, "") || "Pregunta sin título"}</h4>
@@ -237,7 +236,7 @@ function SkipLogicVisualizer({
   const [showDestSelectors, setShowDestSelectors] = useState(false);
   const [newSectionId, setNewSectionId] = useState("");
   const [newQuestionId, setNewQuestionId] = useState("");
-  
+
   // Estados para almacenar el destino temporal de cada opción
   const [optionDestinations, setOptionDestinations] = useState<Record<string, string>>({});
 
@@ -252,7 +251,7 @@ function SkipLogicVisualizer({
     { value: "is_empty", label: "está vacía" },
     { value: "is_not_empty", label: "no está vacía" },
   ];
-  
+
   // Reset condition value when operator changes
   useEffect(() => {
     setConditionValue("");
@@ -261,7 +260,7 @@ function SkipLogicVisualizer({
   // Reset condition value when question type that needs options changes
   useEffect(() => {
     if (question.type === 'multiple_choice' || question.type === 'checkbox') {
-        setConditionValue("");
+      setConditionValue("");
     }
   }, [question.type]);
 
@@ -286,141 +285,154 @@ function SkipLogicVisualizer({
       {/* If question has explicit options (multiple_choice, dropdown, checkbox), show per-option jump editor */}
       {(question.type === 'multiple_choice' || question.type === 'dropdown' || question.type === 'checkbox') &&
         question.options && question.options.length > 0 && (
-        <div className="mb-6">
-          <h4 className="text-sm font-semibold text-emerald-800 mb-2">Saltos por opción</h4>
-          <div className="bg-white border border-emerald-100 rounded-lg shadow-sm p-3">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-xs text-emerald-700">
-                  <th className="py-2">Opción</th>
-                  <th className="py-2">Saltar a</th>
-                  <th className="py-2">Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {question.options.map((option, optIdx) => {
-                  // buscar regla existente que aplique a esta opción
-                  const existingRuleIndex = rules.findIndex(
-                    (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === String(option),
-                  )
-                  const existingRule = existingRuleIndex > -1 ? rules[existingRuleIndex] : null
-                  // Usar valor del estado local para cada opción
-                  const optionKey = String(option);
-                  const currentDestination = optionDestinations[optionKey] || existingRule?.targetSectionId || '';
-                  
-                  return (
-                    <tr key={optIdx} className="border-t">
-                          <td className="py-3 align-top">
-                            {/* Render option as image card when appropriate */}
-                            {(() => {
-                              const opt = option as any
-                              const isObject = opt && typeof opt === 'object'
-                              let imageUrl: string | null = null
-                              let labelText: string = ''
+          <div className="mb-6">
+            <h4 className="text-sm font-semibold text-emerald-800 mb-2">Saltos por opción</h4>
+            <div className="bg-white border border-emerald-100 rounded-lg shadow-sm p-3">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-xs text-emerald-700">
+                    <th className="py-2">Opción</th>
+                    <th className="py-2">Saltar a</th>
+                    <th className="py-2">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {question.options.map((option, optIdx) => {
+                    // Extract the actual value from the option (handle both string and object formats)
+                    const getOptionValue = (opt: any) => {
+                      if (opt && typeof opt === 'object') {
+                        return opt.value ?? opt.label ?? String(opt)
+                      }
+                      return String(opt ?? '')
+                    }
 
-                              if (isObject) {
-                                imageUrl = opt.image || opt.url || opt.src || null
-                                labelText = opt.label || opt.text || opt.value || ''
+                    const optionValue = getOptionValue(option);
+
+                    // buscar regla existente que aplique a esta opción
+                    const existingRuleIndex = rules.findIndex(
+                      (r) => {
+                        const ruleValue = getOptionValue(r.value);
+                        return (r.condition === 'equals' || r.operator === 'equals') && ruleValue === optionValue;
+                      }
+                    )
+                    const existingRule = existingRuleIndex > -1 ? rules[existingRuleIndex] : null
+                    // Usar valor del estado local para cada opción
+                    const optionKey = optionValue;
+                    const currentDestination = optionDestinations[optionKey] || existingRule?.targetSectionId || '';
+
+                    return (
+                      <tr key={optIdx} className="border-t">
+                        <td className="py-3 align-top">
+                          {/* Render option as image card when appropriate */}
+                          {(() => {
+                            const opt = option as any
+                            const isObject = opt && typeof opt === 'object'
+                            let imageUrl: string | null = null
+                            let labelText: string = ''
+
+                            if (isObject) {
+                              imageUrl = opt.image || opt.url || opt.src || null
+                              labelText = opt.label || opt.text || opt.value || ''
+                            } else {
+                              const s = String(opt || '')
+                              // detect <img src="..."> tags
+                              const imgMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
+                              if (imgMatch) {
+                                imageUrl = imgMatch[1]
+                                labelText = stripHtmlTags(s)
                               } else {
-                                const s = String(opt || '')
-                                // detect <img src="..."> tags
-                                const imgMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
-                                if (imgMatch) {
-                                  imageUrl = imgMatch[1]
-                                  labelText = stripHtmlTags(s)
+                                // detect plain image urls
+                                const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
+                                if (urlMatch) {
+                                  imageUrl = urlMatch[0]
+                                  labelText = ''
                                 } else {
-                                  // detect plain image urls
-                                  const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
-                                  if (urlMatch) {
-                                    imageUrl = urlMatch[0]
-                                    labelText = ''
-                                  } else {
-                                    labelText = s
-                                  }
+                                  labelText = s
                                 }
                               }
-                              // Always strip HTML tags from the computed labelText so we display only inner text
-                              labelText = stripHtmlTags(labelText)
-
-                              if (imageUrl) {
-                                return (
-                                  <div className="flex items-start space-x-3">
-                                    <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border">
-                                      <img src={imageUrl} alt={labelText || 'opción'} className="w-full h-full object-cover" />
-                                    </div>
-                                    <div className="flex-1">
-                                      <div className="text-sm text-emerald-900">{labelText || 'Opción'}</div>
-                                    </div>
-                                  </div>
-                                )
-                              }
-
-                              return <div className="text-sm text-emerald-900">{labelText}</div>
-                            })()}
-                          </td>
-                      <td className="py-2">
-                        <select
-                          className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
-                          value={currentDestination}
-                          onChange={(e) => {
-                            const dest = e.target.value
-                            const optKey = String(option);
-                            
-                            // Actualizar estado local
-                            setOptionDestinations((prev) => ({
-                              ...prev,
-                              [optKey]: dest,
-                            }))
-                            
-                            // Si existe regla, actualizar destino o eliminar si vacío
-                            if (existingRuleIndex > -1) {
-                              if (!dest) {
-                                onDeleteRule(existingRuleIndex)
-                              } else if (onUpdateRule) {
-                                onUpdateRule(existingRuleIndex, 'targetSectionId', dest)
-                              }
-                            } else {
-                              // crear nueva regla para esta opción
-                              if (dest) {
-                                onAddRule({
-                                  condition: 'equals',
-                                  operator: 'equals',
-                                  value: option,
-                                  targetSectionId: dest,
-                                  targetQuestionId: '',
-                                  targetQuestionText: '',
-                                  enabled: true,
-                                })
-                              }
                             }
-                          }}
-                        >
-                          <option value="">-- Elegir sección --</option>
-                          {allSections.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.title}
-                            </option>
-                          ))}
-                          <option value="END_SURVEY">Finalizar Encuesta</option>
-                        </select>
-                      </td>
-                      <td className="py-2 align-top">
-                        {existingRuleIndex > -1 ? (
-                          <button className="text-red-600 hover:underline" onClick={() => onDeleteRule(existingRuleIndex)}>
-                            Eliminar
-                          </button>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Sin salto</span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                            // Always strip HTML tags from the computed labelText so we display only inner text
+                            labelText = stripHtmlTags(labelText)
+
+                            if (imageUrl) {
+                              return (
+                                <div className="flex items-start space-x-3">
+                                  <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border">
+                                    <img src={imageUrl} alt={labelText || 'opción'} className="w-full h-full object-cover" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="text-sm text-emerald-900">{labelText || 'Opción'}</div>
+                                  </div>
+                                </div>
+                              )
+                            }
+
+                            return <div className="text-sm text-emerald-900">{labelText}</div>
+                          })()}
+                        </td>
+                        <td className="py-2">
+                          <select
+                            className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
+                            value={currentDestination}
+                            onChange={(e) => {
+                              const dest = e.target.value
+                              const optKey = optionValue;
+
+                              // Actualizar estado local
+                              setOptionDestinations((prev) => ({
+                                ...prev,
+                                [optKey]: dest,
+                              }))
+
+                              // Si existe regla, actualizar destino o eliminar si vacío
+                              if (existingRuleIndex > -1) {
+                                if (!dest) {
+                                  onDeleteRule(existingRuleIndex)
+                                } else if (onUpdateRule) {
+                                  onUpdateRule(existingRuleIndex, 'targetSectionId', dest)
+                                }
+                              } else {
+                                // crear nueva regla para esta opción
+                                if (dest) {
+                                  onAddRule({
+                                    condition: 'equals',
+                                    operator: 'equals',
+                                    value: optionValue,
+                                    targetSectionId: dest,
+                                    targetQuestionId: '',
+                                    targetQuestionText: '',
+                                    enabled: true,
+                                  })
+                                }
+                              }
+                            }}
+                          >
+                            <option value="">-- Elegir sección --</option>
+                            {allSections.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.title}
+                              </option>
+                            ))}
+                            <option value="END_SURVEY">Finalizar Encuesta</option>
+                          </select>
+                        </td>
+                        <td className="py-2 align-top">
+                          {existingRuleIndex > -1 ? (
+                            <button className="text-red-600 hover:underline" onClick={() => onDeleteRule(existingRuleIndex)}>
+                              Eliminar
+                            </button>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Sin salto</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* For other question types render a generic rule editor (single rule per condition/value) */}
       {!(question.type === 'multiple_choice' || question.type === 'dropdown' || question.type === 'checkbox') && (
@@ -506,7 +518,7 @@ function SkipLogicVisualizer({
         </div>
       )}
       {/* Formulario inline para agregar nueva regla */}
-      
+
     </div>
   );
 }
@@ -518,7 +530,7 @@ export function AdvancedQuestionConfig({
   allSections,
   allQuestions,
   onSave,
-} : {
+}: {
   isOpen: boolean;
   onClose: () => void;
   question: Question;
@@ -531,28 +543,28 @@ export function AdvancedQuestionConfig({
   console.log(`🔍 Preguntas disponibles: ${allQuestions?.length || 0}`)
   console.log(`📝 Pregunta actual:`, question)
   console.log(`🔑 IDs de preguntas disponibles:`, allQuestions?.map((q: Question) => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
-  
+
   // Inicializar el estado con la configuración de la pregunta
   const [config, setConfig] = useState<QuestionConfig>(() => {
     console.log("🚀 Inicializando estado de configuración para pregunta:", question.id)
     console.log("📋 Configuración base de la pregunta:", question.config)
-    
+
     // Construir la configuración completa desde los campos de la base de datos
     const baseConfig = question.config || {}
-    
+
     const initialConfig = {
       // Configuraciones generales
       ...baseConfig,
-      
+
       // Lógica de visualización - desde campo específico display_logic
       displayLogic: baseConfig.displayLogic || { enabled: false, conditions: [] },
-      
+
       // Lógica de salto - desde campo específico skip_logic
       skipLogic: baseConfig.skipLogic || { enabled: false, rules: [] },
-      
+
       // Reglas de validación - desde campo específico validation_rules
       validation: baseConfig.validation || { required: question.required || false },
-      
+
       // Configuración de apariencia
       appearance: baseConfig.appearance || {
         showNumbers: false,
@@ -562,7 +574,7 @@ export function AdvancedQuestionConfig({
         placeholder: "",
         helpText: "",
       },
-      
+
       // Configuración avanzada
       advanced: baseConfig.advanced || {
         allowMultiple: false,
@@ -577,11 +589,11 @@ export function AdvancedQuestionConfig({
       // Ensure likertScale always present with defaults
       likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
     }
-    
+
     console.log("✅ Configuración inicial creada:", initialConfig)
     return initialConfig
   })
-  
+
   const [activeTab, setActiveTab] = useState("validation")
 
   // Track saving state for each display condition by its index to avoid
@@ -594,10 +606,10 @@ export function AdvancedQuestionConfig({
   // Función para reconciliación automática de IDs obsoletos
   const reconcileObsoleteIds = useCallback(() => {
     if (!allQuestions || allQuestions.length === 0) return
-    
+
     console.log("🔄 Iniciando reconciliación automática de IDs obsoletos...")
     setIsReconciling(true)
-    
+
     setConfig((prev) => {
       const updatedConditions = (prev.displayLogic?.conditions || []).map((condition) => {
         // Si ya tiene un ID válido, no hacer nada
@@ -641,7 +653,7 @@ export function AdvancedQuestionConfig({
       }
       return prev;
     });
-    
+
     // Ocultar el indicador después de un breve delay
     setTimeout(() => setIsReconciling(false), 1000)
   }, [allQuestions])
@@ -652,10 +664,10 @@ export function AdvancedQuestionConfig({
   useEffect(() => {
     if (isOpen && question.config) {
       console.log("🔍 Modal abierto, configuración de pregunta recibida:", question.config)
-      
+
       // Actualizar la configuración cuando se abre el modal
       const baseConfig = question.config || {}
-      
+
       const updatedConfig = {
         ...baseConfig,
         displayLogic: baseConfig.displayLogic || { enabled: false, conditions: [] },
@@ -680,10 +692,10 @@ export function AdvancedQuestionConfig({
         fileUploadConfig: baseConfig.fileUploadConfig || { maxFiles: 1 },
         likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
       }
-      
+
       console.log("🔄 Configuración actualizada en useEffect:", updatedConfig)
       setConfig(updatedConfig)
-      
+
       // Ejecutar reconciliación automática después de actualizar la configuración
       setTimeout(() => {
         reconcileObsoleteIds()
@@ -758,16 +770,16 @@ export function AdvancedQuestionConfig({
 
   const addDisplayCondition = () => {
     console.log("➕ Agregando nueva condición de visualización")
-    
+
     const newCondition: DisplayCondition = {
       questionId: "",
       questionText: "", // Agregar campo para el texto
       operator: "equals",
       value: "",
     }
-    
+
     console.log("🆕 Nueva condición creada:", newCondition)
-    
+
     setConfig((prev) => {
       const updatedConfig = {
         ...prev,
@@ -776,7 +788,7 @@ export function AdvancedQuestionConfig({
           conditions: [...(prev.displayLogic?.conditions || []), newCondition],
         },
       }
-      
+
       console.log("📋 Configuración después de agregar condición:", updatedConfig)
       return updatedConfig
     })
@@ -784,7 +796,7 @@ export function AdvancedQuestionConfig({
 
   const updateDisplayCondition = (index: number, field: string, value: any) => {
     console.log("🔄 Actualizando condición", index, field, value)
-    
+
     setConfig((prev) => {
       const updatedConfig = {
         ...prev,
@@ -804,14 +816,14 @@ export function AdvancedQuestionConfig({
                   }
                 }
               }
-              
+
               return { ...condition, [field]: value }
             }
             return condition
           }),
         },
       }
-      
+
       console.log(`✅ Condición ${index} actualizada:`, updatedConfig.displayLogic?.conditions?.[index])
       console.log("💾 Configuración actualizada:", updatedConfig)
       return updatedConfig
@@ -871,7 +883,7 @@ export function AdvancedQuestionConfig({
 
   const handleSave = () => {
     console.log("💾 Guardando configuración de pregunta:", config)
-    
+
     // Validar y limpiar IDs inválidos antes de guardar
     const validatedConfig = {
       ...config,
@@ -929,7 +941,7 @@ export function AdvancedQuestionConfig({
     const finalConfig = {
       ...validatedConfig,
       likertScale: normalizedLikert
-      ,fileUploadConfig: normalizedFileUploadConfig
+      , fileUploadConfig: normalizedFileUploadConfig
     }
 
     console.log("✅ Configuración validada a guardar:", finalConfig)
@@ -1193,15 +1205,15 @@ export function AdvancedQuestionConfig({
                         </div>
                       )}
                     </div>
-                    
+
                     {config.displayLogic?.conditions?.map((condition, index) => {
                       console.log(`🔍 Buscando pregunta con ID: ${condition.questionId}`)
                       console.log(`📋 Todas las preguntas:`, allQuestions?.map((q: Question) => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
-                      
+
                       const sourceQuestion = allQuestions.find((q: Question) => q.id === condition.questionId)
-                      
+
                       console.log(`✅ Pregunta fuente encontrada:`, sourceQuestion)
-                      
+
                       // Use centralized map for per-condition saving state
                       const saving = Boolean(conditionSavingMap[index])
                       return (
@@ -1252,14 +1264,13 @@ export function AdvancedQuestionConfig({
                                       ))}
                                   </SelectContent>
                                 </Select>
-                                
+
                                 {/* Mostrar texto de la pregunta seleccionada */}
                                 {condition.questionText && (
-                                  <div className={`p-2 border rounded text-sm ${
-                                    sourceQuestion 
-                                      ? 'bg-green-50 border-green-200 text-green-700' 
+                                  <div className={`p-2 border rounded text-sm ${sourceQuestion
+                                      ? 'bg-green-50 border-green-200 text-green-700'
                                       : 'bg-yellow-50 border-yellow-200 text-yellow-700'
-                                  }`}>
+                                    }`}>
                                     <span className="font-medium">
                                       {sourceQuestion ? '✅ Pregunta encontrada:' : '⚠️ Pregunta guardada:'}
                                     </span> {condition.questionText}
@@ -1270,7 +1281,7 @@ export function AdvancedQuestionConfig({
                                     )}
                                   </div>
                                 )}
-                                
+
                                 {/* Indicador de error si no se encuentra la pregunta */}
                                 {!sourceQuestion && condition.questionId && (
                                   <div className="space-y-2">
@@ -1325,31 +1336,31 @@ export function AdvancedQuestionConfig({
                                       /* Para preguntas de opción múltiple y checkbox */
                                       <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
                                         <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-                                            {sourceQuestion.options.map((option: any, optionIndex: number) => {
-                                              const optLabel = stripHtmlTags(getOptionLabel(option))
-                                              const optValue = getOptionValue(option)
-                                              const checked = (condition.value || '').split(',').includes(optValue)
-                                              return (
-                                                <div key={optionIndex} className="flex items-center space-x-2">
-                                                  <Checkbox
-                                                    id={`option-${index}-${optionIndex}`}
-                                                    checked={checked}
-                                                    onCheckedChange={(checked) => {
-                                                      let newValues = condition.value ? condition.value.split(",") : []
-                                                      if (checked) {
-                                                        newValues.push(optValue)
-                                                      } else {
-                                                        newValues = newValues.filter((v) => v !== optValue)
-                                                      }
-                                                      updateDisplayCondition(index, "value", newValues.join(","))
-                                                    }}
-                                                  />
-                                                  <Label htmlFor={`option-${index}-${optionIndex}`} className="text-sm cursor-pointer">
-                                                    {optLabel}
-                                                  </Label>
-                                                </div>
-                                              )
-                                            })}
+                                        {sourceQuestion.options.map((option: any, optionIndex: number) => {
+                                          const optLabel = stripHtmlTags(getOptionLabel(option))
+                                          const optValue = getOptionValue(option)
+                                          const checked = (condition.value || '').split(',').includes(optValue)
+                                          return (
+                                            <div key={optionIndex} className="flex items-center space-x-2">
+                                              <Checkbox
+                                                id={`option-${index}-${optionIndex}`}
+                                                checked={checked}
+                                                onCheckedChange={(checked) => {
+                                                  let newValues = condition.value ? condition.value.split(",") : []
+                                                  if (checked) {
+                                                    newValues.push(optValue)
+                                                  } else {
+                                                    newValues = newValues.filter((v) => v !== optValue)
+                                                  }
+                                                  updateDisplayCondition(index, "value", newValues.join(","))
+                                                }}
+                                              />
+                                              <Label htmlFor={`option-${index}-${optionIndex}`} className="text-sm cursor-pointer">
+                                                {optLabel}
+                                              </Label>
+                                            </div>
+                                          )
+                                        })}
                                       </div>
                                     ) : (
                                       /* Para preguntas de texto o número */
@@ -1421,7 +1432,7 @@ export function AdvancedQuestionConfig({
             <CardContent className="space-y-4 ">
               {config.skipLogic?.enabled && (
                 <div className="space-y-4">
-                  
+
 
                   <SkipLogicVisualizer
                     question={question}
@@ -1468,7 +1479,7 @@ export function AdvancedQuestionConfig({
               <div className="space-y-4">
                 <h4 className="text-lg font-semibold text-blue-800">Configuración Básica de la Escala</h4>
                 <p className="text-sm text-blue-700">Define el rango y comportamiento básico de tu escala Likert</p>
-                
+
                 {/* Escalas Predefinidas */}
                 <div className="space-y-3">
                   <Label className="text-sm font-medium text-blue-800">Escalas Predefinidas</Label>
@@ -1496,11 +1507,10 @@ export function AdvancedQuestionConfig({
                             }
                           }))
                         }}
-                        className={`border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 ${
-                          config.likertScale?.min === scale.min && config.likertScale?.max === scale.max 
-                            ? 'bg-blue-100 border-blue-500' 
+                        className={`border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 ${config.likertScale?.min === scale.min && config.likertScale?.max === scale.max
+                            ? 'bg-blue-100 border-blue-500'
                             : ''
-                        }`}
+                          }`}
                       >
                         <div className="text-left">
                           <div className="font-medium">{scale.name}</div>
@@ -1535,7 +1545,7 @@ export function AdvancedQuestionConfig({
                       />
                       <p className="text-xs text-blue-600">Siempre debe ser 1 según requerimientos</p>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label>Valor máximo</Label>
                       <Input
@@ -1556,7 +1566,7 @@ export function AdvancedQuestionConfig({
                       />
                       <p className="text-xs text-blue-600">Puede ser 5, 7, 10, 100, etc.</p>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label>Tamaño del paso</Label>
                       <Input
@@ -1585,7 +1595,7 @@ export function AdvancedQuestionConfig({
               <div className="space-y-4">
                 <h4 className="text-lg font-semibold text-blue-800">Etiquetas Personalizables</h4>
                 <p className="text-sm text-blue-700">Personaliza las etiquetas de texto para los extremos y centro de tu escala</p>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-medium text-blue-800">Lado Izquierdo</Label>
@@ -1662,7 +1672,7 @@ export function AdvancedQuestionConfig({
               <div className="space-y-4">
                 <h4 className="text-lg font-semibold text-blue-800">Opción "No Sabe / No Responde"</h4>
                 <p className="text-sm text-blue-700">Incluye una opción adicional para respuestas no informativas</p>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <Checkbox
@@ -1684,7 +1694,7 @@ export function AdvancedQuestionConfig({
                       Incluir opción "0 = No Sabe / No Responde"
                     </Label>
                   </div>
-                  
+
                   {config.likertScale?.showZero && (
                     <div className="space-y-3">
                       <Label className="text-sm font-medium text-blue-800">Texto de la etiqueta</Label>
@@ -1729,7 +1739,7 @@ export function AdvancedQuestionConfig({
               <div className="space-y-4">
                 <h4 className="text-lg font-semibold text-blue-800">Apariencia y Comportamiento</h4>
                 <p className="text-sm text-blue-700">Personaliza la apariencia visual y el comportamiento de tu escala</p>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div className="space-y-3">
@@ -1764,7 +1774,7 @@ export function AdvancedQuestionConfig({
                     <div className="space-y-3">
                       <Label className="text-sm font-medium text-blue-800">Tipo de Control</Label>
                       <div className="text-sm text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
-                        <strong>Control Deslizante (Slider)</strong><br/>
+                        <strong>Control Deslizante (Slider)</strong><br />
                         Esta escala Likert se renderizará como un control deslizante para una experiencia de usuario óptima.
                       </div>
                     </div>
@@ -1776,9 +1786,9 @@ export function AdvancedQuestionConfig({
         </div>
       ),
     },
-    
+
   ]
-const visibleTabs = tabs.filter(tab => {
+  const visibleTabs = tabs.filter(tab => {
     if (tab.id === 'validation' && !inputBasedTypes.includes(question.type)) {
       return false;
     }
@@ -1816,11 +1826,10 @@ const visibleTabs = tabs.filter(tab => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 whitespace-nowrap ${
-                    activeTab === tab.id
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 whitespace-nowrap ${activeTab === tab.id
                       ? "bg-white text-black shadow-lg border border-gray-200"
                       : "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
-                  }`}
+                    }`}
                 >
                   <tab.icon className="h-4 w-4" />
                   {tab.label}
