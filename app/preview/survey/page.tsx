@@ -2777,9 +2777,25 @@ function PreviewSurveyPageContent() {
                 <p className="text-muted-foreground text-lg">No hay preguntas configuradas para esta sección.</p>
               </div>
             ) : (
-              currentSection.questions.map((question, qIndex) => (
-                renderQuestion(question, qIndex)
-              ))
+              currentSection.questions.map((question, qIndex) => {
+                // Console log para debugging - muestra la estructura completa de cada pregunta
+                console.log('📋 PREGUNTA DEBUG:', {
+                  index: qIndex,
+                  id: question.id,
+                  type: question.type,
+                  text: question.text,
+                  required: question.required,
+                  options: question.options,
+                  config: question.config,
+                  matrixRows: question.matrixRows,
+                  matrixCols: question.matrixCols,
+                  ratingScale: question.ratingScale,
+                  image: question.image,
+                  completeQuestion: question
+                });
+
+                return renderQuestion(question, qIndex);
+              })
             )}
           </div>
 
@@ -2828,7 +2844,7 @@ function PreviewSurveyPageContent() {
         </DialogContent>
       </Dialog>
 
-    </div>
+    </div >
   )
 }
 
