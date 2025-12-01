@@ -558,7 +558,7 @@ async function autoSaveQuestion(sectionId: string, question: Question, surveyId:
   };
   try {
     // Upsert (insert/update) en Supabase
-  const { error } = await (supabase as any).from('questions').upsert([questionData], { onConflict: 'id' });
+    const { error } = await (supabase as any).from('questions').upsert([questionData], { onConflict: 'id' });
     if (error) {
       console.error('autoSaveQuestion error:', error);
       return 'error';
@@ -599,9 +599,9 @@ const updateSkipLogicReferences = (sections: SurveySection[], oldId: string, new
       ...question,
       config: question.config
         ? {
-            ...question.config,
-            skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined,
-          }
+          ...question.config,
+          skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined,
+        }
         : undefined,
     })),
   }))
@@ -647,9 +647,9 @@ const updateSkipLogicReferencesWithQuestionMapping = (
       ...question,
       config: question.config
         ? {
-            ...question.config,
-            skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined,
-          }
+          ...question.config,
+          skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined,
+        }
         : undefined,
     })),
   }))
@@ -732,9 +732,9 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
       ...question,
       config: question.config
         ? {
-            ...question.config,
-            skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined,
-          }
+          ...question.config,
+          skipLogic: question.config.skipLogic ? { ...question.config.skipLogic } : undefined,
+        }
         : undefined,
     })),
   }))
@@ -1173,11 +1173,11 @@ export function CreateSurveyForProjectPageContent() {
             prevSections.map((s) =>
               s.id === sectionId
                 ? {
-                    ...s,
-                    questions: s.questions.map((q) =>
-                      q.id === newQuestion.id ? { ...q, id: data.id } : q
-                    ),
-                  }
+                  ...s,
+                  questions: s.questions.map((q) =>
+                    q.id === newQuestion.id ? { ...q, id: data.id } : q
+                  ),
+                }
                 : s
             )
           );
@@ -1214,9 +1214,9 @@ export function CreateSurveyForProjectPageContent() {
         prevSections.map((s) =>
           s.id === sectionId
             ? {
-                ...s,
-                questions: s.questions.map((q) => (q.id === questionId ? { ...q, [field]: value } : q)),
-              }
+              ...s,
+              questions: s.questions.map((q) => (q.id === questionId ? { ...q, [field]: value } : q)),
+            }
             : s,
         ),
       )
@@ -1283,19 +1283,19 @@ export function CreateSurveyForProjectPageContent() {
           ...question.config,
           skipLogic: question.config?.skipLogic
             ? {
-                enabled: question.config.skipLogic.enabled,
-                rules: question.config.skipLogic.rules.map((rule) => ({
-                  ...rule,
-                  questionId: question.id, // Add missing questionId
-                  condition: rule.value || "", // Add missing condition field
-                  enabled: rule.enabled !== false, // Ensure enabled is boolean
-                  operator: rule.operator || "equals",
-                  value: rule.value || "",
-                  targetSectionId: rule.targetSectionId || "",
-                  targetQuestionId: rule.targetQuestionId || undefined,
-                  targetQuestionText: rule.targetQuestionText || "",
-                })),
-              }
+              enabled: question.config.skipLogic.enabled,
+              rules: question.config.skipLogic.rules.map((rule) => ({
+                ...rule,
+                questionId: question.id, // Add missing questionId
+                condition: rule.value || "", // Add missing condition field
+                enabled: rule.enabled !== false, // Ensure enabled is boolean
+                operator: rule.operator || "equals",
+                value: rule.value || "",
+                targetSectionId: rule.targetSectionId || "",
+                targetQuestionId: rule.targetQuestionId || undefined,
+                targetQuestionText: rule.targetQuestionText || "",
+              })),
+            }
             : { enabled: false, rules: [] },
           displayLogic: question.config?.displayLogic || { enabled: false, conditions: [] },
           validation: question.config?.validation || { required: question.required || false },
@@ -1317,194 +1317,194 @@ export function CreateSurveyForProjectPageContent() {
     console.log("🔍 Datos de preview con lógica de salto:", previewData)
     localStorage.setItem("surveyPreviewData", JSON.stringify(previewData))
 
-    ;(async () => {
-      try {
-        // Ensure we have a surveyId to build a shareable link
-        let surveyIdToUse = currentSurveyId
-
-        if (!surveyIdToUse) {
-          // Create a minimal draft survey so the preview link can include an ID
-          if (!surveyTitle || !surveyTitle.trim()) {
-            toast({ title: 'Título requerido', description: 'Por favor ingresa un título antes de crear el link de preview', variant: 'destructive' })
-            return
-          }
-
-          const surveyDataForCreate = {
-            title: surveyTitle,
-            description: surveyDescription,
-            project_id: projectId,
-            created_by: user?.id || null,
-            status: 'draft',
-            settings: settings || {},
-          }
-
-          const { data: newSurvey, error: newSurveyError } = await supabase
-            .from('surveys')
-            .insert([surveyDataForCreate])
-            .select()
-            .single()
-
-          if (newSurveyError) {
-            console.error('Error creando draft para preview:', newSurveyError)
-            toast({ title: 'Error', description: 'No se pudo crear la encuesta para preview', variant: 'destructive' })
-            return
-          }
-
-          surveyIdToUse = newSurvey.id
-          setCurrentSurveyId(surveyIdToUse)
-          setIsEditMode(true)
-          toast({ title: 'Borrador creado', description: 'Se creó un borrador para generar el link de preview' })
-        }
-
-        // Build full URL and copy to clipboard
-        const origin = typeof window !== 'undefined' ? window.location.origin : ''
-        const previewUrl = `${origin}/preview/survey/${surveyIdToUse}`
+      ; (async () => {
         try {
-          await navigator.clipboard.writeText(previewUrl)
-          toast({ title: 'Link copiado', description: 'El link de preview fue copiado al porta-papeles' })
-          // Also set visible link for users to confirm
-          setGeneratedPreviewUrl(previewUrl)
+          // Ensure we have a surveyId to build a shareable link
+          let surveyIdToUse = currentSurveyId
+
+          if (!surveyIdToUse) {
+            // Create a minimal draft survey so the preview link can include an ID
+            if (!surveyTitle || !surveyTitle.trim()) {
+              toast({ title: 'Título requerido', description: 'Por favor ingresa un título antes de crear el link de preview', variant: 'destructive' })
+              return
+            }
+
+            const surveyDataForCreate = {
+              title: surveyTitle,
+              description: surveyDescription,
+              project_id: projectId,
+              created_by: user?.id || null,
+              status: 'draft',
+              settings: settings || {},
+            }
+
+            const { data: newSurvey, error: newSurveyError } = await supabase
+              .from('surveys')
+              .insert([surveyDataForCreate])
+              .select()
+              .single()
+
+            if (newSurveyError) {
+              console.error('Error creando draft para preview:', newSurveyError)
+              toast({ title: 'Error', description: 'No se pudo crear la encuesta para preview', variant: 'destructive' })
+              return
+            }
+
+            surveyIdToUse = newSurvey.id
+            setCurrentSurveyId(surveyIdToUse)
+            setIsEditMode(true)
+            toast({ title: 'Borrador creado', description: 'Se creó un borrador para generar el link de preview' })
+          }
+
+          // Build full URL and copy to clipboard
+          const origin = typeof window !== 'undefined' ? window.location.origin : ''
+          const previewUrl = `${origin}/preview/survey/${surveyIdToUse}`
+          try {
+            await navigator.clipboard.writeText(previewUrl)
+            toast({ title: 'Link copiado', description: 'El link de preview fue copiado al porta-papeles' })
+            // Also set visible link for users to confirm
+            setGeneratedPreviewUrl(previewUrl)
+          } catch (err) {
+            // Fallback: not allowed to write clipboard — show visible link so user can copy manually
+            console.warn('No se pudo copiar al portapapeles', err)
+            toast({ title: 'Link listo', description: 'No se pudo copiar automáticamente; usa el link mostrado debajo', variant: 'default' })
+            setGeneratedPreviewUrl(previewUrl)
+          }
+
+          // Open preview in a new tab/window regardless
+          window.open(previewUrl, '_blank')
         } catch (err) {
-          // Fallback: not allowed to write clipboard — show visible link so user can copy manually
-          console.warn('No se pudo copiar al portapapeles', err)
-          toast({ title: 'Link listo', description: 'No se pudo copiar automáticamente; usa el link mostrado debajo', variant: 'default' })
-          setGeneratedPreviewUrl(previewUrl)
+          console.error('Error preparando preview:', err)
+          toast({ title: 'Error', description: 'Error preparando el preview', variant: 'destructive' })
         }
-
-        // Open preview in a new tab/window regardless
-        window.open(previewUrl, '_blank')
-      } catch (err) {
-        console.error('Error preparando preview:', err)
-        toast({ title: 'Error', description: 'Error preparando el preview', variant: 'destructive' })
-      }
-    })()
+      })()
   }
 
- const handleSave = async () => {
-  if (!surveyTitle.trim()) {
-    toast({
-      title: "Error",
-      description: "El título de la encuesta es obligatorio",
-      variant: "destructive",
-    });
-    setActiveTab("details");
-    return;
-  }
-
-  setIsSaving(true);
-  setError(null);
-
-  try {
-    // Validar usuario
-    if (!user?.id) throw new Error("Usuario no autenticado");
-
-    // Derivar encuestadores asignados
-    const allAssignedSurveyors = Array.from(new Set(Object.values(assignedZoneSurveyors).flat())).filter(Boolean) as string[];
-
-    const surveyData = {
-      title: surveyTitle,
-      description: surveyDescription,
-      settings: settings || {},
-      start_date: startDate || null,
-      deadline: deadline || null,
-      project_id: projectId,
-      created_by: user.id,
-      status: surveyStatus,
-      assigned_surveyors: allAssignedSurveyors || [],
-      assigned_zones: settings.assignedZones || [],
-      logo: settings.branding?.logo || null,
-      theme_config: settings.theme || null,
-      security_config: settings.security || null,
-      notification_config: settings.notifications || null,
-      branding_config: settings.branding || null,
-    };
-
-    let surveyResult;
-    if (isEditMode && currentSurveyId) {
-      const { data, error: surveyError } = await supabase
-        .from("surveys")
-        .update(surveyData)
-        .eq("id", currentSurveyId)
-        .select()
-        .single();
-      if (surveyError) throw surveyError;
-      surveyResult = data;
-    } else {
-      const { data, error: surveyError } = await supabase
-        .from("surveys")
-        .insert([surveyData])
-        .select()
-        .single();
-      if (surveyError) throw surveyError;
-      surveyResult = data;
+  const handleSave = async () => {
+    if (!surveyTitle.trim()) {
+      toast({
+        title: "Error",
+        description: "El título de la encuesta es obligatorio",
+        variant: "destructive",
+      });
+      setActiveTab("details");
+      return;
     }
 
-    // Guardar asignaciones de encuestador-zona
-    const surveyId = surveyResult.id;
-    // 1. Eliminar asignaciones existentes
-    await supabase
-      .from("survey_surveyor_zones")
-      .delete()
-      .eq("survey_id", surveyId);
+    setIsSaving(true);
+    setError(null);
 
-    // 2. Insertar nuevas asignaciones
-    const surveyorZoneAssignmentsToInsert: {
-      survey_id: string;
-      surveyor_id: string;
-      zone_id: string;
-    }[] = [];
+    try {
+      // Validar usuario
+      if (!user?.id) throw new Error("Usuario no autenticado");
 
-    for (const zoneId of settings.assignedZones || []) {
-      const surveyorsForZone = assignedZoneSurveyors[zoneId] || [];
-      for (const surveyorId of surveyorsForZone) {
-        if (surveyorId && zoneId) {
-          surveyorZoneAssignmentsToInsert.push({
-            survey_id: surveyId,
-            surveyor_id: surveyorId,
-            zone_id: zoneId,
-          });
-        }
+      // Derivar encuestadores asignados
+      const allAssignedSurveyors = Array.from(new Set(Object.values(assignedZoneSurveyors).flat())).filter(Boolean) as string[];
+
+      const surveyData = {
+        title: surveyTitle,
+        description: surveyDescription,
+        settings: settings || {},
+        start_date: startDate || null,
+        deadline: deadline || null,
+        project_id: projectId,
+        created_by: user.id,
+        status: surveyStatus,
+        assigned_surveyors: allAssignedSurveyors || [],
+        assigned_zones: settings.assignedZones || [],
+        logo: settings.branding?.logo || null,
+        theme_config: settings.theme || null,
+        security_config: settings.security || null,
+        notification_config: settings.notifications || null,
+        branding_config: settings.branding || null,
+      };
+
+      let surveyResult;
+      if (isEditMode && currentSurveyId) {
+        const { data, error: surveyError } = await supabase
+          .from("surveys")
+          .update(surveyData)
+          .eq("id", currentSurveyId)
+          .select()
+          .single();
+        if (surveyError) throw surveyError;
+        surveyResult = data;
+      } else {
+        const { data, error: surveyError } = await supabase
+          .from("surveys")
+          .insert([surveyData])
+          .select()
+          .single();
+        if (surveyError) throw surveyError;
+        surveyResult = data;
       }
-    }
 
-    if (surveyorZoneAssignmentsToInsert.length > 0) {
-      const { error: insertAssignmentsError } = await supabase
+      // Guardar asignaciones de encuestador-zona
+      const surveyId = surveyResult.id;
+      // 1. Eliminar asignaciones existentes
+      await supabase
         .from("survey_surveyor_zones")
-        .insert(surveyorZoneAssignmentsToInsert);
-      if (insertAssignmentsError) {
-        throw new Error(`Error al asignar encuestadores a zonas: ${insertAssignmentsError.message}`);
+        .delete()
+        .eq("survey_id", surveyId);
+
+      // 2. Insertar nuevas asignaciones
+      const surveyorZoneAssignmentsToInsert: {
+        survey_id: string;
+        surveyor_id: string;
+        zone_id: string;
+      }[] = [];
+
+      for (const zoneId of settings.assignedZones || []) {
+        const surveyorsForZone = assignedZoneSurveyors[zoneId] || [];
+        for (const surveyorId of surveyorsForZone) {
+          if (surveyorId && zoneId) {
+            surveyorZoneAssignmentsToInsert.push({
+              survey_id: surveyId,
+              surveyor_id: surveyorId,
+              zone_id: zoneId,
+            });
+          }
+        }
       }
-    }
 
-    toast({
-      title: isEditMode ? "Encuesta actualizada exitosamente" : "Encuesta guardada exitosamente",
-      description: "La información general y las asignaciones han sido guardadas.",
-    });
+      if (surveyorZoneAssignmentsToInsert.length > 0) {
+        const { error: insertAssignmentsError } = await supabase
+          .from("survey_surveyor_zones")
+          .insert(surveyorZoneAssignmentsToInsert);
+        if (insertAssignmentsError) {
+          throw new Error(`Error al asignar encuestadores a zonas: ${insertAssignmentsError.message}`);
+        }
+      }
 
-    router.push(`/surveys?projectId=${projectId}`);
-  } catch (err: any) {
-    let errorMessage = "Error al guardar la encuesta";
-    if (err && typeof err === "object") {
-      if (err.message) errorMessage = err.message;
-      else if (err.error && err.error.message) errorMessage = err.error.message;
-      else if (err.error && typeof err.error === "string") errorMessage = err.error;
-      else if (err.details) errorMessage = err.details;
-      else if (err.hint) errorMessage = `Error: ${err.hint}`;
-      else if (err.code) errorMessage = `Error ${err.code}: ${err.message || "Error de base de datos"}`;
-      else errorMessage = `Error desconocido: ${JSON.stringify(err, null, 2)}`;
-    } else if (typeof err === "string") {
-      errorMessage = err;
+      toast({
+        title: isEditMode ? "Encuesta actualizada exitosamente" : "Encuesta guardada exitosamente",
+        description: "La información general y las asignaciones han sido guardadas.",
+      });
+
+      router.push(`/surveys?projectId=${projectId}`);
+    } catch (err: any) {
+      let errorMessage = "Error al guardar la encuesta";
+      if (err && typeof err === "object") {
+        if (err.message) errorMessage = err.message;
+        else if (err.error && err.error.message) errorMessage = err.error.message;
+        else if (err.error && typeof err.error === "string") errorMessage = err.error;
+        else if (err.details) errorMessage = err.details;
+        else if (err.hint) errorMessage = `Error: ${err.hint}`;
+        else if (err.code) errorMessage = `Error ${err.code}: ${err.message || "Error de base de datos"}`;
+        else errorMessage = `Error desconocido: ${JSON.stringify(err, null, 2)}`;
+      } else if (typeof err === "string") {
+        errorMessage = err;
+      }
+      setError(errorMessage);
+      toast({
+        title: "Error al guardar",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
-    setError(errorMessage);
-    toast({
-      title: "Error al guardar",
-      description: errorMessage,
-      variant: "destructive",
-    });
-  } finally {
-    setIsSaving(false);
-  }
-};
+  };
 
   const fetchSurveyForEdit = useCallback(async () => {
     if (!currentSurveyId) {
@@ -1823,21 +1823,13 @@ export function CreateSurveyForProjectPageContent() {
       if (currentSurveyId) {
         fetchSurveyForEdit()
       } else {
-        // Si es una encuesta nueva, crear la sección y pregunta de contacto por defecto
-        const contactQuestion: Question = {
-          id: generateUUID(),
-          type: "contact_info",
-          text: "Información de Contacto",
-          options: [],
-          required: true,
-          config: {},
-        };
+        // Si es una encuesta nueva, crear una sección vacía por defecto
         const defaultSection: SurveySection = {
           id: generateUUID(),
-          title: "Información del Encuestado",
-          description: "Por favor, proporciona tus datos de contacto.",
+          title: "Sección 1",
+          description: "",
           order_num: 0,
-          questions: [contactQuestion],
+          questions: [],
         };
         setSections([defaultSection]);
         setInitialLoading(false);
@@ -2179,11 +2171,11 @@ export function CreateSurveyForProjectPageContent() {
                           updatedSections = updatedSections.map((s) =>
                             s.id === section.id
                               ? {
-                                  ...s,
-                                  questions: s.questions.map((q) =>
-                                    q.id === question.id ? { ...q, id: data.id } : q
-                                  ),
-                                }
+                                ...s,
+                                questions: s.questions.map((q) =>
+                                  q.id === question.id ? { ...q, id: data.id } : q
+                                ),
+                              }
                               : s
                           );
                         }
@@ -2205,7 +2197,7 @@ export function CreateSurveyForProjectPageContent() {
                 <TabsTrigger value="details">Detalles</TabsTrigger>
                 <TabsTrigger value="questions">Preguntas</TabsTrigger>
                 <TabsTrigger value="assignment">Asignación</TabsTrigger>
-<TabsTrigger value="settings">Configuración</TabsTrigger>
+                <TabsTrigger value="settings">Configuración</TabsTrigger>
               </TabsList>
 
               <TabsContent value="details" className="space-y-6">
@@ -2298,7 +2290,7 @@ export function CreateSurveyForProjectPageContent() {
               </TabsContent>
 
               <TabsContent value="questions" className="space-y-6">
-               <Card>
+                <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
@@ -2543,7 +2535,7 @@ export function CreateSurveyForProjectPageContent() {
                   </CardContent>
                 </Card>
               </TabsContent>
-<TabsContent value="assignment" className="space-y-6">
+              <TabsContent value="assignment" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 space-y-4">
                     <Card>
@@ -2751,7 +2743,7 @@ export function CreateSurveyForProjectPageContent() {
                           <div className="relative w-full h-48 overflow-hidden rounded-b-lg z-0">
                             <MapWithDrawing
                               initialGeometry={displayedZoneGeometry}
-                              onGeometryChange={() => {}}
+                              onGeometryChange={() => { }}
                               readOnly={true}
                               key={`zone-preview-${selectedZoneForPreview}-${generateUUID()}`}
                             />
@@ -2771,8 +2763,8 @@ export function CreateSurveyForProjectPageContent() {
                   </Button>
                 </div>
               </TabsContent>
-<TabsContent value="settings" className="space-y-6">
-   <Card>
+              <TabsContent value="settings" className="space-y-6">
+                <Card>
                   <CardHeader>
                     <CardTitle>Configuración de la Encuesta</CardTitle>
                     <CardDescription>Administra la configuración de esta encuesta</CardDescription>
@@ -2877,7 +2869,7 @@ export function CreateSurveyForProjectPageContent() {
                         onCheckedChange={(checked) => handleBrandingChange("showLogo", checked)}
                       />
                     </div>
-                    
+
                   </CardContent>
                 </Card>
                 <div className="flex flex-col sm:flex-row justify-between gap-4 pt-6 border-t">
@@ -2901,8 +2893,8 @@ export function CreateSurveyForProjectPageContent() {
                     )}
                   </Button>
                 </div>
-    </TabsContent>
-               
+              </TabsContent>
+
             </Tabs>
           </div>
 

@@ -56,15 +56,7 @@ export default function CreateSurveyPage() {
       title: "Sección 1",
       description: "",
       order_num: 0,
-      questions: [
-        {
-          id: "1",
-          type: "contact_info",
-          text: "Información de Contacto",
-          options: [],
-          required: true,
-        },
-      ],
+      questions: [],
     },
   ])
   const [settings, setSettings] = useState({
@@ -108,11 +100,11 @@ export default function CreateSurveyPage() {
       sections.map((s) =>
         s.id === sectionId
           ? {
-              ...s,
-              questions: s.questions.map((q) =>
-                q.id === questionId ? { ...q, [field]: value } : q
-              ),
-            }
+            ...s,
+            questions: s.questions.map((q) =>
+              q.id === questionId ? { ...q, [field]: value } : q
+            ),
+          }
           : s
       )
     )
@@ -133,13 +125,13 @@ export default function CreateSurveyPage() {
       sections.map((s) =>
         s.id === sectionId
           ? {
-              ...s,
-              questions: s.questions.map((q) =>
-                q.id === questionId
-                  ? { ...q, options: [...q.options, `Opción ${q.options.length + 1}`] }
-                  : q
-              ),
-            }
+            ...s,
+            questions: s.questions.map((q) =>
+              q.id === questionId
+                ? { ...q, options: [...q.options, `Opción ${q.options.length + 1}`] }
+                : q
+            ),
+          }
           : s
       )
     )
@@ -150,18 +142,18 @@ export default function CreateSurveyPage() {
       sections.map((s) =>
         s.id === sectionId
           ? {
-              ...s,
-              questions: s.questions.map((q) =>
-                q.id === questionId
-                  ? {
-                      ...q,
-                      options: q.options.map((opt, idx) =>
-                        idx === optionIndex ? value : opt
-                      ),
-                    }
-                  : q
-              ),
-            }
+            ...s,
+            questions: s.questions.map((q) =>
+              q.id === questionId
+                ? {
+                  ...q,
+                  options: q.options.map((opt, idx) =>
+                    idx === optionIndex ? value : opt
+                  ),
+                }
+                : q
+            ),
+          }
           : s
       )
     )
@@ -172,16 +164,16 @@ export default function CreateSurveyPage() {
       sections.map((s) =>
         s.id === sectionId
           ? {
-              ...s,
-              questions: s.questions.map((q) =>
-                q.id === questionId
-                  ? {
-                      ...q,
-                      options: q.options.filter((_, idx) => idx !== optionIndex),
-                    }
-                  : q
-              ),
-            }
+            ...s,
+            questions: s.questions.map((q) =>
+              q.id === questionId
+                ? {
+                  ...q,
+                  options: q.options.filter((_, idx) => idx !== optionIndex),
+                }
+                : q
+            ),
+          }
           : s
       )
     )
@@ -289,7 +281,7 @@ export default function CreateSurveyPage() {
         })),
       }
 
-      
+
 
       // Enviar a la API
       const response = await fetch("/api/surveys", {
@@ -366,7 +358,7 @@ export default function CreateSurveyPage() {
           </div>
 
           {question.type === "contact_info" && (
-            <ContactInfoQuestion surveyId="123" onChange={() => {}} />
+            <ContactInfoQuestion surveyId="123" onChange={() => { }} />
           )}
 
           {(question.type === "multiple_choice" || question.type === "checkbox") && (
@@ -499,7 +491,7 @@ export default function CreateSurveyPage() {
               {sections.map((section) => (
                 <div key={section.id} className="space-y-4">
                   <div className="flex items-center justify-between">
-                    { (section as any).title_html ? (
+                    {(section as any).title_html ? (
                       <h3 className="text-lg font-medium" dangerouslySetInnerHTML={{ __html: (section as any).title_html }} />
                     ) : (
                       <h3 className="text-lg font-medium">{section.title}</h3>
@@ -530,12 +522,12 @@ export default function CreateSurveyPage() {
 
             <div className="flex flex-col sm:flex-row justify-between gap-2">
 
-            <SectionOrganizer
-              isOpen={showSectionOrganizer}
-              onClose={() => setShowSectionOrganizer(false)}
-              sections={sections}
-              onSectionsChange={setSections}
-            />
+              <SectionOrganizer
+                isOpen={showSectionOrganizer}
+                onClose={() => setShowSectionOrganizer(false)}
+                sections={sections}
+                onSectionsChange={setSections}
+              />
               <Button variant="outline" className="gap-2" onClick={() => setActiveTab("details")}>
                 <ArrowLeft className="h-4 w-4" /> Anterior
               </Button>
