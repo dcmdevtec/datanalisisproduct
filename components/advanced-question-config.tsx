@@ -231,12 +231,15 @@ function SkipLogicVisualizer({
   onDeleteRule: (index: number) => void;
   onUpdateRule?: (index: number, field: string, value: any) => void;
 }) {
-  // Estados para la nueva regla
+  // Estados para la nueva regla (solo para preguntas sin opciones)
   const [conditionOperator, setConditionOperator] = useState("equals");
   const [conditionValue, setConditionValue] = useState("");
   const [showDestSelectors, setShowDestSelectors] = useState(false);
   const [newSectionId, setNewSectionId] = useState("");
   const [newQuestionId, setNewQuestionId] = useState("");
+  
+  // Estados para almacenar el destino temporal de cada opción
+  const [optionDestinations, setOptionDestinations] = useState<Record<string, string>>({});
 
   // Opciones de operadores
   const operatorOptions = [
@@ -301,6 +304,10 @@ function SkipLogicVisualizer({
                     (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === String(option),
                   )
                   const existingRule = existingRuleIndex > -1 ? rules[existingRuleIndex] : null
+                  // Usar valor del estado local para cada opción
+                  const optionKey = String(option);
+                  const currentDestination = optionDestinations[optionKey] || existingRule?.targetSectionId || '';
+                  
                   return (
                     <tr key={optIdx} className="border-t">
                           <td className="py-3 align-top">
@@ -354,9 +361,17 @@ function SkipLogicVisualizer({
                       <td className="py-2">
                         <select
                           className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
-                          value={existingRule?.targetSectionId || ''}
+                          value={currentDestination}
                           onChange={(e) => {
                             const dest = e.target.value
+                            const optKey = String(option);
+                            
+                            // Actualizar estado local
+                            setOptionDestinations((prev) => ({
+                              ...prev,
+                              [optKey]: dest,
+                            }))
+                            
                             // Si existe regla, actualizar destino o eliminar si vacío
                             if (existingRuleIndex > -1) {
                               if (!dest) {

@@ -169,6 +169,7 @@ function PreviewSurveyPageContent() {
   const [answers, setAnswers] = useState<{ [questionId: string]: any }>({})
   const [submissionStatus, setSubmissionStatus] = useState<"idle" | "success" | "error">("idle")
   const [validationErrors, setValidationErrors] = useState<{ [questionId: string]: string }>({})
+  const [blockedQuestions, setBlockedQuestions] = useState<Set<string>>(new Set())
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
   const [skipLogicNotification, setSkipLogicNotification] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -641,6 +642,33 @@ function PreviewSurveyPageContent() {
     })
   }, [])
 
+  const handleStatusChange = useCallback((questionId: string, status: "valid" | "blocked" | "error") => {
+    setBlockedQuestions((prev) => {
+      const newBlocked = new Set(prev)
+      if (status === "blocked") {
+        newBlocked.add(questionId)
+      } else {
+        newBlocked.delete(questionId)
+      }
+      return newBlocked
+    })
+
+    // Si el estado cambia a bloqueado, agregar error de validación inmediatamente
+    if (status === "blocked") {
+      setValidationErrors((prev) => ({
+        ...prev,
+        [questionId]: "No puedes continuar porque ya has respondido esta encuesta con este documento."
+      }))
+    } else if (status === "valid") {
+      // Si es válido, limpiar error
+      setValidationErrors((prev) => {
+        const newErrors = { ...prev }
+        delete newErrors[questionId]
+        return newErrors
+      })
+    }
+  }, [])
+
   const currentSection = surveyData?.sections[currentSectionIndex]
   const totalSections = surveyData?.sections.length || 0
 
@@ -669,6 +697,15 @@ function PreviewSurveyPageContent() {
 
     let isValid = true;
     const newErrors: { [questionId: string]: string } = {};
+
+    // Check for blocked questions first
+    const blockedInCurrentSection = currentSection.questions.filter(q => blockedQuestions.has(q.id));
+    if (blockedInCurrentSection.length > 0) {
+      blockedInCurrentSection.forEach(q => {
+        newErrors[q.id] = "No puedes continuar porque ya has respondido esta encuesta con este documento.";
+      });
+      isValid = false;
+    }
 
     currentSection.questions.forEach((question) => {
       // Don't validate questions that are hidden by display logic
@@ -2128,6 +2165,7 @@ function PreviewSurveyPageContent() {
               <ContactInfoQuestion
                 surveyId={inferredSurveyId || ""}
                 onChange={(value) => handleAnswerChange(question.id, value)}
+                onStatusChange={(status) => handleStatusChange(question.id, status)}
                 config={question.config}
                 initialData={answers[question.id]}
               />

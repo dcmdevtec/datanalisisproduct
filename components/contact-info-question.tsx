@@ -23,6 +23,7 @@ interface ContactInfoQuestionProps {
     address?: string
     fullName?: string
   }) => void
+  onStatusChange?: (status: "valid" | "blocked" | "error") => void
   config?: {
     includeFirstName?: boolean
     includeLastName?: boolean
@@ -47,7 +48,7 @@ interface ContactInfoQuestionProps {
 
 type VerificationStatus = "idle" | "verifying" | "verified" | "error" | "already_exists"
 
-export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialData }: ContactInfoQuestionProps) {
+export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config = {}, initialData }: ContactInfoQuestionProps) {
   const {
     includeFirstName = true,
     includeLastName = true,
@@ -173,6 +174,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
     if (!includeDocument || !documentLengthIsValid) {
       setStatus("idle")
       setMessage("")
+      if (onStatusChange) onStatusChange("valid") // Reset status if input is cleared/invalid length
       return
     }
 
@@ -209,38 +211,48 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
         }
 
         if (response.ok) {
-          setStatus("verified")
-          setMessage((jsonBody && (jsonBody.message || jsonBody.msg)) || "Puede continuar.")
-          
-          // Auto-fill contact info from prefilled_data if available
-          if (jsonBody?.prefilled_data) {
-            const prefilled = jsonBody.prefilled_data
-            
-            // Parse full_name into firstName and lastName if available
-            if (prefilled.full_name && !firstName && !lastName) {
-              const parts = prefilled.full_name.trim().split(' ')
-              if (parts.length > 0) {
-                setFirstName(parts[0])
-                if (parts.length > 1) {
-                  setLastName(parts.slice(1).join(' '))
+          // Check allowed_to_proceed flag from backend
+          if (jsonBody?.allowed_to_proceed === false) {
+            setStatus("already_exists")
+            setMessage((jsonBody && (jsonBody.message || jsonBody.msg)) || "Este número de documento ya ha completado la encuesta.")
+            if (onStatusChange) onStatusChange("blocked")
+          } else {
+            setStatus("verified")
+            setMessage((jsonBody && (jsonBody.message || jsonBody.msg)) || "Puede continuar.")
+            if (onStatusChange) onStatusChange("valid")
+
+            // Auto-fill contact info from prefilled_data if available
+            if (jsonBody?.prefilled_data) {
+              const prefilled = jsonBody.prefilled_data
+
+              // Parse full_name into firstName and lastName if available
+              if (prefilled.full_name && !firstName && !lastName) {
+                const parts = prefilled.full_name.trim().split(' ')
+                if (parts.length > 0) {
+                  setFirstName(parts[0])
+                  if (parts.length > 1) {
+                    setLastName(parts.slice(1).join(' '))
+                  }
                 }
               }
+
+              // Auto-fill other contact fields if empty
+              if (prefilled.email && !email) setEmail(prefilled.email)
+              if (prefilled.phone && !phone) setPhone(prefilled.phone)
+              if (prefilled.address && !address) setAddress(prefilled.address)
+              if (prefilled.company && !company) setCompany(prefilled.company)
             }
-            
-            // Auto-fill other contact fields if empty
-            if (prefilled.email && !email) setEmail(prefilled.email)
-            if (prefilled.phone && !phone) setPhone(prefilled.phone)
-            if (prefilled.address && !address) setAddress(prefilled.address)
-            if (prefilled.company && !company) setCompany(prefilled.company)
           }
         } else {
           setStatus("already_exists")
           setMessage((jsonBody && (jsonBody.error || jsonBody.message)) || "Este número de documento ya ha completado la encuesta.")
+          if (onStatusChange) onStatusChange("blocked")
         }
       } catch (error) {
         setStatus("error")
         setMessage("No se pudo verificar el documento. Intente de nuevo.")
         console.error("Error verifying document:", error)
+        if (onStatusChange) onStatusChange("error")
       }
     }
 

@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
       device_info: device_info || null,
       status: "completed",
       completed_at: new Date().toISOString(),
+      respondent_document_type: respondent_document_type || null,
+      respondent_document_number: respondent_document_number || null,
+      respondent_name: respondent_name || null,
     }
 
     // ---------------------------------------------------------------
