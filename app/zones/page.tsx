@@ -39,32 +39,50 @@ export default function ZonesPage() {
   const mapRefs = useRef<{ [key: string]: any }>({})
 
   const fetchZones = async () => {
-
-
     try {
+      console.log("🔵 Fetching zones from /api/zones...")
       const response = await fetch("/api/zones")
 
       if (!response.ok) {
-        console.error("Response not OK:", response.status, response.statusText)
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+        const errorText = response.statusText || "Error desconocido"
+        console.error("❌ Response not OK:", response.status, errorText)
+
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (parseError) {
+          console.error("❌ Could not parse error response:", parseError)
+          throw new Error(`Error del servidor (${response.status}): ${errorText}`)
+        }
+
+        const errorMessage = errorData.details || errorData.error || `HTTP error! status: ${response.status}`
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
-      
+      console.log("✅ Zones fetched successfully:", data.length, "zones")
+
       setZones(data)
+      setError(null)
     } catch (error: any) {
-      console.error("Error fetching zones:", error.message)
+      console.error("❌ Error fetching zones:", error.message)
+      setError(error.message || "Error al cargar las zonas")
       setZones([])
+
+      toast({
+        title: "Error al cargar zonas",
+        description: error.message || "No se pudieron cargar las zonas. Por favor, intenta de nuevo.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    
-      fetchZones()
-    
+
+    fetchZones()
+
   }, [user, authLoading, router, toast])
 
   // Invalidate map sizes when modal closes or zones update
@@ -208,9 +226,9 @@ export default function ZonesPage() {
       zone.description?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  
 
- 
+
+
 
   return (
     <DashboardLayout>
@@ -287,7 +305,7 @@ export default function ZonesPage() {
                             else delete mapRefs.current[zone.id]
                           }}
                           initialGeometry={zone.geometry}
-                          onGeometryChange={() => {}}
+                          onGeometryChange={() => { }}
                           readOnly={true}
                         />
                         <div className="absolute top-2 right-2 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">

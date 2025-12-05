@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import dynamic from "next/dynamic"
 import type { Zone } from "@/types/zone"
 import type { GeoJSON } from "geojson"
+import { NeighborhoodCombobox } from "@/components/neighborhood-combobox"
 
 const MapWithDrawing = dynamic(() => import("./map-with-drawing"), {
   ssr: false,
@@ -42,67 +43,83 @@ type CreateEditZoneModalProps = {
 
 export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: CreateEditZoneModalProps) {
   const { toast } = useToast()
+
+  // Estados básicos del formulario
   const [name, setName] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [geometry, setGeometry] = React.useState<GeoJSON | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
-  const [showMap, setShowMap] = React.useState(false)
   const [isCapturingSnapshot, setIsCapturingSnapshot] = React.useState(false)
   const [mapSnapshot, setMapSnapshot] = React.useState<string | null>(null)
+
+  // Estados del modo de creación
   const [mapMode, setMapMode] = React.useState<"neighborhoods" | "manual">("neighborhoods")
   const [selectedNeighborhoods, setSelectedNeighborhoods] = React.useState<string[]>([])
   const [zoneColor, setZoneColor] = React.useState("#3388ff")
+
+  // Control de montaje del mapa
+  const [showMap, setShowMap] = React.useState(false)
+  const [mapKey, setMapKey] = React.useState(0)
+
+  // Referencias
   const mapRef = React.useRef<any>(null)
   const mapContainerRef = React.useRef<HTMLDivElement>(null)
+  const isInitializedRef = React.useRef(false)
 
   const generateZoneColor = React.useCallback(() => {
     const colors = [
-      "#3388ff",
-      "#ff6b6b",
-      "#4ecdc4",
-      "#45b7d1",
-      "#96ceb4",
-      "#feca57",
-      "#ff9ff3",
-      "#54a0ff",
-      "#5f27cd",
-      "#00d2d3",
+      "#3388ff", "#ff6b6b", "#4ecdc4", "#45b7d1", "#96ceb4",
+      "#feca57", "#ff9ff3", "#54a0ff", "#5f27cd", "#00d2d3",
     ]
     return colors[Math.floor(Math.random() * colors.length)]
   }, [])
 
-  // Reset form cuando se abre/cierra el modal
+  // Inicializar formulario cuando se abre el modal
   React.useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !isInitializedRef.current) {
+      isInitializedRef.current = true
+
+      // Cargar datos iniciales
       setName(initialZone?.name || "")
       setDescription(initialZone?.description || "")
       setGeometry(initialZone?.geometry || null)
       setMapSnapshot(initialZone?.map_snapshot || null)
-      setSelectedNeighborhoods([])
-      setZoneColor(initialZone ? "#3388ff" : generateZoneColor())
-      // Retrasar el montaje del mapa para evitar conflictos
-      const timer = setTimeout(() => {
+      setSelectedNeighborhoods((initialZone as any)?.selected_neighborhoods || [])
+      setZoneColor(initialZone ? ((initialZone as any)?.zone_color || "#3388ff") : generateZoneColor())
+
+      // Determinar modo inicial basado en los datos existentes
+      if (initialZone?.geometry) {
+        // Si tiene geometry, verificar si viene de barrios seleccionados
+        const hasNeighborhoods = (initialZone as any)?.selected_neighborhoods?.length > 0
+        setMapMode(hasNeighborhoods ? "neighborhoods" : "manual")
+      }
+
+      // Delay para montar el mapa correctamente
+      setTimeout(() => {
         setShowMap(true)
       }, 300)
-      return () => clearTimeout(timer)
-    } else {
-      // Primero ocultar el mapa, luego reset
+    }
+
+    if (!isOpen) {
+      // Reiniciar cuando se cierra
+      isInitializedRef.current = false
       setShowMap(false)
-      const resetTimer = setTimeout(() => {
+
+      setTimeout(() => {
         setName("")
         setDescription("")
         setGeometry(null)
         setMapSnapshot(null)
         setSelectedNeighborhoods([])
         setMapMode("neighborhoods")
-      }, 100)
-      return () => clearTimeout(resetTimer)
+        setMapKey(prev => prev + 1)
+      }, 200)
     }
   }, [isOpen, initialZone, generateZoneColor])
 
-  // Invalidate map size when it becomes visible
+  // Invalidar tamaño del mapa cuando sea visible
   React.useEffect(() => {
-    if (showMap && mapRef.current) {
+    if (showMap && mapRef.current?.invalidateMapSize) {
       const timer = setTimeout(() => {
         mapRef.current.invalidateMapSize()
       }, 100)
@@ -110,8 +127,59 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
     }
   }, [showMap])
 
+  // Cambiar modo sin recargar el mapa innecesariamente
+  const handleModeChange = React.useCallback((mode: "neighborhoods" | "manual") => {
+    if (mode === mapMode) return
+
+    setMapMode(mode)
+    setMapKey(prev => prev + 1)
+
+    // Limpiar datos del modo anterior
+    if (mode === "manual") {
+      setSelectedNeighborhoods([])
+    } else {
+      setGeometry(null)
+    }
+  }, [mapMode])
+
+  // Handler para cambio de geometría desde el mapa de dibujo
+  const handleGeometryChange = React.useCallback((newGeometry: GeoJSON | null) => {
+    console.log("📍 Geometry changed:", newGeometry ? "Valid geometry" : "null")
+    setGeometry(newGeometry)
+  }, [])
+
+  // Handler para selección de barrios
+  const handleNeighborhoodSelect = React.useCallback((neighborhoods: string[]) => {
+    console.log("🏘️ Neighborhoods selected:", neighborhoods)
+    setSelectedNeighborhoods(neighborhoods)
+  }, [])
+
+  // Remover barrio individual
+  const handleRemoveNeighborhood = React.useCallback((neighborhoodToRemove: string) => {
+    setSelectedNeighborhoods(prev => prev.filter(n => n !== neighborhoodToRemove))
+  }, [])
+
   const captureMapSnapshot = async () => {
-    if (!mapContainerRef.current || !geometry) {
+    if (!mapContainerRef.current) {
+      toast({
+        title: "Error",
+        description: "No se puede capturar el mapa en este momento.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar que haya algo para capturar
+    if (mapMode === "neighborhoods" && selectedNeighborhoods.length === 0) {
+      toast({
+        title: "Error",
+        description: "Primero debes seleccionar al menos un barrio.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (mapMode === "manual" && !geometry) {
       toast({
         title: "Error",
         description: "Primero debes dibujar una zona en el mapa.",
@@ -122,10 +190,8 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
 
     setIsCapturingSnapshot(true)
     try {
-      // Dynamic import to avoid SSR issues
       const html2canvas = (await import("html2canvas")).default
 
-      // Wait a bit for the map to fully render
       await new Promise((resolve) => setTimeout(resolve, 500))
 
       const canvas = await html2canvas(mapContainerRef.current, {
@@ -138,9 +204,6 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
       })
 
       const base64Image = canvas.toDataURL("image/jpeg", 0.8)
-
-      // Subir a Storage inmediatamente para mostrar preview (opcional) o solo guardar en estado
-      // Para optimizar, subiremos al guardar, pero aquí podemos mostrar preview con base64
       setMapSnapshot(base64Image)
 
       toast({
@@ -160,6 +223,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
   }
 
   const handleSave = async () => {
+    // Validación del nombre
     if (!name.trim()) {
       toast({
         title: "Error",
@@ -169,36 +233,72 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
       return
     }
 
+    // Validación según el modo
+    if (mapMode === "neighborhoods" && selectedNeighborhoods.length === 0) {
+      toast({
+        title: "Error",
+        description: "Debes seleccionar al menos un barrio para crear la zona.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (mapMode === "manual" && !geometry) {
+      toast({
+        title: "Error",
+        description: "Debes dibujar la zona en el mapa.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
+      let finalGeometry = geometry
       let finalSnapshotUrl = mapSnapshot
 
-      // Si tenemos un snapshot en base64 (nuevo o actualizado), subirlo a Storage
+      // Si estamos en modo barrios, obtener la geometría del mapa
+      if (mapMode === "neighborhoods" && mapRef.current?.getGeometryFromNeighborhoods) {
+        const neighborhoodsGeometry = mapRef.current.getGeometryFromNeighborhoods()
+        if (neighborhoodsGeometry) {
+          finalGeometry = neighborhoodsGeometry
+          console.log("✅ Geometry extracted from neighborhoods:", finalGeometry)
+        }
+      }
+
+      // Validar que tenemos geometría final
+      if (!finalGeometry) {
+        toast({
+          title: "Error",
+          description: "No se pudo obtener la geometría de la zona. Intenta de nuevo.",
+          variant: "destructive",
+        })
+        setIsSaving(false)
+        return
+      }
+
+      // Subir snapshot a Storage si es base64
       if (mapSnapshot && mapSnapshot.startsWith('data:image/')) {
         try {
           const { migrateBase64ToStorage, generateUniqueFileName } = await import("@/lib/supabase-storage")
-
           const fileName = initialZone?.id
             ? `zone_${initialZone.id}_${Date.now()}.jpg`
             : generateUniqueFileName("zone_map", "jpg")
-
           finalSnapshotUrl = await migrateBase64ToStorage("zone-maps", fileName, mapSnapshot)
+          console.log("✅ Snapshot uploaded:", finalSnapshotUrl)
         } catch (uploadError) {
           console.error("Error uploading map snapshot:", uploadError)
-          // Fallback: intentar guardar sin snapshot o mostrar error
           toast({
             title: "Advertencia",
             description: "No se pudo subir la imagen del mapa, se guardará sin ella.",
-            variant: "destructive"
           })
           finalSnapshotUrl = null
         }
       } else if (!mapSnapshot && mapContainerRef.current) {
-        // Intentar capturar y subir si no hay snapshot
+        // Auto-capturar si no hay snapshot
         try {
           const html2canvas = (await import("html2canvas")).default
           await new Promise((resolve) => setTimeout(resolve, 300))
-
           const canvas = await html2canvas(mapContainerRef.current, {
             useCORS: true,
             allowTaint: true,
@@ -207,31 +307,42 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
             height: 300,
             backgroundColor: "#f8f9fa",
           })
-
           const base64 = canvas.toDataURL("image/jpeg", 0.8)
           const { migrateBase64ToStorage, generateUniqueFileName } = await import("@/lib/supabase-storage")
           const fileName = generateUniqueFileName("zone_map", "jpg")
           finalSnapshotUrl = await migrateBase64ToStorage("zone-maps", fileName, base64)
+          console.log("✅ Auto-captured snapshot uploaded:", finalSnapshotUrl)
         } catch (error) {
           console.warn("Auto-capture and upload failed:", error)
         }
       }
 
       const zoneData: Partial<Zone> = {
-        name,
-        description,
-        geometry,
-        map_snapshot: finalSnapshotUrl, // URL de Storage
+        name: name.trim(),
+        description: description.trim(),
+        geometry: finalGeometry,
+        map_snapshot: finalSnapshotUrl,
         zone_color: zoneColor,
-        selected_neighborhoods: selectedNeighborhoods,
-      }
+        selected_neighborhoods: mapMode === "neighborhoods" ? selectedNeighborhoods : [],
+      } as any
 
       if (initialZone?.id) {
         zoneData.id = initialZone.id
       }
 
+      console.log("💾 Saving zone data:", {
+        name: zoneData.name,
+        hasGeometry: !!zoneData.geometry,
+        hasSnapshot: !!zoneData.map_snapshot,
+        neighborhoods: (zoneData as any).selected_neighborhoods?.length || 0,
+        mode: mapMode,
+      })
+
       await onSave(zoneData)
       onClose()
+
+      // Limpiar estados
+      isInitializedRef.current = false
     } catch (error: any) {
       console.error("Error saving zone:", error)
       toast({
@@ -246,8 +357,18 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
 
   const handleClose = () => {
     setShowMap(false)
+    isInitializedRef.current = false
     onClose()
   }
+
+  // Prevenir que el input de nombre cause re-renders del mapa
+  const handleNameChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setName(e.target.value)
+  }, [])
+
+  const handleDescriptionChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDescription(e.target.value)
+  }, [])
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -255,27 +376,33 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
         <DialogHeader>
           <DialogTitle>{initialZone ? "Editar Zona" : "Crear Nueva Zona"}</DialogTitle>
         </DialogHeader>
+
         <div className="grid gap-4 py-4">
+          {/* Nombre de la zona */}
           <div className="space-y-2">
             <Label htmlFor="name">Nombre de la Zona *</Label>
             <Input
               id="name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={handleNameChange}
               placeholder="Ej: Zona Industrial Sur"
+              autoComplete="off"
             />
           </div>
+
+          {/* Descripción */}
           <div className="space-y-2">
             <Label htmlFor="description">Descripción</Label>
             <Textarea
               id="description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={handleDescriptionChange}
               placeholder="Descripción de la zona geográfica"
               rows={3}
             />
           </div>
 
+          {/* Modo de Creación */}
           <div className="space-y-2">
             <Label>Modo de Creación</Label>
             <div className="flex gap-2">
@@ -283,7 +410,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
                 type="button"
                 variant={mapMode === "neighborhoods" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setMapMode("neighborhoods")}
+                onClick={() => handleModeChange("neighborhoods")}
                 className="gap-2"
               >
                 <Map className="h-4 w-4" />
@@ -293,7 +420,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
                 type="button"
                 variant={mapMode === "manual" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setMapMode("manual")}
+                onClick={() => handleModeChange("manual")}
                 className="gap-2"
               >
                 <Pencil className="h-4 w-4" />
@@ -302,23 +429,43 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
             </div>
           </div>
 
+          {/* Buscador de Barrios */}
+          {mapMode === "neighborhoods" && (
+            <div className="space-y-2">
+              <Label>Buscar Barrio</Label>
+              <NeighborhoodCombobox
+                selectedNeighborhoods={selectedNeighborhoods}
+                onNeighborhoodSelect={handleNeighborhoodSelect}
+                placeholder="Buscar barrio por nombre..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Busca y selecciona barrios por nombre, o haz click directamente en el mapa
+              </p>
+            </div>
+          )}
+
+          {/* Barrios Seleccionados */}
           {mapMode === "neighborhoods" && selectedNeighborhoods.length > 0 && (
             <div className="space-y-2">
-              <Label>Barrios Seleccionados</Label>
-              <div className="flex flex-wrap gap-2">
+              <Label>Barrios Seleccionados ({selectedNeighborhoods.length})</Label>
+              <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 border rounded-md bg-muted/30">
                 {selectedNeighborhoods.map((neighborhood) => (
                   <Badge
                     key={neighborhood}
                     variant="secondary"
-                    style={{ backgroundColor: zoneColor + "20", color: zoneColor, position: 'relative', paddingRight: '1.5rem' }}
+                    className="relative pr-6"
+                    style={{
+                      backgroundColor: `${zoneColor}20`,
+                      color: zoneColor,
+                      borderColor: zoneColor
+                    }}
                   >
                     {neighborhood}
                     <button
                       type="button"
                       aria-label={`Eliminar ${neighborhood}`}
-                      onClick={() => setSelectedNeighborhoods(selectedNeighborhoods.filter((n) => n !== neighborhood))}
-                      className="absolute top-0 right-0 px-1 text-xs text-gray-400 hover:text-red-500 focus:outline-none"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+                      onClick={() => handleRemoveNeighborhood(neighborhood)}
+                      className="absolute top-0 right-0 h-full px-1.5 text-xs hover:text-red-500 focus:outline-none"
                     >
                       ×
                     </button>
@@ -328,39 +475,47 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
             </div>
           )}
 
+          {/* Mapa */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>{mapMode === "neighborhoods" ? "Seleccionar Barrios" : "Dibujar en el mapa"}</Label>
+              <Label>
+                {mapMode === "neighborhoods" ? "Seleccionar Barrios" : "Dibujar en el mapa"}
+              </Label>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={captureMapSnapshot}
-                disabled={isCapturingSnapshot || !geometry}
-                className="gap-2 bg-transparent"
+                disabled={isCapturingSnapshot || (mapMode === "neighborhoods" ? selectedNeighborhoods.length === 0 : !geometry)}
+                className="gap-2"
               >
-                {isCapturingSnapshot ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                {isCapturingSnapshot ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
                 {isCapturingSnapshot ? "Capturando..." : "Capturar Vista"}
               </Button>
             </div>
+
             <div className="h-[350px] w-full rounded-md overflow-hidden border" ref={mapContainerRef}>
               {showMap ? (
                 mapMode === "neighborhoods" ? (
                   <MapWithChoropleth
+                    key={`choropleth-${mapKey}`}
                     ref={mapRef}
-                    key={`choropleth-map-${initialZone?.id || "new"}-${crypto.randomUUID()}`}
                     initialGeometry={geometry}
-                    onGeometryChange={setGeometry}
+                    onGeometryChange={handleGeometryChange}
                     zoneColor={zoneColor}
                     selectedNeighborhoods={selectedNeighborhoods}
-                    onNeighborhoodSelect={setSelectedNeighborhoods}
+                    onNeighborhoodSelect={handleNeighborhoodSelect}
                   />
                 ) : (
                   <MapWithDrawing
+                    key={`manual-${mapKey}`}
                     ref={mapRef}
-                    key={`manual-map-${initialZone?.id || "new"}-${crypto.randomUUID()}`}
                     initialGeometry={geometry}
-                    onGeometryChange={setGeometry}
+                    onGeometryChange={handleGeometryChange}
                   />
                 )
               ) : (
@@ -370,18 +525,21 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
                 </div>
               )}
             </div>
+
             <p className="text-sm text-muted-foreground">
               {mapMode === "neighborhoods"
                 ? "Haz clic en los barrios para seleccionarlos y formar tu zona. Los barrios seleccionados se mostrarán con el color asignado."
                 : "Usa las herramientas de dibujo para definir el área o la ruta de la zona."}{" "}
               Luego captura la vista para guardarla.
             </p>
+
+            {/* Preview del snapshot */}
             {mapSnapshot && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Vista capturada:</Label>
                 <div className="border rounded-md p-2 bg-muted/50">
                   <img
-                    src={mapSnapshot || "/placeholder.svg"}
+                    src={mapSnapshot}
                     alt="Vista capturada del mapa"
                     className="w-full h-32 object-cover rounded"
                   />
@@ -390,13 +548,20 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
             )}
           </div>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={isSaving}>
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {initialZone ? "Guardar Cambios" : "Crear Zona"}
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              initialZone ? "Guardar Cambios" : "Crear Zona"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
