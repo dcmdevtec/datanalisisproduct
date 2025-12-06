@@ -15,7 +15,7 @@ ENV NEXT_CACHE_DISABLED=1
 COPY package.json package-lock.json ./
 
 # Instalar TODAS las dependencias
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 
