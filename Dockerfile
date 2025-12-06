@@ -26,7 +26,7 @@ RUN if [ -f .env.production ]; then echo ".env.production found"; else echo "" >
 RUN npm run build:safe
 
 # Eliminar dependencias de desarrollo
-RUN npm prune --production --legacy-peer-deps
+RUN npm prune --production
 
 
 # ============================
