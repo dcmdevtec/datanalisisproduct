@@ -22,6 +22,7 @@ import { CompactRichTextEditor } from "@/components/ui/compact-rich-text-editor"
 import { Badge } from "@/components/ui/badge"
 import { useDebounce } from "use-debounce"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
+import { MoveQuestionModal } from "@/components/move-question-modal"
 import type { SurveySection } from "@/types-updated"
 import { supabase } from "@/lib/supabase-browser";
 import type { Question } from "@/types-updated";
@@ -132,6 +133,7 @@ export function QuestionEditor({
   onRemoveQuestion,
   onUpdateQuestion,
   onDuplicateQuestion,
+  onMoveQuestion,
   allSections,
   qIndex,
 }: QuestionEditorProps) {
@@ -2037,82 +2039,19 @@ export function QuestionEditor({
       </CardContent>
 
       {/* Modal para mover pregunta */}
-      <Dialog open={showMoveModal} onOpenChange={setShowMoveModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Mover Pregunta</DialogTitle>
-            <DialogDescription>
-              Selecciona la sección a donde quieres mover esta pregunta
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Pregunta actual:</Label>
-              <div className="p-3 bg-muted/50 rounded-lg">
-                <p className="text-sm font-medium">
-                  {question.text_html?.replace(/<[^>]*>/g, "") || question.text || "Sin título"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Tipo: {question.type}
-                </p>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Mover a sección:</Label>
-              <Select onValueChange={(value) => {
-                if (value && value !== sectionId) {
-                  // Crear una función para mover la pregunta
-                  const moveQuestion = () => {
-                    const fromSection = allSections.find(s => s.id === sectionId)
-                    const toSection = allSections.find(s => s.id === value)
-                    
-                    if (fromSection && toSection && onUpdateQuestion) {
-                      // Remover de la sección actual
-                      onRemoveQuestion(sectionId, question.id)
-                      
-                      // Crear nueva pregunta en la sección destino
-                      const newQuestion = { ...question, section_id: value }
-                      
-                      // Usar toast para confirmar
-                      console.log(`Pregunta movida de "${fromSection.title}" a "${toSection.title}"`)
-                      
-                      setShowMoveModal(false)
-                    }
-                  }
-                  
-                  moveQuestion()
-                }
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar sección destino" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allSections
-                    .filter(section => section.id !== sectionId)
-                    .map(section => (
-                      <SelectItem key={section.id} value={section.id}>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {section.questions.length}
-                          </Badge>
-                          <span>{section.title || `Sección ${allSections.indexOf(section) + 1}`}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowMoveModal(false)}>
-              Cancelar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MoveQuestionModal
+        isOpen={showMoveModal}
+        onClose={() => setShowMoveModal(false)}
+        question={question}
+        currentSectionId={sectionId}
+        sections={allSections}
+        onMoveQuestion={(questionId, fromSectionId, toSectionId, targetIndex) => {
+          if (onMoveQuestion) {
+            onMoveQuestion(questionId, fromSectionId, toSectionId, targetIndex)
+          }
+          setShowMoveModal(false)
+        }}
+      />
     </Card>
   )
 }

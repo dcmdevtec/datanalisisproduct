@@ -220,6 +220,7 @@ interface SortableSectionProps {
   onRemoveQuestion: (sectionId: string, questionId: string) => void
   onUpdateQuestion: (sectionId: string, questionId: string, field: keyof Question, value: any) => void
   onDuplicateQuestion: (sectionId: string, questionId: string) => void
+  onMoveQuestion?: (questionId: string, fromSectionId: string, toSectionId: string, newIndex?: number) => void
   allSections: SurveySection[] // Pass all sections for skip logic targets
 }
 
@@ -232,6 +233,7 @@ function SortableSection({
   onRemoveQuestion,
   onUpdateQuestion,
   onDuplicateQuestion,
+  onMoveQuestion,
   allSections,
   sections,
   setSections,
@@ -498,6 +500,7 @@ function SortableSection({
                         onRemoveQuestion={onRemoveQuestion}
                         onUpdateQuestion={onUpdateQuestion as any}
                         onDuplicateQuestion={onDuplicateQuestion}
+                        onMoveQuestion={onMoveQuestion}
                         allSections={sections as SurveySection[]}
                         qIndex={qIndex}
                       />
@@ -1266,6 +1269,39 @@ export function CreateSurveyForProjectPageContent() {
       )
     },
     [],
+  )
+
+  const handleMoveQuestion = useCallback(
+    (questionId: string, fromSectionId: string, toSectionId: string, targetIndex?: number): void => {
+      setSections((prevSections) => {
+        // Find the question to move
+        const fromSection = prevSections.find(s => s.id === fromSectionId)
+        const questionToMove = fromSection?.questions.find(q => q.id === questionId)
+        
+        if (!questionToMove) return prevSections
+        
+        return prevSections.map(section => {
+          if (section.id === fromSectionId) {
+            // Remove question from source section
+            return {
+              ...section,
+              questions: section.questions.filter(q => q.id !== questionId)
+            }
+          } else if (section.id === toSectionId) {
+            // Add question to target section at specified index
+            const newQuestions = [...section.questions]
+            const insertIndex = targetIndex !== undefined ? targetIndex : newQuestions.length
+            newQuestions.splice(insertIndex, 0, questionToMove)
+            return {
+              ...section,
+              questions: newQuestions
+            }
+          }
+          return section
+        })
+      })
+    },
+    []
   )
 
   const handleZoneSelectionChange = (selectedIds: string[]) => {
@@ -2675,6 +2711,7 @@ export function CreateSurveyForProjectPageContent() {
                               onRemoveQuestion={removeQuestionFromSection}
                               onUpdateQuestion={updateQuestionInSection}
                               onDuplicateQuestion={handleDuplicateQuestion}
+                              onMoveQuestion={handleMoveQuestion}
                               allSections={sections}
                               sections={sections}
                               setSections={setSections}
