@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import Image from "next/image"
+import SupabaseImage from "@/components/supabase-image"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import { CreateProjectModal } from "@/components/create-project-modal"
@@ -460,12 +460,13 @@ export default function CompaniesPage() {
                     <TableRow key={company.id} className="hover:bg-[#18b0a4]/5 transition group">
                       <TableCell>
                         {company.logo ? (
-                          <Image
+                          <SupabaseImage
                             src={company.logo || "/placeholder.svg"}
                             alt={`${company.name} logo`}
                             width={40}
                             height={40}
                             className="rounded-full object-contain"
+                            fallbackSrc="/placeholder.svg"
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">
@@ -648,12 +649,13 @@ export default function CompaniesPage() {
                   <div className="flex items-start gap-4 mb-4">
                     <div className="flex-shrink-0">
                       {company.logo ? (
-                        <Image
+                        <SupabaseImage
                           src={company.logo || "/placeholder.svg"}
                           alt={`${company.name} logo`}
                           width={56}
                           height={56}
                           className="rounded-full object-cover border-2 border-[#18b0a4]/10"
+                          fallbackSrc="/placeholder.svg"
                         />
                       ) : (
                         <div className="h-14 w-14 rounded-full bg-gradient-to-br from-[#18b0a4]/20 to-[#18b0a4]/10 flex items-center justify-center text-sm font-bold text-[#18b0a4]">
@@ -903,12 +905,13 @@ export default function CompaniesPage() {
                   <div className="relative group p-4 border-2 border-dashed border-[#18b0a4]/30 rounded-lg bg-[#18b0a4]/5">
                     <div className="flex items-center gap-4">
                       <div className="relative">
-                        <Image
+                        <SupabaseImage
                           src={companyLogo || currentCompany?.logo || "/placeholder.svg"}
                           alt="Logo preview"
                           width={80}
                           height={80}
                           className="rounded-lg border border-[#18b0a4]/20 object-contain bg-white shadow-sm"
+                          fallbackSrc="/placeholder.svg"
                         />
                         {companyLogoFile && (
                           <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 text-xs">

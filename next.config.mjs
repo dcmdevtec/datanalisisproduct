@@ -9,7 +9,7 @@ const nextConfig = {
 
   // Common image configuration
   images: {
-    unoptimized: process.env.NODE_ENV !== 'production', // Unoptimized in dev, optimized in production
+    unoptimized: true, // Desactivar optimización completamente para evitar problemas con Supabase
     formats: ['image/webp', 'image/avif'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],

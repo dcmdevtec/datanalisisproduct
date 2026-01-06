@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useEffect, useState } from "react"
-import Image from "next/image"
+import SupabaseImage from "@/components/supabase-image"
 import { X, Loader2, Upload, CheckCircle } from "lucide-react"
 
 import { supabase } from "@/lib/supabase-browser"
@@ -343,12 +343,13 @@ export function CreateProjectModal({
                 <div className="relative group p-4 border-2 border-dashed border-[#18b0a4]/30 rounded-lg bg-[#18b0a4]/5">
                   <div className="flex items-center gap-4">
                     <div className="relative">
-                      <Image
+                      <SupabaseImage
                         src={projectLogo || currentProject?.logo || "/placeholder.svg"}
                         alt="Logo preview"
                         width={80}
                         height={80}
                         className="rounded-lg border border-[#18b0a4]/20 object-contain bg-white shadow-sm"
+                        fallbackSrc="/placeholder.svg"
                       />
                       {projectLogoFile && (
                         <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 text-xs">
