@@ -237,9 +237,59 @@ function SkipLogicVisualizer({
   const [showDestSelectors, setShowDestSelectors] = useState(false);
   const [newSectionId, setNewSectionId] = useState("");
   const [newQuestionId, setNewQuestionId] = useState("");
-  
-  // Estados para almacenar el destino temporal de cada opción
-  const [optionDestinations, setOptionDestinations] = useState<Record<string, string>>({});
+
+  // Función para obtener el valor de la opción que se usará para comparar con las reglas
+  const getOptionValue = (option: any) => {
+    if (typeof option === 'object' && option !== null) {
+      return option.value || option.label || String(option);
+    }
+    return String(option);
+  };
+
+  // Función para obtener el destino actual de una opción basado en las reglas
+  const getCurrentDestination = (option: any, optIdx: number) => {
+    const optionValue = getOptionValue(option);
+    const existingRule = rules.find(
+      (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === optionValue
+    );
+    return existingRule?.targetSectionId || '';
+  };
+
+  // Función para manejar el cambio de destino de una opción
+  const handleDestinationChange = (option: any, optIdx: number, newDestination: string) => {
+    const optionValue = getOptionValue(option);
+    
+    // Buscar si ya existe una regla para esta opción
+    const existingRuleIndex = rules.findIndex(
+      (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === optionValue
+    );
+
+    if (existingRuleIndex > -1) {
+      // Si existe una regla
+      if (!newDestination || newDestination === '') {
+        // Si el nuevo destino está vacío, eliminar la regla
+        onDeleteRule(existingRuleIndex);
+      } else {
+        // Si hay un nuevo destino, actualizar la regla existente
+        if (onUpdateRule) {
+          onUpdateRule(existingRuleIndex, 'targetSectionId', newDestination);
+        }
+      }
+    } else {
+      // Si no existe una regla y se selecciona un destino, crear nueva regla
+      if (newDestination && newDestination !== '') {
+        onAddRule({
+          condition: 'equals',
+          operator: 'equals',
+          value: optionValue,
+          targetSectionId: newDestination,
+          targetQuestionId: '',
+          targetQuestionText: '',
+          enabled: true,
+        });
+      }
+    }
+  };
 
   // Opciones de operadores
   const operatorOptions = [
@@ -299,14 +349,14 @@ function SkipLogicVisualizer({
               </thead>
               <tbody>
                 {question.options.map((option, optIdx) => {
-                  // buscar regla existente que aplique a esta opción
+                  // Obtener el destino actual usando la función centralizada
+                  const currentDestination = getCurrentDestination(option, optIdx);
+                  
+                  // Buscar regla existente para esta opción (para mostrar botón eliminar)
+                  const optionValue = getOptionValue(option);
                   const existingRuleIndex = rules.findIndex(
-                    (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === String(option),
-                  )
-                  const existingRule = existingRuleIndex > -1 ? rules[existingRuleIndex] : null
-                  // Usar valor del estado local para cada opción
-                  const optionKey = String(option);
-                  const currentDestination = optionDestinations[optionKey] || existingRule?.targetSectionId || '';
+                    (r) => (r.condition === 'equals' || r.operator === 'equals') && String(r.value) === optionValue
+                  );
                   
                   return (
                     <tr key={optIdx} className="border-t">
@@ -363,36 +413,7 @@ function SkipLogicVisualizer({
                           className="border rounded-lg px-3 py-2 bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-400 w-full"
                           value={currentDestination}
                           onChange={(e) => {
-                            const dest = e.target.value
-                            const optKey = String(option);
-                            
-                            // Actualizar estado local
-                            setOptionDestinations((prev) => ({
-                              ...prev,
-                              [optKey]: dest,
-                            }))
-                            
-                            // Si existe regla, actualizar destino o eliminar si vacío
-                            if (existingRuleIndex > -1) {
-                              if (!dest) {
-                                onDeleteRule(existingRuleIndex)
-                              } else if (onUpdateRule) {
-                                onUpdateRule(existingRuleIndex, 'targetSectionId', dest)
-                              }
-                            } else {
-                              // crear nueva regla para esta opción
-                              if (dest) {
-                                onAddRule({
-                                  condition: 'equals',
-                                  operator: 'equals',
-                                  value: option,
-                                  targetSectionId: dest,
-                                  targetQuestionId: '',
-                                  targetQuestionText: '',
-                                  enabled: true,
-                                })
-                              }
-                            }
+                            handleDestinationChange(option, optIdx, e.target.value);
                           }}
                         >
                           <option value="">-- Elegir sección --</option>

@@ -64,7 +64,6 @@ interface SectionsTabProps {
   onDuplicate: (section: SurveySection) => void
   onDelete: (sectionId: string) => void
   onMoveToPosition: (sectionId: string) => void
-  onAddSection: () => void
 }
 
 function SectionsTab({ 
@@ -72,8 +71,7 @@ function SectionsTab({
   onEdit, 
   onDuplicate, 
   onDelete, 
-  onMoveToPosition, 
-  onAddSection 
+  onMoveToPosition
 }: SectionsTabProps) {
   return (
     <div className="space-y-4 h-full flex flex-col">
@@ -82,10 +80,6 @@ function SectionsTab({
           <Layers className="h-5 w-5" />
           Gestión de Secciones
         </h3>
-        <Button onClick={onAddSection} variant="outline" size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Sección
-        </Button>
       </div>
       
       {localSections.length === 0 ? (
@@ -94,11 +88,7 @@ function SectionsTab({
             <Layers className="h-12 w-12 text-muted-foreground" />
             <div>
               <p className="text-lg font-medium text-muted-foreground mb-2">No hay secciones creadas</p>
-              <p className="text-sm text-muted-foreground mb-4">Crea tu primera sección para organizar las preguntas</p>
-              <Button onClick={onAddSection} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Crear primera sección
-              </Button>
+              <p className="text-sm text-muted-foreground">Ve al tab principal para crear secciones</p>
             </div>
           </div>
         </div>
@@ -586,7 +576,8 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
     setEditingSection(null)
     setMovingSection(null)
     setMovingQuestion(null)
-    // No llamar a onClose aquí, ya que se maneja en onOpenChange
+    setMoveToAnotherSection(false)
+    onClose() // Cerrar el modal
   }
 
   const handleQuestionMove = () => {
@@ -638,7 +629,11 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={open => { if (!open) handleCancel(); }}>
+      <Dialog open={isOpen} onOpenChange={(open) => { 
+        if (!open) {
+          handleCancel()
+        }
+      }}>
         <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -679,7 +674,6 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
                   onMoveToPosition={handleMoveToPosition}
-                  onAddSection={handleAddSection}
                 />
               </TabsContent>
 
