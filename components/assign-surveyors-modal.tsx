@@ -100,7 +100,7 @@ export function AssignSurveyorsModal({
 
   return (
  <Dialog open={isOpen} onOpenChange={onClose}>
-  <DialogContent className="sm:max-w-[425px]">
+  <DialogContent className="dialog-content-responsive">
     <DialogHeader>
       <DialogTitle>Asignar Encuestadores</DialogTitle>
     </DialogHeader>

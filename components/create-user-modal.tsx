@@ -70,7 +70,7 @@ export default function CreateUserModal({ isOpen, onOpenChange, onCreated }: Pro
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="dialog-content-responsive">
         <DialogHeader>
           <DialogTitle>Crear Usuario</DialogTitle>
           <DialogDescription>Crea un nuevo usuario y asígnale un rol.</DialogDescription>

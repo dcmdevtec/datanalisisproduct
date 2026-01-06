@@ -164,6 +164,9 @@ export default function CompaniesPage() {
     if (file) {
       try {
         setCompanyLogoFile(file)
+        
+        console.log('🔄 Iniciando proceso de subida de logo...')
+        console.log('📁 Archivo seleccionado:', file.name, file.type, file.size)
 
         // Importar utilidades de storage
         const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
@@ -171,15 +174,20 @@ export default function CompaniesPage() {
         )
 
         // Redimensionar imagen
+        console.log('🖼️ Redimensionando imagen...')
         const resized = await resizeImage(file, 500, 500)
+        console.log('✅ Imagen redimensionada:', resized.size)
 
         // Generar nombre único
         const extension = getExtensionFromMimeType(file.type)
         const fileName = currentCompany?.id
           ? `company_${currentCompany.id}.${extension}`
           : generateUniqueFileName("company_logo", extension)
+          
+        console.log('📝 Nombre de archivo generado:', fileName)
 
         // Subir a Storage
+        console.log('☁️ Subiendo a Supabase Storage...')
         const publicUrl = await uploadImage("company-logos", fileName, resized)
 
         setCompanyLogo(publicUrl)
@@ -576,99 +584,134 @@ export default function CompaniesPage() {
         ) : (
           <>
             {/* Vista en Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
               {paginatedCompanies.map((company) => (
-                <div key={company.id} className="bg-white rounded-xl shadow border border-[#18b0a4]/20 p-6 flex flex-col">
-                  <div className="flex items-center gap-4 mb-4">
-                    {company.logo ? (
-                      <Image
-                        src={company.logo || "/placeholder.svg"}
-                        alt={`${company.name} logo`}
-                        width={48}
-                        height={48}
-                        className="rounded-full object-contain border"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">
-                        No Logo
-                      </div>
-                    )}
-                    <div>
-                      <h2 className="text-xl font-bold text-[#18b0a4]">{company.name}</h2>
-                      <p className="text-gray-700 text-sm">{company.description || '-'}</p>
+                <div key={company.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-[#18b0a4]/20 p-4 sm:p-6 flex flex-col min-h-[320px]">
+                  {/* Header con logo y nombre */}
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="flex-shrink-0">
+                      {company.logo ? (
+                        <Image
+                          src={company.logo || "/placeholder.svg"}
+                          alt={`${company.name} logo`}
+                          width={56}
+                          height={56}
+                          className="rounded-full object-cover border-2 border-[#18b0a4]/10"
+                        />
+                      ) : (
+                        <div className="h-14 w-14 rounded-full bg-gradient-to-br from-[#18b0a4]/20 to-[#18b0a4]/10 flex items-center justify-center text-sm font-bold text-[#18b0a4]">
+                          {company.name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-lg sm:text-xl font-bold text-[#18b0a4] leading-tight mb-2" title={company.name}>
+                        {company.name.length > 20 ? `${company.name.substring(0, 20)}...` : company.name}
+                      </h2>
+                      {company.description && (
+                        <p className="text-gray-600 text-sm leading-relaxed">
+                          {company.description.length > 80 
+                            ? `${company.description.substring(0, 80)}...` 
+                            : company.description}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="mb-2 text-sm">
-                    <span className="font-semibold text-gray-600">Sitio web: </span>
-                    {company.website ? (
-                      <a
-                        href={company.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline"
-                      >
-                        {company.website}
-                      </a>
-                    ) : (
-                      "N/A"
+
+                  {/* Información de contacto */}
+                  <div className="flex-1 space-y-3 mb-4">
+                    {company.website && (
+                      <div className="text-sm">
+                        <span className="font-medium text-gray-900 block mb-1">Sitio web:</span>
+                        <a
+                          href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#18b0a4] hover:text-[#18b0a4]/80 text-xs break-all underline decoration-dotted"
+                          title={company.website}
+                        >
+                          {company.website.length > 30 
+                            ? `${company.website.substring(0, 30)}...` 
+                            : company.website}
+                        </a>
+                      </div>
+                    )}
+                    
+                    {company.contact && (
+                      <div className="text-sm">
+                        <span className="font-medium text-gray-900 block mb-1">Contacto:</span>
+                        <p className="text-gray-600 text-xs break-words">
+                          {company.contact.length > 40 
+                            ? `${company.contact.substring(0, 40)}...` 
+                            : company.contact}
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <div className="mb-2 text-sm">
-                    <span className="font-semibold text-gray-600">Contacto: </span>
-                    {company.contact || 'N/A'}
-                  </div>
-                  <div className="mb-2 text-sm">
-                    <span className="font-semibold text-gray-600">Proyectos: </span>
-                    <span className="inline-flex items-center gap-1"><FolderKanban className="h-4 w-4 text-[#18b0a4]" />{company.projects_count ?? 0}</span>
-                  </div>
-                  <div className="mb-2 text-sm">
-                    <span className="font-semibold text-gray-600">Creado: </span>
-                    {new Date(company.created_at).toLocaleDateString()}
-                  </div>
-                  <div className="flex gap-2 mt-4">
-                    {company.projects_count && company.projects_count > 0 ? (
+
+                  {/* Footer con estadísticas y acciones */}
+                  <div className="border-t border-gray-100 pt-4 mt-auto">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-700">
+                        <FolderKanban className="h-4 w-4 text-[#18b0a4]" />
+                        <span className="font-medium">{company.projects_count ?? 0}</span>
+                        <span className="text-gray-500">Proyectos</span>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(company.created_at).toLocaleDateString('es-ES', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric' 
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Botones de acción */}
+                    <div className="flex gap-1">
+                      {company.projects_count && company.projects_count > 0 ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs"
+                          onClick={() => router.push(`/projects?companyId=${company.id}`)}
+                          title="Ver Proyectos"
+                        >
+                          <FolderKanban className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Ver</span>
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs"
+                          onClick={() => handleOpenCreateProjectModal(company.id)}
+                          title="Crear Proyecto"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Crear</span>
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                        onClick={() => router.push(`/projects?companyId=${company.id}`)}
-                        title="Ver Proyectos"
+                        size="sm"
+                        className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs"
+                        onClick={() => handleOpenEditCompanyModal(company)}
+                        title="Editar Empresa"
                       >
-                        <span className="sr-only">Ver Proyectos</span>
-                        <FolderKanban className="h-4 w-4" />
+                        <Pencil className="h-3 w-3 mr-1" />
+                        <span className="hidden sm:inline">Editar</span>
                       </Button>
-                    ) : (
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                        onClick={() => handleOpenCreateProjectModal(company.id)}
-                        title="Crear Proyecto"
+                        size="sm"
+                        className="text-red-500 hover:bg-red-500/10 h-8 px-2 flex-1 text-xs"
+                        onClick={() => handleDeleteClick(company.id)}
+                        title="Eliminar Empresa"
                       >
-                        <span className="sr-only">Crear Proyecto</span>
-                        <Plus className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        <span className="hidden sm:inline">Eliminar</span>
                       </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                      onClick={() => handleOpenEditCompanyModal(company)}
-                      title="Editar Empresa"
-                    >
-                      <span className="sr-only">Editar Empresa</span>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-500 hover:bg-red-500/10"
-                      onClick={() => handleDeleteClick(company.id)}
-                      title="Eliminar Empresa"
-                    >
-                      <span className="sr-only">Eliminar Empresa</span>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    </div>
                   </div>
                 </div>
               ))}

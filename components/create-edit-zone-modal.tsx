@@ -372,7 +372,7 @@ export function CreateEditZoneModal({ isOpen, onClose, onSave, initialZone }: Cr
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[999]">
+      <DialogContent className="sm:max-w-[700px] max-w-[95vw] max-h-[90vh] overflow-y-auto z-[999]">
         <DialogHeader>
           <DialogTitle>{initialZone ? "Editar Zona" : "Crear Nueva Zona"}</DialogTitle>
         </DialogHeader>

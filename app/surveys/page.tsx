@@ -599,34 +599,125 @@ function SurveysPageContent() {
                 </Table>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
                 {paginatedSurveys.map((survey) => (
-                  <div key={survey.id} className="bg-white rounded-xl shadow border border-[#18b0a4]/20 p-4 flex flex-col gap-2">
-                    <div className="font-bold text-[#18b0a4] text-lg truncate mb-1" title={survey.title}>{survey.title}</div>
-                    <div className="text-sm text-gray-500 truncate mb-1" title={survey.projects?.name || 'N/A'}><span className="font-semibold">Proyecto:</span> {survey.projects?.name || 'N/A'}</div>
-                    <div className="text-sm text-gray-500 truncate mb-1" title={survey.projects?.companies?.name || 'N/A'}><span className="font-semibold">Empresa:</span> {survey.projects?.companies?.name || 'N/A'}</div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Descripción:</span> {survey.description || '-'}</div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Estado:</span> {survey.status === "draft" ? "Prueba" : survey.status}</div>
-                    <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
-                      <span className="font-semibold">Respuestas:</span> {survey.responses_count ?? 0}
+                  <div key={survey.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-[#18b0a4]/20 p-4 sm:p-5 flex flex-col min-h-[320px]">
+                    {/* Header */}
+                    <div className="mb-4">
+                      <h3 className="font-bold text-[#18b0a4] text-base sm:text-lg leading-tight mb-2" title={survey.title}>
+                        {survey.title.length > 30 ? `${survey.title.substring(0, 30)}...` : survey.title}
+                      </h3>
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium text-gray-900">Proyecto:</span>
+                          <span className="ml-1" title={survey.projects?.name || 'N/A'}>
+                            {survey.projects?.name && survey.projects.name.length > 25 
+                              ? `${survey.projects.name.substring(0, 25)}...` 
+                              : (survey.projects?.name || 'N/A')}
+                          </span>
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium text-gray-900">Empresa:</span>
+                          <span className="ml-1" title={survey.projects?.companies?.name || 'N/A'}>
+                            {survey.projects?.companies?.name && survey.projects.companies.name.length > 25 
+                              ? `${survey.projects.companies.name.substring(0, 25)}...` 
+                              : (survey.projects?.companies?.name || 'N/A')}
+                          </span>
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400 mb-2">Creado: {new Date(survey.created_at).toLocaleDateString()}</div>
-                    <div className="flex gap-2 mt-auto">
-                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => router.push(`/surveys/${survey.id}`)} title="Ver Encuesta">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)} title="Editar Encuesta">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-blue-500 hover:bg-blue-500/10" onClick={() => handleDuplicateSurvey(survey.id)} title="Duplicar Encuesta">
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-500/10" onClick={() => handleDeleteClick(survey.id)} title="Eliminar Encuesta">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")} title="Descargar PDF">
-                        <Download className="h-4 w-4" />
-                      </Button>
+
+                    {/* Content */}
+                    <div className="flex-1 space-y-3 mb-4">
+                      <div className="text-sm">
+                        <span className="font-medium text-gray-900">Descripción:</span>
+                        <p className="mt-1 text-gray-600 text-sm leading-relaxed">
+                          {survey.description && survey.description.length > 60 
+                            ? `${survey.description.substring(0, 60)}...` 
+                            : (survey.description || 'Sin descripción')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm">
+                        <div>
+                          <span className="font-medium text-gray-900">Estado:</span>
+                          <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                            survey.status === 'draft' 
+                              ? 'bg-yellow-100 text-yellow-800' 
+                              : survey.status === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {survey.status === "draft" ? "Borrador" : survey.status}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-medium text-[#18b0a4]">{survey.responses_count ?? 0}</span>
+                          <span className="text-gray-500 text-xs ml-1">respuestas</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="border-t border-gray-100 pt-4 mt-auto">
+                      <div className="flex justify-between items-center mb-3">
+                        <div className="text-xs text-gray-400">
+                          {new Date(survey.created_at).toLocaleDateString('es-ES', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            year: 'numeric' 
+                          })}
+                        </div>
+                      </div>
+                      
+                      {/* Botones de acción */}
+                      <div className="grid grid-cols-5 gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-1" 
+                          onClick={() => router.push(`/surveys/${survey.id}`)} 
+                          title="Ver Encuesta"
+                        >
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-1" 
+                          onClick={() => router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)} 
+                          title="Editar Encuesta"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-blue-500 hover:bg-blue-500/10 h-8 px-1" 
+                          onClick={() => handleDuplicateSurvey(survey.id)} 
+                          title="Duplicar Encuesta"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-red-500 hover:bg-red-500/10 h-8 px-1" 
+                          onClick={() => handleDeleteClick(survey.id)} 
+                          title="Eliminar Encuesta"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-1" 
+                          onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")} 
+                          title="Descargar PDF"
+                        >
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -724,73 +815,86 @@ function SurveysPageContent() {
 
       {/* Create New Survey Modal */}
       <Dialog open={isCreateSurveyModalOpen} onOpenChange={setIsCreateSurveyModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Crear Nueva Encuesta</DialogTitle>
-            <ShadcnDialogDescription>
+        <DialogContent className="dialog-content-responsive overflow-hidden flex flex-col">
+          <DialogHeader className="text-left pb-4 flex-shrink-0">
+            <DialogTitle className="text-lg font-semibold">Crear Nueva Encuesta</DialogTitle>
+            <ShadcnDialogDescription className="text-sm text-gray-600">
               Selecciona la empresa y el proyecto para el que deseas crear la encuesta.
             </ShadcnDialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="space-y-4 flex-1 overflow-y-auto px-1 min-h-0">
             <div className="space-y-2">
-              <Label htmlFor="company-select">Empresa</Label>
-              <Combobox
-                options={companyOptions}
-                value={modalSelectedCompanyId || ""}
-                onValueChange={(value) => {
-                  setModalSelectedCompanyId(value)
-                }}
-                placeholder="Selecciona una empresa..."
-                searchPlaceholder="Buscar empresa..."
-                emptyMessage="No se encontraron empresas."
-              />
+              <Label htmlFor="company-select" className="text-sm font-medium">Empresa</Label>
+              <div className="relative">
+                <Combobox
+                  options={companyOptions}
+                  value={modalSelectedCompanyId || ""}
+                  onValueChange={(value) => {
+                    setModalSelectedCompanyId(value)
+                  }}
+                  placeholder="Seleccionar empresa..."
+                  searchPlaceholder="Buscar empresa..."
+                  emptyMessage="No hay empresas disponibles."
+                />
+              </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="project-select">Proyecto</Label>
-              <Combobox
-                options={projectOptionsForModal}
-                value={modalSelectedProjectId || ""}
-                onValueChange={(value) => {
-                  setModalSelectedProjectId(value)
-                }}
-                placeholder="Selecciona un proyecto..."
-                searchPlaceholder="Buscar proyecto..."
-                emptyMessage={
-                  modalSelectedCompanyId
-                    ? "No se encontraron proyectos para esta empresa."
-                    : "Selecciona una empresa primero."
-                }
-                disabled={!modalSelectedCompanyId} // Disable if no company is selected
-              />
+              <Label htmlFor="project-select" className="text-sm font-medium">Proyecto</Label>
+              <div className="relative">
+                <Combobox
+                  options={projectOptionsForModal}
+                  value={modalSelectedProjectId || ""}
+                  onValueChange={(value) => {
+                    setModalSelectedProjectId(value)
+                  }}
+                  placeholder="Seleccionar proyecto..."
+                  searchPlaceholder="Buscar proyecto..."
+                  emptyMessage={
+                    modalSelectedCompanyId
+                      ? "No hay proyectos para esta empresa."
+                      : "Selecciona una empresa primero."
+                  }
+                  disabled={!modalSelectedCompanyId}
+                />
+              </div>
             </div>
             {modalSelectedCompanyId && !hasProjectsForSelectedCompanyInModal && (
-              <div className="text-center mt-4">
-                <p className="text-sm text-gray-600 mb-2">La empresa seleccionada no tiene proyectos.</p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
+                <p className="text-sm text-amber-800 mb-3">La empresa seleccionada no tiene proyectos.</p>
                 <Button
                   onClick={() => setIsCreateProjectModalOpen(true)}
                   variant="outline"
-                  className="bg-[#18b0a4] text-white hover:bg-[#18b0a4]/90"
+                  size="sm"
+                  className="bg-[#18b0a4] text-white hover:bg-[#18b0a4]/90 border-[#18b0a4]"
                 >
-                  <Plus className="h-4 w-4 mr-2" /> Crear Proyecto para esta Empresa
+                  <Plus className="h-4 w-4 mr-2" /> 
+                  <span className="whitespace-nowrap">Crear Proyecto</span>
                 </Button>
               </div>
             )}
           </div>
-          <DialogFooter className="flex flex-col sm:flex-row sm:justify-between gap-2">
-            <Button variant="outline" onClick={() => setIsCreateSurveyModalOpen(false)} className="w-full sm:w-auto">
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-4 border-t mt-4 flex-shrink-0">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsCreateSurveyModalOpen(false)} 
+              className="w-full sm:w-auto order-2 sm:order-1"
+              size="sm"
+            >
               Cancelar
             </Button>
             <Button
               onClick={handleCreateSurvey}
               disabled={isCreatingSurvey || !modalSelectedProjectId}
-              className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto"
+              className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto order-1 sm:order-2"
+              size="sm"
             >
               {isCreatingSurvey ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creando...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 
+                  <span className="whitespace-nowrap">Creando...</span>
                 </>
               ) : (
-                "Crear Encuesta"
+                <span className="whitespace-nowrap">Crear Encuesta</span>
               )}
             </Button>
           </DialogFooter>

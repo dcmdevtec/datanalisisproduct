@@ -94,12 +94,20 @@ export function CreateProjectModal({
         setProjectName("")
         setProjectDescription("")
         setProjectObjective("")
+        // Mantener la empresa inicial si está disponible
         setProjectCompanyId(initialCompanyId || null)
         setProjectLogo(null)
       }
       setProjectLogoFile(null) // Always clear file input on open
     }
   }, [isOpen, isEditing, currentProject, initialCompanyId])
+
+  // Actualizar empresa cuando cambie initialCompanyId (útil cuando se cambia filtro)
+  useEffect(() => {
+    if (initialCompanyId && !isEditing) {
+      setProjectCompanyId(initialCompanyId)
+    }
+  }, [initialCompanyId, isEditing])
 
   const companyOptions = companies.map((c) => ({
     value: c.id,
@@ -206,7 +214,7 @@ export function CreateProjectModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="dialog-content-responsive">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Proyecto" : "Crear Nuevo Proyecto"}</DialogTitle>
           <DialogDescription>
@@ -220,6 +228,11 @@ export function CreateProjectModal({
           </div>
           <div className="space-y-2">
             <Label htmlFor="projectCompany">Empresa</Label>
+            {initialCompanyId && !isEditing && (
+              <div className="text-sm text-green-600 bg-green-50 p-2 rounded-md border border-green-200">
+                ✓ Empresa preseleccionada desde el filtro actual
+              </div>
+            )}
             {loadingCompanies ? (
               <div className="flex items-center gap-2 text-gray-500">
                 <Loader2 className="h-4 w-4 animate-spin" /> Cargando empresas...
@@ -232,8 +245,13 @@ export function CreateProjectModal({
                 placeholder="Selecciona una empresa..."
                 searchPlaceholder="Buscar empresa..."
                 emptyMessage="No se encontraron empresas."
-                disabled={isEditing || !!initialCompanyId} // Disable if editing or initialCompanyId is provided
+                disabled={isEditing} // Solo deshabilitar al editar, permitir cambios al crear
               />
+            )}
+            {initialCompanyId && !isEditing && (
+              <div className="text-xs text-gray-500">
+                La empresa ha sido preseleccionada automáticamente. Puedes cambiarla si lo deseas.
+              </div>
             )}
           </div>
           <div className="space-y-2">

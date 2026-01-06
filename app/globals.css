@@ -1,6 +1,97 @@
 
 @import 'leaflet/dist/leaflet.css';
 @import '../styles/logo.css';
+
+/* Responsive Modal and Popover Fixes */
+[data-radix-popper-content-wrapper] {
+  z-index: 100 !important;
+  transform-origin: var(--radix-popper-transform-origin) !important;
+}
+
+[data-state="open"][data-side="top"] {
+  animation: slideDownAndFade 0.1s ease-out;
+}
+
+[data-state="open"][data-side="right"] {
+  animation: slideLeftAndFade 0.1s ease-out;
+}
+
+[data-state="open"][data-side="bottom"] {
+  animation: slideUpAndFade 0.1s ease-out;
+}
+
+[data-state="open"][data-side="left"] {
+  animation: slideRightAndFade 0.1s ease-out;
+}
+
+@keyframes slideUpAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideRightAndFade {
+  from {
+    opacity: 0;
+    transform: translateX(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideDownAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideLeftAndFade {
+  from {
+    opacity: 0;
+    transform: translateX(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Modal fixes */
+[role="dialog"] {
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+}
+
+/* Responsive utility classes */
+.dialog-content-responsive {
+  max-width: min(90vw, 28rem) !important;
+  max-height: 90vh !important;
+}
+
+/* Popover responsive constraints */
+[data-radix-popover-content] {
+  max-width: calc(100vw - 2rem) !important;
+  max-height: calc(100vh - 4rem) !important;
+  overflow: hidden !important;
+}
+
+/* Combobox specific fixes */
+.combobox-popover {
+  max-width: min(var(--radix-popover-trigger-width, 300px), calc(100vw - 2rem)) !important;
+}
+
 /* Botones institucionales globales */
 .btn-primary,
 .bg-primary,

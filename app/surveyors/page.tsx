@@ -267,8 +267,8 @@ export default function SurveyorsPage() {
                   <TableHeader className="bg-primary-tableHeader">
                     <TableRow className="border-b border-border">
                       <TableHead className="w-[50px] py-3 px-4">Avatar</TableHead>
-                      <TableHead className="py-3 px-4">Nombre</TableHead>
-                      <TableHead className="py-3 px-4">Correo</TableHead>
+                      <TableHead className="py-3 px-4 min-w-[150px]">Nombre</TableHead>
+                      <TableHead className="py-3 px-4 min-w-[200px]">Correo</TableHead>
                       <TableHead className="hidden md:table-cell py-3 px-4">Teléfono</TableHead>
                       <TableHead className="hidden sm:table-cell py-3 px-4">Estado</TableHead>
                       <TableHead className="hidden lg:table-cell py-3 px-4">Creado en</TableHead>
@@ -294,14 +294,28 @@ export default function SurveyorsPage() {
                               </AvatarFallback>
                             </Avatar>
                           </TableCell>
-                          <TableCell className="font-medium py-3 px-4">{surveyor.name}</TableCell>
-                          <TableCell className="py-3 px-4">{surveyor.email}</TableCell>
-                          <TableCell className="hidden md:table-cell py-3 px-4">
-                            {surveyor.phone_number || "N/A"}
+                          <TableCell className="font-medium py-3 px-4">
+                            <div className="truncate max-w-[150px]" title={surveyor.name}>
+                              {surveyor.name}
+                            </div>
                           </TableCell>
-                          <TableCell className="hidden sm:table-cell capitalize py-3 px-4">{surveyor.status}</TableCell>
+                          <TableCell className="py-3 px-4">
+                            <div className="truncate max-w-[200px]" title={surveyor.email}>
+                              {surveyor.email}
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell py-3 px-4">
+                            <span className="whitespace-nowrap">
+                              {surveyor.phone_number || "N/A"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell capitalize py-3 px-4">
+                            <span className="whitespace-nowrap">{surveyor.status}</span>
+                          </TableCell>
                           <TableCell className="hidden lg:table-cell py-3 px-4">
-                            {new Date(surveyor.created_at).toLocaleDateString()}
+                            <span className="whitespace-nowrap">
+                              {new Date(surveyor.created_at).toLocaleDateString()}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right py-3 px-4">
                             <Button variant="ghost" size="sm" onClick={() => handleEditSurveyor(surveyor)}>

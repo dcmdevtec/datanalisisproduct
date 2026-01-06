@@ -289,7 +289,7 @@ function ProjectsPageContent() {
                         </div>
                       </TableHead>
                       <TableHead className="text-[#18b0a4] font-bold px-2 sm:px-4 hidden md:table-cell">Creado</TableHead>
-                      <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4">Acciones</TableHead>
+                      <TableHead className="text-[#18b0a4] font-bold text-center px-2 sm:px-4 w-32">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -341,37 +341,39 @@ function ProjectsPageContent() {
                             {new Date(project.created_at).toLocaleDateString()}
                           </div>
                         </TableCell>
-                        <TableCell className="flex justify-center items-center gap-1 sm:gap-2 px-2 sm:px-4">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => router.push(`/surveys?projectId=${project.id}`)}
-                            title="Ver Encuestas"
-                          >
-                            <span className="sr-only">Ver Encuestas</span>
-                            <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => handleOpenEditModal(project)}
-                            title="Editar Proyecto"
-                          >
-                            <span className="sr-only">Editar Proyecto</span>
-                            <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => handleDeleteClick(project.id)}
-                            title="Eliminar Proyecto"
-                          >
-                            <span className="sr-only">Eliminar Proyecto</span>
-                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </Button>
+                        <TableCell className="px-2 sm:px-4">
+                          <div className="flex justify-center items-center gap-1 sm:gap-2 min-w-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
+                              onClick={() => router.push(`/surveys?projectId=${project.id}`)}
+                              title="Ver Encuestas"
+                            >
+                              <span className="sr-only">Ver Encuestas</span>
+                              <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
+                              onClick={() => handleOpenEditModal(project)}
+                              title="Editar Proyecto"
+                            >
+                              <span className="sr-only">Editar Proyecto</span>
+                              <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
+                              onClick={() => handleDeleteClick(project.id)}
+                              title="Eliminar Proyecto"
+                            >
+                              <span className="sr-only">Eliminar Proyecto</span>
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -379,37 +381,107 @@ function ProjectsPageContent() {
                 </Table>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
                 {paginatedProjects.map((project) => (
-                  <div key={project.id} className="bg-white rounded-xl shadow border border-[#18b0a4]/20 p-4 flex flex-col gap-2">
-                    <div className="flex items-center gap-3 mb-2">
-                      {project.logo ? (
-                        <Image src={project.logo || "/placeholder.svg"} alt={`${project.name} logo`} width={40} height={40} className="rounded-full object-contain" />
-                      ) : (
-                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">No Logo</div>
-                      )}
-                      <div>
-                        <div className="font-bold text-[#18b0a4] text-lg truncate" title={project.name}>{project.name}</div>
-                        <div className="text-sm text-gray-500 truncate" title={project.company_name}>{project.company_name}</div>
+                  <div key={project.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-[#18b0a4]/20 p-4 sm:p-5 flex flex-col min-h-[280px]">
+                    {/* Header con logo y nombre */}
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="flex-shrink-0">
+                        {project.logo ? (
+                          <Image 
+                            src={project.logo || "/placeholder.svg"} 
+                            alt={`${project.name} logo`} 
+                            width={48} 
+                            height={48} 
+                            className="rounded-full object-cover border-2 border-[#18b0a4]/10" 
+                          />
+                        ) : (
+                          <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#18b0a4]/20 to-[#18b0a4]/10 flex items-center justify-center text-xs font-medium text-[#18b0a4]">
+                            {project.name.substring(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-[#18b0a4] text-base sm:text-lg leading-tight mb-1" title={project.name}>
+                          {project.name.length > 25 ? `${project.name.substring(0, 25)}...` : project.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 truncate" title={project.company_name}>
+                          {project.company_name}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Descripción:</span> {project.description || '-'}</div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Objetivo:</span> {project.objective || '-'}</div>
-                    <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
-                      <LayoutList className="h-4 w-4 text-[#18b0a4]" />
-                      <span>{project.surveys_count ?? 0} Encuestas</span>
+
+                    {/* Contenido */}
+                    <div className="flex-1 space-y-2 mb-4">
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium text-gray-900">Descripción:</span>
+                        <p className="mt-1 text-gray-600 text-sm leading-relaxed max-h-10 overflow-hidden">
+                          {project.description && project.description.length > 60 
+                            ? `${project.description.substring(0, 60)}...` 
+                            : (project.description || 'Sin descripción disponible')}
+                        </p>
+                      </div>
+                      
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium text-gray-900">Objetivo:</span>
+                        <p className="mt-1 text-gray-600 text-sm leading-relaxed max-h-10 overflow-hidden">
+                          {project.objective && project.objective.length > 60 
+                            ? `${project.objective.substring(0, 60)}...` 
+                            : (project.objective || 'Sin objetivo definido')}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400 mb-2">Creado: {new Date(project.created_at).toLocaleDateString()}</div>
-                    <div className="flex gap-2 mt-auto">
-                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => router.push(`/surveys?projectId=${project.id}`)} title="Ver Encuestas">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-[#18b0a4] hover:bg-[#18b0a4]/10" onClick={() => handleOpenEditModal(project)} title="Editar Proyecto">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-500/10" onClick={() => handleDeleteClick(project.id)} title="Eliminar Proyecto">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+
+                    {/* Footer con estadísticas y acciones */}
+                    <div className="border-t border-gray-100 pt-3 mt-auto">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <LayoutList className="h-4 w-4 text-[#18b0a4]" />
+                          <span className="font-medium">{project.surveys_count ?? 0}</span>
+                          <span className="text-gray-500">Encuestas</span>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {new Date(project.created_at).toLocaleDateString('es-ES', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            year: 'numeric' 
+                          })}
+                        </div>
+                      </div>
+                      
+                      {/* Botones de acción */}
+                      <div className="flex justify-center gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs" 
+                          onClick={() => router.push(`/surveys?projectId=${project.id}`)} 
+                          title="Ver Encuestas"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Ver</span>
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs" 
+                          onClick={() => handleOpenEditModal(project)} 
+                          title="Editar Proyecto"
+                        >
+                          <Pencil className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Editar</span>
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-red-500 hover:bg-red-500/10 h-8 px-2 flex-1 text-xs" 
+                          onClick={() => handleDeleteClick(project.id)} 
+                          title="Eliminar Proyecto"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Eliminar</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}

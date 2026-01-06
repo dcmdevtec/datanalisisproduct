@@ -15,6 +15,86 @@ if (!supabaseUrl || !supabaseKey) {
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
 /**
+ * Inicializa los buckets necesarios si no existen
+ */
+export async function initializeBuckets(): Promise<void> {
+    const requiredBuckets: { name: BucketName; isPublic: boolean }[] = [
+        { name: 'survey-images', isPublic: true },
+        { name: 'survey-logos', isPublic: true },
+        { name: 'project-logos', isPublic: true },
+        { name: 'company-logos', isPublic: true },
+        { name: 'zone-maps', isPublic: true },
+        { name: 'response-media', isPublic: false },
+    ]
+
+    try {
+        const { data: buckets, error } = await supabase.storage.listBuckets()
+        if (error) {
+            console.error('Error listing buckets:', error)
+            return
+        }
+
+        const existingBucketNames = buckets?.map(b => b.name) || []
+
+        for (const bucket of requiredBuckets) {
+            if (!existingBucketNames.includes(bucket.name)) {
+                console.log(`Creating bucket: ${bucket.name}`)
+                try {
+                    const { error: createError } = await supabase.storage.createBucket(bucket.name, {
+                        public: bucket.isPublic,
+                        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+                        fileSizeLimit: 10 * 1024 * 1024, // 10MB
+                    })
+
+                    if (createError) {
+                        console.error(`Error creating bucket ${bucket.name}:`, createError)
+                        console.warn(`Please create the bucket '${bucket.name}' manually in your Supabase dashboard`)
+                    } else {
+                        console.log(`Bucket ${bucket.name} created successfully`)
+                    }
+                } catch (createError) {
+                    console.error(`Failed to create bucket ${bucket.name}:`, createError)
+                    console.warn(`Please create the bucket '${bucket.name}' manually in your Supabase dashboard`)
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error initializing buckets:', error)
+        console.warn('Please ensure all required buckets exist in your Supabase dashboard:', requiredBuckets.map(b => b.name))
+    }
+}
+
+/**
+ * Verifica si todos los buckets necesarios existen
+ */
+export async function checkBuckets(): Promise<{ missing: string[]; existing: string[] }> {
+    const requiredBuckets: BucketName[] = [
+        'survey-images',
+        'survey-logos', 
+        'project-logos',
+        'company-logos',
+        'zone-maps',
+        'response-media'
+    ]
+    
+    try {
+        const { data: buckets, error } = await supabase.storage.listBuckets()
+        if (error) {
+            throw error
+        }
+        
+        const existingBucketNames = buckets?.map(b => b.name) || []
+        const missing = requiredBuckets.filter(bucket => !existingBucketNames.includes(bucket))
+        const existing = requiredBuckets.filter(bucket => existingBucketNames.includes(bucket))
+        
+        return { missing, existing }
+    } catch (error) {
+        console.error('Error checking buckets:', error)
+        return { missing: requiredBuckets, existing: [] }
+    }
+}
+
+/**
  * Tipos de bucket disponibles
  */
 export type BucketName =
@@ -37,17 +117,49 @@ export async function uploadImage(
     path: string,
     file: File | Blob
 ): Promise<string> {
-    const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
-        upsert: true, // Sobrescribe si ya existe
-        contentType: file.type,
-    })
+    try {
+        console.log(`🔄 Subiendo archivo a bucket: ${bucket}, ruta: ${path}`)
+        console.log(`📁 Tipo de archivo: ${file.type}, tamaño: ${file.size} bytes`)
+        
+        // Verificar que las variables de entorno están configuradas
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error('Variables de entorno de Supabase no configuradas')
+        }
+        
+        console.log(`🌐 Supabase URL: ${supabaseUrl}`)
+        
+        const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
+            upsert: true,
+            contentType: file.type,
+        })
 
-    if (error) {
-        console.error('Error uploading to storage:', error)
-        throw new Error(`Error subiendo archivo: ${error.message}`)
+        if (error) {
+            console.error('❌ Error detallado de Supabase:', error)
+            
+            // Errores específicos de CORS
+            if (error.message.includes('CORS') || error.message.includes('fetch')) {
+                throw new Error('Error de CORS: El servidor debe configurar CORS para permitir requests desde localhost:3000')
+            }
+            
+            throw new Error(`Error subiendo archivo: ${error.message}`)
+        }
+
+        console.log('✅ Upload exitoso:', data)
+        const publicUrl = getPublicUrl(bucket, data.path)
+        console.log('🔗 URL pública generada:', publicUrl)
+        return publicUrl
+        
+    } catch (error) {
+        console.error('❌ Error completo en uploadImage:', error)
+        
+        if (error instanceof Error) {
+            if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+                throw new Error('Error de CORS: Configura CORS en tu servidor Supabase para permitir requests desde localhost:3000')
+            }
+        }
+        
+        throw error
     }
-
-    return getPublicUrl(bucket, data.path)
 }
 
 /**

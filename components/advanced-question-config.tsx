@@ -1822,7 +1822,7 @@ const visibleTabs = tabs.filter(tab => {
   });
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+      <DialogContent className="max-w-[95vw] sm:max-w-6xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-2xl">
             <Settings className="h-6 w-6" />
