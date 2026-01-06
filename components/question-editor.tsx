@@ -16,7 +16,7 @@ import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings } from "lucide-react"
-import { Dialog } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
 import { CompactRichTextEditor } from "@/components/ui/compact-rich-text-editor"
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +26,7 @@ import type { SurveySection } from "@/types-updated"
 import { supabase } from "@/lib/supabase-browser";
 import type { Question } from "@/types-updated";
 import { ContactInfoQuestion } from "./contact-info-question";
+import { OptimizedMultipleChoiceEditor } from "./optimized-multiple-choice-editor";
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
@@ -138,6 +139,7 @@ export function QuestionEditor({
   // Estado para mostrar/ocultar el textarea de pegado masivo de opciones
   const [showPasteOptions, setShowPasteOptions] = useState(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
+  const [showMoveModal, setShowMoveModal] = useState<boolean>(false)
   // tabs removed: configuration moved to AdvancedQuestionConfig. Show inline controls instead.
 
   const {
@@ -600,8 +602,14 @@ export function QuestionEditor({
             <Button variant="ghost" size="sm" onClick={() => onRemoveQuestion(sectionId, question.id)} title="Borrar pregunta">
               <Trash2 className="h-4 w-4" />
             </Button>
-            {/* Botón para mover pregunta (preparado, requiere implementación de onMoveQuestion) */}
-            {/* <Button variant="ghost" size="sm" onClick={() => onMoveQuestion && onMoveQuestion(question.id, sectionId, 'destSectionId')}>Mover</Button> */}
+            {/* Botón para mover pregunta */}
+            <Button variant="ghost" size="sm" onClick={() => setShowMoveModal(true)} title="Mover a otra sección" className="text-blue-600 hover:text-blue-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m18 15 3-3-3-3"/>
+                <path d="m6 9-3 3 3 3"/>
+                <path d="M21 12H3"/>
+              </svg>
+            </Button>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
             <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
@@ -1387,129 +1395,19 @@ export function QuestionEditor({
         )}
 
         {(question.type === "multiple_choice" || question.type === "checkbox" || question.type === "dropdown") && (
-          <div className="space-y-4 p-4 bg-white border rounded-lg">
-            <div className="flex gap-4 items-center mb-2">
-              <Switch
-                checked={showPasteOptions}
-                onCheckedChange={setShowPasteOptions}
-                id={`show-paste-options-${question.id}`}
-              />
-              <Label htmlFor={`show-paste-options-${question.id}`}>Mostrar respuesta en cantidad</Label>
-              {/* For multiple_choice we show tab buttons instead of the allow/randomize switches here */}
-              {/* Configuración trasladada a 'Configuración avanzada' — no mostrar controles aquí */}
-            </div>
-            {showPasteOptions && (
-              <div>
-                <Label className="text-lg font-semibold">Opciones de respuesta</Label>
-                <Label>Pegar opciones (una por línea)</Label>
-                <Textarea
-                  placeholder="Opción 1\nOpción 2\nOpción 3 ..."
-                  className="mb-2"
-                  onPaste={(e) => {
-                    if (handlePasteOptions(e.clipboardData.getData("text"), question.options || [])) {
-                      e.preventDefault()
-                    }
-                  }}
-                />
-                <div className="text-xs text-muted-foreground mb-2">Puedes pegar múltiples opciones separadas por saltos de línea</div>
-              </div>
-            )}
-
-            {/* Límites y opciones avanzadas ahora en el modal de Configuración avanzada; no se muestran aquí */}
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOptionsDragEnd}>
-              <SortableContext items={optItems.map((_: any, i: number) => `${question.id}-opt-${i}`)} strategy={verticalListSortingStrategy}>
-                {optItems.map((option: any, index: number) => (
-                  <SortableOption key={`${question.id}-opt-${index}`} id={`${question.id}-opt-${index}`} index={index} option={option} />
-                ))}
-              </SortableContext>
-            </DndContext>
-            <Button variant="outline" size="sm" onClick={() => onUpdateQuestion(sectionId, question.id, "options", [...(question.options || []), `Opción ${(question.options || []).length + 1}`])}>
-              <Plus className="h-4 w-4 mr-2" /> Agregar opción
-            </Button>
-
-            {/* Vista previa grande de opciones con imágenes. Oculta para tipo 'dropdown' o cuando no hay imágenes */}
-            {question.type !== 'dropdown' && hasOptionImage && (
-              <div className="mt-4">
-                <Label className="font-medium">Vista previa de opciones</Label>
-                <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {question.options.map((option: any, idx: number) => {
-                    const isObj = option && typeof option === 'object'
-                    const label = isObj ? (option.label ?? option.value ?? '') : String(option ?? '')
-                    const imgFromObj = isObj ? (option.image || option.url || option.src || '') : ''
-                    const s = String(option ?? '')
-                    const imgTagMatch = s.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i)
-                    const urlMatch = s.match(/https?:\/\/[^\s"']+\.(png|jpe?g|gif|webp|svg)(\?[^\s"']*)?/i)
-                    const imageUrl = imgFromObj || (imgTagMatch ? imgTagMatch[1] : urlMatch ? urlMatch[0] : '')
-
-                    return (
-                      <div key={idx} className="border rounded-lg overflow-hidden bg-white shadow-sm relative">
-                        {imageUrl ? (
-                          <div className="w-full h-40 bg-gray-100 relative">
-                            <img src={imageUrl} alt={label || `Opción ${idx + 1}`} className="w-full h-full object-cover" />
-                            <div className="absolute top-1 right-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  const newOptions = question.options.map((opt: any, i: number) => {
-                                    if (i !== idx) return opt
-                                    if (opt && typeof opt === 'object' && (opt.style || opt.color || opt.font)) {
-                                      const copy = { ...opt }
-                                      delete copy.style
-                                      delete copy.color
-                                      delete copy.font
-                                      return copy
-                                    }
-                                    if (opt && typeof opt === 'object') {
-                                      const copy = { ...opt }
-                                      delete copy.image
-                                      delete copy.url
-                                      delete copy.src
-                                      return copy
-                                    }
-                                    const plain = String(opt ?? '')
-                                    const cleaned = plain.replace(/<img[^>]*>/ig, '').trim()
-                                    return cleaned || `Opción ${idx + 1}`
-                                  })
-                                  onUpdateQuestion(sectionId, question.id, 'options', newOptions)
-                                }}
-                                title="Quitar estilo / Eliminar imagen"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400">No image</div>
-                        )}
-                        <div className="p-3">
-                          <div className="text-sm text-emerald-900" dangerouslySetInnerHTML={{ __html: label || `Opción ${idx + 1}` }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {question.config?.allowOther && (
-              <div className="flex items-center gap-2 mt-2">
-                <div className="w-6 h-6 flex items-center justify-center">
-                  {question.type === "multiple_choice" ? "○" : "☐"}
-                </div>
-                <Input
-                  value={question.config?.otherText || "Otro (especificar)"}
-                  onChange={(e) =>
-                    onUpdateQuestion(sectionId, question.id, "config", {
-                      ...question.config,
-                      otherText: e.target.value,
-                    })
-                  }
-                  placeholder="Texto para opción 'Otro'"
-                  className="flex-1"
-                />
-              </div>
-            )}
-          </div>
+          <OptimizedMultipleChoiceEditor
+            options={question.options || []}
+            questionType={question.type as "multiple_choice" | "checkbox" | "dropdown"}
+            onOptionsChange={(newOptions) => onUpdateQuestion(sectionId, question.id, "options", newOptions)}
+            onAdvancedSettings={() => setShowConfig(true)}
+            allowOther={question.config?.allowOther}
+            otherText={question.config?.otherText || "Otro (especificar)"}
+            onOtherTextChange={(text) => onUpdateQuestion(sectionId, question.id, "config", {
+              ...question.config,
+              otherText: text,
+            })}
+            randomizeOptions={question.config?.randomizeOptions}
+          />
         )}
 
         {question.type === "scale" && (
@@ -2085,6 +1983,84 @@ export function QuestionEditor({
           </div>
         )}
       </CardContent>
+
+      {/* Modal para mover pregunta */}
+      <Dialog open={showMoveModal} onOpenChange={setShowMoveModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mover Pregunta</DialogTitle>
+            <DialogDescription>
+              Selecciona la sección a donde quieres mover esta pregunta
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Pregunta actual:</Label>
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm font-medium">
+                  {question.text_html?.replace(/<[^>]*>/g, "") || question.text || "Sin título"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Tipo: {question.type}
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Mover a sección:</Label>
+              <Select onValueChange={(value) => {
+                if (value && value !== sectionId) {
+                  // Crear una función para mover la pregunta
+                  const moveQuestion = () => {
+                    const fromSection = allSections.find(s => s.id === sectionId)
+                    const toSection = allSections.find(s => s.id === value)
+                    
+                    if (fromSection && toSection && onUpdateQuestion) {
+                      // Remover de la sección actual
+                      onRemoveQuestion(sectionId, question.id)
+                      
+                      // Crear nueva pregunta en la sección destino
+                      const newQuestion = { ...question, section_id: value }
+                      
+                      // Usar toast para confirmar
+                      console.log(`Pregunta movida de "${fromSection.title}" a "${toSection.title}"`)
+                      
+                      setShowMoveModal(false)
+                    }
+                  }
+                  
+                  moveQuestion()
+                }
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar sección destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allSections
+                    .filter(section => section.id !== sectionId)
+                    .map(section => (
+                      <SelectItem key={section.id} value={section.id}>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {section.questions.length}
+                          </Badge>
+                          <span>{section.title || `Sección ${allSections.indexOf(section) + 1}`}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMoveModal(false)}>
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

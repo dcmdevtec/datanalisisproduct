@@ -211,7 +211,13 @@ export function ProfessionalRichTextEditor({
   return (
     <div className={cn("border rounded-md bg-background", className)}>
       {showToolbar && (
-        <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-muted/30">
+        <div 
+          className="flex flex-wrap items-center gap-1 p-2 border-b bg-muted/30"
+          onMouseDown={(e) => {
+            // Prevenir que los clics en la toolbar causen blur del editor
+            e.preventDefault();
+          }}
+        >
           {/* Font Family */}
           <Select
             value={editor.getAttributes("textStyle").fontFamily || "Inter"}

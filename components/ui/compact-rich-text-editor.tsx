@@ -82,6 +82,34 @@ export function CompactRichTextEditor({
 }: Props) {
   const [isFocused, setIsFocused] = useState(false);
   const [hasContent, setHasContent] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const blurTimeoutRef = useRef<number | null>(null);
+
+  const handleFocus = () => {
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsFocused(true);
+  };
+
+  const handleBlur = ({ event }: { event: FocusEvent }) => {
+    // Si el foco se mueve a un elemento dentro del container, no ocultar
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+    }
+    
+    blurTimeoutRef.current = window.setTimeout(() => {
+      const relatedTarget = event.relatedTarget as Node;
+      const container = containerRef.current;
+      
+      // Solo ocultar si el foco se mueve fuera del container completo
+      if (!container || !relatedTarget || !container.contains(relatedTarget)) {
+        setIsFocused(false);
+        flushPending();
+      }
+    }, 150); // Pequeño delay para permitir clics en la toolbar
+  };
 
   const editor = useEditor({
     extensions: [
@@ -97,16 +125,22 @@ export function CompactRichTextEditor({
     ],
     content: value,
     immediatelyRender,
-    onFocus: () => setIsFocused(true),
-    onBlur: () => {
-      setIsFocused(false);
-      flushPending();
-    },
+    onFocus: handleFocus,
+    onBlur: handleBlur,
     onUpdate: () => {
       const html = editor?.getHTML() || '';
       setHasContent(html.length > 0 && html !== '<p></p>');
     }
   });
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) {
+        window.clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Implement debouncing of onChange and flush on blur using local refs
   const pendingRef = useRef<string | null>(null)
@@ -167,21 +201,26 @@ export function CompactRichTextEditor({
   const editorHeight = isFocused || hasContent ? "auto" : minHeight;
 
   return (
-    <MantineProvider>
-      <RichTextEditor 
-        editor={editor} 
-        className="border border-input rounded-md transition-all duration-200"
-        style={{ minHeight: editorHeight }}
-      >
-        {shouldShowToolbar && (
-          <RichTextEditor.Toolbar 
-            className={`transition-all duration-200 ${isFocused ? 'border-b' : 'border-b-0'}`}
-          >
-            <RichTextEditor.ControlsGroup>
-              <RichTextEditor.Bold />
-              <RichTextEditor.Italic />
-              <RichTextEditor.Underline />
-            </RichTextEditor.ControlsGroup>
+    <div ref={containerRef}>
+      <MantineProvider>
+        <RichTextEditor 
+          editor={editor} 
+          className="border border-input rounded-md transition-all duration-200"
+          style={{ minHeight: editorHeight }}
+        >
+          {shouldShowToolbar && (
+            <RichTextEditor.Toolbar 
+              className={`transition-all duration-200 ${isFocused ? 'border-b' : 'border-b-0'}`}
+              onMouseDown={(e) => {
+                // Prevenir que los clics en la toolbar causen blur del editor
+                e.preventDefault();
+              }}
+            >
+              <RichTextEditor.ControlsGroup>
+                <RichTextEditor.Bold />
+                <RichTextEditor.Italic />
+                <RichTextEditor.Underline />
+              </RichTextEditor.ControlsGroup>
 
             <RichTextEditor.ControlsGroup>
               <RichTextEditor.H1 />
@@ -267,5 +306,6 @@ export function CompactRichTextEditor({
         />
       </RichTextEditor>
     </MantineProvider>
+    </div>
   );
 }
