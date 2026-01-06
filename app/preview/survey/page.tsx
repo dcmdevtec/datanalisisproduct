@@ -914,6 +914,76 @@ function PreviewSurveyPageContent() {
       return
     }
 
+    // Verificar skip logic de la sección actual
+    if (currentSection.skip_logic?.enabled) {
+      const skipLogic = currentSection.skip_logic
+
+      // Manejar estructura con "action"
+      if (skipLogic.action) {
+        try {
+          // Verificar si es una acción de finalizar encuesta
+          if (skipLogic.action === "end_survey") {
+            console.log(`🔥 Skip logic de sección: Finalizando encuesta desde "${currentSection.title}"`)
+            // Finalizar encuesta inmediatamente
+            setSubmissionStatus("idle")
+            const ok = await submitResponses()
+            if (ok) {
+              setSubmissionStatus("success")
+              setShowFinishedDialog(true)
+            } else {
+              setSubmissionStatus("error")
+            }
+            return // Salir después de finalizar
+          }
+
+          // Si es salto a sección específica
+          if (skipLogic.action === "specific_section" && skipLogic.targetSectionId) {
+            console.log(`🔥 Skip logic de sección: Saltando desde "${currentSection.title}" a sección "${skipLogic.targetSectionId}"`)
+            const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === skipLogic.targetSectionId)
+            if (foundSectionIndex !== -1) {
+              // Aplicar el salto inmediatamente
+              setCurrentSectionIndex(foundSectionIndex)
+              return // Salir después de aplicar el salto de sección
+            } else {
+              console.warn(`⚠️ Sección objetivo "${skipLogic.targetSectionId}" no encontrada`)
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Error aplicando skip logic de sección "${currentSection.title}":`, error)
+        }
+      }
+
+      // Mantener compatibilidad con estructura anterior (target_section_id)
+      const { target_section_id } = skipLogic
+      if (target_section_id) {
+        try {
+          // Verificar si es una acción de finalizar encuesta
+          if (target_section_id === "END_SURVEY") {
+            // Finalizar encuesta inmediatamente
+            setSubmissionStatus("idle")
+            const ok = await submitResponses()
+            if (ok) {
+              setSubmissionStatus("success")
+              setShowFinishedDialog(true)
+            } else {
+              setSubmissionStatus("error")
+            }
+            return // Salir después de finalizar
+          }
+
+          // Si hay una sección objetivo, calcular el índice
+          const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === target_section_id)
+          if (foundSectionIndex !== -1) {
+            // Aplicar el salto inmediatamente
+            setCurrentSectionIndex(foundSectionIndex)
+            return // Salir después de aplicar el salto de sección
+          }
+        } catch (error) {
+          console.error(`❌ Error aplicando skip logic de sección "${currentSection.title}":`, error)
+        }
+      }
+    }
+
     // Verificar skip logic en todas las preguntas de la sección actual
     for (const question of currentSection.questions) {
       if (question.config?.skipLogic?.enabled && question.config.skipLogic.rules) {
