@@ -919,12 +919,27 @@ export function QuestionEditor({
               <Label className="font-medium">Tipo de celda</Label>
               <Select
                 value={question.config?.matrixCellType || "radio"}
-                onValueChange={(value) =>
-                  onUpdateQuestion(sectionId, question.id, "config", {
+                onValueChange={(value) => {
+                  const newConfig = {
                     ...question.config,
                     matrixCellType: value,
-                  })
-                }
+                  }
+                  
+                  // Si se selecciona checkbox, inicializar opciones basadas en las columnas
+                  if (value === "checkbox" && question.matrixCols) {
+                    // Crear opciones simples basadas en las columnas para habilitar límites
+                    const matrixOptions = question.matrixCols.map((col, idx) => ({
+                      label: `${col}`,
+                      value: `col_${idx}`,
+                    }))
+                    
+                    // Actualizar tanto config como options
+                    onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                    onUpdateQuestion(sectionId, question.id, "options", matrixOptions)
+                  } else {
+                    onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                  }
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Seleccione el tipo de celda" />
@@ -1450,10 +1465,16 @@ export function QuestionEditor({
                   onChange={(e) => {
                     const labels = question.config?.scaleLabels || ["", ""]
                     labels[0] = e.target.value
-                    onUpdateQuestion(sectionId, question.id, "config", {
+                    const newConfig = {
                       ...question.config,
                       scaleLabels: labels,
-                    })
+                    }
+                    onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                    // Auto-guardar inmediatamente
+                    autoSaveQuestionHelper({
+                      ...question,
+                      config: newConfig
+                    }, sectionId, surveyId)
                   }}
                 />
                 <Input
@@ -1462,10 +1483,16 @@ export function QuestionEditor({
                   onChange={(e) => {
                     const labels = question.config?.scaleLabels || ["", ""]
                     labels[1] = e.target.value
-                    onUpdateQuestion(sectionId, question.id, "config", {
+                    const newConfig = {
                       ...question.config,
                       scaleLabels: labels,
-                    })
+                    }
+                    onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                    // Auto-guardar inmediatamente
+                    autoSaveQuestionHelper({
+                      ...question,
+                      config: newConfig
+                    }, sectionId, surveyId)
                   }}
                 />
               </div>

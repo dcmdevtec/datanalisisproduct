@@ -133,17 +133,22 @@ function ValueSelector({
     return null
   }
 
-  // For multiple choice and checkbox questions, show option selector
-  if ((sourceQuestion.type === "multiple_choice" || sourceQuestion.type === "checkbox") && sourceQuestion.options?.length > 0) {
+  // For multiple choice, checkbox questions, and matrix with checkbox cells, show option selector
+  if (((sourceQuestion.type === "multiple_choice" || sourceQuestion.type === "checkbox") && sourceQuestion.options?.length > 0) ||
+      (sourceQuestion.type === "matrix" && sourceQuestion.config?.matrixCellType === "checkbox" && sourceQuestion.matrixCols?.length > 0)) {
     // Checkbox + contains/not_contains -> multi-select checkboxes
-    if (sourceQuestion.type === "checkbox" && (operator === "contains" || operator === "not_contains")) {
+    if ((sourceQuestion.type === "checkbox" || 
+        (sourceQuestion.type === "matrix" && sourceQuestion.config?.matrixCellType === "checkbox")) && 
+        (operator === "contains" || operator === "not_contains")) {
       const selectedValues = value ? value.split(",") : []
+      // For matrix, use matrixCols as options; for checkbox, use options
+      const availableOptions = sourceQuestion.type === "matrix" ? sourceQuestion.matrixCols : sourceQuestion.options
       return (
         <div className="space-y-2 p-3 border rounded-lg bg-gray-50 max-w-xs">
           <Label className="text-xs font-medium">Seleccionar opciones:</Label>
-          {sourceQuestion.options.map((option: any, optionIndex: number) => {
-            const optLabel = stripHtmlTags(getOptionLabel(option))
-            const optValue = getOptionValue(option)
+          {availableOptions?.map((option: any, optionIndex: number) => {
+            const optLabel = sourceQuestion.type === "matrix" ? String(option) : stripHtmlTags(getOptionLabel(option))
+            const optValue = sourceQuestion.type === "matrix" ? String(option) : getOptionValue(option)
             const checked = selectedValues.includes(optValue)
             return (
               <div key={optionIndex} className="flex items-center space-x-2">
@@ -171,17 +176,22 @@ function ValueSelector({
     }
 
     // Single selection -> Select
+    const availableOptions = sourceQuestion.type === "matrix" ? sourceQuestion.matrixCols : sourceQuestion.options
     return (
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-[200px]">
           <SelectValue placeholder="Seleccionar opción" />
         </SelectTrigger>
         <SelectContent>
-          {sourceQuestion.options.map((option: any, index: number) => (
-            <SelectItem key={index} value={getOptionValue(option)}>
-              {stripHtmlTags(getOptionLabel(option))}
-            </SelectItem>
-          ))}
+          {availableOptions?.map((option: any, index: number) => {
+            const optLabel = sourceQuestion.type === "matrix" ? String(option) : stripHtmlTags(getOptionLabel(option))
+            const optValue = sourceQuestion.type === "matrix" ? String(option) : getOptionValue(option)
+            return (
+              <SelectItem key={index} value={optValue}>
+                {optLabel}
+              </SelectItem>
+            )
+          })}
         </SelectContent>
       </Select>
     )
@@ -310,7 +320,8 @@ function SkipLogicVisualizer({
 
   // Reset condition value when question type that needs options changes
   useEffect(() => {
-    if (question.type === 'multiple_choice' || question.type === 'checkbox') {
+    if (question.type === 'multiple_choice' || question.type === 'checkbox' || 
+       (question.type === 'matrix' && question.config?.matrixCellType === 'checkbox')) {
         setConditionValue("");
     }
   }, [question.type]);
@@ -334,7 +345,8 @@ function SkipLogicVisualizer({
   return (
     <div className="overflow-x-auto">
       {/* If question has explicit options (multiple_choice, dropdown, checkbox), show per-option jump editor */}
-      {(question.type === 'multiple_choice' || question.type === 'dropdown' || question.type === 'checkbox') &&
+      {((question.type === 'multiple_choice' || question.type === 'dropdown' || question.type === 'checkbox') ||
+        (question.type === 'matrix' && question.config?.matrixCellType === 'checkbox' && question.matrixCols)) &&
         question.options && question.options.length > 0 && (
         <div className="mb-6">
           <h4 className="text-sm font-semibold text-emerald-800 mb-2">Saltos por opción</h4>
@@ -985,7 +997,8 @@ export function AdvancedQuestionConfig({
       content: (
         <div className="space-y-6">
           {/* Only meaningful for questions with explicit options */}
-          {(question.type === 'multiple_choice' || question.type === 'checkbox' || question.type === 'dropdown') ? (
+          {(question.type === 'multiple_choice' || question.type === 'checkbox' || question.type === 'dropdown' || 
+            (question.type === 'matrix' && question.config?.matrixCellType === 'checkbox')) ? (
             <Card className="border-2 border-gray-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1046,7 +1059,7 @@ export function AdvancedQuestionConfig({
             </Card>
           ) : (
             <Card className="border-2 border-gray-100 p-4">
-              <p className="text-sm text-muted-foreground">El panel de Opciones solo aplica para preguntas tipo "multiple_choice", "checkbox" o "dropdown".</p>
+              <p className="text-sm text-muted-foreground">El panel de Opciones solo aplica para preguntas tipo "multiple_choice", "checkbox", "dropdown" o matrices con celdas tipo checkbox.</p>
             </Card>
           )}
         </div>

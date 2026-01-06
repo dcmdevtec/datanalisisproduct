@@ -972,6 +972,20 @@ function PreviewSurveyPageContent() {
               }
 
               if (conditionMet) {
+                // Verificar si es una acción de finalizar encuesta
+                if (rule.targetSectionId === "END_SURVEY") {
+                  // Finalizar encuesta inmediatamente
+                  setSubmissionStatus("idle")
+                  const ok = await submitResponses()
+                  if (ok) {
+                    setSubmissionStatus("success")
+                    setShowFinishedDialog(true)
+                  } else {
+                    setSubmissionStatus("error")
+                  }
+                  return // Salir después de finalizar
+                }
+
                 // Si hay una sección objetivo, calcular el índice
                 if (rule.targetSectionId) {
                   const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === rule.targetSectionId)
@@ -1734,9 +1748,14 @@ function PreviewSurveyPageContent() {
             // Get configuration from question.config
             const scaleMin = question.config?.scaleMin ?? 1;
             const scaleMax = question.config?.scaleMax ?? 5;
-            const scaleLabels = question.config?.scaleLabels || {};
-            const minLabel = scaleLabels.min || "Muy en desacuerdo";
-            const maxLabel = scaleLabels.max || "Muy de acuerdo";
+            // Support both array format [min, max] and object format {min, max}
+            const scaleLabels = question.config?.scaleLabels || [];
+            const minLabel = Array.isArray(scaleLabels) 
+              ? (scaleLabels[0] || "Muy en desacuerdo")
+              : (scaleLabels.min || "Muy en desacuerdo");
+            const maxLabel = Array.isArray(scaleLabels) 
+              ? (scaleLabels[1] || "Muy de acuerdo")
+              : (scaleLabels.max || "Muy de acuerdo");
 
             // Generate array of scale values
             const scaleValues = Array.from(
