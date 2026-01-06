@@ -243,11 +243,19 @@ function SortableSection({
 }) {
   // Estado local para el editor enriquecido del título de la sección (usa title_html como fuente principal)
   const [localSectionTitle, setLocalSectionTitle] = useState(section.title_html || "");
+  // Estado para controlar la visibilidad del campo de descripción
+  // Solo mostrar por defecto si ya existe descripción (modo edición)
+  const [showDescription, setShowDescription] = useState(Boolean(section.description));
 
   // Sincronizar el estado local SOLO con title_html
   useEffect(() => {
     setLocalSectionTitle(section.title_html || "");
   }, [section.title_html]);
+
+  // Sincronizar showDescription con la existencia de descripción solo al cargar
+  useEffect(() => {
+    setShowDescription(Boolean(section.description));
+  }, [section.id]); // Solo cuando cambia la sección, no cada vez que cambia la descripción
 
   // Guardar el valor HTML en el estado global al cambiar
   const handleSectionTitleChange = (html: string) => {
@@ -376,16 +384,44 @@ function SortableSection({
           </div>
         )}
 
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-muted-foreground mb-1">Descripción de la sección</label>
-          <CompactRichTextEditor
-            value={section.description || ""}
-            onChange={(html) => onUpdateSection(section.id, "description", html)}
-            placeholder="Descripción opcional de la sección..."
-            minHeight="60px"
-            compact={true}
-          />
-        </div>
+        {showDescription ? (
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-muted-foreground">Descripción de la sección</label>
+              <Button
+                variant="ghost" 
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  setShowDescription(false);
+                  onUpdateSection(section.id, "description", "");
+                }}
+                title="Ocultar descripción y borrar contenido"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <CompactRichTextEditor
+              value={section.description || ""}
+              onChange={(html) => onUpdateSection(section.id, "description", html)}
+              placeholder="Descripción opcional de la sección..."
+              minHeight="60px"
+              compact={true}
+            />
+          </div>
+        ) : (
+          <div className="mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground hover:border-primary/50 border-dashed h-8 px-3"
+              onClick={() => setShowDescription(true)}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Agregar descripción opcional
+            </Button>
+          </div>
+        )}
       </div>
 
       <Dialog open={showSkipLogicModal} onOpenChange={setShowSkipLogicModal}>
