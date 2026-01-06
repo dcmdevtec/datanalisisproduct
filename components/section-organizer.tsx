@@ -12,6 +12,7 @@ import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash, Arrow
 import { useToast } from "@/components/ui/use-toast"
 import { generateUUID } from "@/lib/utils"
 import { RichTextEditor } from "@/components/rich-text-editor"
+import { CompactRichTextEditor } from "@/components/ui/compact-rich-text-editor"
 
 // Utility: strip HTML tags safely in browser (returns plain text)
 function stripHtml(html?: string | null): string {
@@ -758,21 +759,22 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Título de la sección</label>
-              <RichTextEditor
+              <CompactRichTextEditor
                 value={editTitle}
                 onChange={setEditTitle}
                 placeholder="Ej: Datos Personales"
+                minHeight="60px"
                 compact={true}
-                className="min-h-[60px]"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Descripción (opcional)</label>
-              <RichTextEditor
+              <CompactRichTextEditor
                 value={editDescription}
                 onChange={setEditDescription}
                 placeholder="Descripción de la sección..."
-                className="min-h-[120px]"
+                minHeight="80px"
+                compact={true}
               />
             </div>
           </div>

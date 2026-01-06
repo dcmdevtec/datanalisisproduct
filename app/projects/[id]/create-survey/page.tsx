@@ -80,6 +80,11 @@ const AdvancedRichTextEditor = dynamic(() => import("@/components/ui/advanced-ri
   ssr: false,
   loading: () => <div className="h-20 bg-muted animate-pulse rounded" />,
 })
+
+const CompactRichTextEditor = dynamic(() => import("@/components/ui/compact-rich-text-editor").then((mod) => mod.CompactRichTextEditor), {
+  ssr: false,
+  loading: () => <div className="h-20 bg-muted animate-pulse rounded" />,
+})
 import { arrayMove } from "@dnd-kit/sortable"
 
 import {
@@ -292,11 +297,12 @@ function SortableSection({
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <AdvancedRichTextEditor
+              <CompactRichTextEditor
                 value={localSectionTitle}
                 onChange={handleSectionTitleChange}
                 placeholder="Título de la sección (ej: Datos Personales)"
-                immediatelyRender={false}
+                minHeight="60px"
+                compact={true}
               />
             </div>
           </div>
@@ -372,14 +378,13 @@ function SortableSection({
 
         <div className="mt-4">
           <label className="block text-sm font-medium text-muted-foreground mb-1">Descripción de la sección</label>
-          <div className="rounded-lg border border-muted bg-white/70 p-2 shadow-sm transition focus-within:ring-2 focus-within:ring-primary/30">
-            <AdvancedRichTextEditor
-              value={section.description || ""}
-              onChange={(html) => onUpdateSection(section.id, "description", html)}
-              placeholder="Descripción opcional de la sección..."
-              className="min-h-[80px] border-none bg-transparent px-0 focus-visible:ring-0"
-            />
-          </div>
+          <CompactRichTextEditor
+            value={section.description || ""}
+            onChange={(html) => onUpdateSection(section.id, "description", html)}
+            placeholder="Descripción opcional de la sección..."
+            minHeight="60px"
+            compact={true}
+          />
         </div>
       </div>
 

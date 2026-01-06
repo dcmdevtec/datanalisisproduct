@@ -18,6 +18,7 @@ import { Slider } from "@/components/ui/slider"
 import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings } from "lucide-react"
 import { Dialog } from "@/components/ui/dialog"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
+import { CompactRichTextEditor } from "@/components/ui/compact-rich-text-editor"
 import { Badge } from "@/components/ui/badge"
 import { useDebounce } from "use-debounce"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
@@ -479,10 +480,15 @@ export function QuestionEditor({
 
     return (
       <div className="space-y-2">
-        {/* Use the lightweight AdvancedRichTextEditor for formatting if available, fall back to Input */}
+        {/* Use the compact rich text editor for a cleaner interface */}
         <div>
-          {/* existing AdvancedRichTextEditor is a dynamic import above */}
-          <AdvancedRichTextEditor value={local} onChange={(h: string) => setLocal(h)} placeholder={placeholder || ""} immediatelyRender={false} />
+          <CompactRichTextEditor 
+            value={local} 
+            onChange={(h: string) => setLocal(h)} 
+            placeholder={placeholder || ""} 
+            minHeight="60px"
+            compact={true}
+          />
         </div>
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="default" onClick={handleSave} disabled={saving}>
@@ -660,14 +666,15 @@ export function QuestionEditor({
                 }}
               />
             ) : (
-              <div className="border rounded-lg overflow-hidden p-2 bg-background">
-                <AdvancedRichTextEditor
+              <div className="space-y-2">
+                <CompactRichTextEditor
                   value={localQuestionTextHtml}
                   onChange={handleQuestionTextChange}
                   placeholder="Escribe tu pregunta aquí..."
-                  immediatelyRender={false}
+                  minHeight="80px"
+                  compact={true}
                 />
-                <div className="flex justify-end mt-2 gap-2">
+                <div className="flex justify-end gap-2">
                   <Button
                     size="sm"
                     variant="default"
