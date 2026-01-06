@@ -2640,7 +2640,7 @@ function PreviewSurveyPageContent() {
                 />
               )}
               <CardTitle
-                className="text-5xl font-bold mb-4 preview-title"
+                className="text-3xl font-bold mb-4 preview-title"
                 style={{
                   color: themeColors.text
                 }}
