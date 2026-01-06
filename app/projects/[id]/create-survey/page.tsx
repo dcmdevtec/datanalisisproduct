@@ -47,10 +47,10 @@ import { supabase } from "@/lib/supabase-browser"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { generateUUID } from "@/lib/utils"
-import { AssignSurveyorsModal } from "@/components/assign-surveyors-modal"
 import { EditSurveySettingsModal } from "@/components/edit-survey-settings-modal"
 import { MultiSelectZones } from "@/components/multi-select-zones"
 import { ZoneSurveyorAssignment } from "@/components/zone-surveyor-assignment"
+import { GeneralSurveyorAssignment } from "@/components/general-surveyor-assignment"
 import type { Zone } from "@/types/zone"
 import type { Surveyor } from "@/types/surveyor"
 import type { GeoJSON } from "geojson"
@@ -170,6 +170,7 @@ interface SectionSkipLogic {
 interface SurveySection {
   id: string
   title: string
+  title_html?: string
   description?: string
   order_num: number
   questions: Question[]
@@ -880,6 +881,8 @@ export function CreateSurveyForProjectPageContent() {
   const handleSaveSection = async (sectionId: string) => {
     if (!sections.length || !sectionId) return
 
+    if (isSavingSection) return // Prevent concurrent saves for the same section
+
     setIsSavingSection(true)
     try {
       let workingSurveyId = currentSurveyId
@@ -888,7 +891,7 @@ export function CreateSurveyForProjectPageContent() {
       if (!workingSurveyId) {
         console.log("🆕 Creando encuesta antes de guardar sección...")
 
-        if (!surveyTitle.trim()) {
+        if (!surveyTitle || !surveyTitle.trim()) {
           throw new Error("El título de la encuesta es obligatorio para guardar secciones")
         }
 
@@ -914,7 +917,10 @@ export function CreateSurveyForProjectPageContent() {
           .select()
           .single()
 
-        if (surveyError) throw surveyError
+        if (surveyError) {
+          console.error("❌ Error al crear la encuesta:", surveyError)
+          throw new Error(surveyError.message || "Error al crear la encuesta")
+        }
 
         workingSurveyId = newSurvey.id
         setCurrentSurveyId(workingSurveyId)
@@ -926,71 +932,58 @@ export function CreateSurveyForProjectPageContent() {
       const section = sections.find((s) => s.id === sectionId)
       if (!section) throw new Error("Sección no encontrada")
 
+      // Validar que el ID sea un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      if (!section.id || !uuidRegex.test(section.id)) {
+        console.warn(`⚠️ ID de sección inválido detectado: ${section.id}. Generando uno nuevo.`)
+        const newId = generateUUID()
+        // Actualizar el ID en el estado local para que coincida con el que vamos a guardar
+        setSections(prev => prev.map(s => s.id === sectionId ? { ...s, id: newId } : s))
+        section.id = newId
+      }
+
       const sectionData = {
+        id: section.id,
         survey_id: workingSurveyId,
-        title: section.title.trim(),
+        title: (section.title || "Sin título").trim(),
         title_html: section.title_html || "",
         description: section.description || "",
         order_num: sections.findIndex((s) => s.id === sectionId),
         skip_logic: section.skipLogic || null,
       }
 
-      let savedSection
+      console.log("💾 Guardando sección (upsert):", sectionData)
 
-      if (
-        section.id &&
-        section.id !== "temp-id" &&
-        section.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
-      ) {
-        // Valid UUID - try to update existing section
-        const { data, error: updateError } = await supabase
-          .from("survey_sections")
-          .update(sectionData)
-          .eq("id", section.id)
-          .select()
-          .single()
+      const { data: savedSection, error: upsertError } = await supabase
+        .from("survey_sections")
+        .upsert([sectionData], { onConflict: "id" })
+        .select()
+        .single()
 
-        if (updateError) {
-          // If update fails, try insert with new ID
-          console.log("⚠️ Update failed, creating new section:", updateError.message)
-          const { data: insertData, error: insertError } = await supabase
-            .from("survey_sections")
-            .insert([sectionData])
-            .select()
-            .single()
+      if (upsertError) {
+        console.error("❌ Error de Supabase al hacer upsert de sección:", upsertError)
+        throw new Error(upsertError.message || "Error al guardar la sección en la base de datos")
+      }
 
-          if (insertError) throw insertError
-          savedSection = insertData
-
-          // Update section ID in local state
-          setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)))
-        } else {
-          savedSection = data
-        }
-      } else {
-        // No valid ID - create new section
-        const { data: insertData, error: insertError } = await supabase
-          .from("survey_sections")
-          .insert([sectionData])
-          .select()
-          .single()
-
-        if (insertError) throw insertError
-        savedSection = insertData
-
-        // Update section ID in local state
-        setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, id: savedSection.id } : s)))
+      if (!savedSection) {
+        throw new Error("No se pudo obtener la sección guardada de la base de datos")
       }
 
       if (section.questions.length > 0) {
+        console.log(`💾 Guardando ${section.questions.length} preguntas para la sección ${savedSection.id}`)
         // Upsert (insert/update) cada pregunta individualmente para compatibilidad con auto-save
         for (const [index, q] of section.questions.entries()) {
+          // Asegurar que la pregunta tenga un ID válido
+          if (!q.id || !uuidRegex.test(q.id)) {
+            q.id = generateUUID()
+          }
+
           const questionData = {
             id: q.id,
             survey_id: workingSurveyId,
             section_id: savedSection.id,
             type: q.type,
-            text: q.text.trim(),
+            text: (q.text || "").trim(),
             options: q.options || [],
             required: q.required || false,
             order_num: index,
@@ -1008,8 +1001,11 @@ export function CreateSurveyForProjectPageContent() {
             display_logic: q.config?.displayLogic || null,
             validation_rules: q.config?.validation || null,
           };
-          const { error: upsertError } = await supabase.from("questions").upsert([questionData], { onConflict: "id" });
-          if (upsertError) throw upsertError;
+          const { error: qUpsertError } = await supabase.from("questions").upsert([questionData], { onConflict: "id" });
+          if (qUpsertError) {
+            console.error(`❌ Error al guardar pregunta ${q.id}:`, qUpsertError)
+            throw new Error(qUpsertError.message || `Error al guardar la pregunta ${index + 1}`)
+          }
         }
       }
 
@@ -1024,14 +1020,17 @@ export function CreateSurveyForProjectPageContent() {
         description: "Los cambios han sido guardados exitosamente",
       })
     } catch (error: any) {
-      console.error("Error al guardar la sección:", error)
+      console.error("Error detallado al guardar la sección:", error)
       setSectionSaveStates((prev) => ({
         ...prev,
         [sectionId]: "error",
       }))
+
+      const errorMessage = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error))
+
       toast({
         title: "Error al guardar",
-        description: error.message || "Ocurrió un error al guardar la sección",
+        description: errorMessage || "Ocurrió un error al guardar la sección",
         variant: "destructive",
       })
     } finally {
@@ -1072,12 +1071,14 @@ export function CreateSurveyForProjectPageContent() {
   const [allZones, setAllZones] = useState<Zone[]>([])
   const [surveyorsLoading, setSurveyorsLoading] = useState<boolean>(true)
   const [zonesLoading, setZonesLoading] = useState<boolean>(true)
-  const [showAssignSurveyorsModal, setShowAssignSurveyorsModal] = useState(false)
   const [showEditSettingsModal, setShowEditSettingsModal] = useState(false)
   const [displayedZoneGeometry, setDisplayedZoneGeometry] = useState<GeoJSON | null>(null)
 
   // New state to manage surveyor assignments per zone
   const [assignedZoneSurveyors, setAssignedZoneSurveyors] = useState<{ [zoneId: string]: string[] }>({})
+
+  // State to manage general surveyor assignments (without specific zones)
+  const [assignedGeneralSurveyors, setAssignedGeneralSurveyors] = useState<string[]>([])
 
   const [showSectionOrganizer, setShowSectionOrganizer] = useState(false)
 
@@ -1167,7 +1168,9 @@ export function CreateSurveyForProjectPageContent() {
           validation_rules: newQuestion.config?.validation || null,
         };
         const { data, error } = await supabase.from("questions").upsert([questionData], { onConflict: "id" }).select().single();
-        if (!error && data && data.id && data.id !== newQuestion.id) {
+        if (error) {
+          console.error("❌ Error al guardar la nueva pregunta:", error);
+        } else if (data && data.id && data.id !== newQuestion.id) {
           // Si el ID cambia (por triggers o por la BD), actualiza el estado local
           setSections((prevSections) =>
             prevSections.map((s) =>
@@ -1183,7 +1186,7 @@ export function CreateSurveyForProjectPageContent() {
           );
         }
       } catch (err) {
-        console.error("Error al guardar la nueva pregunta:", err);
+        console.error("Error inesperado al guardar la nueva pregunta:", err);
       }
     }
   }
@@ -1224,14 +1227,6 @@ export function CreateSurveyForProjectPageContent() {
     [],
   )
 
-  const handleAssignSurveyorsSave = (assignedIds: string[]) => {
-    setSettings((prev) => ({
-      ...prev,
-      assignedUsers: assignedIds,
-    }))
-    setShowAssignSurveyorsModal(false)
-  }
-
   const handleZoneSelectionChange = (selectedIds: string[]) => {
     setSettings((prev) => ({
       ...prev,
@@ -1270,6 +1265,16 @@ export function CreateSurveyForProjectPageContent() {
     setAssignedZoneSurveyors((prev) => ({
       ...prev,
       [zoneId]: newAssignedSurveyorIds,
+    }))
+  }, [])
+
+  // Handler for general surveyor assignment (no specific zone)
+  const handleGeneralSurveyorAssignmentChange = useCallback((newAssignedSurveyorIds: string[]) => {
+    setAssignedGeneralSurveyors(newAssignedSurveyorIds)
+    // Also update the settings for backwards compatibility
+    setSettings((prev) => ({
+      ...prev,
+      assignedUsers: newAssignedSurveyorIds,
     }))
   }, [])
 
@@ -1451,9 +1456,11 @@ export function CreateSurveyForProjectPageContent() {
       const surveyorZoneAssignmentsToInsert: {
         survey_id: string;
         surveyor_id: string;
-        zone_id: string;
+        zone_id?: string | null;
+        general_status?: boolean | null;
       }[] = [];
 
+      // Insertar asignaciones por zona específica
       for (const zoneId of settings.assignedZones || []) {
         const surveyorsForZone = assignedZoneSurveyors[zoneId] || [];
         for (const surveyorId of surveyorsForZone) {
@@ -1462,8 +1469,21 @@ export function CreateSurveyForProjectPageContent() {
               survey_id: surveyId,
               surveyor_id: surveyorId,
               zone_id: zoneId,
+              general_status: null,
             });
           }
+        }
+      }
+
+      // Insertar asignaciones generales (sin zona específica)
+      for (const surveyorId of assignedGeneralSurveyors) {
+        if (surveyorId) {
+          surveyorZoneAssignmentsToInsert.push({
+            survey_id: surveyId,
+            surveyor_id: surveyorId,
+            zone_id: null,
+            general_status: true,
+          });
         }
       }
 
@@ -1472,7 +1492,7 @@ export function CreateSurveyForProjectPageContent() {
           .from("survey_surveyor_zones")
           .insert(surveyorZoneAssignmentsToInsert);
         if (insertAssignmentsError) {
-          throw new Error(`Error al asignar encuestadores a zonas: ${insertAssignmentsError.message}`);
+          throw new Error(`Error al asignar encuestadores: ${insertAssignmentsError.message}`);
         }
       }
 
@@ -1605,7 +1625,7 @@ export function CreateSurveyForProjectPageContent() {
       // Fetch surveyor-zone assignments
       const { data: surveyorZoneData, error: surveyorZoneError } = await supabase
         .from("survey_surveyor_zones")
-        .select("surveyor_id, zone_id")
+        .select("surveyor_id, zone_id, general_status")
         .eq("survey_id", currentSurveyId)
 
       if (surveyorZoneError) throw surveyorZoneError
@@ -1613,15 +1633,31 @@ export function CreateSurveyForProjectPageContent() {
       console.log("🔍 Datos de asignación encuestador-zona:", surveyorZoneData)
 
       const newAssignedZoneSurveyors: { [zoneId: string]: string[] } = {}
+      const newAssignedGeneralSurveyors: string[] = []
+
       surveyorZoneData.forEach((assignment) => {
-        if (!newAssignedZoneSurveyors[assignment.zone_id]) {
-          newAssignedZoneSurveyors[assignment.zone_id] = []
+        if (assignment.general_status === true && assignment.zone_id === null) {
+          // Asignación general
+          newAssignedGeneralSurveyors.push(assignment.surveyor_id)
+        } else if (assignment.zone_id) {
+          // Asignación específica por zona
+          if (!newAssignedZoneSurveyors[assignment.zone_id]) {
+            newAssignedZoneSurveyors[assignment.zone_id] = []
+          }
+          newAssignedZoneSurveyors[assignment.zone_id].push(assignment.surveyor_id)
         }
-        newAssignedZoneSurveyors[assignment.zone_id].push(assignment.surveyor_id)
       })
 
       console.log("👥 Encuestadores asignados por zona:", newAssignedZoneSurveyors)
+      console.log("👥 Encuestadores generales:", newAssignedGeneralSurveyors)
       setAssignedZoneSurveyors(newAssignedZoneSurveyors)
+      setAssignedGeneralSurveyors(newAssignedGeneralSurveyors)
+
+      // Update settings to maintain backwards compatibility
+      setSettings((prevSettings) => ({
+        ...prevSettings,
+        assignedUsers: newAssignedGeneralSurveyors,
+      }))
 
       // Configurar zonas después de cargar los datos
       if (parsedAssignedZones.length > 0 && allZones.length > 0) {
@@ -2631,58 +2667,11 @@ export function CreateSurveyForProjectPageContent() {
                   </div>
 
                   <div className="space-y-4">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Users className="h-4 w-4" />
-                          Asignación General
-                        </CardTitle>
-                        <CardDescription className="text-sm">
-                          Encuestadores con acceso a todas las zonas
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Button
-                          variant="outline"
-                          className="w-full gap-2 bg-transparent"
-                          onClick={() => setShowAssignSurveyorsModal(true)}
-                        >
-                          <Users className="h-4 w-4" />
-                          {(settings.assignedUsers?.length ?? 0) > 0 ? "Editar" : "Asignar"} Encuestadores
-                        </Button>
-
-                        {(settings.assignedUsers?.length ?? 0) > 0 ? (
-                          <div className="space-y-2">
-                            {settings.assignedUsers?.slice(0, 3).map((userId) => {
-                              const assignedUser = allSurveyors.find((u) => u.id === userId)
-                              return assignedUser ? (
-                                <div key={userId} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarFallback className="text-xs">
-                                      {assignedUser.name
-                                        ? assignedUser.name.substring(0, 2).toUpperCase()
-                                        : assignedUser.email.substring(0, 2).toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium truncate">
-                                      {assignedUser.name || assignedUser.email}
-                                    </p>
-                                  </div>
-                                </div>
-                              ) : null
-                            })}
-                            {settings.assignedUsers && settings.assignedUsers.length > 3 && (
-                              <p className="text-xs text-muted-foreground text-center">
-                                +{(settings.assignedUsers?.length ?? 0) - 3} más
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">Sin encuestadores asignados</p>
-                        )}
-                      </CardContent>
-                    </Card>
+                    <GeneralSurveyorAssignment
+                      allSurveyors={allSurveyors}
+                      assignedSurveyorIds={assignedGeneralSurveyors}
+                      onAssignmentChange={handleGeneralSurveyorAssignmentChange}
+                    />
 
                     <Card>
                       <CardHeader>
@@ -2698,7 +2687,7 @@ export function CreateSurveyForProjectPageContent() {
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-muted-foreground">Encuestadores generales</span>
-                          <Badge variant="outline">{settings.assignedUsers?.length || 0}</Badge>
+                          <Badge variant="outline">{assignedGeneralSurveyors?.length || 0}</Badge>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-muted-foreground">Asignaciones por zona</span>
@@ -2899,15 +2888,6 @@ export function CreateSurveyForProjectPageContent() {
           </div>
 
           {/* Modals */}
-          {showAssignSurveyorsModal && (
-            <AssignSurveyorsModal
-              surveyors={allSurveyors}
-              assignedSurveyorIds={settings.assignedUsers || []}
-              onSave={handleAssignSurveyorsSave}
-              onCancel={() => setShowAssignSurveyorsModal(false)}
-            />
-          )}
-
           {showEditSettingsModal && (
             <EditSurveySettingsModal
               isOpen={showEditSettingsModal}
