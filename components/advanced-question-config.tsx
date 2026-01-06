@@ -344,7 +344,7 @@ function SkipLogicVisualizer({
                 <tr className="text-left text-xs text-emerald-700">
                   <th className="py-2">Opción</th>
                   <th className="py-2">Saltar a</th>
-                  <th className="py-2">Acción</th>
+                  <th className="py-2 text-center w-16"></th>
                 </tr>
               </thead>
               <tbody>
@@ -425,13 +425,17 @@ function SkipLogicVisualizer({
                           <option value="END_SURVEY">Finalizar Encuesta</option>
                         </select>
                       </td>
-                      <td className="py-2 align-top">
+                      <td className="py-2 align-top text-center">
                         {existingRuleIndex > -1 ? (
-                          <button className="text-red-600 hover:underline" onClick={() => onDeleteRule(existingRuleIndex)}>
-                            Eliminar
+                          <button 
+                            className="text-red-600 hover:text-red-800 hover:bg-red-50 rounded p-1 transition-colors" 
+                            onClick={() => onDeleteRule(existingRuleIndex)}
+                            title="Eliminar regla de salto"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         ) : (
-                          <span className="text-sm text-muted-foreground">Sin salto</span>
+                          <span className="text-sm text-muted-foreground">-</span>
                         )}
                       </td>
                     </tr>
