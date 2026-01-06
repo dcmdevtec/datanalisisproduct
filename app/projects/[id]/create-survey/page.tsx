@@ -2110,6 +2110,142 @@ export function CreateSurveyForProjectPageContent() {
     setSections(newSections)
   }
 
+  // Load project data when creating a new survey (no surveyId)
+  useEffect(() => {
+    if (!user || !projectId || currentSurveyId) return // Skip if editing existing survey
+
+    const fetchProjectData = async () => {
+      setProjectLoading(true)
+      try {
+        const { data: projectData, error: projectError } = await supabase
+          .from("projects")
+          .select(`
+            id,
+            name,
+            companies (
+              id,
+              name,
+              logo
+            )
+          `)
+          .eq("id", projectId)
+          .single()
+
+        if (projectError) {
+          console.error("Error loading project data:", projectError)
+          throw projectError
+        }
+
+        if (!projectData) {
+          setError("Proyecto no encontrado.")
+          return
+        }
+
+        console.log("✅ Datos del proyecto cargados:", projectData)
+        setProjectData(projectData)
+      } catch (err: any) {
+        console.error("Error fetching project data:", err)
+        setError(err.message || "No se pudo cargar la información del proyecto.")
+        toast({
+          title: "Error",
+          description: err.message || "No se pudo cargar la información del proyecto",
+          variant: "destructive",
+        })
+      } finally {
+        setProjectLoading(false)
+      }
+    }
+
+    fetchProjectData()
+  }, [user, projectId, currentSurveyId, toast])
+
+  // Load surveyors data
+  useEffect(() => {
+    if (!user) return
+
+    const fetchSurveyors = async () => {
+      setSurveyorsLoading(true)
+      try {
+        const { data: surveyorsData, error: surveyorsError } = await supabase
+          .from("surveyors")
+          .select("id, name, email")
+          .order("name", { ascending: true })
+
+        if (surveyorsError) {
+          console.error("Error loading surveyors:", surveyorsError)
+          throw surveyorsError
+        }
+
+        setAllSurveyors(surveyorsData || [])
+      } catch (err: any) {
+        console.error("Error fetching surveyors:", err)
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los encuestadores",
+          variant: "destructive",
+        })
+      } finally {
+        setSurveyorsLoading(false)
+      }
+    }
+
+    fetchSurveyors()
+  }, [user, toast])
+
+  // Load zones data
+  useEffect(() => {
+    if (!user) return
+
+    const fetchZones = async () => {
+      setZonesLoading(true)
+      try {
+        const { data: zonesData, error: zonesError } = await supabase
+          .from("zones")
+          .select("id, name, geometry")
+          .order("name", { ascending: true })
+
+        if (zonesError) {
+          console.error("Error loading zones:", zonesError)
+          throw zonesError
+        }
+
+        setAllZones(zonesData || [])
+      } catch (err: any) {
+        console.error("Error fetching zones:", err)
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar las zonas",
+          variant: "destructive",
+        })
+      } finally {
+        setZonesLoading(false)
+      }
+    }
+
+    fetchZones()
+  }, [user, toast])
+
+  // Load survey data for editing
+  useEffect(() => {
+    if (!user || !currentSurveyId) {
+      setInitialLoading(false)
+      return
+    }
+
+    fetchSurveyForEdit()
+  }, [user, currentSurveyId, fetchSurveyForEdit])
+
+  // Complete initialization when creating new survey (no surveyId)
+  useEffect(() => {
+    if (!user || currentSurveyId || projectLoading || surveyorsLoading || zonesLoading) {
+      return
+    }
+
+    // If we're creating a new survey and all data is loaded
+    setInitialLoading(false)
+    console.log("✅ Inicialización completada para nueva encuesta")
+  }, [user, currentSurveyId, projectLoading, surveyorsLoading, zonesLoading])
+
   // Redirect to login if no user
   useEffect(() => {
     if (!authLoading && !user) {

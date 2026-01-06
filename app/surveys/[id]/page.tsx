@@ -22,6 +22,7 @@ import {
   Settings,
   Building2,
   FolderOpen,
+  Plus,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase-browser"
@@ -246,6 +247,14 @@ export default function SurveyDetailsPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/projects/${survey.project_id}/create-survey?fromSurvey=${survey.id}`)}
+              className="text-[#18b0a4] hover:text-[#139488] hover:bg-[#18b0a4]/10"
+            >
+              <Plus className="h-4 w-4 mr-2" /> Nueva Encuesta
+            </Button>
             <Button
               variant="outline"
               size="sm"

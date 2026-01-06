@@ -367,9 +367,15 @@ function SurveysPageContent() {
           </div>
           <Button
             onClick={() => {
-              setModalSelectedCompanyId(null)
-              setModalSelectedProjectId(null)
-              setIsCreateSurveyModalOpen(true)
+              // Si hay un projectId en la URL, navegar directamente a crear encuesta
+              if (projectIdFromUrl) {
+                router.push(`/projects/${projectIdFromUrl}/create-survey`)
+              } else {
+                // Si no hay projectId, mostrar el modal de selección
+                setModalSelectedCompanyId(null)
+                setModalSelectedProjectId(null)
+                setIsCreateSurveyModalOpen(true)
+              }
             }}
             className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto"
           >
@@ -483,9 +489,15 @@ function SurveysPageContent() {
             <p className="text-sm sm:text-base text-muted-foreground mb-4">No se encontraron encuestas para mostrar.</p>
             <Button
               onClick={() => {
-                setModalSelectedCompanyId(null)
-                setModalSelectedProjectId(null)
-                setIsCreateSurveyModalOpen(true)
+                // Si hay un projectId en la URL, navegar directamente a crear encuesta
+                if (projectIdFromUrl) {
+                  router.push(`/projects/${projectIdFromUrl}/create-survey`)
+                } else {
+                  // Si no hay projectId, mostrar el modal de selección
+                  setModalSelectedCompanyId(null)
+                  setModalSelectedProjectId(null)
+                  setIsCreateSurveyModalOpen(true)
+                }
               }}
               className="w-full sm:w-auto"
             >

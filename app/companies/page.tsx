@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, Building2, FolderKanban, Pencil, Trash2, X, LayoutList, LayoutGrid } from "lucide-react"
+import { Plus, Loader2, AlertCircle, Building2, FolderKanban, Pencil, Trash2, X, LayoutList, LayoutGrid, Upload, CheckCircle } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -159,55 +159,80 @@ export default function CompaniesPage() {
     setShowCompanyModal(true)
   }
 
-  const handleCompanyLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCompanyLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      try {
-        setCompanyLogoFile(file)
-        
-        console.log('🔄 Iniciando proceso de subida de logo...')
-        console.log('📁 Archivo seleccionado:', file.name, file.type, file.size)
-
-        // Importar utilidades de storage
-        const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
-          "@/lib/supabase-storage"
-        )
-
-        // Redimensionar imagen
-        console.log('🖼️ Redimensionando imagen...')
-        const resized = await resizeImage(file, 500, 500)
-        console.log('✅ Imagen redimensionada:', resized.size)
-
-        // Generar nombre único
-        const extension = getExtensionFromMimeType(file.type)
-        const fileName = currentCompany?.id
-          ? `company_${currentCompany.id}.${extension}`
-          : generateUniqueFileName("company_logo", extension)
-          
-        console.log('📝 Nombre de archivo generado:', fileName)
-
-        // Subir a Storage
-        console.log('☁️ Subiendo a Supabase Storage...')
-        const publicUrl = await uploadImage("company-logos", fileName, resized)
-
-        setCompanyLogo(publicUrl)
+      // Validar tipo de archivo
+      if (!file.type.startsWith('image/')) {
         toast({
-          title: "Logo subido",
-          description: "El logo se ha cargado correctamente.",
-        })
-      } catch (error: any) {
-        console.error("Error uploading logo:", error)
-        toast({
-          title: "Error de subida",
-          description: `No se pudo subir el logo: ${error.message}`,
+          title: "Archivo inválido",
+          description: "Por favor selecciona un archivo de imagen válido.",
           variant: "destructive",
         })
-        setCompanyLogoFile(null)
-        setCompanyLogo(isEditingCompany ? currentCompany?.logo || null : null)
+        return
       }
+
+      // Validar tamaño (máximo 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Archivo muy grande",
+          description: "El archivo debe ser menor a 5MB.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setCompanyLogoFile(file)
+      
+      // Crear preview usando FileReader
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const result = e.target?.result as string
+        setCompanyLogo(result) // Mostrar preview temporalmente
+      }
+      reader.readAsDataURL(file)
+      
+      console.log('📁 Archivo seleccionado para preview:', file.name, file.type, file.size)
     } else {
       setCompanyLogoFile(null)
-      setCompanyLogo(currentCompany?.logo || null)
+      setCompanyLogo(isEditingCompany ? currentCompany?.logo || null : null)
+    }
+  }
+
+  const uploadCompanyLogo = async (): Promise<string | null> => {
+    if (!companyLogoFile) return companyLogo
+
+    try {
+      console.log('🔄 Iniciando proceso de subida de logo...')
+      console.log('📁 Archivo a subir:', companyLogoFile.name, companyLogoFile.type, companyLogoFile.size)
+
+      // Importar utilidades de storage
+      const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import(
+        "@/lib/supabase-storage"
+      )
+
+      // Redimensionar imagen
+      console.log('🖼️ Redimensionando imagen...')
+      const resized = await resizeImage(companyLogoFile, 500, 500)
+      console.log('✅ Imagen redimensionada:', resized.size)
+
+      // Generar nombre único
+      const extension = getExtensionFromMimeType(companyLogoFile.type)
+      const fileName = currentCompany?.id
+        ? `company_${currentCompany.id}.${extension}`
+        : generateUniqueFileName("company_logo", extension)
+        
+      console.log('📝 Nombre de archivo generado:', fileName)
+
+      // Subir a Storage
+      console.log('☁️ Subiendo a Supabase Storage...')
+      const publicUrl = await uploadImage("company-logos", fileName, resized)
+
+      console.log('✅ Logo subido exitosamente:', publicUrl)
+      return publicUrl
+    } catch (error: any) {
+      console.error("Error uploading logo:", error)
+      throw error
     }
   }
 
@@ -234,40 +259,72 @@ export default function CompaniesPage() {
       return
     }
 
-    const companyData = {
-      name: companyName,
-      description: companyDescription,
-      logo: companyLogo, // This will be the Storage URL or null
-      website: companyWebsite || null,
-      contact: companyContact || null,
-    }
+    try {
+      // Subir imagen si hay una seleccionada
+      let finalLogoUrl = companyLogo
+      if (companyLogoFile) {
+        console.log('📤 Subiendo logo de empresa...')
+        finalLogoUrl = await uploadCompanyLogo()
+        if (finalLogoUrl) {
+          toast({
+            title: "Logo subido",
+            description: "El logo se ha cargado correctamente.",
+          })
+        }
+      }
 
-    let dbError = null
-    if (isEditingCompany && currentCompany) {
-      const { error } = await (supabase as any).from("companies").update(companyData).eq("id", currentCompany.id)
-      dbError = error
-    } else {
-      const { error } = await (supabase as any).from("companies").insert(companyData)
-      dbError = error
-    }
+      const companyData = {
+        name: companyName,
+        description: companyDescription,
+        logo: finalLogoUrl, // This will be the Storage URL or null
+        website: companyWebsite || null,
+        contact: companyContact || null,
+      }
 
-    if (dbError) {
-      setError(`Error al guardar la empresa: ${dbError.message}`)
+      let dbError = null
+      if (isEditingCompany && currentCompany) {
+        const { error } = await (supabase as any).from("companies").update(companyData).eq("id", currentCompany.id)
+        dbError = error
+      } else {
+        const { error } = await (supabase as any).from("companies").insert(companyData)
+        dbError = error
+      }
+
+      if (dbError) {
+        setError(`Error al guardar la empresa: ${dbError.message}`)
+        toast({
+          title: "Error",
+          description: `Hubo un error al guardar la empresa: ${dbError.message}`,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Éxito",
+          description: `Empresa ${isEditingCompany ? "actualizada" : "creada"} correctamente.`,
+          variant: "default",
+        })
+        setShowCompanyModal(false)
+        setCompanyName("")
+        setCompanyDescription("")
+        setCompanyWebsite("")
+        setCompanyContact("")
+        setCompanyLogo(null)
+        setCompanyLogoFile(null)
+        setIsEditingCompany(false)
+        setCurrentCompany(null)
+        fetchCompanies() // Re-fetch companies to update the list
+      }
+    } catch (error: any) {
+      console.error("Error al procesar empresa:", error)
+      setError(`Error al procesar empresa: ${error.message}`)
       toast({
         title: "Error",
-        description: `Hubo un error al guardar la empresa: ${dbError.message}`,
+        description: `No se pudo ${isEditingCompany ? "actualizar" : "crear"} la empresa: ${error.message}`,
         variant: "destructive",
       })
-    } else {
-      toast({
-        title: "Éxito",
-        description: `Empresa ${isEditingCompany ? "actualizada" : "creada"} correctamente.`,
-        variant: "default",
-      })
-      setShowCompanyModal(false)
-      fetchCompanies() // Re-fetch companies to update the list
+    } finally {
+      setIsSubmittingCompany(false)
     }
-    setIsSubmittingCompany(false)
   }
 
   const handleDeleteClick = (companyId: string) => {
@@ -840,39 +897,72 @@ export default function CompaniesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="company-logo">Logo (Opcional)</Label>
-              <div className="flex items-center gap-4">
-                <label
-                  htmlFor="company-logo-upload"
-                  className="cursor-pointer px-4 py-2 bg-[#18b0a4] text-white rounded-lg font-semibold shadow hover:bg-[#139488] transition"
-                >
-                  {companyLogo ? "Cambiar logo" : "Subir logo"}
-                  <input
-                    id="company-logo-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCompanyLogoFileChange}
-                    className="hidden"
-                  />
-                </label>
+              <div className="flex flex-col gap-4">
+                {/* Preview Area */}
                 {(companyLogo || currentCompany?.logo) && (
-                  <div className="relative group">
-                    <Image
-                      src={companyLogo || currentCompany?.logo || "/placeholder.svg"}
-                      alt="Logo de la Empresa"
-                      width={64}
-                      height={64}
-                      className="rounded border border-[#18b0a4] object-contain bg-white"
-                    />
-                    <button
-                      type="button"
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 text-xs opacity-80 hover:opacity-100"
-                      onClick={handleRemoveCompanyLogo}
-                      title="Eliminar logo"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                  <div className="relative group p-4 border-2 border-dashed border-[#18b0a4]/30 rounded-lg bg-[#18b0a4]/5">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <Image
+                          src={companyLogo || currentCompany?.logo || "/placeholder.svg"}
+                          alt="Logo preview"
+                          width={80}
+                          height={80}
+                          className="rounded-lg border border-[#18b0a4]/20 object-contain bg-white shadow-sm"
+                        />
+                        {companyLogoFile && (
+                          <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 text-xs">
+                            <CheckCircle className="h-3 w-3" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {companyLogoFile ? "Vista previa" : "Logo actual"}
+                        </p>
+                        {companyLogoFile && (
+                          <p className="text-xs text-gray-600 mt-1">
+                            {companyLogoFile.name} ({(companyLogoFile.size / 1024).toFixed(1)} KB)
+                          </p>
+                        )}
+                        <p className="text-xs text-[#18b0a4] mt-1">
+                          {companyLogoFile ? "Se subirá al guardar" : "Almacenado en Supabase"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-red-500 hover:text-red-700 transition-colors p-1"
+                        onClick={handleRemoveCompanyLogo}
+                        title="Eliminar logo"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
+                
+                {/* Upload Area */}
+                <div className="flex items-center justify-center w-full">
+                  <label
+                    htmlFor="company-logo-upload"
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors group"
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="w-8 h-8 mb-2 text-gray-400 group-hover:text-[#18b0a4] transition-colors" />
+                      <p className="mb-2 text-sm text-gray-500 group-hover:text-gray-700">
+                        <span className="font-semibold">{companyLogo ? "Cambiar" : "Subir"} logo</span>
+                      </p>
+                      <p className="text-xs text-gray-500">PNG, JPG, GIF hasta 5MB</p>
+                    </div>
+                    <input
+                      id="company-logo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCompanyLogoFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
             <DialogFooter>
