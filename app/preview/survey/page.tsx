@@ -2244,6 +2244,12 @@ function PreviewSurveyPageContent() {
             const matrixColOptions = config.matrixColOptions || question.matrixColOptions || [];
             const cellType = config.matrixCellType || question.matrixCellType || "radio";
             const matrixRatingScale = config.matrixRatingScale || question.matrixRatingScale || 5;
+            
+            // Obtener configuración de límites
+            const advancedConfig = config.advanced || {};
+            const minSel = advancedConfig.minSelections ?? 0;
+            const maxSel = advancedConfig.maxSelections ?? matrixCols.length;
+            
             // Debug: Mostrar configuración de la matriz en consola
             console.log("[PREVIEW MATRIX CONFIG]", {
               matrixRows,
@@ -2251,8 +2257,8 @@ function PreviewSurveyPageContent() {
               matrixColOptions,
               cellType,
               advancedConfig: config.advanced,
-              minSelections: config.advanced?.minSelections,
-              maxSelections: config.advanced?.maxSelections,
+              minSelections: advancedConfig.minSelections,
+              maxSelections: advancedConfig.maxSelections,
               config,
               question
             });
@@ -2283,12 +2289,10 @@ function PreviewSurveyPageContent() {
                                     // Para cada fila, la respuesta es un array de columnas seleccionadas
                                     const rowKey = `${question.id}_${rowIdx}`;
                                     const selected = Array.isArray(answers[rowKey]) ? answers[rowKey] : [];
-                                    // Obtener límites de selección desde config.advanced
-                                    const advancedConfig = config.advanced || {};
-                                    const minSel = advancedConfig.minSelections ?? 0;
-                                    const maxSel = advancedConfig.maxSelections ?? matrixCols.length;
+                                    // Usar los límites definidos en la función padre
                                     const isChecked = selected.includes(colIdx);
                                     const isMaxReached = selected.length >= maxSel && !isChecked;
+                                    
                                     return (
                                       <Checkbox
                                         checked={isChecked}

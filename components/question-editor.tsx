@@ -925,17 +925,27 @@ export function QuestionEditor({
                     matrixCellType: value,
                   }
                   
-                  // Si se selecciona checkbox, inicializar opciones basadas en las columnas
-                  if (value === "checkbox" && question.matrixCols) {
-                    // Crear opciones simples basadas en las columnas para habilitar límites
-                    const matrixOptions = question.matrixCols.map((col, idx) => ({
-                      label: `${col}`,
-                      value: `col_${idx}`,
-                    }))
+                  // Si se selecciona checkbox, inicializar configuración avanzada coherente
+                  if (value === "checkbox") {
+                    // Usar any para evitar errores de TypeScript
+                    (newConfig as any).advanced = {
+                      ...question.config?.advanced,
+                      maxSelections: 2, // Permitir hasta 2 selecciones por defecto
+                      minSelections: 0, // Sin mínimo obligatorio por defecto
+                      allowMultiple: true
+                    }
                     
-                    // Actualizar tanto config como options
-                    onUpdateQuestion(sectionId, question.id, "config", newConfig)
-                    onUpdateQuestion(sectionId, question.id, "options", matrixOptions)
+                    // Si tiene columnas, crear opciones basadas en ellas
+                    if (question.matrixCols) {
+                      const matrixOptions = question.matrixCols.map((col, idx) => ({
+                        label: `${col}`,
+                        value: `col_${idx}`,
+                      }))
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                      onUpdateQuestion(sectionId, question.id, "options", matrixOptions)
+                    } else {
+                      onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                    }
                   } else {
                     onUpdateQuestion(sectionId, question.id, "config", newConfig)
                   }
@@ -958,7 +968,22 @@ export function QuestionEditor({
                 Selecciona cómo los usuarios responderán en cada celda de la matriz
               </p>
             </div>
-            {/* Mostrar límites solo si es checkbox - moved to advanced configuration modal */}
+            {/* Información sobre límites para checkbox */}
+            {question.config?.matrixCellType === "checkbox" && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <Label className="font-medium text-blue-800">Configuración de Checkbox</Label>
+                <div className="text-sm text-blue-700 mt-1">
+                  <p>
+                    <strong>Límites actuales:</strong> 
+                    Mínimo {question.config?.advanced?.minSelections || 0} - 
+                    Máximo {question.config?.advanced?.maxSelections || 'sin límite'} selecciones por fila
+                  </p>
+                  <p className="mt-1">
+                    <em>Usa el panel de "Configuración Avanzada" para ajustar estos límites</em>
+                  </p>
+                </div>
+              </div>
+            )}
             {/* Opciones para celdas tipo 'select' - per-column options */}
             {question.config?.matrixCellType === "select" && (
               <div className="space-y-2 mt-4">
