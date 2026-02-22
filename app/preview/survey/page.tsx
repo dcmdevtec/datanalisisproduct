@@ -717,31 +717,53 @@ function PreviewSurveyPageContent() {
         if (question.type === 'matrix') {
           const config = question.config || question.settings || {};
           const matrixRows = config.matrixRows || question.matrixRows || [];
+          const matrixCols = config.matrixCols || question.matrixCols || [];
+          const advancedConfig = config.advanced || {};
+          const cellType = config.matrixCellType || question.matrixCellType || 'radio';
+
+          // Determine the minimum selections required per row. If not configured, default to 1 when required.
+          const minSel = (config.minSelections ?? advancedConfig.minSelections ?? question.config?.minSelections) ?? 0;
+          const effectiveMin = minSel > 0 ? minSel : 1;
 
           if (matrixRows.length > 0) {
-            const allRowsAnswered = matrixRows.every((row, i) => {
-              // Check for row-level answer (radio, checkbox)
-              const rowKey = `${question.id}_${i}`;
-              const rowAnswer = answers[rowKey];
-              if (rowAnswer !== undefined && rowAnswer !== null && rowAnswer !== "") {
-                if (Array.isArray(rowAnswer)) {
-                  return rowAnswer.length > 0;
-                }
-                return true; // It's a non-empty string or other value
+            const unansweredRows: string[] = [];
+            
+            const allRowsOk = matrixRows.every((row, i) => {
+              // Checkbox: answers are stored per-row as arrays under `${question.id}_${i}`
+              if (cellType === 'checkbox') {
+                const rowKey = `${question.id}_${i}`;
+                const sel = Array.isArray(answers[rowKey]) ? answers[rowKey].filter(v => v) : [];
+                const isValid = sel.length >= effectiveMin;
+                if (!isValid) unansweredRows.push(row || `Fila ${i + 1}`);
+                return isValid;
               }
 
-              // If no row-level answer, check for cell-level answers (text, number, etc.)
-              const matrixCols = config.matrixCols || question.matrixCols || [];
-              return matrixCols.some((col, j) => {
+              // Radio: value stored under `${question.id}_${i}` equal to selected column
+              if (cellType === 'radio') {
+                const radioKey = `${question.id}_${i}`;
+                const val = answers[radioKey];
+                const isValid = val !== undefined && val !== null && val !== '';
+                if (!isValid) unansweredRows.push(row || `Fila ${i + 1}`);
+                return isValid;
+              }
+
+              // Select / rating / text / number / ranking: check cell-level answers
+              if (matrixCols.length === 0) return true;
+              let filledCount = 0;
+              for (let j = 0; j < matrixCols.length; j++) {
                 const cellKey = `${question.id}_${i}_${j}`;
-                const cellAnswer = answers[cellKey];
-                return cellAnswer !== undefined && cellAnswer !== null && cellAnswer !== "";
-              });
+                const a = answers[cellKey];
+                if (a !== undefined && a !== null && a !== '') filledCount++;
+              }
+              const isValid = filledCount >= effectiveMin;
+              if (!isValid) unansweredRows.push(row || `Fila ${i + 1}`);
+              return isValid;
             });
 
-            if (!allRowsAnswered) {
+            if (!allRowsOk) {
               isValid = false;
-              newErrors[question.id] = "Esta pregunta es obligatoria. Por favor, responde todas las filas.";
+              const rowList = unansweredRows.slice(0, 3).join(', ') + (unansweredRows.length > 3 ? `... y ${unansweredRows.length - 3} más` : '');
+              newErrors[question.id] = `Esta pregunta es obligatoria. Por favor completa estas filas: ${rowList}`;
             }
           }
         } else {
@@ -2094,17 +2116,20 @@ function PreviewSurveyPageContent() {
           case "email":
 
             return (
-              <EmailAutocompleteInput
-                value={answers[question.id] || ""}
-                onChange={(eOrVal: any) => {
-                  // EmailAutocompleteInput may call onChange with the native event
-                  // or (in some callers) with a raw string. Normalize to a string.
-                  const val = typeof eOrVal === "string" ? eOrVal : eOrVal?.target?.value ?? ""
-                  handleAnswerChange(question.id, val)
-                }}
-                placeholder="ejemplo@email.com"
-                className="w-full"
-              />
+              <div className="space-y-2">
+                <EmailAutocompleteInput
+                  value={answers[question.id] || ""}
+                  onChange={(eOrVal: any) => {
+                    // EmailAutocompleteInput may call onChange with the native event
+                    // or (in some callers) with a raw string. Normalize to a string.
+                    const val = typeof eOrVal === "string" ? eOrVal : eOrVal?.target?.value ?? ""
+                    handleAnswerChange(question.id, val)
+                  }}
+                  placeholder="ejemplo@gmail.com"
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500">Ej: correo@gmail.com, correo@hotmail.com, correo@outlook.com</p>
+              </div>
             )
           case "phone":
             return (
@@ -2320,27 +2345,16 @@ function PreviewSurveyPageContent() {
             const minSel = advancedConfig.minSelections ?? 0;
             const maxSel = advancedConfig.maxSelections ?? matrixCols.length;
             
-            // Debug: Mostrar configuración de la matriz en consola
-            console.log("[PREVIEW MATRIX CONFIG]", {
-              matrixRows,
-              matrixCols,
-              matrixColOptions,
-              cellType,
-              advancedConfig: config.advanced,
-              minSelections: advancedConfig.minSelections,
-              maxSelections: advancedConfig.maxSelections,
-              config,
-              question
-            });
+            // Matriz: render responsive con ayuda visual de límites
             return (
               <div className="space-y-4">
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
+                  <table className="w-full table-auto border-collapse">
                     <thead>
                       <tr>
                         <th className="border p-2 bg-muted"></th>
                         {matrixCols.map((col, idx) => (
-                          <th key={idx} className="border p-2 bg-muted text-center">
+                          <th key={idx} className="border p-2 bg-muted text-center whitespace-normal">
                             {col}
                           </th>
                         ))}
@@ -2474,6 +2488,9 @@ function PreviewSurveyPageContent() {
                     </tbody>
                   </table>
                 </div>
+                {minSel > 0 && (
+                  <div className="text-sm text-muted-foreground mt-1">Mínimo por fila: {minSel}</div>
+                )}
               </div>
             );
           }
@@ -2744,13 +2761,7 @@ function PreviewSurveyPageContent() {
               >
                 {surveyData.title}
               </CardTitle>
-              {surveyData.description && (
-                <div className="flex justify-center mb-6">
-                  <div className="max-w-3xl w-full bg-blue-50/80 rounded-xl shadow p-5 text-center text-blue-900 text-lg border border-blue-100 font-normal leading-relaxed">
-                    {surveyData.description}
-                  </div>
-                </div>
-              )}
+              {/* Survey description intentionally hidden in the app per audit requirement */}
               {/* Barra de progreso mejorada */}
               <div className="mt-8 max-w-2xl mx-auto">
                 <div className="flex items-center justify-between mb-3">

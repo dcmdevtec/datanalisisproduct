@@ -213,7 +213,6 @@ export default function ProjectDetailPage() {
                     <TableHeader className="bg-[#18b0a4]/10">
                       <TableRow>
                         <TableHead className="text-[#18b0a4] font-bold">Título</TableHead>
-                        <TableHead className="text-[#18b0a4] font-bold">Descripción</TableHead>
                         <TableHead className="text-[#18b0a4] font-bold">Estado</TableHead>
                         <TableHead className="text-[#18b0a4] font-bold">Respuestas</TableHead>
                         <TableHead className="text-[#18b0a4] font-bold">Fecha límite</TableHead>
@@ -226,9 +225,6 @@ export default function ProjectDetailPage() {
                           <TableRow key={survey.id} className="hover:bg-[#18b0a4]/5 transition group">
                             <TableCell className="font-semibold text-gray-900 group-hover:text-[#18b0a4]">
                               {survey.title}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-sm line-clamp-2 max-w-[250px]">
-                              {survey.description}
                             </TableCell>
                             <TableCell>
                               <Badge
