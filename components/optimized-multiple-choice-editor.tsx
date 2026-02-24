@@ -85,6 +85,18 @@ function SortableOption({
         onChange={(e) => onUpdate(index, e.target.value)}
         placeholder={`Opción ${index + 1}`}
         className="flex-1 border-none shadow-none focus:ring-0 bg-transparent"
+        onFocus={(e) => {
+          // Limpiar placeholder automáticamente cuando el usuario enfoca
+          if (!e.currentTarget.value || e.currentTarget.value === `Opción ${index + 1}`) {
+            e.currentTarget.value = ''
+          }
+        }}
+        onBlur={(e) => {
+          // Restaurar placeholder si quedó vacío
+          if (!e.currentTarget.value) {
+            onUpdate(index, '')
+          }
+        }}
       />
       
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -273,15 +285,9 @@ export function OptimizedMultipleChoiceEditor({
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <span className="text-xl">
-                {questionType === "multiple_choice" ? "🔘" : 
-                 questionType === "checkbox" ? "☑️" : "📋"}
-              </span>
-              Opciones de respuesta
-            </CardTitle>
+            
             <div className="flex items-center gap-2 mt-1">
-              <Badge variant="outline">{optionCount} opciones</Badge>
+              
               {hasImages && <Badge variant="secondary" className="text-xs">Con imágenes</Badge>}
               {randomizeOptions && <Badge variant="secondary" className="text-xs">Aleatorio</Badge>}
               {allowOther && <Badge variant="secondary" className="text-xs">Permite "Otro"</Badge>}
@@ -297,17 +303,7 @@ export function OptimizedMultipleChoiceEditor({
               <Edit3 className="h-4 w-4" />
               Múltiples
             </Button>
-            {onAdvancedSettings && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onAdvancedSettings}
-                className="gap-1"
-              >
-                <Settings2 className="h-4 w-4" />
-                Avanzado
-              </Button>
-            )}
+         
           </div>
         </div>
       </CardHeader>

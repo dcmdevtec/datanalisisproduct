@@ -449,25 +449,9 @@ function SortableSection({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-muted-foreground">PREGUNTAS</h3>
-              <Badge variant="outline" className="text-xs">
-                {section.questions.length}
-              </Badge>
+             
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs bg-transparent"
-              onClick={() => onAddQuestion(section.id)}
-              disabled={
-                !section.id ||
-                section.id === "temp-id" ||
-                !section.id.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
-              }
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Agregar pregunta
-            </Button>
+            
           </div>
 
           <DndContext
@@ -493,6 +477,17 @@ function SortableSection({
                       <div className="absolute -left-3 top-4 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-medium z-10">
                         {qIndex + 1}
                       </div>
+                      {/* Indicador visual para preguntas con configuración avanzada */}
+                      {(question.config?.skipLogic?.enabled || question.config?.displayLogic?.enabled) && (
+                        <div className="absolute -left-3 top-12 z-20">
+                          <span 
+                            className="text-blue-600 font-bold text-lg cursor-help" 
+                            title="Tiene lógica de salto configurada"
+                          >
+                            ➜
+                          </span>
+                        </div>
+                      )}
                       <QuestionEditor
                         question={question as Question}
                         sectionId={section.id}
@@ -943,7 +938,7 @@ export function CreateSurveyForProjectPageContent() {
           title: surveyTitle,
           description: surveyDescription,
           project_id: projectId,
-          created_by: user?.id,
+          created_by: user?.id || null,
           status: "draft",
           start_date: startDate || null,
           deadline: deadline || null,
@@ -955,18 +950,23 @@ export function CreateSurveyForProjectPageContent() {
           },
         }
 
+        console.log("📝 Intentando crear encuesta con datos:", JSON.stringify(surveyData, null, 2))
+
         const { data: newSurvey, error: surveyError } = await supabase
           .from("surveys")
           .insert([surveyData])
           .select()
-          .single()
 
         if (surveyError) {
-          console.error("❌ Error al crear la encuesta:", surveyError)
-          throw new Error(surveyError.message || "Error al crear la encuesta")
+          console.error("❌ Error al crear la encuesta:", JSON.stringify(surveyError, null, 2))
+          throw new Error(surveyError.message || surveyError.details || surveyError.hint || JSON.stringify(surveyError) || "Error al crear la encuesta")
         }
 
-        workingSurveyId = newSurvey.id
+        if (!newSurvey || newSurvey.length === 0) {
+          throw new Error("No se pudo crear la encuesta - no se retornaron datos")
+        }
+
+        workingSurveyId = newSurvey[0].id
         setCurrentSurveyId(workingSurveyId)
         setIsEditMode(true)
 
@@ -1002,19 +1002,20 @@ export function CreateSurveyForProjectPageContent() {
         .from("survey_sections")
         .upsert([sectionData], { onConflict: "id" })
         .select()
-        .single()
 
       if (upsertError) {
         console.error("❌ Error de Supabase al hacer upsert de sección:", upsertError)
         throw new Error(upsertError.message || "Error al guardar la sección en la base de datos")
       }
 
-      if (!savedSection) {
+      if (!savedSection || savedSection.length === 0) {
         throw new Error("No se pudo obtener la sección guardada de la base de datos")
       }
 
+      const savedSectionData = savedSection[0]
+
       if (section.questions.length > 0) {
-        console.log(`💾 Guardando ${section.questions.length} preguntas para la sección ${savedSection.id}`)
+        console.log(`💾 Guardando ${section.questions.length} preguntas para la sección ${savedSectionData.id}`)
         // Upsert (insert/update) cada pregunta individualmente para compatibilidad con auto-save
         for (const [index, q] of section.questions.entries()) {
           // Asegurar que la pregunta tenga un ID válido
@@ -1025,7 +1026,7 @@ export function CreateSurveyForProjectPageContent() {
           const questionData = {
             id: q.id,
             survey_id: workingSurveyId,
-            section_id: savedSection.id,
+            section_id: savedSectionData.id,
             type: q.type,
             text: (q.text || "").trim(),
             options: q.options || [],
@@ -1056,7 +1057,7 @@ export function CreateSurveyForProjectPageContent() {
       // Actualizar estado de guardado
       setSectionSaveStates((prev) => ({
         ...prev,
-        [savedSection.id]: "saved",
+        [savedSectionData.id]: "saved",
       }))
 
       toast({
@@ -1211,10 +1212,10 @@ export function CreateSurveyForProjectPageContent() {
           display_logic: newQuestion.config?.displayLogic || null,
           validation_rules: newQuestion.config?.validation || null,
         };
-        const { data, error } = await supabase.from("questions").upsert([questionData], { onConflict: "id" }).select().single();
+        const { data, error } = await supabase.from("questions").upsert([questionData], { onConflict: "id" }).select();
         if (error) {
           console.error("❌ Error al guardar la nueva pregunta:", error);
-        } else if (data && data.id && data.id !== newQuestion.id) {
+        } else if (data && data.length > 0 && data[0].id && data[0].id !== newQuestion.id) {
           // Si el ID cambia (por triggers o por la BD), actualiza el estado local
           setSections((prevSections) =>
             prevSections.map((s) =>
@@ -1222,7 +1223,7 @@ export function CreateSurveyForProjectPageContent() {
                 ? {
                   ...s,
                   questions: s.questions.map((q) =>
-                    q.id === newQuestion.id ? { ...q, id: data.id } : q
+                    q.id === newQuestion.id ? { ...q, id: data[0].id } : q
                   ),
                 }
                 : s
@@ -1424,7 +1425,6 @@ export function CreateSurveyForProjectPageContent() {
               .from('surveys')
               .insert([surveyDataForCreate])
               .select()
-              .single()
 
             if (newSurveyError) {
               console.error('Error creando draft para preview:', newSurveyError)
@@ -1432,7 +1432,12 @@ export function CreateSurveyForProjectPageContent() {
               return
             }
 
-            surveyIdToUse = newSurvey.id
+            if (!newSurvey || newSurvey.length === 0) {
+              toast({ title: 'Error', description: 'No se pudo crear la encuesta para preview', variant: 'destructive' })
+              return
+            }
+
+            surveyIdToUse = newSurvey[0].id
             setCurrentSurveyId(surveyIdToUse)
             setIsEditMode(true)
             toast({ title: 'Borrador creado', description: 'Se creó un borrador para generar el link de preview' })
@@ -1507,18 +1512,22 @@ export function CreateSurveyForProjectPageContent() {
           .from("surveys")
           .update(surveyData)
           .eq("id", currentSurveyId)
-          .select()
-          .single();
+          .select();
         if (surveyError) throw surveyError;
-        surveyResult = data;
+        if (!data || data.length === 0) {
+          throw new Error("No se encontró la encuesta para actualizar");
+        }
+        surveyResult = data[0];
       } else {
         const { data, error: surveyError } = await supabase
           .from("surveys")
           .insert([surveyData])
-          .select()
-          .single();
+          .select();
         if (surveyError) throw surveyError;
-        surveyResult = data;
+        if (!data || data.length === 0) {
+          throw new Error("No se pudo crear la encuesta");
+        }
+        surveyResult = data[0];
       }
 
       // Guardar asignaciones de encuestador-zona
@@ -1644,7 +1653,7 @@ export function CreateSurveyForProjectPageContent() {
         `,
         )
         .eq("id", currentSurveyId)
-        .single()
+        .maybeSingle()
 
       if (surveyError) throw surveyError
       if (!surveyData) {
@@ -1903,7 +1912,7 @@ export function CreateSurveyForProjectPageContent() {
     `,
         )
         .eq("id", projectId)
-        .single()
+        .maybeSingle()
       if (!error && data) {
         setProjectData(data)
       }
@@ -2201,7 +2210,7 @@ export function CreateSurveyForProjectPageContent() {
             )
           `)
           .eq("id", projectId)
-          .single()
+          .maybeSingle()
 
         if (projectError) {
           console.error("Error loading project data:", projectError)
@@ -2412,17 +2421,16 @@ export function CreateSurveyForProjectPageContent() {
                               survey_id: currentSurveyId,
                             },
                           ], { onConflict: "id" })
-                          .select()
-                          .single();
-                        if (!error && data && data.id && data.id !== question.id) {
-                          idMapping[question.id] = data.id;
+                          .select();
+                        if (!error && data && data.length > 0 && data[0].id && data[0].id !== question.id) {
+                          idMapping[question.id] = data[0].id;
                           // Actualizar el id en el estado local
                           updatedSections = updatedSections.map((s) =>
                             s.id === section.id
                               ? {
                                 ...s,
                                 questions: s.questions.map((q) =>
-                                  q.id === question.id ? { ...q, id: data.id } : q
+                                  q.id === question.id ? { ...q, id: data[0].id } : q
                                 ),
                               }
                               : s
@@ -2547,9 +2555,6 @@ export function CreateSurveyForProjectPageContent() {
                           <MessageSquareText className="h-5 w-5" />
                           Secciones y Preguntas
                         </CardTitle>
-                        <CardDescription>
-                          Organiza tu encuesta en secciones temáticas y agrega preguntas específicas
-                        </CardDescription>
                       </div>
                       <div className="flex gap-2">
                         {/* Botón Organizar movido al bloque 'Trabajando en:' */}
@@ -2558,26 +2563,14 @@ export function CreateSurveyForProjectPageContent() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {sections.length > 0 && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-                          <Section className="h-4 w-4" />
-                          <span>
-                            {sections.length} sección{sections.length !== 1 ? "es" : ""}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {sections.reduce((total, section) => total + section.questions.length, 0)} pregunta
-                            {sections.reduce((total, section) => total + section.questions.length, 0) !== 1 ? "s" : ""}
-                          </span>
-                        </div>
-                      )}
+                      
 
                       {sections.length > 0 ? (
                         <div className="space-y-6">
                           {/* Selector de secciones */}
                           <div className="sticky top-0 z-50 flex items-center justify-between p-4 bg-muted/30 rounded-lg border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
                             <div className="flex items-center gap-4">
-                              <Label className="text-sm font-medium">Trabajando en:</Label>
+
                               <Select
                                 value={activeSectionIndex.toString()}
                                 onValueChange={(value) => setActiveSectionIndex(Number.parseInt(value))}
@@ -2593,10 +2586,7 @@ export function CreateSurveyForProjectPageContent() {
                                           {index + 1}
                                         </Badge>
                                         <span>{stripHtml(section.title) || `Sección ${index + 1}`}</span>
-                                        <span className="text-muted-foreground">
-                                          ({section.questions.length} pregunta
-                                          {section.questions.length !== 1 ? "s" : ""})
-                                        </span>
+                                      
                                         {sectionSaveStates[section.id] && (
                                           <Badge
                                             variant={

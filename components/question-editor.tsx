@@ -605,16 +605,31 @@ export function QuestionEditor({
               <Trash2 className="h-4 w-4" />
             </Button>
             {/* Botón para mover pregunta */}
-            <Button variant="ghost" size="sm" onClick={() => setShowMoveModal(true)} title="Mover a otra sección" className="text-blue-600 hover:text-blue-700">
+            { /*<Button variant="ghost" size="sm" onClick={() => setShowMoveModal(true)} title="Mover a otra sección" className="text-blue-600 hover:text-blue-700">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m18 15 3-3-3-3"/>
                 <path d="m6 9-3 3 3 3"/>
                 <path d="M21 12H3"/>
               </svg>
-            </Button>
+            </Button>*/}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-            <span className="text-green-600 font-medium">*</span> Preguntas listas para usar en vista previa
+            {/* Indicadores visuales para configuración avanzada */}
+            {question.config?.skipLogic?.enabled && (
+              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200" title="Tiene lógica de salto configurada">
+                ➜ Saltos
+              </Badge>
+            )}
+            {question.config?.displayLogic?.enabled && (
+              <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200" title="Tiene lógica de visualización configurada">
+                👁 Visualización
+              </Badge>
+            )}
+            {question.config?.allowOther && (
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200" title="Permite opción 'Otro'">
+                + Otro
+              </Badge>
+            )}
             <Button variant="outline" size="sm" onClick={openConfigEditor} className="ml-2">
               <Settings className="h-4 w-4 mr-2" />
               Configuración avanzada
@@ -632,7 +647,7 @@ export function QuestionEditor({
       />
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor={`question-${question.id}`}>Enunciado de la pregunta</Label>
+        
           <div className="flex flex-col md:flex-row gap-2 hidden">
             <Button
               type="button"

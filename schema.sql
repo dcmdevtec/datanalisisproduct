@@ -478,13 +478,46 @@ COMMENT ON COLUMN public.survey_sections.skip_logic IS 'Skip logic configuration
 -- Name: survey_surveyor_zones; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.survey_surveyor_zones (
-    survey_id uuid NOT NULL,
-    surveyor_id uuid NOT NULL,
-    zone_id uuid NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
+create table public.survey_surveyor_zones (
+  survey_id uuid not null,
+  surveyor_id uuid not null,
+  zone_id uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  general_status boolean null,
+  id uuid not null default gen_random_uuid (),
+  constraint survey_surveyor_zones_pkey primary key (id),
+  constraint survey_surveyor_zones_survey_id_fkey foreign KEY (survey_id) references surveys (id) on delete CASCADE,
+  constraint survey_surveyor_zones_surveyor_id_fkey foreign KEY (surveyor_id) references surveyors (id) on delete CASCADE,
+  constraint survey_surveyor_zones_zone_id_fkey foreign KEY (zone_id) references zones (id) on delete CASCADE,
+  constraint chk_survey_surveyor_zones_general_zone_consistency check (
+    (
+      (
+        (zone_id is null)
+        and (general_status is true)
+      )
+      or (zone_id is not null)
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_survey_surveyor_zones_survey_id on public.survey_surveyor_zones using btree (survey_id) TABLESPACE pg_default;
+
+create index IF not exists idx_survey_surveyor_zones_surveyor_id on public.survey_surveyor_zones using btree (surveyor_id) TABLESPACE pg_default;
+
+create index IF not exists idx_survey_surveyor_zones_zone_id on public.survey_surveyor_zones using btree (zone_id) TABLESPACE pg_default;
+
+create unique INDEX IF not exists ux_survey_surveyor_zones_survey_surveyor_zone on public.survey_surveyor_zones using btree (survey_id, surveyor_id, zone_id) TABLESPACE pg_default
+where
+  (zone_id is not null);
+
+create unique INDEX IF not exists ux_survey_surveyor_zones_survey_surveyor_general on public.survey_surveyor_zones using btree (survey_id, surveyor_id) TABLESPACE pg_default
+where
+  (zone_id is null);
+
+create trigger update_survey_surveyor_zones_updated_at BEFORE
+update on survey_surveyor_zones for EACH row
+execute FUNCTION update_updated_at_column ();
 
 
 --

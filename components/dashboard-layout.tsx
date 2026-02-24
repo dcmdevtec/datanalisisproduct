@@ -67,6 +67,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       icon: Users
     },
     { 
+      name: "Tracking", 
+      href: "/tracking", 
+      icon: MapPin
+    },
+    { 
       name: "Usuarios", 
       href: "/users", 
       icon: Users,
@@ -110,6 +115,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.prefetch('/companies')
     router.prefetch('/users')
     router.prefetch('/zones')
+    router.prefetch('/tracking')
     router.prefetch('/control')
   }, [router])
 

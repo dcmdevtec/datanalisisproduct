@@ -4,6 +4,7 @@ export interface Surveyor {
   email: string;
   role: string;
   status?: string;
+  phone_number?: string | null;
   created_at?: string;
   updated_at?: string;
   profile_image?: string | null;

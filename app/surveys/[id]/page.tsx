@@ -2,7 +2,7 @@
 
 import { Alert, AlertTitle } from "@/components/ui/alert"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -23,6 +23,8 @@ import {
   Building2,
   FolderOpen,
   Plus,
+  RefreshCw,
+  Radio,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase-browser"
@@ -33,6 +35,11 @@ import type { Surveyor } from "@/types/surveyor"
 import type { Zone } from "@/types/zone"
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
+  ssr: false,
+})
+
+// Importar el mapa de tracking dinámicamente
+const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
 })
 
@@ -80,6 +87,11 @@ export default function SurveyDetailsPage() {
   const [selectedZoneGeometry, setSelectedZoneGeometry] = useState<GeoJSON | null>(null)
   const [displayedZoneId, setDisplayedZoneId] = useState<string | null>(null)
   const [mapKey, setMapKey] = useState<string>("")
+  
+  // Estados para tracking de encuestadores
+  const [surveyorLocations, setSurveyorLocations] = useState<any[]>([])
+  const [loadingLocations, setLoadingLocations] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(true)
 
   useEffect(() => {
     async function fetchData() {
@@ -163,6 +175,51 @@ export default function SurveyDetailsPage() {
       fetchData()
     }
   }, [user, surveyId, toast])
+
+  // Función para cargar ubicaciones de encuestadores
+  const fetchSurveyorLocations = useCallback(async () => {
+    if (!survey?.assigned_surveyors || survey.assigned_surveyors.length === 0) {
+      return
+    }
+
+    setLoadingLocations(true)
+    try {
+      const response = await fetch("/api/tracking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          surveyor_ids: survey.assigned_surveyors,
+          minutes: 60,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSurveyorLocations(data.surveyors || [])
+      }
+    } catch (error) {
+      console.error("Error fetching surveyor locations:", error)
+    } finally {
+      setLoadingLocations(false)
+    }
+  }, [survey?.assigned_surveyors])
+
+  // Cargar ubicaciones cuando cambia la encuesta
+  useEffect(() => {
+    if (survey && survey.assigned_surveyors && survey.assigned_surveyors.length > 0) {
+      fetchSurveyorLocations()
+    }
+  }, [survey, fetchSurveyorLocations])
+
+  // Auto-refresh cada 30 segundos
+  useEffect(() => {
+    if (!autoRefresh || !survey?.assigned_surveyors || survey.assigned_surveyors.length === 0) {
+      return
+    }
+
+    const interval = setInterval(fetchSurveyorLocations, 30000)
+    return () => clearInterval(interval)
+  }, [autoRefresh, survey?.assigned_surveyors, fetchSurveyorLocations])
 
   if (authLoading || loading) {
     return (
@@ -434,6 +491,153 @@ export default function SurveyDetailsPage() {
             </Card>
           </div>
         </div>
+
+        {/* Sección de Tracking de Encuestadores */}
+        {assignedSurveyors.length > 0 && (
+          <div className="mt-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Radio className="h-5 w-5" /> Ubicación de Encuestadores en Tiempo Real
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={fetchSurveyorLocations}
+                      disabled={loadingLocations}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loadingLocations ? "animate-spin" : ""}`} />
+                    </Button>
+                    <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={autoRefresh}
+                        onChange={(e) => setAutoRefresh(e.target.checked)}
+                        className="rounded"
+                      />
+                      Auto-actualizar
+                    </label>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingLocations && surveyorLocations.length === 0 ? (
+                  <div className="flex items-center justify-center h-[300px]">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : surveyorLocations.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Estadísticas rápidas */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                      <div className="p-2 rounded-lg bg-green-50 dark:bg-green-950">
+                        <div className="text-lg font-bold text-green-600">
+                          {surveyorLocations.filter(s => s.status === "active" && s.current_location?.is_in_zone).length}
+                        </div>
+                        <div className="text-xs text-muted-foreground">En zona</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950">
+                        <div className="text-lg font-bold text-red-600">
+                          {surveyorLocations.filter(s => s.current_location && !s.current_location?.is_in_zone).length}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Fuera</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950">
+                        <div className="text-lg font-bold text-yellow-600">
+                          {surveyorLocations.filter(s => s.status === "inactive").length}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Inactivos</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-950">
+                        <div className="text-lg font-bold text-gray-600">
+                          {surveyorLocations.filter(s => s.status === "offline").length}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Offline</div>
+                      </div>
+                    </div>
+
+                    {/* Mapa */}
+                    <div className="h-[400px] rounded-lg overflow-hidden border">
+                      <TrackingMap
+                        surveyors={surveyorLocations}
+                        zones={assignedZones.map(z => ({
+                          id: z.id,
+                          name: z.name,
+                          geometry: z.geometry,
+                          status: "active",
+                          zone_color: "#18b0a4"
+                        }))}
+                        centerOnZone={displayedZoneId || "all"}
+                      />
+                    </div>
+
+                    {/* Lista de encuestadores con estado */}
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                      {surveyorLocations.map((surveyor) => (
+                        <div
+                          key={surveyor.id}
+                          className="flex items-center justify-between p-2 rounded-lg border bg-card"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                surveyor.status === "active"
+                                  ? surveyor.current_location?.is_in_zone
+                                    ? "bg-green-500"
+                                    : "bg-red-500"
+                                  : surveyor.status === "inactive"
+                                  ? "bg-yellow-500"
+                                  : "bg-gray-400"
+                              }`}
+                            />
+                            <div>
+                              <p className="text-sm font-medium">{surveyor.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {surveyor.current_location
+                                  ? `hace ${surveyor.current_location.minutes_ago} min`
+                                  : "Sin ubicación"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {surveyor.current_location?.battery_level !== null && surveyor.current_location?.battery_level !== undefined && (
+                              <span className="text-xs text-muted-foreground">
+                                {surveyor.current_location.battery_level}%
+                              </span>
+                            )}
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${
+                                surveyor.status === "active"
+                                  ? "border-green-500 text-green-600"
+                                  : surveyor.status === "inactive"
+                                  ? "border-yellow-500 text-yellow-600"
+                                  : "border-gray-400 text-gray-500"
+                              }`}
+                            >
+                              {surveyor.status === "active"
+                                ? "Activo"
+                                : surveyor.status === "inactive"
+                                ? "Inactivo"
+                                : "Offline"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground">
+                    <MapPin className="h-12 w-12 mb-2 opacity-50" />
+                    <p className="text-sm">No hay ubicaciones registradas</p>
+                    <p className="text-xs mt-1">Los encuestadores aparecerán cuando activen su ubicación en la APK</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

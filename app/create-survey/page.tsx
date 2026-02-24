@@ -4,6 +4,21 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { SectionOrganizer } from "@/components/section-organizer"
+import DashboardLayout from "@/components/dashboard-layout"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ArrowLeft, ArrowRight, Grip, Plus, Save, Trash2, Loader2, ArrowUpDown } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
+import { generateUUID } from "@/lib/utils"
+import { ContactInfoQuestion } from "@/components/contact-info-question"
 
 interface Question {
   id: string
@@ -25,20 +40,6 @@ interface SurveySection {
   order_num: number
   questions: Question[]
 }
-import DashboardLayout from "@/components/dashboard-layout"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, ArrowRight, Grip, Plus, Save, Trash2, Loader2 } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { generateUUID } from "@/lib/utils"
-import { ContactInfoQuestion } from "@/components/contact-info-question"
 
 export default function CreateSurveyPage() {
   const { user, loading } = useAuth()
@@ -182,12 +183,20 @@ export default function CreateSurveyPage() {
   const addSection = () => {
     const newSection: SurveySection = {
       id: generateUUID(),
-      title: `Sección ${sections.length + 1}`,
+      title: "",
       description: "",
       order_num: sections.length,
       questions: [],
     }
     setSections([...sections, newSection])
+  }
+
+  const updateSection = (sectionId: string, field: string, value: string) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId ? { ...s, [field]: value } : s
+      )
+    )
   }
 
   const updateSettings = (field, value) => {
@@ -320,6 +329,10 @@ export default function CreateSurveyPage() {
   }
 
   const renderQuestionEditor = (sectionId: string, question: Question) => {
+    const hasSkipLogic = question.config?.skipLogic?.enabled
+    const hasMinMaxSelections = question.config?.minSelections || question.config?.maxSelections
+    const hasDisplayLogic = question.config?.displayLogic?.enabled
+    
     return (
       <Card key={question.id} className="mb-6">
         <CardHeader className="pb-3 flex flex-row items-start justify-between">
@@ -340,6 +353,24 @@ export default function CreateSurveyPage() {
                   <SelectItem value="contact_info">Información de Contacto</SelectItem>
                 </SelectContent>
               </Select>
+              {/* Indicadores visuales de configuración avanzada */}
+              <div className="flex gap-1 ml-2">
+                {hasSkipLogic && (
+                  <span className="text-blue-600 font-bold text-lg" title="Tiene skip logic (salto de secciones)">
+                    ➜
+                  </span>
+                )}
+                {hasDisplayLogic && (
+                  <span className="text-purple-600 font-bold text-lg" title="Tiene lógica de visualización condicional">
+                    👁️
+                  </span>
+                )}
+                {hasMinMaxSelections && (
+                  <span className="text-orange-600 font-bold text-lg" title="Tiene límites de selección (mín/máx)">
+                    ⚙️
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => removeQuestion(sectionId, question.id)}>
@@ -370,6 +401,7 @@ export default function CreateSurveyPage() {
                     value={option}
                     onChange={(e) => updateOption(sectionId, question.id, index, e.target.value)}
                     placeholder={`Opción ${index + 1}`}
+                    className="focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   <Button
                     variant="ghost"
@@ -381,6 +413,13 @@ export default function CreateSurveyPage() {
                   </Button>
                 </div>
               ))}
+              {/* Mostrar opción "Otro" si está habilitada en configuración avanzada */}
+              {question.config?.allowOther && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700 flex items-center gap-2">
+                  <span className="font-semibold">+</span>
+                  <span>{question.config?.otherText || 'Otro (especificar)'}</span>
+                </div>
+              )}
               <Button variant="outline" size="sm" className="mt-2" onClick={() => addOption(sectionId, question.id)}>
                 <Plus className="h-4 w-4 mr-2" /> Agregar opción
               </Button>
@@ -488,17 +527,20 @@ export default function CreateSurveyPage() {
             </div>
 
             <div className="space-y-8">
-              {sections.map((section) => (
+              {sections.map((section, sectionIndex) => (
                 <div key={section.id} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    {(section as any).title_html ? (
-                      <h3 className="text-lg font-medium" dangerouslySetInnerHTML={{ __html: (section as any).title_html }} />
-                    ) : (
-                      <h3 className="text-lg font-medium">{section.title}</h3>
-                    )}
-                    {section.description && (
-                      <p className="text-sm text-muted-foreground">{section.description}</p>
-                    )}
+                  <div className="flex items-center gap-3 group">
+                    {/* Numeración simple de sección */}
+                    <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                      {sectionIndex + 1}
+                    </span>
+                    {/* Título editable */}
+                    <Input
+                      value={section.title}
+                      onChange={(e) => updateSection(section.id, "title", e.target.value)}
+                      placeholder={`Sección ${sectionIndex + 1}`}
+                      className="text-lg font-medium border-0 p-0 focus-visible:ring-0 hover:border-b"
+                    />
                   </div>
 
                   <div className="space-y-4">
@@ -509,7 +551,7 @@ export default function CreateSurveyPage() {
                       className="w-full py-8 border-dashed"
                       onClick={() => addQuestion(section.id)}
                     >
-                      <Plus className="h-5 w-5 mr-2" /> Agregar pregunta a la sección
+                      <Plus className="h-5 w-5 mr-2" /> Agregar pregunta
                     </Button>
                   </div>
                 </div>

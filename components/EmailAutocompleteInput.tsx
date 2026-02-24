@@ -10,7 +10,19 @@ interface EmailAutocompleteInputProps extends React.InputHTMLAttributes<HTMLInpu
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
 }
 
-const COMMON_DOMAINS = ["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "aol.com", "icloud.com"]
+const COMMON_DOMAINS = [
+  "gmail.com",
+  "hotmail.com",
+  "outlook.com",
+  "yahoo.com",
+  "aol.com",
+  "icloud.com",
+  "gmail.com.co",
+  "live.com",
+  "msn.com",
+  "proton.me",
+  "protonmail.com",
+]
 
 export function EmailAutocompleteInput({ value, onChange, ...props }: EmailAutocompleteInputProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -20,12 +32,14 @@ export function EmailAutocompleteInput({ value, onChange, ...props }: EmailAutoc
   const portalRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
+    // When the user types local part and @, show domain suggestions; if they clear domain, show full list
     if (value.includes("@")) {
       const [localPart, domainPart] = value.split("@")
-      if (domainPart) {
-        const filteredDomains = COMMON_DOMAINS.filter(domain =>
-          domain.startsWith(domainPart)
-        )
+      if (domainPart !== undefined) {
+        const fragment = domainPart.trim()
+        const filteredDomains = fragment.length > 0
+          ? COMMON_DOMAINS.filter(domain => domain.startsWith(fragment))
+          : COMMON_DOMAINS
         setSuggestions(filteredDomains.map(domain => `${localPart}@${domain}`))
       } else {
         setSuggestions(COMMON_DOMAINS.map(domain => `${localPart}@${domain}`))
