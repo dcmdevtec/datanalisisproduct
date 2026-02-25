@@ -66,11 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       href: "/surveyors", 
       icon: Users
     },
-    { 
-      name: "Tracking", 
-      href: "/tracking", 
-      icon: MapPin
-    },
+  
     { 
       name: "Usuarios", 
       href: "/users", 

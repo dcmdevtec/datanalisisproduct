@@ -71,6 +71,26 @@ interface Survey {
   title: string
 }
 
+// Helper para formatear tiempo
+const formatMinutesAgo = (minutes: number | null): string => {
+  if (minutes === null || minutes < 0) {
+    return "nunca"
+  }
+  if (minutes < 1) {
+    return "hace menos de un minuto"
+  }
+  const roundedMinutes = Math.round(minutes)
+  if (roundedMinutes < 60) {
+    return `hace ${roundedMinutes} ${roundedMinutes === 1 ? "minuto" : "minutos"}`
+  }
+  const hours = Math.floor(roundedMinutes / 60)
+  if (hours < 24) {
+    return `hace ${hours} ${hours === 1 ? "hora" : "horas"}`
+  }
+  const days = Math.floor(hours / 24)
+  return `hace ${days} ${days === 1 ? "día" : "días"}`
+}
+
 export default function SurveyorsPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -103,6 +123,7 @@ export default function SurveyorsPage() {
   const [filterSurveyorId, setFilterSurveyorId] = useState<string>("all")
   const [surveySearch, setSurveySearch] = useState("")
   const [showSurveyDropdown, setShowSurveyDropdown] = useState(false)
+  const [selectedSurveyorId, setSelectedSurveyorId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -710,6 +731,8 @@ export default function SurveyorsPage() {
                     surveyors={surveyorLocations}
                     zones={filteredZones}
                     centerOnZone={filterZoneId !== "all" ? filterZoneId : "all"}
+                    selectedSurveyorId={selectedSurveyorId}
+                    onSurveyorSelect={setSelectedSurveyorId}
                   />
                 </div>
 
@@ -721,7 +744,12 @@ export default function SurveyorsPage() {
                       {surveyorLocations.map((surveyor) => (
                         <div
                           key={surveyor.id}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                          onClick={() =>
+                            setSelectedSurveyorId(surveyor.id === selectedSurveyorId ? null : surveyor.id)
+                          }
+                          className={`flex items-center justify-between p-3 rounded-lg border bg-card cursor-pointer transition-colors hover:bg-muted/50 ${
+                            selectedSurveyorId === surveyor.id ? "border-primary bg-muted/20" : ""
+                          }`}
                         >
                           <div className="flex items-center gap-3">
                             <div
@@ -752,7 +780,7 @@ export default function SurveyorsPage() {
                                 <div className="text-right hidden md:block">
                                   <p className="text-xs text-muted-foreground">Última vez</p>
                                   <p className="text-sm font-medium">
-                                    hace {surveyor.current_location.minutes_ago} min
+                                    {formatMinutesAgo(surveyor.current_location.minutes_ago)}
                                   </p>
                                 </div>
                                 {surveyor.current_location.battery_level !== null && (

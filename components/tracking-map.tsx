@@ -41,10 +41,12 @@ interface TrackingMapProps {
   surveyors: SurveyorLocation[]
   zones: Zone[]
   centerOnZone?: string
+  selectedSurveyorId?: string | null
+  onSurveyorSelect?: (id: string | null) => void
 }
 
 // Fix para los iconos de Leaflet en Next.js
-const createIcon = (color: string = "blue") => {
+const createIcon = (color: string = "blue", isSelected: boolean = false) => {
   const colors: Record<string, string> = {
     green: "#22c55e",
     yellow: "#eab308",
@@ -54,32 +56,35 @@ const createIcon = (color: string = "blue") => {
   }
 
   const iconColor = colors[color] || colors.blue
+  const scale = isSelected ? 1.5 : 1
+  const size = 24
+  const finalSize = size * scale
 
   return L.divIcon({
     className: "custom-marker",
     html: `
       <div style="
-        background-color: ${iconColor};
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        transform: scale(${scale});
+        transition: transform 0.2s ease-in-out;
       ">
         <div style="
-          width: 8px;
-          height: 8px;
-          background-color: white;
+          background-color: ${iconColor};
+          width: ${size}px;
+          height: ${size}px;
           border-radius: 50%;
-        "></div>
+          border: 2px solid white;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
       </div>
     `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12],
+    iconSize: [finalSize, finalSize],
+    iconAnchor: [finalSize / 2, finalSize / 2],
+    popupAnchor: [0, -finalSize / 2],
   })
 }
 
@@ -103,7 +108,7 @@ function MapController({ centerOnZone, zones }: { centerOnZone?: string; zones: 
             })
             const centerLat = sumLat / coords.length
             const centerLng = sumLng / coords.length
-            map.setView([centerLat, centerLng], 14)
+            map.flyTo([centerLat, centerLng], 14)
           }
         } catch (e) {
           console.error("Error centering map on zone:", e)
@@ -111,6 +116,40 @@ function MapController({ centerOnZone, zones }: { centerOnZone?: string; zones: 
       }
     }
   }, [centerOnZone, zones, map])
+
+  return null
+}
+
+// Helper para formatear tiempo
+const formatMinutesAgo = (minutes: number | null): string => {
+  if (minutes === null || minutes < 0) {
+    return "nunca"
+  }
+  if (minutes < 1) {
+    return "hace menos de un minuto"
+  }
+  const roundedMinutes = Math.round(minutes)
+  if (roundedMinutes < 60) {
+    return `hace ${roundedMinutes} ${roundedMinutes === 1 ? "minuto" : "minutos"}`
+  }
+  const hours = Math.floor(roundedMinutes / 60)
+  if (hours < 24) {
+    return `hace ${hours} ${hours === 1 ? "hora" : "horas"}`
+  }
+  const days = Math.floor(hours / 24)
+  return `hace ${days} ${days === 1 ? "día" : "días"}`
+}
+
+// Componente para centrar el mapa en el encuestador seleccionado
+function SelectedSurveyorController({ surveyor }: { surveyor: SurveyorLocation | null }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (surveyor?.current_location) {
+      const { latitude, longitude } = surveyor.current_location
+      map.flyTo([latitude, longitude], 16)
+    }
+  }, [surveyor, map])
 
   return null
 }
@@ -160,9 +199,13 @@ function GeoJSONPolygon({ geometry, color = "#3388ff", name }: { geometry: any; 
   }
 }
 
-export default function TrackingMap({ surveyors, zones, centerOnZone }: TrackingMapProps) {
-  const [selectedSurveyor, setSelectedSurveyor] = useState<SurveyorLocation | null>(null)
-
+export default function TrackingMap({
+  surveyors,
+  zones,
+  centerOnZone,
+  selectedSurveyorId,
+  onSurveyorSelect,
+}: TrackingMapProps) {
   // Coordenadas por defecto (Barranquilla, Colombia)
   const defaultCenter: [number, number] = [10.9639, -74.7964]
   const defaultZoom = 13
@@ -175,16 +218,9 @@ export default function TrackingMap({ surveyors, zones, centerOnZone }: Tracking
     return "green"
   }
 
-  // Formatear tiempo
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("es-CO", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
   // Filtrar encuestadores con ubicación
   const surveyorsWithLocation = surveyors.filter((s) => s.current_location)
+  const selectedSurveyor = surveyorsWithLocation.find((s) => s.id === selectedSurveyorId)
 
   return (
     <div className="relative h-full w-full rounded-lg overflow-hidden z-0">
@@ -199,8 +235,9 @@ export default function TrackingMap({ surveyors, zones, centerOnZone }: Tracking
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Controlador para centrar en zona */}
+        {/* Controladores del mapa */}
         <MapController centerOnZone={centerOnZone} zones={zones} />
+        <SelectedSurveyorController surveyor={selectedSurveyor || null} />
 
         {/* Renderizar zonas */}
         {zones.map((zone) => (
@@ -218,15 +255,21 @@ export default function TrackingMap({ surveyors, zones, centerOnZone }: Tracking
 
           const { latitude, longitude } = surveyor.current_location
           const markerColor = getMarkerColor(surveyor)
+          const isSelected = surveyor.id === selectedSurveyorId
 
           return (
             <Marker
               key={surveyor.id}
               position={[latitude, longitude]}
-              icon={createIcon(markerColor)}
+              icon={createIcon(markerColor, isSelected)}
               eventHandlers={{
-                click: () => setSelectedSurveyor(surveyor),
+                click: () => {
+                  if (onSurveyorSelect) {
+                    onSurveyorSelect(isSelected ? null : surveyor.id)
+                  }
+                },
               }}
+              zIndexOffset={isSelected ? 1000 : 0}
             >
               <Popup>
                 <div className="min-w-[200px] p-1">
@@ -251,7 +294,7 @@ export default function TrackingMap({ surveyors, zones, centerOnZone }: Tracking
                     <div className="flex items-center gap-2">
                       <Clock className="h-3 w-3" />
                       <span>
-                        hace {surveyor.current_location.minutes_ago} min
+                        {formatMinutesAgo(surveyor.current_location.minutes_ago)}
                       </span>
                     </div>
                     {surveyor.current_location.battery_level !== null && (
