@@ -173,12 +173,14 @@ export default function SurveyorsPage() {
     }
   }
 
-  // Cargar ubicaciones de encuestadores
+  // Cargar ubicaciones de encuestadores usando surveyor_tracking_view
   const fetchSurveyorLocations = useCallback(async () => {
     setLoadingLocations(true)
     try {
-      const body: any = { minutes: 120 }
+      // Construir parámetros de filtro
+      const body: any = {}
       
+      // Solo agregar filtros si no son "all"
       if (filterSurveyorId && filterSurveyorId !== "all") {
         body.surveyor_ids = [filterSurveyorId]
       }
@@ -191,6 +193,8 @@ export default function SurveyorsPage() {
         body.zone_id = filterZoneId
       }
 
+      console.log("Fetching surveyor locations with filters:", body)
+
       const response = await fetch("/api/tracking", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,7 +203,10 @@ export default function SurveyorsPage() {
 
       if (response.ok) {
         const data = await response.json()
+        console.log("Surveyor locations received:", data.surveyors?.length || 0, "surveyors")
         setSurveyorLocations(data.surveyors || [])
+      } else {
+        console.error("Error response from tracking API:", response.status)
       }
     } catch (error) {
       console.error("Error fetching surveyor locations:", error)
