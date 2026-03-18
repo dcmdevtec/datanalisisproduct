@@ -411,15 +411,29 @@ export function SurveyPreviewModal({ isOpen, onClose, previewData }: SurveyPrevi
                 )}
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Progreso</span>
-                  <span className="font-medium">
-                    Sección {currentSectionIndex + 1} de {totalSections}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Progreso</span>
+                    <span className="font-medium">
+                      Sección {currentSectionIndex + 1} de {totalSections}
+                    </span>
+                  </div>
+                  <div className="w-full h-3 rounded-full bg-gray-100 flex overflow-hidden">
+                    {(previewData.sections || []).map((s: any, i: number) => {
+                      const segmentWidth = `${100 / (previewData.sections?.length || 1)}%`
+                      const isActive = i === currentSectionIndex
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setCurrentSectionIndex(i)}
+                          title={`${i + 1}. ${s.title || `Sección ${i + 1}`}`}
+                          className={`h-3 focus:outline-none transition-all ${isActive ? 'scale-y-105' : ''}`}
+                          style={{ width: segmentWidth, background: isActive ? themeColors.primary : `${themeColors.primary}55`, border: 'none', cursor: 'pointer' }}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
-                <Progress value={progress} className="w-full" />
-              </div>
             </CardContent>
           </Card>
 

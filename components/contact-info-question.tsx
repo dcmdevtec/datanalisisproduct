@@ -23,15 +23,9 @@ interface ContactInfoQuestionProps {
     address?: string
     fullName?: string
   }) => void
-  config?: {
-    includeFirstName?: boolean
-    includeLastName?: boolean
-    includePhone?: boolean
-    includeDocument?: boolean
-    includeEmail?: boolean
-    includeCompany?: boolean
-    includeAddress?: boolean
-  }
+  // Accept arbitrary config objects coming from question.config in the editor/preview
+  // We only read a few known flags; other keys are ignored.
+  config?: any
   initialData?: {
     documentType?: string
     documentNumber?: string

@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -138,7 +139,7 @@ export default function EditSurveyPage() {
       type: "text",
       text: "",
       options: [],
-      required: false,
+      required: true,
       image: null,
       matrixCols: ["Columna 1"],
     }
@@ -315,8 +316,9 @@ export default function EditSurveyPage() {
           <div className="space-y-1.5">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <Grip className="h-5 w-5 text-muted-foreground cursor-move" />
-              <Select value={question.type} onValueChange={(value) => updateQuestion(question.id, "type", value)}>
-                <SelectTrigger className="w-full sm:w-[220px]">
+              <div className="flex items-center gap-2">
+                <Select value={question.type} onValueChange={(value) => updateQuestion(question.id, "type", value)}>
+                  <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue placeholder="Tipo de pregunta" />
                 </SelectTrigger>
                 <SelectContent>
@@ -334,7 +336,20 @@ export default function EditSurveyPage() {
                   <SelectItem value="likert">Likert</SelectItem>
                   <SelectItem value="conditional">Condicional / Lógica</SelectItem>
                 </SelectContent>
-              </Select>
+                </Select>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="ghost">Presets ▾</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => updateQuestion(question.id, "options", ["Si", "No"]) }>Si / No</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateQuestion(question.id, "options", ["Totalmente en desacuerdo","En desacuerdo","Neutral","De acuerdo","Totalmente de acuerdo"]) }>Acuerdo</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateQuestion(question.id, "options", ["Muy insatisfecho","Insatisfecho","Neutral","Satisfecho","Muy satisfecho"]) }>Satisfacción</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateQuestion(question.id, "options", ["Nunca","Rara vez","A veces","A menudo","Siempre"]) }>Frecuencia</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => removeQuestion(question.id)}>

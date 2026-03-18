@@ -8,6 +8,7 @@ import { createPortal } from "react-dom"
 interface EmailAutocompleteInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  domainSelector?: boolean
 }
 
 const COMMON_DOMAINS = [
@@ -24,7 +25,7 @@ const COMMON_DOMAINS = [
   "protonmail.com",
 ]
 
-export function EmailAutocompleteInput({ value, onChange, ...props }: EmailAutocompleteInputProps) {
+export function EmailAutocompleteInput({ value, onChange, domainSelector = false, ...props }: EmailAutocompleteInputProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [activeSuggestion, setActiveSuggestion] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -142,19 +143,39 @@ export function EmailAutocompleteInput({ value, onChange, ...props }: EmailAutoc
 
   return (
     <div className="relative">
-      <Input
-        ref={inputRef}
-        type="email"
-        value={value}
-        onChange={onChange}
-        onKeyDown={handleKeyDown}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={suggestions.length > 0}
-        aria-controls={listboxId}
-        aria-activedescendant={`suggestion-${activeSuggestion}`}
-        {...props}
-      />
+      <div className={`flex ${domainSelector ? 'items-stretch' : ''}`}>
+        <Input
+          ref={inputRef}
+          type="email"
+          value={value}
+          onChange={onChange}
+          onKeyDown={handleKeyDown}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={suggestions.length > 0}
+          aria-controls={listboxId}
+          aria-activedescendant={`suggestion-${activeSuggestion}`}
+          {...props}
+        />
+        {domainSelector && (
+          <select
+            className="border-l px-2 bg-white text-sm"
+            onChange={(e) => {
+              const domain = e.target.value
+              if (!domain) return
+              const local = value.includes('@') ? value.split('@')[0] : value
+              const syntheticEvent = { target: { value: `${local}@${domain}`, name: props.name || 'email' } } as React.ChangeEvent<HTMLInputElement>
+              onChange(syntheticEvent)
+            }}
+            value={""}
+          >
+            <option value="">@dominio</option>
+            {COMMON_DOMAINS.map((d) => (
+              <option key={d} value={d}>@{d}</option>
+            ))}
+          </select>
+        )}
+      </div>
 
       {portalRef.current && suggestions.length > 0 && dropdownStyles
         ? createPortal(

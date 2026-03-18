@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth-provider"
 import { SectionOrganizer } from "@/components/section-organizer"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -87,7 +88,7 @@ export default function CreateSurveyPage() {
       type: "text",
       text: "",
       options: [],
-      required: false,
+      required: true,
     }
     setSections(
       sections.map((s) =>
@@ -339,7 +340,8 @@ export default function CreateSurveyPage() {
           <div className="space-y-1.5">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <Grip className="h-5 w-5 text-muted-foreground cursor-move" />
-              <Select value={question.type} onValueChange={(value) => updateQuestion(sectionId, question.id, "type", value)}>
+              <div className="flex items-center gap-2">
+                <Select value={question.type} onValueChange={(value) => updateQuestion(sectionId, question.id, "type", value)}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Tipo de pregunta" />
                 </SelectTrigger>
@@ -352,7 +354,21 @@ export default function CreateSurveyPage() {
                   <SelectItem value="scale">Escala</SelectItem>
                   <SelectItem value="contact_info">Información de Contacto</SelectItem>
                 </SelectContent>
-              </Select>
+                </Select>
+
+                {/* Presets quick-insert */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="ghost">Presets ▾</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => updateQuestion(sectionId, question.id, "options", ["Si", "No"]) }>Si / No</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateQuestion(sectionId, question.id, "options", ["Totalmente en desacuerdo","En desacuerdo","Neutral","De acuerdo","Totalmente de acuerdo"]) }>Acuerdo</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateQuestion(sectionId, question.id, "options", ["Muy insatisfecho","Insatisfecho","Neutral","Satisfecho","Muy satisfecho"]) }>Satisfacción</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateQuestion(sectionId, question.id, "options", ["Nunca","Rara vez","A veces","A menudo","Siempre"]) }>Frecuencia</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               {/* Indicadores visuales de configuración avanzada */}
               <div className="flex gap-1 ml-2">
                 {hasSkipLogic && (

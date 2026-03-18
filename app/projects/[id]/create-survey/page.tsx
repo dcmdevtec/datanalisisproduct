@@ -339,16 +339,19 @@ function SortableSection({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
+                    // Crear copia de la sección con nuevos IDs para sección y preguntas
                     const newSection = {
                       ...section,
-                      id: generateUUID(), // ✅ UUID real en lugar de timestamp
+                      id: generateUUID(),
                       title: `${section.title} (Copia)`,
                       questions: section.questions.map((q) => ({
                         ...q,
-                        id: generateUUID(), // ✅ UUID real en lugar de timestamp
+                        id: generateUUID(),
+                        required: true,
                       })),
-                    }
-                    setSections([...sections, newSection])
+                    } as SurveySection
+
+                    setSections((prev) => [...prev, newSection])
                   }}
                 >
                   <Copy className="h-4 w-4 mr-2" />
@@ -1161,7 +1164,7 @@ export function CreateSurveyForProjectPageContent() {
       type: "text",
       text: "",
       options: [],
-      required: false,
+      required: true,
       image: null,
       matrixRows: ["Fila 1"],
       matrixCols: ["Columna 1"],
@@ -1175,7 +1178,7 @@ export function CreateSurveyForProjectPageContent() {
         likertScale: null,
         displayLogic: { enabled: false, conditions: [] },
         skipLogic: { enabled: false, rules: [] },
-        validation: { required: false },
+        validation: { required: true },
       },
     };
 

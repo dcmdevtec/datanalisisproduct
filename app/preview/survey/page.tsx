@@ -189,6 +189,16 @@ function PreviewSurveyPageContent() {
   const [hasReconciled, setHasReconciled] = useState(false)
   const [appLoadError, setAppLoadError] = useState<string[] | null>(null)
 
+  // Compact mode toggled when viewport is small (used to clamp long text when window is small)
+  const [isCompact, setIsCompact] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsCompact(typeof window !== 'undefined' ? window.innerHeight < 520 : false)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
 
   // Efecto para manejar la reconciliación automática
   useEffect(() => {
@@ -2654,6 +2664,7 @@ function PreviewSurveyPageContent() {
   }
 
   const progress = ((currentSectionIndex + 1) / totalSections) * 100
+  // isCompact state + resize effect moved to the top-level hook declarations to preserve stable hook order
 
   // Estilos dinámicos para aplicar el color de fondo y color primario
   const dynamicStyles = (
@@ -2795,15 +2806,27 @@ function PreviewSurveyPageContent() {
                   </span>
                 </div>
                 <div className="relative w-full">
-                  <div className="w-full h-4 rounded-full bg-gray-100" />
-                  <div
-                    className="absolute top-0 left-0 h-4 rounded-full preview-progress-bar"
-                    style={{
-                      width: `${progress}%`,
-                      background: themeColors.primary,
-                      transition: 'width 0.4s cubic-bezier(.4,2,.6,1)',
-                    }}
-                  />
+                  {/* Interactive segmented progress bar: one segment per section */}
+                  <div className="w-full h-4 rounded-full bg-gray-100 flex overflow-hidden">
+                    {(surveyData.sections || []).map((s: any, i: number) => {
+                      const isActive = i === currentSectionIndex
+                      const segmentWidth = `${100 / (surveyData.sections?.length || 1)}%`
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setCurrentSectionIndex(i)}
+                          title={`${i + 1}. ${s.title || `Sección ${i + 1}`}`}
+                          className={`h-4 focus:outline-none transition-all ${isActive ? 'scale-y-105' : ''}`}
+                          style={{
+                            width: segmentWidth,
+                            background: isActive ? themeColors.primary : `${themeColors.primary}55`,
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
                 <div className="flex justify-between mt-3 text-xs text-muted-foreground font-medium">
                   <span>Inicio</span>
@@ -2853,7 +2876,7 @@ function PreviewSurveyPageContent() {
             )}
             {currentSection.description && (
               <div className="flex justify-center mt-2 mb-6">
-                <div className="max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed">
+                <div className={`max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed ${isCompact ? 'line-clamp-2' : ''}`}>
                   {currentSection.description.replace(/<[^>]+>/g, "")}
                 </div>
               </div>
