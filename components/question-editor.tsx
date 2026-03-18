@@ -1186,92 +1186,90 @@ export function QuestionEditor({
 
             <div className="mt-4">
               <Label className="font-medium">Vista previa</Label>
-              <div className="mt-2 overflow-x-auto">
-                <table className="border w-full min-w-[500px]">
-                  <thead>
-                    <tr className="bg-muted">
-                      <th className="border p-2 text-left"></th>
-                      {matrixCols.map((col, idx) => (
-                        <th key={idx} className="border p-2 text-center font-medium">
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {matrixRows.map((row, rIdx) => (
-                      <tr key={rIdx}>
-                        <td className="border p-2 font-medium">{row}</td>
-                        {matrixCols.map((_, cIdx) => (
-                          <td key={cIdx} className="border p-2 text-center">
-                            {(() => {
-                              switch (question.config?.matrixCellType) {
-                                case "checkbox":
-                                  return <input type="checkbox" disabled className="cursor-not-allowed" />
-                                case "text":
-                                  return <Input disabled className="w-full" placeholder="Texto..." />
-                                case "number":
-                                  return <Input type="number" disabled className="w-full" placeholder="0" />
-                                case "select": {
-                                  // Use per-column options if available
-                                  const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"]
-                                  return (
-                                    <Select disabled>
-                                      <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Seleccionar..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {colOptions.map((opt: string, i: number) => (
-                                          <SelectItem key={i} value={opt && opt.trim() !== "" ? opt : `__empty_${i}`}>
-                                            {opt && opt.trim() !== "" ? (
-                                              opt
-                                            ) : (
-                                              <span className="text-muted-foreground italic">(vacío)</span>
-                                            )}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  )
-                                }
-                                case "rating":
-                                  return (
-                                    <div className="flex justify-center gap-1">
-                                      {Array.from(
-                                        { length: Number(question.config?.matrixRatingScale || 5) },
-                                        (_, i) => (
-                                          <span key={i} className="text-yellow-400 cursor-not-allowed">
-                                            ★
-                                          </span>
-                                        ),
-                                      )}
-                                    </div>
-                                  )
-                                case "ranking":
-                                  return (
-                                    <div className="flex items-center gap-1">
-                                      <div className="w-8 text-center">{rIdx + 1}</div>
-                                      <div className="flex gap-1">
-                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">
-                                          ↑
-                                        </button>
-                                        <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">
-                                          ↓
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )
-                                default: // radio
-                                  return <input type="radio" disabled className="cursor-not-allowed" />
-                              }
-                            })()}
-                          </td>
+                <div className="mt-2 overflow-x-auto">
+                  <div className="min-w-[480px] bg-white rounded-lg shadow-md ring-1 ring-gray-100 overflow-hidden border border-gray-100">
+                    <table className="w-full table-fixed min-w-[480px] divide-y divide-gray-200">
+                      <colgroup>
+                        <col style={{ width: '45%' }} />
+                        {matrixCols.map((_, i) => (
+                          <col key={i} style={{ width: `${Math.floor(55 / Math.max(1, matrixCols.length))}%` }} />
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      </colgroup>
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">&nbsp;</th>
+                          {matrixCols.map((col, idx) => (
+                            <th key={idx} className="px-4 py-3 text-center text-xs font-semibold text-gray-700">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {matrixRows.map((row, rIdx) => (
+                          <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-4 py-4 font-medium text-sm text-gray-800">{row}</td>
+                            {matrixCols.map((_, cIdx) => (
+                              <td key={cIdx} className="px-4 py-4 text-center">
+                                {(() => {
+                                  switch (question.config?.matrixCellType) {
+                                    case "checkbox":
+                                      return <input type="checkbox" disabled className="cursor-not-allowed" />
+                                    case "text":
+                                      return <Input disabled className="w-full" placeholder="Texto..." />
+                                    case "number":
+                                      return <Input type="number" disabled className="w-full" placeholder="0" />
+                                    case "select": {
+                                      const colOptions = question.config?.matrixColOptions?.[cIdx] || ["Opción 1"]
+                                      return (
+                                        <Select disabled>
+                                          <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Seleccionar..." />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {colOptions.map((opt: string, i: number) => (
+                                              <SelectItem key={i} value={opt && opt.trim() !== "" ? opt : `__empty_${i}`}>
+                                                {opt && opt.trim() !== "" ? (
+                                                  opt
+                                                ) : (
+                                                  <span className="text-muted-foreground italic">(vacío)</span>
+                                                )}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      )
+                                    }
+                                    case "rating":
+                                      return (
+                                        <div className="flex justify-center gap-1">
+                                          {Array.from({ length: Number(question.config?.matrixRatingScale || 5) }, (_, i) => (
+                                            <span key={i} className="text-yellow-400 cursor-not-allowed">★</span>
+                                          ))}
+                                        </div>
+                                      )
+                                    case "ranking":
+                                      return (
+                                        <div className="flex items-center gap-1">
+                                          <div className="w-8 text-center">{rIdx + 1}</div>
+                                          <div className="flex gap-1">
+                                            <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↑</button>
+                                            <button className="px-2 py-1 text-sm bg-muted/50 rounded cursor-not-allowed">↓</button>
+                                          </div>
+                                        </div>
+                                      )
+                                    default:
+                                      return <input type="radio" disabled className="cursor-not-allowed" />
+                                  }
+                                })()}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
             </div>
           </div>
         )}

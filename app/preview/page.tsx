@@ -287,38 +287,62 @@ export default function PreviewPage() {
               <div className="space-y-3">
                 <h3 className="text-lg font-medium">Matriz de Ranking</h3>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse border border-gray-200">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="border border-gray-200 px-4 py-2 text-left">Preguntas</th>
-                        <th className="border border-gray-200 px-4 py-2">Columna 1</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {["pregunta", "Fila 2", "Fila 3", "Fila 4"].map((row, i) => (
-                        <tr key={i}>
-                          <td className="border border-gray-200 px-4 py-2">{row}</td>
-                          <td className="border border-gray-200 px-4 py-2">
-                            <div className="flex items-center justify-between px-4">
-                              <span className="font-medium">{i + 1}</span>
-                              <div className="flex flex-col space-y-1">
-                                <button className="p-1 hover:bg-gray-100 rounded">
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="m18 15-6-6-6 6"/>
-                                  </svg>
-                                </button>
-                                <button className="p-1 hover:bg-gray-100 rounded">
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="m6 9 6 6 6-6"/>
-                                  </svg>
-                                </button>
-                              </div>
-                            </div>
-                          </td>
+                  <div className="min-w-full bg-white rounded-lg shadow-md ring-1 ring-gray-100 overflow-hidden border border-gray-100">
+                    {/* Using Tailwind table utilities: table-fixed, divide-y and peer for checked state */}
+                    <table className="w-full table-fixed divide-y divide-gray-200">
+                      <colgroup>
+                        <col style={{ width: '45%' }} />
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '19%' }} />
+                      </colgroup>
+                      <thead className="bg-white">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Preguntas</th>
+                          {['Columna 1', 'Columna 2', 'Columna 3'].map((c, ci) => (
+                            <th key={ci} className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                              {c}
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {['Fila 1', 'Fila 2', 'Fila 3', 'Fila 4'].map((row, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-4 py-4 align-middle">
+                              <div className="flex items-center space-x-4">
+                                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center font-semibold shadow">
+                                  {i + 1}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-gray-800 truncate">{row}</div>
+                                </div>
+                              </div>
+                            </td>
+                            {[0, 1, 2].map((colIndex) => (
+                              <td key={colIndex} className="px-4 py-4 align-middle text-center">
+                                <div className="flex items-center justify-center">
+                                  <input
+                                    type="radio"
+                                    id={`matrix-${i}-${colIndex}`}
+                                    name={`matrix-row-${i}`}
+                                    className="peer sr-only"
+                                  />
+                                  <label
+                                    htmlFor={`matrix-${i}-${colIndex}`}
+                                    className="w-9 h-9 rounded-full border border-gray-200 bg-white flex items-center justify-center hover:bg-emerald-50 focus:outline-none peer-checked:bg-emerald-500 peer-checked:border-emerald-500 peer-checked:text-white transition-colors"
+                                    aria-label={`Seleccionar ${row} - Columna ${colIndex + 1}`}
+                                  >
+                                    <span className="w-2 h-2 rounded-full bg-transparent peer-checked:bg-white" />
+                                  </label>
+                                </div>
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
                 <div className="text-sm text-gray-500 mt-2">
                   * Configurado como ranking con requerimiento de ranking completo

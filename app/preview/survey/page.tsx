@@ -732,7 +732,8 @@ function PreviewSurveyPageContent() {
               // Checkbox: answers are stored per-row as arrays under `${question.id}_${i}`
               if (cellType === 'checkbox') {
                 const rowKey = `${question.id}_${i}`;
-                const sel = Array.isArray(answers[rowKey]) ? answers[rowKey].filter(v => v) : [];
+                // Keep values like 0 (first column). Only remove null/undefined/empty string
+                const sel = Array.isArray(answers[rowKey]) ? answers[rowKey].filter(v => !(v === null || v === undefined || v === '')) : [];
                 const isValid = sel.length >= effectiveMin;
                 if (!isValid) unansweredRows.push(row || `Fila ${i + 1}`);
                 return isValid;
@@ -2345,148 +2346,156 @@ function PreviewSurveyPageContent() {
             const minSel = advancedConfig.minSelections ?? 0;
             const maxSel = advancedConfig.maxSelections ?? matrixCols.length;
             
-            // Matriz: render responsive con ayuda visual de límites
+            // Matriz: render responsive con utilidades de Tailwind (table-fixed, colgroup, divide-y)
+            const colCount = Math.max(1, matrixCols.length);
+            const otherWidth = `${Math.floor(55 / colCount)}%`;
             return (
               <div className="space-y-4">
                 <div className="overflow-x-auto">
-                  <table className="w-full table-auto border-collapse">
-                    <thead>
-                      <tr>
-                        <th className="border p-2 bg-muted"></th>
-                        {matrixCols.map((col, idx) => (
-                          <th key={idx} className="border p-2 bg-muted text-center whitespace-normal">
-                            {col}
-                          </th>
+                  <div className="min-w-full bg-white rounded-lg shadow-md ring-1 ring-gray-100 overflow-hidden border border-gray-100">
+                    <table className="w-full table-fixed divide-y divide-gray-200">
+                      <colgroup>
+                        <col style={{ width: '45%' }} />
+                        {matrixCols.map(() => (
+                          <col key={Math.random()} style={{ width: otherWidth }} />
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matrixRows.map((row, rowIdx) => (
-                        <tr key={rowIdx}>
-                          <td className="border p-2 bg-muted font-medium">{row}</td>
-                          {matrixCols.map((col, colIdx) => (
-                            <td key={colIdx} className="border p-2 text-center">
-                              {(() => {
-                                const cellKey = `${question.id}_${rowIdx}_${colIdx}`;
-                                switch (cellType) {
-                                  case "checkbox": {
-                                    // Para cada fila, la respuesta es un array de columnas seleccionadas
-                                    const rowKey = `${question.id}_${rowIdx}`;
-                                    const selected = Array.isArray(answers[rowKey]) ? answers[rowKey] : [];
-                                    // Usar los límites definidos en la función padre
-                                    const isChecked = selected.includes(colIdx);
-                                    const isMaxReached = selected.length >= maxSel && !isChecked;
-                                    
-                                    return (
-                                      <Checkbox
-                                        checked={isChecked}
-                                        disabled={isMaxReached}
-                                        onCheckedChange={(checked) => {
-                                          let currentAnswers = new Set(selected);
-                                          if (checked) {
-                                            currentAnswers.add(colIdx);
-                                          } else {
-                                            currentAnswers.delete(colIdx);
-                                          }
-                                          handleAnswerChange(rowKey, Array.from(currentAnswers));
-                                        }}
-                                      />
-                                    );
-                                  }
-                                  case "text":
-                                    return (
-                                      <Input
-                                        value={answers[cellKey] || ""}
-                                        onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
-                                        className="w-full"
-                                        placeholder="Texto..."
-                                      />
-                                    );
-                                  case "number":
-                                    return (
-                                      <Input
-                                        type="number"
-                                        value={answers[cellKey] || ""}
-                                        onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
-                                        className="w-full"
-                                        placeholder="0"
-                                      />
-                                    );
-                                  case "select": {
-                                    const colOptions = matrixColOptions[colIdx] || ["Opción 1"];
-                                    return (
-                                      <Select
-                                        value={answers[cellKey] || ""}
-                                        onValueChange={(value) => handleAnswerChange(cellKey, value)}
-                                      >
-                                        <SelectTrigger className="w-full">
-                                          <SelectValue placeholder="Seleccionar..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {colOptions.map((opt, i) => {
-                                            const cleanOpt = typeof opt === 'string' ? opt.trim() : '';
-                                            return (
-                                              <SelectItem key={i} value={cleanOpt}>{cleanOpt || <span className="text-gray-400">(vacío)</span>}</SelectItem>
-                                            );
-                                          })}
-                                        </SelectContent>
-                                      </Select>
-                                    );
-                                  }
-                                  case "rating": {
-                                    const stars = Number(matrixRatingScale);
-                                    return (
-                                      <div className="flex justify-center gap-1">
-                                        {Array.from({ length: stars }, (_, i) => (
-                                          <button
-                                            key={i}
-                                            type="button"
-                                            className={`text-yellow-400 text-lg ${answers[cellKey] === i + 1 ? "font-bold" : "opacity-50"}`}
-                                            onClick={() => handleAnswerChange(cellKey, i + 1)}
-                                          >
-                                            ★
-                                          </button>
-                                        ))}
-                                      </div>
-                                    );
-                                  }
-                                  case "ranking":
-                                    // Simulación simple: input para posición
-                                    return (
-                                      <Input
-                                        type="number"
-                                        min={1}
-                                        max={matrixRows.length}
-                                        value={answers[cellKey] || ""}
-                                        onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
-                                        className="w-16 text-center"
-                                        placeholder={`#`}
-                                      />
-                                    );
-                                  case "radio": {
-                                    // Cada fila debe tener un grupo de radios, cada celda es una opción
-                                    const radioKey = `${question.id}_${rowIdx}`;
-                                    return (
-                                      <input
-                                        type="radio"
-                                        name={radioKey}
-                                        value={col}
-                                        checked={answers[radioKey] === col}
-                                        onChange={() => handleAnswerChange(radioKey, col)}
-                                        className="cursor-pointer"
-                                      />
-                                    );
-                                  }
-                                  default:
-                                    return <Input disabled className="w-full" placeholder={`Tipo ${cellType} no soportado`} />;
-                                }
-                              })()}
-                            </td>
+                      </colgroup>
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Preguntas</th>
+                          {matrixCols.map((col, idx) => (
+                            <th key={idx} className="px-4 py-3 text-center text-xs font-semibold text-gray-700 whitespace-normal">
+                              {col}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {matrixRows.map((row, rowIdx) => (
+                          <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-4 py-4 align-middle font-medium text-sm text-gray-800">{row}</td>
+                            {matrixCols.map((col, colIdx) => (
+                              <td key={colIdx} className="px-4 py-4 align-middle text-center">
+                                {(() => {
+                                  const cellKey = `${question.id}_${rowIdx}_${colIdx}`;
+                                  switch (cellType) {
+                                    case "checkbox": {
+                                      const rowKey = `${question.id}_${rowIdx}`;
+                                      const selected = Array.isArray(answers[rowKey]) ? answers[rowKey] : [];
+                                      const isChecked = selected.includes(colIdx);
+                                      const isMaxReached = selected.length >= maxSel && !isChecked;
+
+                                      return (
+                                        <div className="flex items-center justify-center">
+                                          <Checkbox
+                                            checked={isChecked}
+                                            disabled={isMaxReached}
+                                            onCheckedChange={(checked) => {
+                                              let currentAnswers = new Set(selected);
+                                              if (checked) {
+                                                currentAnswers.add(colIdx);
+                                              } else {
+                                                currentAnswers.delete(colIdx);
+                                              }
+                                              handleAnswerChange(rowKey, Array.from(currentAnswers));
+                                            }}
+                                          />
+                                        </div>
+                                      );
+                                    }
+                                    case "text":
+                                      return (
+                                        <Input
+                                          value={answers[cellKey] || ""}
+                                          onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
+                                          className="w-full"
+                                          placeholder="Texto..."
+                                        />
+                                      );
+                                    case "number":
+                                      return (
+                                        <Input
+                                          type="number"
+                                          value={answers[cellKey] || ""}
+                                          onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
+                                          className="w-full"
+                                          placeholder="0"
+                                        />
+                                      );
+                                    case "select": {
+                                      const colOptions = matrixColOptions[colIdx] || ["Opción 1"];
+                                      return (
+                                        <Select
+                                          value={answers[cellKey] || ""}
+                                          onValueChange={(value) => handleAnswerChange(cellKey, value)}
+                                        >
+                                          <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Seleccionar..." />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {colOptions.map((opt, i) => {
+                                              const cleanOpt = typeof opt === 'string' ? opt.trim() : '';
+                                              return (
+                                                <SelectItem key={i} value={cleanOpt}>{cleanOpt || <span className="text-gray-400">(vacío)</span>}</SelectItem>
+                                              );
+                                            })}
+                                          </SelectContent>
+                                        </Select>
+                                      );
+                                    }
+                                    case "rating": {
+                                      const stars = Number(matrixRatingScale);
+                                      return (
+                                        <div className="flex justify-center gap-1">
+                                          {Array.from({ length: stars }, (_, i) => (
+                                            <button
+                                              key={i}
+                                              type="button"
+                                              className={`text-yellow-400 text-lg ${answers[cellKey] === i + 1 ? "font-bold" : "opacity-50"}`}
+                                              onClick={() => handleAnswerChange(cellKey, i + 1)}
+                                            >
+                                              ★
+                                            </button>
+                                          ))}
+                                        </div>
+                                      );
+                                    }
+                                    case "ranking":
+                                      return (
+                                        <Input
+                                          type="number"
+                                          min={1}
+                                          max={matrixRows.length}
+                                          value={answers[cellKey] || ""}
+                                          onChange={(e) => handleAnswerChange(cellKey, e.target.value)}
+                                          className="w-16 text-center"
+                                          placeholder={`#`}
+                                        />
+                                      );
+                                    case "radio": {
+                                      const radioKey = `${question.id}_${rowIdx}`;
+                                      return (
+                                        <input
+                                          type="radio"
+                                          name={radioKey}
+                                          value={col}
+                                          checked={answers[radioKey] === col}
+                                          onChange={() => handleAnswerChange(radioKey, col)}
+                                          className="cursor-pointer"
+                                        />
+                                      );
+                                    }
+                                    default:
+                                      return <Input disabled className="w-full" placeholder={`Tipo ${cellType} no soportado`} />;
+                                  }
+                                })()}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
                 {minSel > 0 && (
                   <div className="text-sm text-muted-foreground mt-1">Mínimo por fila: {minSel}</div>
