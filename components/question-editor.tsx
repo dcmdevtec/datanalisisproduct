@@ -142,6 +142,9 @@ export function QuestionEditor({
   const [showPasteOptions, setShowPasteOptions] = useState(false)
   const [showConfig, setShowConfig] = useState<boolean>(false)
   const [showMoveModal, setShowMoveModal] = useState<boolean>(false)
+  // Bulk-add matrix columns UI
+  const [showMatrixBulk, setShowMatrixBulk] = useState<boolean>(false)
+  const [matrixBulkText, setMatrixBulkText] = useState<string>("")
   // tabs removed: configuration moved to AdvancedQuestionConfig. Show inline controls instead.
 
   const {
@@ -954,19 +957,68 @@ export function QuestionEditor({
                 ))}
                 {/* Hide add column button if cell type is 'ranking' */}
                 {question.config?.matrixCellType !== "ranking" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-2 bg-transparent"
-                    onClick={() => {
-                      onUpdateQuestion(sectionId, question.id, "matrixCols", [
-                        ...matrixCols,
-                        `Columna ${matrixCols.length + 1}`,
-                      ])
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Agregar columna
-                  </Button>
+                  <div className="flex items-start gap-2">
+                    <div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 bg-transparent"
+                        onClick={() => {
+                          onUpdateQuestion(sectionId, question.id, "matrixCols", [
+                            ...matrixCols,
+                            `Columna ${matrixCols.length + 1}`,
+                          ])
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" /> Agregar columna
+                      </Button>
+                    </div>
+
+                    {/* Show bulk-add only for cell types that require selectable options */}
+                    {(question.config?.matrixCellType === "radio" || question.config?.matrixCellType === "checkbox" || question.config?.matrixCellType === "select") && (
+                      <div className="mt-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-2"
+                          onClick={() => setShowMatrixBulk((s) => !s)}
+                        >
+                          Múltiples
+                        </Button>
+
+                        {showMatrixBulk && (
+                          <div className="mt-2">
+                            <Textarea
+                              value={matrixBulkText}
+                              onChange={(e) => setMatrixBulkText(e.target.value)}
+                              placeholder={`Pega una opción por línea (ej. Columna A\nColumna B\nColumna C)`}
+                              rows={4}
+                            />
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const lines = matrixBulkText
+                                    .split("\n")
+                                    .map(l => l.trim())
+                                    .filter(l => l.length > 0)
+                                  if (lines.length > 0) {
+                                    onUpdateQuestion(sectionId, question.id, 'matrixCols', [...matrixCols, ...lines])
+                                    setMatrixBulkText("")
+                                    setShowMatrixBulk(false)
+                                  }
+                                }}
+                              >
+                                Agregar columnas
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => { setMatrixBulkText(""); setShowMatrixBulk(false) }}>Cancelar</Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
