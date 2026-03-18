@@ -429,9 +429,9 @@ function SkipLogicVisualizer({
                           }}
                         >
                           <option value="">-- Elegir sección --</option>
-                          {allSections.map((s) => (
+                          {allSections.map((s, sIdx) => (
                             <option key={s.id} value={s.id}>
-                              {s.title}
+                              {`${sIdx + 1}. ${s.title}${s.questions?.some(q => q.id === question.id) ? ' (Sección actual)' : ''}`}
                             </option>
                           ))}
                           <option value="END_SURVEY">Finalizar Encuesta</option>
@@ -501,9 +501,9 @@ function SkipLogicVisualizer({
                   onChange={(e) => setNewSectionId(e.target.value)}
                 >
                   <option value="">-- Elegir sección --</option>
-                  {allSections.map((s) => (
+                  {allSections.map((s, sIdx) => (
                     <option key={s.id} value={s.id}>
-                      {s.title}
+                      {`${sIdx + 1}. ${s.title}${s.questions?.some(q => q.id === question.id) ? ' (Sección actual)' : ''}`}
                     </option>
                   ))}
                   <option value="END_SURVEY">Finalizar Encuesta</option>
