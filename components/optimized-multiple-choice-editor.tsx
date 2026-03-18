@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { Plus, Trash2, Settings2, Image, Move, Upload, Edit3 } from "lucide-react"
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
@@ -27,6 +28,7 @@ interface OptimizedMultipleChoiceEditorProps {
   allowOther?: boolean
   otherText?: string
   onOtherTextChange?: (text: string) => void
+  onAllowOtherChange?: (checked: boolean) => void
   randomizeOptions?: boolean
 }
 
@@ -83,20 +85,8 @@ function SortableOption({
       <Input
         value={option.label}
         onChange={(e) => onUpdate(index, e.target.value)}
-        placeholder={`Opción ${index + 1}`}
+        placeholder={`Escribe una opción`}
         className="flex-1 border-none shadow-none focus:ring-0 bg-transparent"
-        onFocus={(e) => {
-          // Limpiar placeholder automáticamente cuando el usuario enfoca
-          if (!e.currentTarget.value || e.currentTarget.value === `Opción ${index + 1}`) {
-            e.currentTarget.value = ''
-          }
-        }}
-        onBlur={(e) => {
-          // Restaurar placeholder si quedó vacío
-          if (!e.currentTarget.value) {
-            onUpdate(index, '')
-          }
-        }}
       />
       
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -131,6 +121,7 @@ export function OptimizedMultipleChoiceEditor({
   allowOther,
   otherText = "Otro (especificar)",
   onOtherTextChange,
+  onAllowOtherChange,
   randomizeOptions
 }: OptimizedMultipleChoiceEditorProps) {
   const [showBulkAdd, setShowBulkAdd] = useState(false)
@@ -148,13 +139,13 @@ export function OptimizedMultipleChoiceEditor({
     if (typeof opt === "string") {
       return {
         id: `option-${index}`,
-        label: opt,
+        label: opt || '',
         hasImage: false
       }
     }
     return {
       id: `option-${index}`,
-      label: opt.label || opt.value || `Opción ${index + 1}`,
+      label: opt.label || opt.value || '',
       image: opt.image || opt.url,
       hasImage: !!(opt.image || opt.url)
     }
@@ -243,8 +234,10 @@ export function OptimizedMultipleChoiceEditor({
   }
 
   const addOption = () => {
-    const newOption = `Opción ${rawOptions.length + 1}`
-    onOptionsChange([...rawOptions, newOption])
+    // Add an empty option so the user can type immediately without deleting placeholder text
+    const newOption = `""`
+    // Use an actual empty string value
+    onOptionsChange([...rawOptions, ""])
   }
 
   const handleBulkAdd = () => {
@@ -294,15 +287,49 @@ export function OptimizedMultipleChoiceEditor({
             </div>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowBulkAdd(!showBulkAdd)}
-              className="gap-1"
-            >
-              <Edit3 className="h-4 w-4" />
-              Múltiples
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBulkAdd(!showBulkAdd)}
+                className="gap-1"
+              >
+                <Edit3 className="h-4 w-4" />
+                Múltiples
+              </Button>
+
+              {/* Only show 'Permitir Otro' for multiple_choice or checkbox (not dropdown) */}
+              {(questionType === "multiple_choice" || questionType === "checkbox") && (
+                <div className="flex items-center gap-2">
+                  <label
+                    className="flex items-center gap-2 cursor-pointer select-none"
+                    onClick={() => {
+                      // Toggle when label clicked
+                      if (typeof onAllowOtherChange === 'function') onAllowOtherChange(!Boolean(allowOther))
+                    }}
+                  >
+                    <Switch
+                      checked={Boolean(allowOther)}
+                      onCheckedChange={(checked) => {
+                        if (typeof onAllowOtherChange === 'function') onAllowOtherChange(Boolean(checked))
+                      }}
+                      className="data-[state=checked]:bg-emerald-500"
+                      aria-label="Permitir Otro"
+                    />
+                    <span className="text-sm text-gray-700">Permitir "Otro"</span>
+                  </label>
+
+                  {allowOther && onOtherTextChange && (
+                    <Input
+                      value={otherText}
+                      onChange={(e) => onOtherTextChange(e.target.value)}
+                      placeholder="Texto para 'Otro'"
+                      className="w-[220px]"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
          
           </div>
         </div>
@@ -376,6 +403,8 @@ export function OptimizedMultipleChoiceEditor({
                   hasImage={option.hasImage || false}
                 />
               ))}
+
+              {/* 'Otro' is represented as a real option in rawOptions; no visual-only preview here. */}
             </div>
           </SortableContext>
         </DndContext>
@@ -390,20 +419,7 @@ export function OptimizedMultipleChoiceEditor({
           Agregar opción
         </Button>
 
-        {/* Other option */}
-        {allowOther && onOtherTextChange && (
-          <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="w-6 text-center text-muted-foreground">
-              {questionType === "multiple_choice" ? "○" : "☐"}
-            </div>
-            <Input
-              value={otherText}
-              onChange={(e) => onOtherTextChange(e.target.value)}
-              placeholder="Texto para opción 'Otro'"
-              className="flex-1 bg-white"
-            />
-          </div>
-        )}
+        {/* The 'Otro' option is editable inline among the options list when enabled. */}
 
         {/* Image preview for options with images - OPTIMIZED: complete but small images */}
         {hasImages && questionType !== "dropdown" && (

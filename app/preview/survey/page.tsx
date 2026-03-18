@@ -1535,7 +1535,7 @@ function PreviewSurveyPageContent() {
                         )
                       })}
                     </div>
-                    {question.config?.allowOther && (
+                    {question.config?.allowOther && !( (question.options || []).some((opt: any) => opt && typeof opt === 'object' ? (opt.value === '__other__') : String(opt) === '__other__') ) && (
                       <div className="mt-4">
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
@@ -1578,7 +1578,7 @@ function PreviewSurveyPageContent() {
                       </div>
                     )
                   })}
-                  {question.config?.allowOther && (
+                  {question.config?.allowOther && !( (question.options || []).some((opt: any) => opt && typeof opt === 'object' ? (opt.value === '__other__') : String(opt) === '__other__') ) && (
                     <div className="flex items-center space-x-2 mt-2">
                       <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
                       <Label htmlFor={`${question.id}-option-other`}>
@@ -1705,7 +1705,7 @@ function PreviewSurveyPageContent() {
                     </div>
                   );
                 })}
-                {question.config?.allowOther && (
+                {question.config?.allowOther && !( (question.options || []).some((opt: any) => opt && typeof opt === 'object' ? (opt.value === '__other__') : String(opt) === '__other__') ) && (
                   <div className="flex items-center space-x-2 mt-2">
                     <Checkbox
                       id={`${question.id}-option-other`}
@@ -1764,7 +1764,7 @@ function PreviewSurveyPageContent() {
                         </SelectItem>
                       );
                     })}
-                    {question.config?.allowOther && (
+                    {question.config?.allowOther && !( (question.options || []).some((opt: any) => opt && typeof opt === 'object' ? (opt.value === '__other__') : String(opt) === '__other__') ) && (
                       <SelectItem value="__other__">{question.config.otherText || 'Otro (especificar)'}</SelectItem>
                     )}
                   </SelectContent>
@@ -2558,7 +2558,7 @@ function PreviewSurveyPageContent() {
                   className="question-title-html flex-1"
                   dangerouslySetInnerHTML={{ __html: question.text_html || question.text || "Pregunta sin texto" }}
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   {question.required && (
                     <Badge variant="destructive" className="text-xs px-3 py-1 rounded-full">
                       Requerida
@@ -2568,6 +2568,21 @@ function PreviewSurveyPageContent() {
                     <Badge variant="secondary" className="text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-700 border-blue-200">
                       Condicional
                     </Badge>
+                  )}
+                  {/* Small icon to indicate skip/jump logic configured for this question */}
+                  {question.config?.skipLogic?.enabled && (
+                    <div title="Salto de página" className="flex items-center">
+                      {/* Inline SVG: compact Word-like document icon (folded corner + 'W') */}
+                      <svg className="h-5 w-5 text-indigo-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <title>Salto de página</title>
+                        {/* Document body */}
+                        <path d="M6 2h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinejoin="round" />
+                        {/* Folded corner */}
+                        <path d="M14 2v4h4" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinejoin="round" />
+                        {/* Stylized 'W' inside document */}
+                        <path d="M7.2 15.5l1-5 1.2 3 1-3 1 5 1-4 1 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.95" />
+                      </svg>
+                    </div>
                   )}
                 </div>
               </div>

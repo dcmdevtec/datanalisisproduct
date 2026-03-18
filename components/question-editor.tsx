@@ -276,6 +276,45 @@ export function QuestionEditor({
     }
   }
 
+  // When user toggles "Permitir Otro", add/remove a real option marker (value '__other__')
+  const handleAllowOtherChange = (checked: boolean) => {
+    // update config
+    onUpdateQuestion(sectionId, question.id, "config", { ...question.config, allowOther: checked })
+
+    // ensure options array reflects the change
+    const currentOptions = Array.isArray(question.options) ? [...question.options] : []
+    const hasOther = currentOptions.some((opt: any) => {
+      if (opt && typeof opt === 'object') return opt.value === '__other__'
+      return String(opt) === '__other__'
+    })
+
+    if (checked && !hasOther) {
+      // append an object option with value marker
+      const label = question.config?.otherText || 'Otro (especificar)'
+      const newOptions = [...currentOptions, { label, value: '__other__' }]
+      onUpdateQuestion(sectionId, question.id, "options", newOptions)
+    } else if (!checked && hasOther) {
+      const newOptions = currentOptions.filter((opt: any) => {
+        if (opt && typeof opt === 'object') return opt.value !== '__other__'
+        return String(opt) !== '__other__'
+      })
+      onUpdateQuestion(sectionId, question.id, "options", newOptions.length > 0 ? newOptions : [`Opción 1`])
+    }
+  }
+
+  // When the otherText label changes, sync it into the options array if the __other__ option exists
+  const handleOtherTextChange = (text: string) => {
+    onUpdateQuestion(sectionId, question.id, "config", { ...question.config, otherText: text })
+    const currentOptions = Array.isArray(question.options) ? [...question.options] : []
+    const idx = currentOptions.findIndex((opt: any) => (opt && typeof opt === 'object' ? opt.value === '__other__' : String(opt) === '__other__'))
+    if (idx !== -1) {
+      const updated = [...currentOptions]
+      if (typeof updated[idx] === 'string') updated[idx] = text || 'Otro (especificar)'
+      else updated[idx] = { ...(updated[idx] as any), label: text || 'Otro (especificar)' }
+      onUpdateQuestion(sectionId, question.id, "options", updated)
+    }
+  }
+
   // Sortable item component for options
   // Local editor for options uses the top-level memoized `LocalOptionEditor` (defined above)
 
@@ -1457,10 +1496,8 @@ export function QuestionEditor({
             onAdvancedSettings={() => setShowConfig(true)}
             allowOther={question.config?.allowOther}
             otherText={question.config?.otherText || "Otro (especificar)"}
-            onOtherTextChange={(text) => onUpdateQuestion(sectionId, question.id, "config", {
-              ...question.config,
-              otherText: text,
-            })}
+            onOtherTextChange={(text) => handleOtherTextChange(text)}
+            onAllowOtherChange={(checked: boolean) => handleAllowOtherChange(checked)}
             randomizeOptions={question.config?.randomizeOptions}
           />
         )}

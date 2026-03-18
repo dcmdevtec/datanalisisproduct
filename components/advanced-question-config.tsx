@@ -1017,22 +1017,7 @@ export function AdvancedQuestionConfig({
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Permitir "Otro"</Label>
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        checked={Boolean(config.appearance?.allowOther)}
-                        onCheckedChange={(checked) => updateAppearance('allowOther', checked)}
-                        className="data-[state=checked]:bg-emerald-500"
-                      />
-                      <Input
-                        value={config.appearance?.otherText || ''}
-                        onChange={(e) => updateAppearance('otherText', e.target.value)}
-                        placeholder="Etiqueta para 'Otro'"
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
+                  {/* 'Permitir "Otro"' has been moved to the Question Editor UI. */}
                 </div>
 
                 <div className="space-y-2">
