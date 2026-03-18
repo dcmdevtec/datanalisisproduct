@@ -462,13 +462,50 @@ function SortableSection({
             collisionDetection={closestCenter}
             onDragEnd={(event) => {
               const { active, over } = event
-              if (active.id !== over?.id) {
+              if (!active) return
+              if (!over) return
+              // If dropped onto another question within same section
+              if (section.questions.some((q) => q.id === active.id) && section.questions.some((q) => q.id === over.id)) {
                 const oldIndex = section.questions.findIndex((q) => q.id === active.id)
-                const newIndex = section.questions.findIndex((q) => q.id === over?.id)
-                if (oldIndex !== -1 && newIndex !== -1) {
+                const newIndex = section.questions.findIndex((q) => q.id === over.id)
+                if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
                   const newQuestions = arrayMove(section.questions, oldIndex, newIndex)
                   onUpdateSection(section.id, "questions", newQuestions)
                 }
+                return
+              }
+
+              // If dropped onto a question that is in a different section, move it between sections
+              // active.id may be like `${fromSectionId}-${questionId}` in some usages; ensure matching by question id
+              const activeQuestionId = String(active.id).includes("-") ? String(active.id).split("-").slice(-1)[0] : String(active.id)
+              const overQuestionId = String(over.id).includes("-") ? String(over.id).split("-").slice(-1)[0] : String(over.id)
+
+              // Find origin and destination sections
+              const originSectionIndex = sections.findIndex((s) => s.questions.some((q) => q.id === activeQuestionId))
+              const destSectionIndex = sections.findIndex((s) => s.questions.some((q) => q.id === overQuestionId))
+
+              if (originSectionIndex !== -1 && destSectionIndex !== -1 && originSectionIndex !== destSectionIndex) {
+                const origin = sections[originSectionIndex]
+                const dest = sections[destSectionIndex]
+
+                const questionToMoveIndex = origin.questions.findIndex((q) => q.id === activeQuestionId)
+                if (questionToMoveIndex === -1) return
+                const [questionToMove] = origin.questions.splice(questionToMoveIndex, 1)
+
+                const destIndex = dest.questions.findIndex((q) => q.id === overQuestionId)
+                const insertionIndex = destIndex === -1 ? dest.questions.length : destIndex
+
+                dest.questions.splice(insertionIndex, 0, questionToMove)
+
+                // Build new sections array
+                const updatedSections = sections.map((s) => {
+                  if (s.id === origin.id) return { ...origin }
+                  if (s.id === dest.id) return { ...dest }
+                  return s
+                })
+
+                // Propagate state
+                setSections(updatedSections)
               }
             }}
           >

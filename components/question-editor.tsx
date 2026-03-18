@@ -631,18 +631,20 @@ export function QuestionEditor({
                 <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
               </SelectContent>
             </Select>
-            {/* Presets dropdown: quick option templates next to question type */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="ml-2">Preestablecidos ▾</Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Sí", "No"]) }>Sí / No</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Totalmente en desacuerdo", "En desacuerdo", "Neutral", "De acuerdo", "Totalmente de acuerdo"]) }>Escala de acuerdo</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Muy insatisfecho", "Insatisfecho", "Neutral", "Satisfecho", "Muy satisfecho"]) }>Satisfacción (5 puntos)</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Siempre", "Casi siempre", "A veces", "Casi nunca", "Nunca"]) }>Frecuencia</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Presets dropdown: only show for multiple-choice type */}
+            {(question.type === "multiple_choice") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="ml-2">Preestablecidos ▾</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Sí", "No"]) }>Sí / No</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Totalmente en desacuerdo", "En desacuerdo", "Neutral", "De acuerdo", "Totalmente de acuerdo"]) }>Escala de acuerdo</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Muy insatisfecho", "Insatisfecho", "Neutral", "Satisfecho", "Muy satisfecho"]) }>Satisfacción (5 puntos)</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Siempre", "Casi siempre", "A veces", "Casi nunca", "Nunca"]) }>Frecuencia</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {/* Switch para marcar como obligatoria la pregunta */}
             <div className="flex items-center gap-2">
               <span className="text-sm">Obligatoria</span>
