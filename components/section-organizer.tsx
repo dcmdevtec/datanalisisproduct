@@ -1047,21 +1047,25 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {moveMode === "exact"
-                    ? localSections
-                        .filter(section => section.id !== movingSection?.id)
-                        .map((section, index) => (
-                          <SelectItem key={section.id} value={(index + 1).toString()}>
-                            {`Posición ${index + 1} — ${stripHtml(section.title) || `Sección ${index + 1}`}`}
-                          </SelectItem>
-                        ))
-                    : localSections
-                        .filter(section => section.id !== movingSection?.id)
-                        .map((section, index) => (
-                          <SelectItem key={section.id} value={(index + 1).toString()}>
-                            {`${index + 1}. ${stripHtml(section.title)}`}
-                          </SelectItem>
-                        ))}
+                  {moveMode === "exact" ? (
+                    // Offer explicit positions 1..N so users can move to any index
+                    Array.from({ length: localSections.length }).map((_, idx) => {
+                      const sec = localSections[idx]
+                      return (
+                        <SelectItem key={`pos-${idx + 1}`} value={(idx + 1).toString()}>
+                          {`Posición ${idx + 1} — ${stripHtml(sec?.title) || `Sección ${idx + 1}`}`}
+                        </SelectItem>
+                      )
+                    })
+                  ) : (
+                    localSections
+                      .filter(section => section.id !== movingSection?.id)
+                      .map((section, index) => (
+                        <SelectItem key={section.id} value={(index + 1).toString()}>
+                          {`${index + 1}. ${stripHtml(section.title)}`}
+                        </SelectItem>
+                      ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
