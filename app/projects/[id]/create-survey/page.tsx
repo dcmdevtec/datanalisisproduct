@@ -2163,11 +2163,20 @@ export function CreateSurveyForProjectPageContent() {
       prevSections.map((s) => {
         if (s.id === sectionId) {
           const questionToDuplicate = s.questions.find((q) => q.id === questionId)
-          if (questionToDuplicate) {
+            if (questionToDuplicate) {
             const newQuestion = {
               ...questionToDuplicate,
               id: generateUUID(), // ✅ UUID real en lugar de timestamp
               text: `${questionToDuplicate.text} (Copia)`,
+              required: true,
+              // Ensure duplicated question's validation also marks it required
+              config: {
+                ...(questionToDuplicate.config || {}),
+                validation: {
+                  ...((questionToDuplicate.config && questionToDuplicate.config.validation) || {}),
+                  required: true,
+                },
+              },
             }
             const questionIndex = s.questions.findIndex((q) => q.id === questionId)
             const newQuestions = [...s.questions]
