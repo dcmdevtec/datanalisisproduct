@@ -635,7 +635,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
           handleCancel()
         }
       }}>
-        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+    <DialogContent className="max-w-6xl max-h-[95vh] overflow-auto flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowUpDown className="h-5 w-5" />
@@ -655,8 +655,8 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
             </div>
           )}
 
-          <div className="flex-1 overflow-hidden">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          <div className="flex-1 overflow-auto">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="sections" className="gap-2">
                   <Layers className="h-4 w-4" />
@@ -668,7 +668,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="sections" className="flex-1 mt-4 overflow-hidden">
+              <TabsContent value="sections" className="flex-1 mt-4 overflow-auto">
                 <SectionsTab
                   localSections={localSections}
                   onEdit={handleEdit}
