@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -8,14 +8,68 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { BarChart3, Download, Loader2, PieChart, TrendingUp } from "lucide-react"
+import { BarChart3, Download, Loader2, PieChart, TrendingUp, AlertCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
+
+interface ReportData {
+  companies: { id: string; name: string }[]
+  projects: { id: string; name: string; companyId: string }[]
+  surveys: { id: string; title: string; projectId: string }[]
+  summary: {
+    totalResponses: number
+    completionRate: number
+    avgTime: string
+    nps: number | null
+    responseGrowth: number
+    responsesTimeline: { date: string; count: number }[]
+  }
+  responses: {
+    questionBreakdowns: {
+      questionId: string
+      text: string
+      type: string
+      totalAnswers: number
+      average?: string
+      distribution?: { label: string; count: number; percentage: number }[]
+      sampleAnswers?: string[]
+    }[]
+  }
+  performance: {
+    surveyorPerformance: {
+      name: string
+      totalAssignments: number
+      completedAssignments: number
+      completionRate: number
+    }[]
+    dailyDistribution: { day: string; count: number }[]
+  }
+  geographic: {
+    zoneBreakdown: {
+      zone: string
+      responseCount: number
+      completedCount: number
+      percentage: number
+      completionRate: number
+    }[]
+  }
+}
+
+function formatGrowth(value: number): string {
+  if (value === 0) return "Sin cambios"
+  const sign = value > 0 ? "+" : ""
+  return `${sign}${value}% vs período anterior`
+}
 
 export default function ReportsPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState<string | null>(null)
+  const [data, setData] = useState<ReportData | null>(null)
+  const [selectedCompany, setSelectedCompany] = useState<string>("all")
+  const [selectedProject, setSelectedProject] = useState<string>("all")
   const [selectedSurvey, setSelectedSurvey] = useState<string>("all")
   const [selectedPeriod, setSelectedPeriod] = useState<string>("month")
 
@@ -25,18 +79,92 @@ export default function ReportsPage() {
     }
   }, [user, authLoading, router])
 
-  useEffect(() => {
-    // Simular carga de datos
-    const timer = setTimeout(() => {
-      setLoading(false)
-    }, 1000)
+  // Reset cascading filters when parent changes
+  const handleCompanyChange = (v: string) => {
+    setSelectedCompany(v)
+    setSelectedProject("all")
+    setSelectedSurvey("all")
+  }
+  const handleProjectChange = (v: string) => {
+    setSelectedProject(v)
+    setSelectedSurvey("all")
+  }
 
-    return () => clearTimeout(timer)
-  }, [selectedSurvey, selectedPeriod])
+  // Filtered dropdown options based on cascading selection
+  const filteredProjects = data?.projects?.filter(
+    (p) => selectedCompany === "all" || p.companyId === selectedCompany
+  ) ?? []
+  const filteredSurveys = data?.surveys?.filter(
+    (s) => {
+      if (selectedSurvey !== "all") return true // show all when a specific survey is selected
+      if (selectedProject !== "all") return s.projectId === selectedProject
+      if (selectedCompany !== "all") {
+        const projIds = filteredProjects.map((p) => p.id)
+        return projIds.includes(s.projectId)
+      }
+      return true
+    }
+  ) ?? []
+
+  const fetchData = useCallback(async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        company: selectedCompany,
+        project: selectedProject,
+        survey: selectedSurvey,
+        period: selectedPeriod,
+      })
+      const res = await fetch(`/api/reports?${params}`)
+      if (!res.ok) throw new Error("fetch failed")
+      const json = await res.json()
+      setData(json)
+    } catch {
+      toast({ title: "Error", description: "No se pudieron cargar los reportes", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }, [user, selectedCompany, selectedProject, selectedSurvey, selectedPeriod, toast])
+
+  const handleExport = async (tab: string) => {
+    if (!data) return
+    setExporting(tab)
+    try {
+      switch (tab) {
+        case "summary":
+          await exportSummary(data, selectedPeriod)
+          break
+        case "responses":
+          await exportResponses(data, selectedPeriod)
+          break
+        case "performance":
+          await exportPerformance(data, selectedPeriod)
+          break
+        case "geographic":
+          await exportGeographic(data, selectedPeriod)
+          break
+      }
+      toast({ title: "Exportado", description: "El reporte se descargó correctamente" })
+    } catch {
+      toast({ title: "Error", description: "No se pudo exportar el reporte", variant: "destructive" })
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   if (authLoading || !user) {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
+
+  const summary = data?.summary
+  const maxTimelineCount = Math.max(...(summary?.responsesTimeline?.map((d) => d.count) || [1]))
+  const maxDailyCount = Math.max(...(data?.performance?.dailyDistribution?.map((d) => d.count) || [1]))
+  const maxZoneResponses = Math.max(...(data?.geographic?.zoneBreakdown?.map((z) => z.responseCount) || [1]))
 
   return (
     <DashboardLayout>
@@ -46,17 +174,38 @@ export default function ReportsPage() {
             <h1 className="text-3xl font-bold">Reportes y Análisis</h1>
             <p className="text-muted-foreground">Visualiza y analiza los datos recopilados</p>
           </div>
-          <div className=" mt-10 flex flex-col sm:flex-row gap-2">
+          <div className="mt-10 flex flex-col sm:flex-row gap-2 flex-wrap">
+            <Select value={selectedCompany} onValueChange={handleCompanyChange}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las empresas</SelectItem>
+                {data?.companies?.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedProject} onValueChange={handleProjectChange}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Proyecto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los proyectos</SelectItem>
+                {filteredProjects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={selectedSurvey} onValueChange={setSelectedSurvey}>
               <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Seleccionar encuesta" />
+                <SelectValue placeholder="Encuesta" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las encuestas</SelectItem>
-                <SelectItem value="1">Encuesta de Satisfacción</SelectItem>
-                <SelectItem value="2">Investigación de Mercado</SelectItem>
-                <SelectItem value="3">Compromiso de Empleados</SelectItem>
-                <SelectItem value="4">Evaluación Comunitaria</SelectItem>
+                {filteredSurveys.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
@@ -71,9 +220,6 @@ export default function ReportsPage() {
                 <SelectItem value="all">Todo el tiempo</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" className="gap-2">
-              <Download className="h-4 w-4" /> Exportar
-            </Button>
           </div>
         </div>
 
@@ -85,21 +231,28 @@ export default function ReportsPage() {
             <TabsTrigger value="geographic">Geográfico</TabsTrigger>
           </TabsList>
 
+          {/* ==================== RESUMEN ==================== */}
           <TabsContent value="summary" className="space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("summary")} disabled={exporting === "summary"}>
+                {exporting === "summary" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting === "summary" ? "Exportando..." : "Exportar Resumen"}
+              </Button>
+            </div>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div id="export-summary">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" data-export-chart>
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-medium">Total de Respuestas</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">1,234</div>
-                      <p className="text-xs text-muted-foreground">+24% desde el período anterior</p>
+                      <div className="text-2xl font-bold">{summary?.totalResponses?.toLocaleString() ?? "0"}</div>
+                      <p className="text-xs text-muted-foreground">{summary ? formatGrowth(summary.responseGrowth) : ""}</p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -107,8 +260,8 @@ export default function ReportsPage() {
                       <CardTitle className="text-sm font-medium">Tasa de Finalización</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">78%</div>
-                      <p className="text-xs text-muted-foreground">+5% desde el período anterior</p>
+                      <div className="text-2xl font-bold">{summary?.completionRate ?? 0}%</div>
+                      <p className="text-xs text-muted-foreground">Encuestas completadas vs iniciadas</p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -116,8 +269,8 @@ export default function ReportsPage() {
                       <CardTitle className="text-sm font-medium">Tiempo Promedio</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">4:32</div>
-                      <p className="text-xs text-muted-foreground">-12% desde el período anterior</p>
+                      <div className="text-2xl font-bold">{summary?.avgTime || "—"}</div>
+                      <p className="text-xs text-muted-foreground">Minutos:segundos por encuesta</p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -125,333 +278,342 @@ export default function ReportsPage() {
                       <CardTitle className="text-sm font-medium">NPS</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">42</div>
-                      <p className="text-xs text-muted-foreground">+8 puntos desde el período anterior</p>
+                      <div className="text-2xl font-bold">{summary?.nps ?? "—"}</div>
+                      <p className="text-xs text-muted-foreground">{summary?.nps !== null ? "Net Promoter Score" : "Sin datos de NPS"}</p>
                     </CardContent>
                   </Card>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
+                  <Card data-export-chart>
                     <CardHeader>
                       <CardTitle>Respuestas por Tiempo</CardTitle>
-                      <CardDescription>Evolución de respuestas en el tiempo</CardDescription>
+                      <CardDescription>Evolución de respuestas en el período</CardDescription>
                     </CardHeader>
-                    <CardContent className="h-80 flex items-center justify-center">
-                      <TrendingUp className="h-16 w-16 text-muted-foreground" />
+                    <CardContent>
+                      {(summary?.responsesTimeline?.length ?? 0) === 0 ? (
+                        <div className="h-80 flex items-center justify-center text-muted-foreground">
+                          <div className="text-center">
+                            <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                            <p>No hay datos para el período seleccionado</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-80 flex items-end gap-1 pt-4">
+                          {summary!.responsesTimeline.map((d, i) => (
+                            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                              <span className="text-xs text-muted-foreground mb-1">{d.count}</span>
+                              <div
+                                className="w-full bg-primary rounded-t-sm min-h-[4px]"
+                                style={{ height: `${Math.max((d.count / maxTimelineCount) * 100, 2)}%` }}
+                              />
+                              {summary!.responsesTimeline.length <= 14 && (
+                                <span className="text-[10px] text-muted-foreground mt-1 truncate w-full text-center">
+                                  {d.date.slice(5)}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
-                  <Card>
+                  <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle>Distribución de Respuestas</CardTitle>
-                      <CardDescription>Distribución por tipo de respuesta</CardDescription>
+                      <CardTitle>Distribución por Estado</CardTitle>
+                      <CardDescription>Estado de las respuestas</CardDescription>
                     </CardHeader>
                     <CardContent className="h-80 flex items-center justify-center">
-                      <PieChart className="h-16 w-16 text-muted-foreground" />
+                      {summary && summary.totalResponses > 0 ? (
+                        <div className="w-full space-y-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Completadas</span>
+                              <span className="font-medium">{summary.completionRate}%</span>
+                            </div>
+                            <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
+                              <div className="h-full bg-green-500 rounded-full" style={{ width: `${summary.completionRate}%` }} />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Incompletas</span>
+                              <span className="font-medium">{100 - summary.completionRate}%</span>
+                            </div>
+                            <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
+                              <div className="h-full bg-orange-400 rounded-full" style={{ width: `${100 - summary.completionRate}%` }} />
+                            </div>
+                          </div>
+                          <div className="pt-4 text-center text-sm text-muted-foreground">
+                            {summary.totalResponses.toLocaleString()} respuestas totales
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center text-muted-foreground">
+                          <PieChart className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                          <p>No hay respuestas</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Principales Hallazgos</CardTitle>
-                    <CardDescription>Insights clave de los datos recopilados</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="p-4 border rounded-lg">
-                      <h3 className="font-medium mb-2">Alta satisfacción en servicio al cliente</h3>
-                      <p className="text-muted-foreground">
-                        El 85% de los encuestados calificó el servicio al cliente como "Excelente" o "Bueno", lo que
-                        representa un aumento del 10% respecto al período anterior.
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg">
-                      <h3 className="font-medium mb-2">Área de mejora: Tiempos de respuesta</h3>
-                      <p className="text-muted-foreground">
-                        El 42% de los comentarios negativos mencionan los tiempos de respuesta como un área que necesita
-                        mejora.
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg">
-                      <h3 className="font-medium mb-2">Diferencias regionales significativas</h3>
-                      <p className="text-muted-foreground">
-                        Las respuestas de la Zona Norte muestran un NPS 15 puntos más alto que las de la Zona Sur.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
+              </div>
             )}
           </TabsContent>
 
+          {/* ==================== RESPUESTAS ==================== */}
           <TabsContent value="responses" className="space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("responses")} disabled={exporting === "responses"}>
+                {exporting === "responses" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting === "responses" ? "Exportando..." : "Exportar Respuestas"}
+              </Button>
+            </div>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : (
+            ) : (data?.responses?.questionBreakdowns?.length ?? 0) === 0 ? (
               <Card>
+                <CardContent className="py-16 text-center">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No hay datos de respuestas para el período y encuesta seleccionados</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card id="export-responses" data-export-chart>
                 <CardHeader>
                   <CardTitle>Análisis de Respuestas</CardTitle>
-                  <CardDescription>Desglose detallado de las respuestas por pregunta</CardDescription>
+                  <CardDescription>Desglose detallado por pregunta ({data!.responses.questionBreakdowns.length} preguntas con respuestas)</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">¿Cómo calificarías nuestro servicio?</h3>
-                    <div className="h-64 bg-muted/50 rounded-lg flex items-center justify-center">
-                      <BarChart3 className="h-12 w-12 text-muted-foreground" />
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">45%</div>
-                        <div className="text-sm text-muted-foreground">Excelente</div>
+                <CardContent className="space-y-8">
+                  {data!.responses.questionBreakdowns.map((qb) => (
+                    <div key={qb.questionId} className="space-y-4 pb-6 border-b last:border-0">
+                      <div className="flex items-start justify-between gap-4">
+                        <h3 className="text-lg font-medium">{qb.text || "Pregunta sin texto"}</h3>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">{qb.totalAnswers} respuestas</span>
                       </div>
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">30%</div>
-                        <div className="text-sm text-muted-foreground">Bueno</div>
-                      </div>
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">15%</div>
-                        <div className="text-sm text-muted-foreground">Regular</div>
-                      </div>
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">7%</div>
-                        <div className="text-sm text-muted-foreground">Malo</div>
-                      </div>
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">3%</div>
-                        <div className="text-sm text-muted-foreground">Muy Malo</div>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">¿Qué tan probable es que recomiendes nuestro producto?</h3>
-                    <div className="h-64 bg-muted/50 rounded-lg flex items-center justify-center">
-                      <BarChart3 className="h-12 w-12 text-muted-foreground" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">52%</div>
-                        <div className="text-sm text-muted-foreground">Promotores (9-10)</div>
-                      </div>
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">38%</div>
-                        <div className="text-sm text-muted-foreground">Pasivos (7-8)</div>
-                      </div>
-                      <div className="p-2 border rounded-md">
-                        <div className="text-lg font-bold">10%</div>
-                        <div className="text-sm text-muted-foreground">Detractores (0-6)</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Comentarios más frecuentes</h3>
-                    <div className="space-y-2">
-                      <div className="p-3 border rounded-md">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-medium">Excelente servicio al cliente</span>
-                          <span className="text-sm text-muted-foreground">32 menciones</span>
+                      {qb.distribution && qb.distribution.length > 0 ? (
+                        <>
+                          {qb.average && (
+                            <p className="text-sm text-muted-foreground">Promedio: <span className="font-semibold text-foreground">{qb.average}</span></p>
+                          )}
+                          <div className="space-y-2">
+                            {qb.distribution.map((d, i) => (
+                              <div key={i} className="space-y-1">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="truncate max-w-[60%]">{d.label}</span>
+                                  <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
+                                </div>
+                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                  <div className="h-full bg-primary rounded-full" style={{ width: `${d.percentage}%` }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : qb.sampleAnswers && qb.sampleAnswers.length > 0 ? (
+                        <div className="space-y-2">
+                          {qb.sampleAnswers.map((ans, i) => (
+                            <div key={i} className="p-3 border rounded-md">
+                              <p className="text-sm text-muted-foreground">&ldquo;{ans}&rdquo;</p>
+                            </div>
+                          ))}
+                          {qb.totalAnswers > 5 && (
+                            <p className="text-xs text-muted-foreground">Mostrando 5 de {qb.totalAnswers} respuestas</p>
+                          )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          "El personal fue muy amable y resolvió mi problema rápidamente."
-                        </p>
-                      </div>
-                      <div className="p-3 border rounded-md">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-medium">Tiempos de espera largos</span>
-                          <span className="text-sm text-muted-foreground">24 menciones</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          "Tuve que esperar demasiado tiempo para recibir atención."
-                        </p>
-                      </div>
-                      <div className="p-3 border rounded-md">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-medium">Buena relación calidad-precio</span>
-                          <span className="text-sm text-muted-foreground">18 menciones</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          "El producto ofrece un excelente valor por el precio pagado."
-                        </p>
-                      </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Sin datos para mostrar</p>
+                      )}
                     </div>
-                  </div>
+                  ))}
                 </CardContent>
               </Card>
             )}
           </TabsContent>
 
+          {/* ==================== RENDIMIENTO ==================== */}
           <TabsContent value="performance" className="space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("performance")} disabled={exporting === "performance"}>
+                {exporting === "performance" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting === "performance" ? "Exportando..." : "Exportar Rendimiento"}
+              </Button>
+            </div>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <>
-                <Card>
+              <div id="export-performance">
+                <Card data-export-chart>
                   <CardHeader>
                     <CardTitle>Rendimiento de Encuestadores</CardTitle>
                     <CardDescription>Métricas de productividad por encuestador</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div className="rounded-md border">
-                        <div className="grid grid-cols-5 p-3 font-medium border-b">
-                          <div>Encuestador</div>
-                          <div className="text-center">Encuestas</div>
-                          <div className="text-center">Tiempo Promedio</div>
-                          <div className="text-center">Tasa de Finalización</div>
-                          <div className="text-center">Calidad</div>
-                        </div>
-                        <div className="divide-y">
-                          <div className="grid grid-cols-5 p-3 items-center">
-                            <div>Juan Díaz</div>
-                            <div className="text-center">87</div>
-                            <div className="text-center">4:12</div>
-                            <div className="text-center">92%</div>
-                            <div className="text-center">4.8/5</div>
+                    {(data?.performance?.surveyorPerformance?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de encuestadores</p>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="rounded-md border">
+                          <div className="grid grid-cols-4 p-3 font-medium border-b">
+                            <div>Encuestador</div>
+                            <div className="text-center">Asignaciones</div>
+                            <div className="text-center">Completadas</div>
+                            <div className="text-center">Tasa de Finalización</div>
                           </div>
-                          <div className="grid grid-cols-5 p-3 items-center">
-                            <div>María López</div>
-                            <div className="text-center">64</div>
-                            <div className="text-center">5:05</div>
-                            <div className="text-center">88%</div>
-                            <div className="text-center">4.7/5</div>
-                          </div>
-                          <div className="grid grid-cols-5 p-3 items-center">
-                            <div>Carlos Rodríguez</div>
-                            <div className="text-center">52</div>
-                            <div className="text-center">4:45</div>
-                            <div className="text-center">85%</div>
-                            <div className="text-center">4.5/5</div>
+                          <div className="divide-y">
+                            {data!.performance.surveyorPerformance.map((s, i) => (
+                              <div key={i} className="grid grid-cols-4 p-3 items-center">
+                                <div className="font-medium">{s.name}</div>
+                                <div className="text-center">{s.totalAssignments}</div>
+                                <div className="text-center">{s.completedAssignments}</div>
+                                <div className="text-center">
+                                  <span className={s.completionRate >= 80 ? "text-green-600" : s.completionRate >= 50 ? "text-orange-500" : "text-red-500"}>
+                                    {s.completionRate}%
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
+                  <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle>Encuestas por Día</CardTitle>
-                      <CardDescription>Número de encuestas completadas por día</CardDescription>
+                      <CardTitle>Respuestas por Día de la Semana</CardTitle>
+                      <CardDescription>Distribución semanal de respuestas</CardDescription>
                     </CardHeader>
-                    <CardContent className="h-80 flex items-center justify-center">
-                      <BarChart3 className="h-16 w-16 text-muted-foreground" />
+                    <CardContent>
+                      <div className="h-64 flex items-end gap-3 pt-4">
+                        {data?.performance?.dailyDistribution?.map((d, i) => (
+                          <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                            <span className="text-xs text-muted-foreground mb-1">{d.count}</span>
+                            <div
+                              className="w-full bg-primary rounded-t-sm min-h-[4px]"
+                              style={{ height: `${Math.max((d.count / maxDailyCount) * 100, 2)}%` }}
+                            />
+                            <span className="text-xs text-muted-foreground mt-1">{d.day}</span>
+                          </div>
+                        ))}
+                      </div>
                     </CardContent>
                   </Card>
-                  <Card>
+                  <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle>Tiempo Promedio por Encuesta</CardTitle>
-                      <CardDescription>Evolución del tiempo promedio de encuesta</CardDescription>
+                      <CardTitle>Resumen General</CardTitle>
+                      <CardDescription>Indicadores clave de rendimiento</CardDescription>
                     </CardHeader>
-                    <CardContent className="h-80 flex items-center justify-center">
-                      <TrendingUp className="h-16 w-16 text-muted-foreground" />
+                    <CardContent className="space-y-6 pt-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Total encuestadores</span>
+                        <span className="text-2xl font-bold">{data?.performance?.surveyorPerformance?.length ?? 0}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Promedio de finalización</span>
+                        <span className="text-2xl font-bold">
+                          {data?.performance?.surveyorPerformance && data.performance.surveyorPerformance.length > 0
+                            ? Math.round(data.performance.surveyorPerformance.reduce((s, p) => s + p.completionRate, 0) / data.performance.surveyorPerformance.length)
+                            : 0}%
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Total respuestas período</span>
+                        <span className="text-2xl font-bold">{summary?.totalResponses?.toLocaleString() ?? 0}</span>
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
-              </>
+              </div>
             )}
           </TabsContent>
 
+          {/* ==================== GEOGRÁFICO ==================== */}
           <TabsContent value="geographic" className="space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("geographic")} disabled={exporting === "geographic"}>
+                {exporting === "geographic" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting === "geographic" ? "Exportando..." : "Exportar Geográfico"}
+              </Button>
+            </div>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Distribución Geográfica</CardTitle>
-                    <CardDescription>Visualización de respuestas por ubicación</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-96 bg-muted/50 rounded-lg flex items-center justify-center mb-4">
-                      <p className="text-muted-foreground">Mapa de distribución de respuestas</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
+              <div id="export-geographic">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
+                  <Card data-export-chart>
                     <CardHeader>
                       <CardTitle>Respuestas por Zona</CardTitle>
-                      <CardDescription>Distribución de respuestas por zona geográfica</CardDescription>
+                      <CardDescription>Distribución de asignaciones por zona geográfica</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span>Zona Norte</span>
-                            <span className="font-medium">452 respuestas</span>
-                          </div>
-                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-primary" style={{ width: "45%" }} />
-                          </div>
+                      {(data?.geographic?.zoneBreakdown?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de zonas disponibles</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {data!.geographic.zoneBreakdown.map((z, i) => (
+                            <div key={i} className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">{z.zone}</span>
+                                <span className="text-sm text-muted-foreground">{z.responseCount} asignaciones</span>
+                              </div>
+                              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-primary rounded-full"
+                                  style={{ width: `${Math.max((z.responseCount / maxZoneResponses) * 100, 2)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span>Zona Centro</span>
-                            <span className="font-medium">324 respuestas</span>
-                          </div>
-                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-primary" style={{ width: "32%" }} />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span>Zona Sur</span>
-                            <span className="font-medium">235 respuestas</span>
-                          </div>
-                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-primary" style={{ width: "23%" }} />
-                          </div>
-                        </div>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
-                  <Card>
+                  <Card data-export-chart>
                     <CardHeader>
                       <CardTitle>Comparativa por Zona</CardTitle>
-                      <CardDescription>Comparación de métricas clave por zona</CardDescription>
+                      <CardDescription>Tasa de finalización por zona</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="rounded-md border">
-                        <div className="grid grid-cols-4 p-3 font-medium border-b">
-                          <div>Zona</div>
-                          <div className="text-center">NPS</div>
-                          <div className="text-center">Satisfacción</div>
-                          <div className="text-center">Tiempo Promedio</div>
-                        </div>
-                        <div className="divide-y">
-                          <div className="grid grid-cols-4 p-3 items-center">
-                            <div>Zona Norte</div>
-                            <div className="text-center">48</div>
-                            <div className="text-center">4.2/5</div>
-                            <div className="text-center">4:05</div>
+                      {(data?.geographic?.zoneBreakdown?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de zonas</p>
+                      ) : (
+                        <div className="rounded-md border">
+                          <div className="grid grid-cols-4 p-3 font-medium border-b">
+                            <div>Zona</div>
+                            <div className="text-center">Asignaciones</div>
+                            <div className="text-center">Completadas</div>
+                            <div className="text-center">Tasa</div>
                           </div>
-                          <div className="grid grid-cols-4 p-3 items-center">
-                            <div>Zona Centro</div>
-                            <div className="text-center">42</div>
-                            <div className="text-center">4.0/5</div>
-                            <div className="text-center">4:32</div>
-                          </div>
-                          <div className="grid grid-cols-4 p-3 items-center">
-                            <div>Zona Sur</div>
-                            <div className="text-center">33</div>
-                            <div className="text-center">3.7/5</div>
-                            <div className="text-center">5:10</div>
+                          <div className="divide-y">
+                            {data!.geographic.zoneBreakdown.map((z, i) => (
+                              <div key={i} className="grid grid-cols-4 p-3 items-center">
+                                <div>{z.zone}</div>
+                                <div className="text-center">{z.responseCount}</div>
+                                <div className="text-center">{z.completedCount}</div>
+                                <div className="text-center">
+                                  <span className={z.completionRate >= 80 ? "text-green-600" : z.completionRate >= 50 ? "text-orange-500" : "text-red-500"}>
+                                    {z.completionRate}%
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
-              </>
+              </div>
             )}
           </TabsContent>
         </Tabs>
