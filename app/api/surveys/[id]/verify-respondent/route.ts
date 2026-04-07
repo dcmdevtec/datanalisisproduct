@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const paramsId = params.id
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: paramsId } = await params
   try {
     const body = await request.json()
     // Map incoming payload to DB field names

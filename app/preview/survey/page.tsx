@@ -284,7 +284,8 @@ function PreviewSurveyPageContent() {
     // Infer surveyId from pathname early so we decide storage key
     try {
       const parts = window.location.pathname.split("/").filter(Boolean)
-      const idx = parts.indexOf("survey")
+      let idx = parts.indexOf("survey")
+      if (idx === -1) idx = parts.indexOf("encuesta")
       if (idx !== -1 && parts.length > idx + 1) {
         const id = parts[idx + 1]
         setInferredSurveyId(id)
@@ -315,11 +316,12 @@ function PreviewSurveyPageContent() {
     }
     setVerifying(true)
     try {
-      // Try to infer surveyId from URL path: /preview/survey/[id]
+      // Try to infer surveyId from URL path: /preview/survey/[id] or /encuesta/[id]
       let inferredSurveyId: string | null = null
       try {
         const parts = window.location.pathname.split("/").filter(Boolean)
-        const idx = parts.indexOf("survey")
+        let idx = parts.indexOf("survey")
+        if (idx === -1) idx = parts.indexOf("encuesta")
         if (idx !== -1 && parts.length > idx + 1) inferredSurveyId = parts[idx + 1]
       } catch { }
 
@@ -800,7 +802,8 @@ function PreviewSurveyPageContent() {
     if (!surveyId) {
       try {
         const parts = window.location.pathname.split("/").filter(Boolean)
-        const idx = parts.indexOf("survey")
+        let idx = parts.indexOf("survey")
+        if (idx === -1) idx = parts.indexOf("encuesta")
         if (idx !== -1 && parts.length > idx + 1) surveyId = parts[idx + 1]
       } catch { }
     }

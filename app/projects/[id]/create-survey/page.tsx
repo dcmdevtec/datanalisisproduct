@@ -3086,6 +3086,7 @@ export function CreateSurveyForProjectPageContent() {
               isOpen={showEditSettingsModal}
               onClose={() => setShowEditSettingsModal(false)}
               currentSettings={settings}
+              surveyId={currentSurveyId || undefined}
               previewUrl={generatedPreviewUrl}
               onCopyPreview={async () => {
                 if (!generatedPreviewUrl) return

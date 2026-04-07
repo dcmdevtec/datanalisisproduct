@@ -10,10 +10,10 @@ function getSupabaseClient() {
 }
 
 // GET encuesta por ID
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = getSupabaseClient()
   try {
-    const id = params.id
+    const { id } = await params
     console.log(`GET /api/surveys/${id} - Obteniendo encuesta`)
 
     // Si necesitas validar usuario, hazlo aquí con JWT o session, o elimina este check si no es necesario
@@ -23,6 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       .select(`
     *, 
     questions (*),
+    survey_sections (*),
     projects (
       id,
       name,
@@ -46,10 +47,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // PUT actualizar encuesta
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = getSupabaseClient()
   try {
-    const id = params.id
+    const { id } = await params
     console.log(`PUT /api/surveys/${id} - Actualizando encuesta`)
 
     const body = await request.json()
@@ -120,10 +121,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE encuesta
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = getSupabaseClient()
   try {
-    const id = params.id
+    const { id } = await params
     console.log(`DELETE /api/surveys/${id} - Eliminando encuesta`)
 
     const {
