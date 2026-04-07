@@ -162,8 +162,8 @@ export default function LikertSlider({
   }, [local, min, max, step, showZero])
 
   return (
-    <div className="space-y-4">
-      <div className="relative px-2 py-4">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="relative px-1 sm:px-2 py-4">
         <div
           className="relative h-2 w-full flex items-center"
           ref={trackRef}
@@ -250,10 +250,10 @@ export default function LikertSlider({
                 const label = v === 0 ? zeroLabel : (labels && labels[idx] ? labels[idx] : '')
                 const left = toPercent(v)
                 return (
-                  <div key={`lab-${v}`} className="absolute text-xs text-muted-foreground" style={{ left: `${left}%`, transform: 'translateX(-50%)' }}>
+                  <div key={`lab-${v}`} className="absolute text-[10px] sm:text-xs text-muted-foreground" style={{ left: `${left}%`, transform: 'translateX(-50%)', maxWidth: '60px' }}>
                     {/* Show number only for anchors; the main bubble still shows the current value */}
                     <div className="font-medium">{v}</div>
-                    {label && <div className="text-xs mt-1">{label}</div>}
+                    {label && <div className="text-[10px] sm:text-xs mt-0.5 sm:mt-1 leading-tight break-words">{label}</div>}
                   </div>
                 )
               })
@@ -262,11 +262,11 @@ export default function LikertSlider({
         </div>
       </div>
 
-      <div className="text-center pt-4 border-t border-gray-200">
-        <div className="inline-flex items-center gap-3 px-6 py-3 rounded-lg font-semibold shadow-sm" style={{ backgroundColor: `${themeColors.primary}15`, color: themeColors.primary, border: `2px solid ${themeColors.primary}30` }}>
-          <span className="text-sm">Opción seleccionada:</span>
-          <span className="text-2xl font-bold">{local}</span>
-          {selectedLabel && <span className="text-sm font-medium opacity-90">({selectedLabel})</span>}
+      <div className="text-center pt-3 sm:pt-4 border-t border-gray-200">
+        <div className="inline-flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold shadow-sm" style={{ backgroundColor: `${themeColors.primary}15`, color: themeColors.primary, border: `2px solid ${themeColors.primary}30` }}>
+          <span className="text-xs sm:text-sm">Opción seleccionada:</span>
+          <span className="text-xl sm:text-2xl font-bold">{local}</span>
+          {selectedLabel && <span className="text-xs sm:text-sm font-medium opacity-90">({selectedLabel})</span>}
         </div>
       </div>
     </div>

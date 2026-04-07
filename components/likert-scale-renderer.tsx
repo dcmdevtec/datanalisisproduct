@@ -174,7 +174,7 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
     }
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Control deslizante visual con puntos */}
         <div className="relative flex items-center">
           <div className="h-1 flex-grow bg-gray-200 rounded-full">
@@ -219,7 +219,7 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
         </div>
 
         {/* Etiquetas y números */}
-        <div className="relative w-full" style={{ minHeight: '50px' }}>
+        <div className="relative w-full" style={{ minHeight: '40px' }}>
           {points.map((point) => {
             let label = ''
             if (point === 0 && config.showZero) label = config.zeroLabel
@@ -234,7 +234,7 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
                 style={{
                   left: `${getPointPosition(point)}%`,
                   transform: 'translateX(-50%)',
-                  width: '80px'
+                  maxWidth: '70px'
                 }}
               >
                 {config.showNumbers && (
@@ -243,7 +243,7 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
                   </div>
                 )}
                 {config.showLabels && label && (
-                  <div className="text-xs text-gray-600 max-w-[80px] mx-auto mt-1 break-words">
+                  <div className="text-[10px] sm:text-xs text-gray-600 max-w-[60px] sm:max-w-[80px] mx-auto mt-0.5 sm:mt-1 break-words leading-tight">
                     {label}
                   </div>
                 )}
@@ -255,8 +255,8 @@ export function LikertScaleRenderer({ question, value, onChange, disabled = fals
         {/* Valor seleccionado */}
         {config.appearance.showValue && localValue !== null && (
           <div className="text-center pt-2">
-            <Badge variant="outline" className="text-lg px-4 py-2 border-green-500 bg-green-50">
-              Valor seleccionado: <span className="font-bold ml-2">{localValue}</span>
+            <Badge variant="outline" className="text-sm sm:text-lg px-3 sm:px-4 py-1.5 sm:py-2 border-green-500 bg-green-50">
+              Valor seleccionado: <span className="font-bold ml-1 sm:ml-2">{localValue}</span>
             </Badge>
           </div>
         )}
