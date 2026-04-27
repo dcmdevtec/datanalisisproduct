@@ -267,50 +267,130 @@ function SurveysPageContent() {
     setLoading(true)
     setError(null)
 
-    const { data: originalSurvey, error: fetchError } = await supabase
-      .from("surveys")
-      .select("*")
-      .eq("id", surveyId)
-      .single()
+    try {
+      // 1. Obtener la encuesta original
+      const { data: originalSurvey, error: fetchError } = await supabase
+        .from("surveys")
+        .select("*")
+        .eq("id", surveyId)
+        .single()
 
-    if (fetchError) {
-      setError(fetchError.message)
-      toast({
-        title: "Error al duplicar",
-        description: `No se pudo obtener la encuesta original: ${fetchError.message}`,
-        variant: "destructive",
-      })
-      setLoading(false)
-      return
-    }
+      if (fetchError || !originalSurvey) {
+        throw new Error(fetchError?.message ?? "No se pudo obtener la encuesta original")
+      }
 
-    // Create a new survey object with a new title
-    const newSurvey = {
-      ...(originalSurvey as any),
-      id: undefined, // Let Supabase generate a new ID
-      title: `${(originalSurvey as any).title} (Copia)`,
-      created_at: undefined, // Let Supabase set new timestamp
-      updated_at: undefined, // Let Supabase set new timestamp
-      status: "draft", // Set status to draft for duplicated survey
-    }
+      // 2. Obtener secciones y preguntas de la encuesta original
+      const { data: sectionsData, error: sectionsError } = await supabase
+        .from("survey_sections")
+        .select(`
+          id, title, title_html, description, order_num, skip_logic,
+          questions (
+            id, type, text, text_html, options, required, order_num,
+            file_url, matrix_rows, matrix_cols, rating, settings,
+            display_logic, skip_logic, validation_rules,
+            question_config, matrix, comment_box, style, parent_id
+          )
+        `)
+        .eq("survey_id", surveyId)
+        .order("order_num", { ascending: true })
 
-    const { error: insertError } = await supabase.from("surveys").insert(newSurvey)
+      if (sectionsError) {
+        throw new Error(sectionsError.message)
+      }
 
-    if (insertError) {
-      setError(insertError.message)
-      toast({
-        title: "Error al duplicar",
-        description: `No se pudo duplicar la encuesta: ${insertError.message}`,
-        variant: "destructive",
-      })
-    } else {
+      // 3. Crear la nueva encuesta (sin ID, sin timestamps, en draft)
+      const { id: _id, created_at: _ca, updated_at: _ua, ...surveyFields } = originalSurvey as any
+      const newSurveyPayload = {
+        ...surveyFields,
+        title: `${originalSurvey.title} (Copia)`,
+        status: "draft",
+      }
+
+      const { data: newSurvey, error: insertSurveyError } = await supabase
+        .from("surveys")
+        .insert(newSurveyPayload)
+        .select()
+        .single()
+
+      if (insertSurveyError || !newSurvey) {
+        throw new Error(insertSurveyError?.message ?? "No se pudo crear la encuesta duplicada")
+      }
+
+      const newSurveyId = (newSurvey as any).id
+
+      // 4. Clonar secciones y preguntas manteniendo el orden
+      for (const section of (sectionsData ?? [])) {
+        const newSectionId = crypto.randomUUID()
+
+        const { error: sectionInsertError } = await supabase
+          .from("survey_sections")
+          .insert({
+            id: newSectionId,
+            survey_id: newSurveyId,
+            title: section.title,
+            title_html: (section as any).title_html ?? null,
+            description: section.description ?? null,
+            order_num: section.order_num,
+            skip_logic: section.skip_logic ?? null,
+          })
+
+        if (sectionInsertError) {
+          throw new Error(`Error al clonar sección "${section.title}": ${sectionInsertError.message}`)
+        }
+
+        // 5. Clonar preguntas de esta sección
+        const questions: any[] = (section as any).questions ?? []
+        if (questions.length > 0) {
+          const questionInserts = questions.map((q: any) => ({
+            id: crypto.randomUUID(),
+            survey_id: newSurveyId,
+            section_id: newSectionId,
+            type: q.type,
+            text: q.text ?? "",
+            text_html: q.text_html ?? null,
+            options: q.options ?? [],
+            required: q.required ?? true,
+            order_num: q.order_num,
+            file_url: q.file_url ?? null,
+            matrix_rows: q.matrix_rows ?? [],
+            matrix_cols: q.matrix_cols ?? [],
+            rating: q.rating ?? null,
+            settings: q.settings ?? {},
+            display_logic: q.display_logic ?? null,
+            skip_logic: q.skip_logic ?? null,
+            validation_rules: q.validation_rules ?? null,
+            question_config: q.question_config ?? null,
+            matrix: q.matrix ?? null,
+            comment_box: q.comment_box ?? null,
+            style: q.style ?? null,
+            parent_id: null, // no copiar referencias a preguntas de la encuesta original
+          }))
+
+          const { error: questionsInsertError } = await supabase
+            .from("questions")
+            .insert(questionInserts)
+
+          if (questionsInsertError) {
+            throw new Error(`Error al clonar preguntas de sección "${section.title}": ${questionsInsertError.message}`)
+          }
+        }
+      }
+
       toast({
         title: "Encuesta duplicada",
-        description: `La encuesta "${newSurvey.title}" ha sido creada exitosamente.`,
+        description: `"${originalSurvey.title} (Copia)" creada con ${sectionsData?.length ?? 0} sección(es) y todas sus preguntas.`,
       })
-      fetchInitialData() // Re-fetch surveys to update the list
+      fetchInitialData()
+    } catch (err: any) {
+      setError(err.message)
+      toast({
+        title: "Error al duplicar",
+        description: err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleDeleteClick = (surveyId: string) => {
