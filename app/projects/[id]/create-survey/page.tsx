@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,13 +41,17 @@ import {
   Copy,
   BarChart3,
   Edit,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase-browser"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { generateUUID } from "@/lib/utils"
+import { generateUUID, cn } from "@/lib/utils"
 import { EditSurveySettingsModal } from "@/components/edit-survey-settings-modal"
 import { MultiSelectZones } from "@/components/multi-select-zones"
 import { ZoneSurveyorAssignment } from "@/components/zone-surveyor-assignment"
@@ -65,7 +70,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { stripHtml } from "@/lib/stripHtml"
 import { debugLog, debugWarn } from "@/lib/debug-log"
 import { QuestionEditor } from "@/components/question-editor"
@@ -115,6 +120,277 @@ import type {
   SurveySettings,
   SectionSkipLogic,
 } from "@/types-updated"
+
+// ── SectionPickerBar ─────────────────────────────────────────────────────────
+// Barra de navegación de secciones que escala a cualquier cantidad (1–100+).
+// Diseño: [← prev] [Sección N de M  ▼] [→ next] | [Guardar] [Guardar todas] | [+ Nueva] [👁] [⇅]
+// El botón central abre un Popover con lista buscable de todas las secciones.
+// ─────────────────────────────────────────────────────────────────────────────
+interface SectionPickerBarProps {
+  sections: SurveySection[]
+  activeSectionIndex: number
+  onSelectSection: (index: number) => void
+  sectionSaveStates: Record<string, string>
+  isSavingSection: boolean
+  onSaveCurrent: () => void
+  onSaveAll: () => void
+  onAddSection: () => void
+  onPreview: () => void
+  onOrganize: () => void
+}
+
+function SectionPickerBar({
+  sections,
+  activeSectionIndex,
+  onSelectSection,
+  sectionSaveStates,
+  isSavingSection,
+  onSaveCurrent,
+  onSaveAll,
+  onAddSection,
+  onPreview,
+  onOrganize,
+}: SectionPickerBarProps) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const activeItemRef = useRef<HTMLButtonElement>(null)
+
+  // Scroll al item activo cuando se abre el popover
+  useEffect(() => {
+    if (open && !search) {
+      // pequeño delay para que el DOM esté listo
+      const t = setTimeout(() => activeItemRef.current?.scrollIntoView({ block: "nearest" }), 60)
+      return () => clearTimeout(t)
+    }
+  }, [open, search])
+
+  const activeSection = sections[activeSectionIndex]
+  const activeLabel = activeSection
+    ? stripHtml(activeSection.title_html || activeSection.title) || `Sección ${activeSectionIndex + 1}`
+    : "Sin secciones"
+
+  const filtered = search.trim()
+    ? sections.filter((s, i) => {
+        const label = stripHtml(s.title_html || s.title) || `Sección ${i + 1}`
+        return label.toLowerCase().includes(search.toLowerCase()) || String(i + 1).includes(search)
+      })
+    : sections
+
+  const saveStateDot = (sectionId: string) => {
+    const state = sectionSaveStates[sectionId]
+    if (!state) return null
+    if (state === "saved") return <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+    if (state === "error") return <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+    return <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+  }
+
+  return (
+    <div className="sticky top-0 z-50 bg-white/97 backdrop-blur supports-[backdrop-filter]:bg-white/90 rounded-xl border shadow-sm">
+      {/* Fila principal */}
+      <div className="flex items-center gap-1.5 px-2 py-2">
+        {/* Prev */}
+        <Button
+          variant="ghost" size="sm"
+          className="h-8 w-8 p-0 shrink-0"
+          onClick={() => onSelectSection(Math.max(0, activeSectionIndex - 1))}
+          disabled={activeSectionIndex === 0}
+          title="Sección anterior"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        {/* Selector central — abre popover */}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button className="flex-1 flex items-center gap-2 h-8 px-3 rounded-lg border bg-muted/30 hover:bg-muted/60 transition-colors text-left min-w-0 group">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-white text-xs font-bold shrink-0">
+                {activeSectionIndex + 1}
+              </span>
+              <span className="flex-1 truncate text-sm font-medium">{activeLabel}</span>
+              <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">
+                {activeSectionIndex + 1} / {sections.length}
+              </span>
+              {saveStateDot(activeSection?.id ?? "")}
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 group-data-[state=open]:rotate-180 transition-transform" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="p-0" style={{ width: "min(92vw, 480px)" }} align="start" sideOffset={4}>
+            {/* Buscador */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b">
+              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <input
+                className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                placeholder="Buscar sección..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {/* Lista */}
+            <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: "18rem" }}>
+              {filtered.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">Sin resultados</p>
+              ) : (
+                <div className="py-1">
+                  {filtered.map((section, _) => {
+                    const realIndex = sections.indexOf(section)
+                    const label = stripHtml(section.title_html || section.title) || `Sección ${realIndex + 1}`
+                    const isActive = realIndex === activeSectionIndex
+                    const nQ = section.questions?.length ?? 0
+                    return (
+                      <button
+                        key={section.id}
+                        ref={isActive ? activeItemRef : undefined}
+                        onClick={() => { onSelectSection(realIndex); setOpen(false); setSearch("") }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-muted/50",
+                          isActive
+                            ? "bg-primary/[0.08] border-l-2 border-primary"
+                            : "border-l-2 border-transparent"
+                        )}
+                      >
+                        {/* Número */}
+                        <span className={cn(
+                          "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold shrink-0",
+                          isActive ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                        )}>
+                          {realIndex + 1}
+                        </span>
+
+                        {/* Título — ocupa todo el espacio, trunca con … */}
+                        <span
+                          className={cn(
+                            "flex-1 text-left text-sm leading-snug overflow-hidden",
+                            isActive ? "font-semibold text-primary" : "text-foreground"
+                          )}
+                          style={{ display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                        >
+                          {label}
+                        </span>
+
+                        {/* Contador de preguntas + estado */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs text-muted-foreground">{nQ}p</span>
+                          {saveStateDot(section.id)}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Footer del popover */}
+            <div className="border-t px-3 py-2 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{sections.length} sección{sections.length !== 1 ? "es" : ""}</span>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => { onAddSection(); setOpen(false) }}>
+                <Plus className="h-3 w-3" /> Nueva sección
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Next */}
+        <Button
+          variant="ghost" size="sm"
+          className="h-8 w-8 p-0 shrink-0"
+          onClick={() => onSelectSection(Math.min(sections.length - 1, activeSectionIndex + 1))}
+          disabled={activeSectionIndex === sections.length - 1}
+          title="Siguiente sección"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+
+        <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
+
+        {/* Guardar actual */}
+        <Button
+          variant="outline" size="sm"
+          className="h-8 px-2 text-xs gap-1 shrink-0"
+          onClick={onSaveCurrent}
+          disabled={isSavingSection}
+          title="Guardar sección actual"
+        >
+          {isSavingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <span className="hidden sm:inline">Guardar</span>
+        </Button>
+
+        {/* Guardar todas */}
+        <Button
+          variant="ghost" size="sm"
+          className="h-8 px-2 text-xs gap-1 shrink-0 text-muted-foreground"
+          onClick={onSaveAll}
+          disabled={isSavingSection}
+          title="Guardar todas las secciones"
+        >
+          <Save className="h-3.5 w-3.5" />
+          <span className="hidden md:inline">Todas</span>
+        </Button>
+
+        <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
+
+        {/* Nueva sección */}
+        <Button
+          variant="outline" size="sm"
+          className="h-8 px-2 text-xs gap-1 shrink-0"
+          onClick={onAddSection}
+          title="Agregar sección"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span className="hidden md:inline">Nueva</span>
+        </Button>
+
+        {/* Vista previa */}
+        <Button
+          variant="ghost" size="sm"
+          className="h-8 w-8 p-0 shrink-0 text-muted-foreground"
+          onClick={onPreview}
+          title="Vista previa"
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Organizar */}
+        <Button
+          variant="ghost" size="sm"
+          className="h-8 w-8 p-0 shrink-0 text-muted-foreground"
+          onClick={onOrganize}
+          disabled={sections.length <= 1}
+          title="Organizar secciones"
+        >
+          <ArrowUpDown className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {/* Barra de progreso de secciones (dots compactos) */}
+      {sections.length > 1 && (
+        <div className="flex items-center gap-1 px-3 pb-1.5 overflow-x-auto scrollbar-hide">
+          {sections.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => onSelectSection(i)}
+              title={stripHtml(s.title_html || s.title) || `Sección ${i + 1}`}
+              className={cn(
+                "shrink-0 h-1 rounded-full transition-all duration-200",
+                i === activeSectionIndex
+                  ? "bg-primary w-6"
+                  : sectionSaveStates[s.id] === "error"
+                  ? "bg-red-400 w-2 hover:w-3"
+                  : sectionSaveStates[s.id] === "saved"
+                  ? "bg-green-400 w-2 hover:w-3"
+                  : "bg-muted-foreground/30 w-2 hover:bg-muted-foreground/60 hover:w-3"
+              )}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Props del componente SortableSection
 interface SortableSectionProps {
@@ -183,7 +459,10 @@ function SortableSection({
     position: "relative",
   } as React.CSSProperties
 
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  )
 
   const [showSkipLogicModal, setShowSkipLogicModal] = useState(false)
 
@@ -368,50 +647,42 @@ function SortableSection({
             collisionDetection={closestCenter}
             onDragEnd={(event) => {
               const { active, over } = event
-              if (!active) return
-              if (!over) return
-              // If dropped onto another question within same section
-              if (section.questions.some((q) => q.id === active.id) && section.questions.some((q) => q.id === over.id)) {
-                const oldIndex = section.questions.findIndex((q) => q.id === active.id)
-                const newIndex = section.questions.findIndex((q) => q.id === over.id)
+              if (!active || !over || active.id === over.id) return
+
+              const activeId = String(active.id)
+              const overId = String(over.id)
+
+              // Find which section each question belongs to
+              const originSectionIndex = sections.findIndex((s) => s.questions.some((q) => q.id === activeId))
+              const destSectionIndex = sections.findIndex((s) => s.questions.some((q) => q.id === overId))
+
+              if (originSectionIndex === -1) return
+
+              if (originSectionIndex === destSectionIndex) {
+                // Reorder within same section
+                const sectionQuestions = sections[originSectionIndex].questions
+                const oldIndex = sectionQuestions.findIndex((q) => q.id === activeId)
+                const newIndex = sectionQuestions.findIndex((q) => q.id === overId)
                 if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-                  const newQuestions = arrayMove(section.questions, oldIndex, newIndex)
-                  onUpdateSection(section.id, "questions", newQuestions)
+                  onUpdateSection(section.id, "questions", arrayMove(sectionQuestions, oldIndex, newIndex))
                 }
-                return
-              }
+              } else if (destSectionIndex !== -1) {
+                // Move between sections — immutable splice
+                const originQuestions = [...sections[originSectionIndex].questions]
+                const destQuestions = [...sections[destSectionIndex].questions]
 
-              // If dropped onto a question that is in a different section, move it between sections
-              // active.id may be like `${fromSectionId}-${questionId}` in some usages; ensure matching by question id
-              const activeQuestionId = String(active.id).includes("-") ? String(active.id).split("-").slice(-1)[0] : String(active.id)
-              const overQuestionId = String(over.id).includes("-") ? String(over.id).split("-").slice(-1)[0] : String(over.id)
+                const qIdx = originQuestions.findIndex((q) => q.id === activeId)
+                if (qIdx === -1) return
+                const [moved] = originQuestions.splice(qIdx, 1)
 
-              // Find origin and destination sections
-              const originSectionIndex = sections.findIndex((s) => s.questions.some((q) => q.id === activeQuestionId))
-              const destSectionIndex = sections.findIndex((s) => s.questions.some((q) => q.id === overQuestionId))
+                const insertAt = destQuestions.findIndex((q) => q.id === overId)
+                destQuestions.splice(insertAt === -1 ? destQuestions.length : insertAt, 0, moved)
 
-              if (originSectionIndex !== -1 && destSectionIndex !== -1 && originSectionIndex !== destSectionIndex) {
-                const origin = sections[originSectionIndex]
-                const dest = sections[destSectionIndex]
-
-                const questionToMoveIndex = origin.questions.findIndex((q) => q.id === activeQuestionId)
-                if (questionToMoveIndex === -1) return
-                const [questionToMove] = origin.questions.splice(questionToMoveIndex, 1)
-
-                const destIndex = dest.questions.findIndex((q) => q.id === overQuestionId)
-                const insertionIndex = destIndex === -1 ? dest.questions.length : destIndex
-
-                dest.questions.splice(insertionIndex, 0, questionToMove)
-
-                // Build new sections array
-                const updatedSections = sections.map((s) => {
-                  if (s.id === origin.id) return { ...origin }
-                  if (s.id === dest.id) return { ...dest }
+                setSections(sections.map((s, i) => {
+                  if (i === originSectionIndex) return { ...s, questions: originQuestions }
+                  if (i === destSectionIndex) return { ...s, questions: destQuestions }
                   return s
-                })
-
-                // Propagate state
-                setSections(updatedSections)
+                }))
               }
             }}
           >
@@ -419,21 +690,7 @@ function SortableSection({
               {section.questions.length > 0 ? (
                 <>
                   {section.questions.map((question, qIndex) => (
-                    <div key={question.id} className="relative">
-                      <div className="absolute -left-3 top-4 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-medium z-10">
-                        {qIndex + 1}
-                      </div>
-                      {/* Indicador visual para preguntas con configuración avanzada */}
-                      {(question.config?.skipLogic?.enabled || question.config?.displayLogic?.enabled) && (
-                        <div className="absolute -left-3 top-12 z-20">
-                          <span 
-                            className="text-blue-600 font-bold text-lg cursor-help" 
-                            title="Tiene lógica de salto configurada"
-                          >
-                            ➜
-                          </span>
-                        </div>
-                      )}
+                    <div key={question.id}>
                       <QuestionEditor
                         question={question as Question}
                         sectionId={section.id}
@@ -1073,7 +1330,10 @@ export function CreateSurveyForProjectPageContent() {
 
   const [showSectionOrganizer, setShowSectionOrganizer] = useState(false)
 
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  )
 
   const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
 
@@ -2487,124 +2747,35 @@ export function CreateSurveyForProjectPageContent() {
                       
 
                       {sections.length > 0 ? (
-                        <div className="space-y-6">
-                          {/* Selector de secciones */}
-                          <div className="sticky top-0 z-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 rounded-lg border shadow-sm">
-                            <div className="flex items-center gap-2 w-full sm:w-auto">
-
-                              <Select
-                                value={activeSectionIndex.toString()}
-                                onValueChange={(value) => setActiveSectionIndex(Number.parseInt(value))}
-                              >
-                                <SelectTrigger className="w-full sm:w-[320px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {sections.map((section, index) => (
-                                    <SelectItem key={section.id} value={index.toString()}>
-                                      <div className="flex items-center gap-2">
-                                        <Badge variant="secondary" className="text-xs">
-                                          {index + 1}
-                                        </Badge>
-                                        <span>{stripHtml(section.title) || `Sección ${index + 1}`}</span>
-                                      
-                                        {sectionSaveStates[section.id] && (
-                                          <Badge
-                                            variant={
-                                              sectionSaveStates[section.id] === "saved" ? "default" : "destructive"
-                                            }
-                                            className="ml-2 text-xs"
-                                          >
-                                            {sectionSaveStates[section.id] === "saved"
-                                              ? "Guardado"
-                                              : sectionSaveStates[section.id] === "error"
-                                                ? "Error"
-                                                : "Sin guardar"}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSaveSection(sections[activeSectionIndex].id)}
-                                disabled={isSavingSection}
-                              >
-                                {isSavingSection ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                                    Guardando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Save className="h-4 w-4 mr-1" />
-                                    <span className="hidden sm:inline">Guardar Sección</span>
-                                    <span className="sm:hidden">Guardar</span>
-                                  </>
-                                )}
-                              </Button>
-                              {/* preview link moved to Configuración modal */}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={async () => {
-                                  for (const section of sections) {
-                                    if (sectionSaveStates[section.id] !== "saved") {
-                                      await handleSaveSection(section.id);
-                                    }
-                                  }
-                                }}
-                                disabled={isSavingSection}
-                              >
-                                <Save className="h-4 w-4 mr-1" />
-                                <span className="hidden sm:inline">Guardar todas</span>
-                                <span className="sm:hidden">Todo</span>
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const newSection: SurveySection = {
-                                    id: generateUUID(),
-                                    title: `Nueva Sección ${sections.length + 1}`,
-                                    description: "",
-                                    order_num: sections.length,
-                                    questions: [],
-                                    skipLogic: undefined,
-                                  }
-                                  setSections([...sections, newSection])
-                                  setActiveSectionIndex(sections.length) // Cambiar a la nueva sección
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Nueva Sección
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handlePreview}
-                                className="gap-2 bg-transparent"
-                                disabled={sections.length === 0}
-                              >
-                                <Eye className="h-4 w-4" />
-                                Vista Previa
-                              </Button>
-                              <Button
-                                onClick={() => setShowSectionOrganizer(true)}
-                                variant="outline"
-                                size="sm"
-                                disabled={sections.length === 0}
-                              >
-                                <ArrowUpDown className="h-4 w-4 mr-2" />
-                                Organizar
-                              </Button>
-                            </div>
-                          </div>
+                        <div className="space-y-4">
+                          {/* ── SectionPicker — funciona con 1 o 100 secciones ── */}
+                          <SectionPickerBar
+                            sections={sections}
+                            activeSectionIndex={activeSectionIndex}
+                            onSelectSection={setActiveSectionIndex}
+                            sectionSaveStates={sectionSaveStates}
+                            isSavingSection={isSavingSection}
+                            onSaveCurrent={() => handleSaveSection(sections[activeSectionIndex].id)}
+                            onSaveAll={async () => {
+                              for (const s of sections) {
+                                if (sectionSaveStates[s.id] !== "saved") await handleSaveSection(s.id)
+                              }
+                            }}
+                            onAddSection={() => {
+                              const newSection: SurveySection = {
+                                id: generateUUID(),
+                                title: `Nueva Sección ${sections.length + 1}`,
+                                description: "",
+                                order_num: sections.length,
+                                questions: [],
+                                skipLogic: undefined,
+                              }
+                              setSections([...sections, newSection])
+                              setActiveSectionIndex(sections.length)
+                            }}
+                            onPreview={handlePreview}
+                            onOrganize={() => setShowSectionOrganizer(true)}
+                          />
 
                           {/* Sección activa */}
                           {sections[activeSectionIndex] && (
@@ -2632,32 +2803,28 @@ export function CreateSurveyForProjectPageContent() {
                             />
                           )}
 
-                          {/* Navegación entre secciones */}
-                          <div className="flex items-center justify-between p-4 bg-muted/20 rounded-lg">
+                          {/* Navegación inferior prev / next */}
+                          <div className="flex items-center justify-between px-1 pt-1">
                             <Button
-                              variant="outline"
-                              size="sm"
+                              variant="ghost" size="sm"
+                              className="h-8 gap-1 text-xs text-muted-foreground"
                               onClick={() => setActiveSectionIndex(Math.max(0, activeSectionIndex - 1))}
                               disabled={activeSectionIndex === 0}
                             >
-                              <ArrowLeft className="h-4 w-4 mr-1" />
-                              Sección Anterior
+                              <ChevronLeft className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Anterior</span>
                             </Button>
-
-                            <div className="text-sm text-muted-foreground">
-                              Sección {activeSectionIndex + 1} de {sections.length}
-                            </div>
-
+                            <span className="text-xs text-muted-foreground">
+                              {activeSectionIndex + 1} / {sections.length}
+                            </span>
                             <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setActiveSectionIndex(Math.min(sections.length - 1, activeSectionIndex + 1))
-                              }
+                              variant="ghost" size="sm"
+                              className="h-8 gap-1 text-xs text-muted-foreground"
+                              onClick={() => setActiveSectionIndex(Math.min(sections.length - 1, activeSectionIndex + 1))}
                               disabled={activeSectionIndex === sections.length - 1}
                             >
-                              Sección Siguiente
-                              <ArrowRight className="h-4 w-4 ml-1" />
+                              <span className="hidden sm:inline">Siguiente</span>
+                              <ChevronRight className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </div>

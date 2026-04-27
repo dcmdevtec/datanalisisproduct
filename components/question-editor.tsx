@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings } from "lucide-react"
+import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings, Lightbulb, X } from "lucide-react"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
@@ -29,6 +29,7 @@ import { supabase } from "@/lib/supabase-browser";
 import type { Question } from "@/types-updated";
 import { ContactInfoQuestion } from "./contact-info-question";
 import { OptimizedMultipleChoiceEditor } from "./optimized-multiple-choice-editor";
+import { searchQuestionTemplates, type QuestionTemplate } from "@/lib/question-templates";
 
 const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing"), {
   ssr: false,
@@ -156,7 +157,7 @@ export function QuestionEditor({
     transition,
     isDragging
   } = useSortable({
-    id: `${sectionId}-${question.id}`,
+    id: question.id,
     data: {
       type: 'question',
       question,
@@ -189,6 +190,80 @@ export function QuestionEditor({
   useEffect(() => {
     setLocalQuestionTextHtml(question.text_html ?? "");
   }, [question.text_html]);
+
+  // ── Sugerencias de preguntas (autocomplete desde Supabase) ───────────────
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+  const [autoSuggestions, setAutoSuggestions] = useState<QuestionTemplate[]>([]);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const suggestFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Texto plano derivado del HTML actual — es la query de autocomplete
+  const currentPlainText = localQuestionTextHtml.replace(/<[^>]+>/g, "").trim();
+  const showAutoSuggestions = isEditing && autoSuggestions.length > 0 && !suggestionsDismissed;
+
+  // Fetch con debounce 350 ms al API; fallback al archivo estático si falla
+  useEffect(() => {
+    if (!isEditing || currentPlainText.length < 2) {
+      setAutoSuggestions([]);
+      return;
+    }
+    if (suggestionsDismissed) return;
+
+    if (suggestFetchRef.current) clearTimeout(suggestFetchRef.current);
+    suggestFetchRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/question-templates?q=${encodeURIComponent(currentPlainText)}&limit=6`
+        );
+        if (!res.ok) throw new Error("api-error");
+        const { data } = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setAutoSuggestions(data);
+        } else {
+          // Fallback: búsqueda local en el archivo estático
+          setAutoSuggestions(searchQuestionTemplates(currentPlainText, 6));
+        }
+      } catch {
+        // Fallback silencioso al archivo estático
+        setAutoSuggestions(searchQuestionTemplates(currentPlainText, 6));
+      }
+    }, 350);
+
+    return () => { if (suggestFetchRef.current) clearTimeout(suggestFetchRef.current); };
+  }, [currentPlainText, isEditing, suggestionsDismissed]);
+
+  // Resetear cuando el texto cambia (usuario sigue escribiendo)
+  useEffect(() => {
+    setSuggestionsDismissed(false);
+  }, [currentPlainText]);
+
+  const applySuggestion = (tpl: QuestionTemplate) => {
+    const html = `<p>${tpl.text}</p>`;
+    setLocalQuestionTextHtml(html);
+    onUpdateQuestion(sectionId, question.id, "text", tpl.text);
+    onUpdateQuestion(sectionId, question.id, "text_html", html);
+    if (tpl.options && (tpl.options as string[]).length > 0) {
+      onUpdateQuestion(sectionId, question.id, "options", tpl.options);
+    }
+    if (tpl.type) {
+      onUpdateQuestion(sectionId, question.id, "type", tpl.type);
+    }
+    setSuggestionsDismissed(true);
+    setAutoSuggestions([]);
+    setIsEditing(false);
+    autoSaveQuestionHelper(
+      { ...question, text: tpl.text, text_html: html, type: tpl.type, options: (tpl.options as string[]) ?? question.options },
+      sectionId, surveyId
+    );
+    // Incrementar use_count en segundo plano (fire-and-forget)
+    if (tpl.id && !tpl.id.startsWith("_local_")) {
+      fetch("/api/question-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: tpl.id }),
+      }).catch(() => {/* silencioso */});
+    }
+  };
 
   // Guardar el valor HTML en el estado global al cambiar
   const handleQuestionTextChange = (html: string) => {
@@ -576,129 +651,120 @@ export function QuestionEditor({
   })
 
   return (
-    <Card ref={setNodeRef} style={style} className="mb-6 border-l-4">
-      <CardHeader className="pb-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div
-              {...attributes}
-              {...listeners}
-              className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-5 w-5 text-muted-foreground"
-              >
-                <circle cx="9" cy="12" r="1" />
-                <circle cx="9" cy="5" r="1" />
-                <circle cx="9" cy="19" r="1" />
-                <circle cx="15" cy="12" r="1" />
-                <circle cx="15" cy="5" r="1" />
-                <circle cx="15" cy="19" r="1" />
-              </svg>
-            </div>
-            <Select
-              value={question.type}
-              onValueChange={(value) => onUpdateQuestion(sectionId, question.id, "type", value)}
-            >
-              <SelectTrigger className="w-[250px]">
-                <SelectValue placeholder="Tipo de pregunta" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="text">📝 Texto simple</SelectItem>
-                <SelectItem value="textarea">📄 Texto largo</SelectItem>
-                <SelectItem value="multiple_choice">🔘 Opción múltiple</SelectItem>
-                <SelectItem value="checkbox">☑️ Casillas de verificación</SelectItem>
-                <SelectItem value="dropdown">📋 Lista desplegable</SelectItem>
-                <SelectItem value="scale">📊 Escala de calificación</SelectItem>
-                <SelectItem value="matrix">📋 Matriz/Tabla</SelectItem>
-                <SelectItem value="ranking">🔢 Clasificación</SelectItem>
-                <SelectItem value="date">📅 Fecha</SelectItem>
-                <SelectItem value="time">🕐 Hora</SelectItem>
-                <SelectItem value="email">📧 Email</SelectItem>
-                <SelectItem value="phone">📞 Teléfono</SelectItem>
-                <SelectItem value="number">🔢 Número</SelectItem>
-                <SelectItem value="rating">⭐ Valoración</SelectItem>
-                <SelectItem value="file">📎 Archivo</SelectItem>
-                <SelectItem value="signature">✍️ Firma</SelectItem>
-                <SelectItem value="likert">📈 Escala Likert</SelectItem>
-                <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
-                <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
-                <SelectItem value="demographic">👤 Demográfica</SelectItem>
-                <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
-                <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
-              </SelectContent>
-            </Select>
-            {/* Presets dropdown: only show for multiple-choice type */}
-            {(question.type === "multiple_choice") && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="ml-2">Preestablecidos ▾</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Sí", "No"]) }>Sí / No</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Totalmente en desacuerdo", "En desacuerdo", "Neutral", "De acuerdo", "Totalmente de acuerdo"]) }>Escala de acuerdo</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Muy insatisfecho", "Insatisfecho", "Neutral", "Satisfecho", "Muy satisfecho"]) }>Satisfacción (5 puntos)</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Siempre", "Casi siempre", "A veces", "Casi nunca", "Nunca"]) }>Frecuencia</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {/* Switch para marcar como obligatoria la pregunta */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm">Obligatoria</span>
-              <Switch
-                checked={question.required}
-                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
-                id={`required-switch-${question.id}`}
-              />
-            </div>
-
-            <Button variant="ghost" size="sm" onClick={() => onDuplicateQuestion(sectionId, question.id)} title="Copiar pregunta">
-              <Copy className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => onRemoveQuestion(sectionId, question.id)} title="Borrar pregunta">
-              <Trash2 className="h-4 w-4" />
-            </Button>
-            {/* Botón para mover pregunta */}
-            { /*<Button variant="ghost" size="sm" onClick={() => setShowMoveModal(true)} title="Mover a otra sección" className="text-blue-600 hover:text-blue-700">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m18 15 3-3-3-3"/>
-                <path d="m6 9-3 3 3 3"/>
-                <path d="M21 12H3"/>
-              </svg>
-            </Button>*/}
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={`mb-3 rounded-xl border shadow-sm transition-all ${isDragging ? "opacity-50 shadow-lg ring-2 ring-primary/30 scale-[0.99]" : "hover:shadow-md"}`}
+    >
+      <CardHeader className="pb-2 pt-3 px-3 sm:px-4">
+        {/* Fila principal del header */}
+        <div className="flex items-center gap-2">
+          {/* Drag handle */}
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted shrink-0 touch-none"
+            title="Arrastrar para reordenar"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-muted-foreground">
+              <circle cx="9" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="19" r="1" />
+              <circle cx="15" cy="5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="19" r="1" />
+            </svg>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-            {/* Indicadores visuales para configuración avanzada */}
+
+          {/* Número de pregunta */}
+          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0 border border-primary/20">
+            {qIndex + 1}
+          </span>
+
+          {/* Selector de tipo — compacto */}
+          <Select
+            value={question.type}
+            onValueChange={(value) => onUpdateQuestion(sectionId, question.id, "type", value)}
+          >
+            <SelectTrigger className="h-8 text-xs flex-1 min-w-0 max-w-[190px] sm:max-w-[220px]">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text">📝 Texto simple</SelectItem>
+              <SelectItem value="textarea">📄 Texto largo</SelectItem>
+              <SelectItem value="multiple_choice">🔘 Opción múltiple</SelectItem>
+              <SelectItem value="checkbox">☑️ Casillas de verificación</SelectItem>
+              <SelectItem value="dropdown">📋 Lista desplegable</SelectItem>
+              <SelectItem value="scale">📊 Escala de calificación</SelectItem>
+              <SelectItem value="matrix">📋 Matriz/Tabla</SelectItem>
+              <SelectItem value="ranking">🔢 Clasificación</SelectItem>
+              <SelectItem value="date">📅 Fecha</SelectItem>
+              <SelectItem value="time">🕐 Hora</SelectItem>
+              <SelectItem value="email">📧 Email</SelectItem>
+              <SelectItem value="phone">📞 Teléfono</SelectItem>
+              <SelectItem value="number">🔢 Número</SelectItem>
+              <SelectItem value="rating">⭐ Valoración</SelectItem>
+              <SelectItem value="file">📎 Archivo</SelectItem>
+              <SelectItem value="signature">✍️ Firma</SelectItem>
+              <SelectItem value="likert">📈 Escala Likert</SelectItem>
+              <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
+              <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>
+              <SelectItem value="demographic">👤 Demográfica</SelectItem>
+              <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
+              <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Presets (solo opción múltiple) */}
+          {question.type === "multiple_choice" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-2 text-xs shrink-0 hidden sm:flex">Presets ▾</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Sí", "No"])}>Sí / No</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Totalmente en desacuerdo", "En desacuerdo", "Neutral", "De acuerdo", "Totalmente de acuerdo"])}>Escala de acuerdo</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Muy insatisfecho", "Insatisfecho", "Neutral", "Satisfecho", "Muy satisfecho"])}>Satisfacción (5)</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onUpdateQuestion(sectionId, question.id, "options", ["Siempre", "Casi siempre", "A veces", "Casi nunca", "Nunca"])}>Frecuencia</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Obligatoria switch */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs text-muted-foreground hidden sm:inline">Obligatoria</span>
+            <Switch
+              checked={question.required}
+              onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
+              id={`required-switch-${question.id}`}
+            />
+          </div>
+
+          {/* Acciones */}
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => onDuplicateQuestion(sectionId, question.id)} title="Copiar pregunta">
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0 text-destructive/60 hover:text-destructive" onClick={() => onRemoveQuestion(sectionId, question.id)} title="Borrar pregunta">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 shrink-0 text-muted-foreground" onClick={openConfigEditor} title="Configuración avanzada">
+            <Settings className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">Config</span>
+          </Button>
+        </div>
+
+        {/* Badges de lógica avanzada */}
+        {(question.config?.skipLogic?.enabled || question.config?.displayLogic?.enabled || question.config?.allowOther) && (
+          <div className="flex gap-1.5 mt-1.5 pl-14 flex-wrap">
             {question.config?.skipLogic?.enabled && (
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200" title="Tiene lógica de salto configurada">
-                ➜ Saltos
-              </Badge>
+              <Badge variant="outline" className="text-xs h-5 px-2 bg-blue-50 text-blue-700 border-blue-200">➜ Saltos</Badge>
             )}
             {question.config?.displayLogic?.enabled && (
-              <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200" title="Tiene lógica de visualización configurada">
-                👁 Visualización
-              </Badge>
+              <Badge variant="outline" className="text-xs h-5 px-2 bg-purple-50 text-purple-700 border-purple-200">👁 Visualización</Badge>
             )}
             {question.config?.allowOther && (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200" title="Permite opción 'Otro'">
-                + Otro
-              </Badge>
+              <Badge variant="outline" className="text-xs h-5 px-2 bg-green-50 text-green-700 border-green-200">+ Otro</Badge>
             )}
-            <Button variant="outline" size="sm" onClick={openConfigEditor} className="ml-2">
-              <Settings className="h-4 w-4 mr-2" />
-              Configuración avanzada
-            </Button>
           </div>
-        </div>
+        )}
       </CardHeader>
       <AdvancedQuestionConfig
         isOpen={showConfig}
@@ -731,8 +797,9 @@ export function QuestionEditor({
               Formato avanzado
             </Button>
           </div>
-          <div className="flex-1 mt-2">
+          <div className="flex-1 mt-2 relative" ref={suggestionsRef}>
             {!isEditing ? (
+              /* Vista compacta: clic para editar */
               <textarea
                 readOnly
                 className="text-lg cursor-pointer bg-background border rounded-lg w-full resize-none min-h-[48px] whitespace-pre-line focus:outline-none break-words"
@@ -740,21 +807,18 @@ export function QuestionEditor({
                 placeholder="Escribe tu pregunta aquí..."
                 onClick={() => setIsEditing(true)}
                 rows={1}
-                style={{ height: 'auto', overflow: 'hidden' }}
+                style={{ height: "auto", overflow: "hidden" }}
                 ref={el => {
-                  if (el) {
-                    el.style.height = 'auto';
-                    el.style.height = el.scrollHeight + 'px';
-                  }
+                  if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
                 }}
                 onInput={e => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = 'auto';
-                  target.style.height = target.scrollHeight + 'px';
+                  const t = e.target as HTMLTextAreaElement;
+                  t.style.height = "auto"; t.style.height = t.scrollHeight + "px";
                 }}
               />
             ) : (
-              <div className="space-y-2">
+              /* Modo edición con autocomplete inline */
+              <div className="space-y-0">
                 <CompactRichTextEditor
                   value={localQuestionTextHtml}
                   onChange={handleQuestionTextChange}
@@ -762,12 +826,48 @@ export function QuestionEditor({
                   minHeight="80px"
                   compact={true}
                 />
-                <div className="flex justify-end gap-2">
+
+                {/* ── Autocomplete dropdown ─────────────────────────────── */}
+                {showAutoSuggestions && (
+                  <div className="border border-t-0 border-amber-200 rounded-b-xl bg-white shadow-lg overflow-hidden">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50/70 border-b border-amber-100">
+                      <Lightbulb className="h-3 w-3 text-amber-500 shrink-0" />
+                      <span className="text-[10px] text-amber-700 font-medium">Sugerencias del banco de preguntas</span>
+                      <button
+                        type="button"
+                        className="ml-auto text-muted-foreground hover:text-foreground"
+                        onClick={() => setSuggestionsDismissed(true)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: "11rem" }}>
+                      {autoSuggestions.map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-amber-50/60 border-b border-gray-50 last:border-b-0 transition-colors"
+                          onMouseDown={(e) => { e.preventDefault(); applySuggestion(tpl); }}
+                        >
+                          <p className="text-sm leading-snug text-foreground">{tpl.text}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">{tpl.category}</span>
+                            <span className="text-[10px] text-muted-foreground">{tpl.type}</span>
+                            {tpl.options && tpl.options.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">· {tpl.options.length} opciones</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
                   <Button
                     size="sm"
                     variant="default"
                     onClick={() => {
-                      // Al guardar, sincroniza ambos campos
                       const plain = localQuestionTextHtml.replace(/<[^>]*>/g, "").trim();
                       onUpdateQuestion(sectionId, question.id, "text", plain);
                       onUpdateQuestion(sectionId, question.id, "text_html", localQuestionTextHtml);

@@ -2540,7 +2540,7 @@ function PreviewSurveyPageContent() {
       }
 
       return (
-        <div key={question.id} id={`question-${question.id}`} className="mb-8 p-8 border-2 rounded-2xl bg-gradient-to-br from-white via-gray-50/50 to-green-50/30 hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02] border-gray-200/60 preview-content">
+        <div key={question.id} id={`question-${question.id}`} className="preview-content px-4 py-5 border-b border-gray-100 last:border-b-0 sm:px-8 sm:py-8 sm:mb-0 sm:border-2 sm:rounded-2xl sm:border-gray-200/60 sm:bg-gradient-to-br sm:from-white sm:via-gray-50/50 sm:to-green-50/30 sm:hover:shadow-lg sm:transition-shadow sm:duration-200">
           <style jsx global>{`
             .preview-content h1 {
               font-size: 2.25rem;
@@ -2605,7 +2605,7 @@ function PreviewSurveyPageContent() {
           </div>
 
           {/* Contenido de la pregunta */}
-          <div className="ml-0 sm:ml-16">
+          <div className="ml-0 sm:ml-14">
             <div className="mt-3 sm:mt-6">{renderInput()}</div>
             {error && (
               <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-xl">
@@ -2843,9 +2843,9 @@ function PreviewSurveyPageContent() {
 
       {/* Contenido principal */}
       <Card className="w-full max-w-5xl shadow-2xl border-0 preview-card">
-        <CardContent className="p-4 sm:p-6 md:p-10">
+        <CardContent className="p-0 sm:p-6 md:p-10">
           {/* Header de la sección */}
-          <div className="text-center mb-6 sm:mb-10 preview-content">
+          <div className="text-center mb-6 sm:mb-10 preview-content px-4 pt-5 sm:px-0 sm:pt-0">
             <style jsx global>{`
         .preview-content h1 {
           font-size: 2.25rem;
@@ -2870,6 +2870,7 @@ function PreviewSurveyPageContent() {
             </div>
             {currentSection.title_html ? (
               <div
+                className="rich-html-content text-2xl sm:text-3xl font-bold text-center mb-3"
                 dangerouslySetInnerHTML={{ __html: currentSection.title_html }}
               />
             ) : (
@@ -2879,9 +2880,10 @@ function PreviewSurveyPageContent() {
             )}
             {currentSection.description && (
               <div className="flex justify-center mt-2 mb-6">
-                <div className={`max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed ${isCompact ? 'line-clamp-2' : ''}`}>
-                  {currentSection.description.replace(/<[^>]+>/g, "")}
-                </div>
+                <div
+                  className={`max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed prose prose-sm max-w-none ${isCompact ? 'line-clamp-2' : ''}`}
+                  dangerouslySetInnerHTML={{ __html: currentSection.description }}
+                />
               </div>
             )}
             {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
@@ -2889,7 +2891,7 @@ function PreviewSurveyPageContent() {
 
           {/* Indicador de lógica de visualización */}
           {currentSection.questions.some(q => q.config?.displayLogic?.enabled) && (
-            <Alert className="mb-4 border-blue-200 bg-blue-50">
+            <Alert className="mb-4 border-blue-200 bg-blue-50 mx-4 sm:mx-0">
               <Info className="h-4 w-4 text-blue-600" />
               <AlertDescription className="text-blue-800">
                 <strong>Lógica de Visualización Activa:</strong> Algunas preguntas en esta sección solo se mostrarán cuando se cumplan ciertas condiciones.
@@ -2909,7 +2911,7 @@ function PreviewSurveyPageContent() {
 
           {/* Indicador de reconciliación automática */}
           {isReconciling && (
-            <Alert className="mb-4 border-green-200 bg-green-50">
+            <Alert className="mb-4 border-green-200 bg-green-50 mx-4 sm:mx-0">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-green-800 font-medium">Reconciliando IDs automáticamente...</span>
@@ -2920,12 +2922,12 @@ function PreviewSurveyPageContent() {
             </Alert>
           )}
 
-          <Progress value={(currentSectionIndex + 1) / currentSection.questions.length * 100} className="mb-4" />
+          <Progress value={(currentSectionIndex + 1) / currentSection.questions.length * 100} className="mb-4 mx-4 sm:mx-0" />
 
-          <Separator className="my-10" />
+          <Separator className="my-4 sm:my-8" />
 
           {/* Preguntas */}
-          <div className="space-y-8">
+          <div className="sm:space-y-4">
             {currentSection.questions.length === 0 ? (
               <div className="text-center py-16">
                 <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
@@ -2958,7 +2960,7 @@ function PreviewSurveyPageContent() {
           </div>
 
           {/* Navegación */}
-          <div className="flex flex-col sm:flex-row justify-between gap-3 mt-8 sm:mt-16 pt-6 sm:pt-10 border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row justify-between gap-3 mt-4 sm:mt-12 pt-4 sm:pt-8 border-t border-gray-200 px-4 pb-4 sm:px-0 sm:pb-0">
             <Button
               onClick={handlePreviousSection}
               disabled={currentSectionIndex === 0}

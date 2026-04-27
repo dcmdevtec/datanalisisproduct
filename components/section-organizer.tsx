@@ -1,14 +1,22 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent, DragOverlay, type DragStartEvent
+} from "@dnd-kit/core"
+import {
+  arrayMove, SortableContext, useSortable, verticalListSortingStrategy
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash, ArrowDown, ArrowUp, Layers, MessageSquareText } from "lucide-react"
+import { ArrowUpDown, GripVertical, Plus, Trash2, Copy, Edit3, Save, Hash, Layers, MessageSquareText } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { generateUUID } from "@/lib/utils"
 import { RichTextEditor } from "@/components/rich-text-editor"
@@ -59,112 +67,215 @@ interface SectionOrganizerProps {
   onMoveQuestion?: (questionId: string, fromSectionId: string, toSectionId: string, newIndex?: number) => void
 }
 
+// ── Sortable Section Card ─────────────────────────────────────────────────────
+function SortableSectionCard({
+  section, index, onEdit, onDuplicate, onDelete, onMoveToPosition
+}: {
+  section: SurveySection; index: number
+  onEdit: (s: SurveySection) => void
+  onDuplicate: (s: SurveySection) => void
+  onDelete: (id: string) => void
+  onMoveToPosition: (id: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card className={`transition-all duration-150 ${isDragging ? "shadow-xl ring-2 ring-primary/30" : "hover:shadow-md"}`}>
+        <CardHeader className="pb-3 pt-3 px-4">
+          <div className="flex items-center gap-3">
+            {/* Drag handle */}
+            <button
+              {...listeners} {...attributes}
+              className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground rounded touch-none"
+              title="Arrastrar para reordenar"
+            >
+              <GripVertical className="h-5 w-5" />
+            </button>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline" className="text-xs shrink-0">Posición {index + 1}</Badge>
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {section.questions.length} pregunta{section.questions.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+              <div className="font-semibold text-base truncate">
+                {stripHtml(section.title) || `Sección ${index + 1}`}
+              </div>
+              {section.description && (
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">{stripHtml(section.description)}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => onMoveToPosition(section.id)} className="gap-1 h-7 px-2 text-xs">
+                <Hash className="h-3 w-3" /><span className="hidden sm:inline">Mover</span>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onEdit(section)} className="h-7 w-7 p-0" title="Editar">
+                <Edit3 className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onDuplicate(section)} className="h-7 w-7 p-0" title="Duplicar">
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onDelete(section.id)}
+                className="h-7 w-7 p-0 text-destructive/60 hover:text-destructive" title="Eliminar">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+    </div>
+  )
+}
+
 interface SectionsTabProps {
   localSections: SurveySection[]
+  onSectionsReorder: (sections: SurveySection[]) => void
   onEdit: (section: SurveySection) => void
   onDuplicate: (section: SurveySection) => void
   onDelete: (sectionId: string) => void
   onMoveToPosition: (sectionId: string) => void
 }
 
-function SectionsTab({ 
-  localSections, 
-  onEdit, 
-  onDuplicate, 
-  onDelete, 
-  onMoveToPosition
-}: SectionsTabProps) {
+function SectionsTab({ localSections, onSectionsReorder, onEdit, onDuplicate, onDelete, onMoveToPosition }: SectionsTabProps) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+
+  const handleDragStart = (event: DragStartEvent) => setActiveDragId(String(event.active.id))
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null)
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = localSections.findIndex(s => s.id === active.id)
+    const newIdx = localSections.findIndex(s => s.id === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reordered = arrayMove(localSections, oldIdx, newIdx).map((s, i) => ({ ...s, order_num: i }))
+    onSectionsReorder(reordered)
+  }
+
+  const activeSection = activeDragId ? localSections.find(s => s.id === activeDragId) : null
+
+  if (localSections.length === 0) {
+    return (
+      <div className="text-center py-12 flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Layers className="h-12 w-12 text-muted-foreground" />
+          <p className="text-lg font-medium text-muted-foreground">No hay secciones creadas</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="space-y-3 h-full flex flex-col">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Layers className="h-5 w-5" />
+        <h3 className="text-base font-semibold flex items-center gap-2">
+          <Layers className="h-4 w-4" />
           Gestión de Secciones
         </h3>
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
+          <GripVertical className="h-3 w-3" /> Arrastra para reordenar
+        </span>
       </div>
-      
-      {localSections.length === 0 ? (
-        <div className="text-center py-12 flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Layers className="h-12 w-12 text-muted-foreground" />
-            <div>
-              <p className="text-lg font-medium text-muted-foreground mb-2">No hay secciones creadas</p>
-              <p className="text-sm text-muted-foreground">Ve al tab principal para crear secciones</p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto pr-2">
-          <div className="grid gap-4">
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <SortableContext items={localSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1" style={{ maxHeight: "55vh" }}>
             {localSections.map((section, index) => (
-              <Card key={section.id} className="transition-all duration-200 hover:shadow-md">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline" className="text-xs">
-                            Posición {index + 1}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs">
-                            {section.questions.length} pregunta{section.questions.length !== 1 ? "s" : ""}
-                          </Badge>
-                        </div>
-                        <div className="font-semibold text-lg">
-                          {stripHtml(section.title) || `Sección ${index + 1}`}
-                        </div>
-                        {section.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {stripHtml(section.description)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => onMoveToPosition(section.id)} className="gap-1 h-8">
-                        <Hash className="h-4 w-4" />
-                        <span>Mover</span>
-                      </Button>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => onEdit(section)} className="h-8 w-8 p-0">
-                          <Edit3 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => onDuplicate(section)} className="h-8 w-8 p-0">
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onDelete(section.id)}
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-              </Card>
+              <SortableSectionCard
+                key={section.id}
+                section={section}
+                index={index}
+                onEdit={onEdit}
+                onDuplicate={onDuplicate}
+                onDelete={onDelete}
+                onMoveToPosition={onMoveToPosition}
+              />
             ))}
           </div>
+        </SortableContext>
+        <DragOverlay>
+          {activeSection && (
+            <div className="bg-white border-2 border-primary/40 rounded-lg px-4 py-3 shadow-xl opacity-95">
+              <span className="font-medium text-sm">{stripHtml(activeSection.title) || "Sección"}</span>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  )
+}
+
+// ── Sortable Question Row ─────────────────────────────────────────────────────
+function SortableQuestionRow({
+  question, index, sectionId, selected, onSelect, onMove, getTypeIcon
+}: {
+  question: Question; index: number; sectionId: string
+  selected: boolean
+  onSelect: (e: React.MouseEvent) => void
+  onMove: () => void
+  getTypeIcon: (type: string) => string
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `${sectionId}-${question.id}`
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-all
+        ${selected ? "bg-primary/[0.06] border-primary/30" : "bg-white border-gray-100 hover:bg-gray-50/80"}
+        ${isDragging ? "shadow-lg" : "shadow-sm"}`}
+      onClick={onSelect}
+    >
+      <button
+        {...listeners} {...attributes}
+        className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground hover:text-foreground shrink-0 touch-none"
+        onClick={e => e.stopPropagation()}
+        title="Arrastrar"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <Badge variant="outline" className="text-xs shrink-0 w-6 h-6 flex items-center justify-center p-0">{index + 1}</Badge>
+      <span className="text-base shrink-0">{getTypeIcon(question.type)}</span>
+      <div className="flex-1 min-w-0">
+        <p className="truncate font-medium text-sm">{stripHtml(question.text) || `Pregunta ${index + 1}`}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <Badge variant="secondary" className="text-[10px] h-4 px-1">{question.type}</Badge>
+          {question.required && <Badge variant="destructive" className="text-[10px] h-4 px-1">Req</Badge>}
         </div>
-      )}
+      </div>
+      <Button
+        variant="outline" size="sm"
+        onClick={e => { e.stopPropagation(); onMove(); }}
+        className="h-6 px-2 text-xs shrink-0 gap-1"
+        title="Mover a otra sección"
+      >
+        <Hash className="h-3 w-3" />
+        <span className="hidden sm:inline">Mover</span>
+      </Button>
     </div>
   )
 }
 
 interface QuestionsTabProps {
   localSections: SurveySection[]
+  onSectionsChange: (sections: SurveySection[]) => void
   selectedQuestions: Set<string>
   onQuestionSelect: (e: React.MouseEvent, section: SurveySection, question: Question) => void
   onQuestionMove: (question: Question, sectionId: string, currentIndex: number) => void
 }
 
-function QuestionsTab({ 
-  localSections, 
-  selectedQuestions, 
-  onQuestionSelect, 
-  onQuestionMove 
+function QuestionsTab({
+  localSections, onSectionsChange,
+  selectedQuestions, onQuestionSelect, onQuestionMove
 }: QuestionsTabProps) {
   const [selectedSectionId, setSelectedSectionId] = useState<string>("all")
 
@@ -194,152 +305,107 @@ function QuestionsTab({
     return icons[type] || "❓"
   }
 
-  // Filtrar secciones según la selección
-  const filteredSections = selectedSectionId === "all" 
-    ? localSections 
-    : localSections.filter(section => section.id === selectedSectionId)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
-  const allQuestions = filteredSections.flatMap(section => 
-    section.questions.map(question => ({ question, section }))
-  )
+  const filteredSections = selectedSectionId === "all"
+    ? localSections
+    : localSections.filter(s => s.id === selectedSectionId)
 
-  const totalQuestions = localSections.reduce((total, section) => total + section.questions.length, 0)
+  const totalQuestions = localSections.reduce((t, s) => t + s.questions.length, 0)
+  const visibleQuestions = filteredSections.reduce((t, s) => t + s.questions.length, 0)
+
+  const handleSectionDragEnd = (sectionId: string) => (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const sectionIdx = localSections.findIndex(s => s.id === sectionId)
+    if (sectionIdx === -1) return
+    const questions = localSections[sectionIdx].questions
+    const activeKey = String(active.id)
+    const overKey = String(over.id)
+    const oldIdx = questions.findIndex(q => `${sectionId}-${q.id}` === activeKey)
+    const newIdx = questions.findIndex(q => `${sectionId}-${q.id}` === overKey)
+    if (oldIdx === -1 || newIdx === -1) return
+    const newSections = localSections.map((s, i) =>
+      i === sectionIdx ? { ...s, questions: arrayMove(questions, oldIdx, newIdx) } : s
+    )
+    onSectionsChange(newSections)
+  }
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="space-y-3 h-full flex flex-col">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <MessageSquareText className="h-5 w-5" />
+        <h3 className="text-base font-semibold flex items-center gap-2">
+          <MessageSquareText className="h-4 w-4" />
           Gestión de Preguntas
         </h3>
-        <div className="text-sm text-muted-foreground">
-          {allQuestions.length} de {totalQuestions} pregunta{totalQuestions !== 1 ? "s" : ""} {selectedSectionId === "all" ? "totales" : "en la sección"}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <GripVertical className="h-3 w-3" /> Arrastra para reordenar
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {visibleQuestions} / {totalQuestions}
+          </span>
         </div>
       </div>
 
       {/* Selector de sección */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Mostrar preguntas de:</label>
-        <Select value={selectedSectionId} onValueChange={setSelectedSectionId}>
-          <SelectTrigger className="w-full max-w-md">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">{totalQuestions} preguntas</Badge>
-                <span>Todas las secciones</span>
-              </div>
+      <Select value={selectedSectionId} onValueChange={setSelectedSectionId}>
+        <SelectTrigger className="h-8 text-sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todas las secciones ({totalQuestions} preguntas)</SelectItem>
+          {localSections.map((s) => (
+            <SelectItem key={s.id} value={s.id}>
+              {stripHtml(s.title) || `Sección ${s.order_num + 1}`} ({s.questions.length})
             </SelectItem>
-            {localSections.map((section) => (
-              <SelectItem key={section.id} value={section.id}>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">{section.questions.length} preguntas</Badge>
-                  <span>{stripHtml(section.title) || `Sección ${section.order_num + 1}`}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      
-      {allQuestions.length === 0 ? (
-        <div className="text-center py-12 flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <MessageSquareText className="h-12 w-12 text-muted-foreground" />
-            <div>
-              {selectedSectionId === "all" ? (
-                <>
-                  <p className="text-lg font-medium text-muted-foreground mb-2">No hay preguntas creadas</p>
-                  <p className="text-sm text-muted-foreground">Ve al tab principal para agregar preguntas a tus secciones</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-lg font-medium text-muted-foreground mb-2">No hay preguntas en esta sección</p>
-                  <p className="text-sm text-muted-foreground">Selecciona otra sección o ve al tab principal para agregar preguntas</p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {visibleQuestions === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm">No hay preguntas en esta vista</div>
       ) : (
-        <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+        <div className="flex-1 overflow-y-auto overscroll-contain space-y-5 pr-1" style={{ maxHeight: "52vh" }}>
           {filteredSections.map(section => {
             if (section.questions.length === 0) return null
-            
+            const itemIds = section.questions.map(q => `${section.id}-${q.id}`)
             return (
-              <div key={section.id} className="space-y-3">
+              <div key={section.id} className="space-y-2">
                 {selectedSectionId === "all" && (
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <Badge variant="outline" className="text-xs">
-                      {section.questions.length} pregunta{section.questions.length !== 1 ? "s" : ""}
-                    </Badge>
-                    <h4 className="font-medium text-muted-foreground">
+                  <div className="flex items-center gap-2 pb-1 border-b">
+                    <Badge variant="outline" className="text-xs">{section.questions.length}p</Badge>
+                    <h4 className="text-sm font-medium text-muted-foreground truncate">
                       {stripHtml(section.title) || `Sección ${section.order_num + 1}`}
                     </h4>
                   </div>
                 )}
-                
-                <div className="grid gap-3">
-                  {section.questions.map((question, qIndex) => (
-                    <div
-                      key={`${section.id}-${question.id}`}
-                      className={`flex items-center gap-3 p-3 bg-white border shadow-sm rounded-lg text-sm transition-all cursor-pointer
-                        ${selectedQuestions.has(`${section.id}-${question.id}`) 
-                          ? 'bg-blue-50 border-blue-200 shadow-md' 
-                          : 'hover:bg-gray-50 hover:shadow-md'}`}
-                      onClick={(e) => onQuestionSelect(e, section, question)}
-                    >
-                      <div className="flex items-center gap-2 w-full">
-                        <Badge variant="outline" className="text-xs shrink-0">
-                          {qIndex + 1}
-                        </Badge>
-                        <span className="text-xl shrink-0">{getQuestionTypeIcon(question.type)}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate font-medium">
-                            {stripHtml(question.text) || `Pregunta ${qIndex + 1}`}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="secondary" className="text-xs">
-                              {question.type}
-                            </Badge>
-                            {question.required && (
-                              <Badge variant="destructive" className="text-xs">
-                                Obligatorio
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onQuestionMove(question, section.id, qIndex);
-                          }}
-                          className="gap-1 h-7 px-2 shrink-0"
-                        >
-                          <Hash className="h-3 w-3" />
-                          <span className="text-xs">Mover</span>
-                        </Button>
-                      </div>
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSectionDragEnd(section.id)}
+                >
+                  <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-1.5">
+                      {section.questions.map((question, qIndex) => (
+                        <SortableQuestionRow
+                          key={question.id}
+                          question={question}
+                          index={qIndex}
+                          sectionId={section.id}
+                          selected={selectedQuestions.has(`${section.id}-${question.id}`)}
+                          onSelect={(e) => onQuestionSelect(e, section, question)}
+                          onMove={() => onQuestionMove(question, section.id, qIndex)}
+                          getTypeIcon={getQuestionTypeIcon}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
               </div>
             )
           })}
-        </div>
-      )}
-      
-      {selectedQuestions.size > 0 && (
-        <div className="fixed bottom-4 right-4 p-3 bg-blue-600 text-white rounded-lg shadow-lg">
-          <p className="text-sm font-medium">
-            {selectedQuestions.size} pregunta{selectedQuestions.size !== 1 ? "s" : ""} seleccionada{selectedQuestions.size !== 1 ? "s" : ""}
-          </p>
-          <p className="text-xs opacity-90">
-            Ctrl/Cmd + click para seleccionar múltiples
-          </p>
         </div>
       )}
     </div>
@@ -671,6 +737,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
               <TabsContent value="sections" className="flex-1 mt-4 overflow-auto">
                 <SectionsTab
                   localSections={localSections}
+                  onSectionsReorder={setLocalSections}
                   onEdit={handleEdit}
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
@@ -681,6 +748,7 @@ export function SectionOrganizer({ isOpen, onClose, sections, onSectionsChange }
               <TabsContent value="questions" className="flex-1 mt-4 overflow-hidden">
                 <QuestionsTab
                   localSections={localSections}
+                  onSectionsChange={setLocalSections}
                   selectedQuestions={selectedQuestions}
                   onQuestionSelect={(e, section, question) => {
                     if (e.ctrlKey || e.metaKey) {
