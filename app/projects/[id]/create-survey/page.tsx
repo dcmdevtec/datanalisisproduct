@@ -66,14 +66,8 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useState, useEffect, useCallback } from "react"
-
-// Utilidad para limpiar etiquetas HTML
-function stripHtml(html: string): string {
-  if (!html) return "";
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || "";
-}
+import { stripHtml } from "@/lib/stripHtml"
+import { debugLog, debugWarn } from "@/lib/debug-log"
 import { QuestionEditor } from "@/components/question-editor"
 import { SectionSkipLogicConfig } from "@/components/survey/SectionSkipLogicConfig"
 const AdvancedRichTextEditor = dynamic(() => import("@/components/ui/advanced-rich-text-editor").then((mod) => mod.AdvancedRichTextEditor), {
@@ -114,103 +108,15 @@ const MapWithDrawing = dynamic(() => import("@/components/map-with-drawing").the
   loading: () => <div className="h-48 bg-muted animate-pulse rounded flex items-center justify-center"><Map className="h-8 w-8 text-muted-foreground" /></div>,
 })
 
-// Tipos para la lógica de secciones y preguntas
-interface Question {
-  id: string
-  type: string
-  text: string
-  options: string[]
-  required: boolean
-  image?: string | null
-  matrixRows?: string[]
-  matrixCols?: string[]
-  ratingScale?: number
-  config?: {
-    dropdownMulti?: boolean
-    matrixCellType?: string
-    scaleMin?: number
-    scaleMax?: number
-    scaleLabels?: string[]
-    allowOther?: boolean
-    otherText?: string
-    randomizeOptions?: boolean
-    ratingEmojis?: boolean
-    displayLogic?: {
-      enabled: boolean
-      conditions: Array<{
-        questionId: string
-        operator: string
-        value: string
-      }>
-    }
-    skipLogic?: {
-      enabled: boolean
-      rules: Array<{
-        condition: string // e.g., "answer === 'Yes'" or "answer.includes('Option A')"
-        targetSectionId: string // ID of the section to jump to
-        targetQuestionId?: string // ID of the question to jump to (optional)
-        targetQuestionText?: string // Text of the question to jump to (optional)
-        enabled?: boolean // Whether this rule is enabled
-      }>
-    }
-    validation?: {
-      required?: boolean
-      minLength?: number
-      maxLength?: number
-      pattern?: string
-      customMessage?: string
-    }
-    [key: string]: any
-  }
-}
+// Tipos importados desde la fuente de verdad compartida web↔APK
+import type {
+  Question,
+  SurveySection,
+  SurveySettings,
+  SectionSkipLogic,
+} from "@/types-updated"
 
-interface SectionSkipLogic {
-  enabled: boolean
-  targetSectionId?: string
-  targetQuestionId?: string
-  targetQuestionText?: string
-  action: "next_section" | "specific_section" | "specific_question" | "end_survey"
-}
-
-interface SurveySection {
-  id: string
-  title: string
-  title_html?: string
-  description?: string
-  order_num: number
-  questions: Question[]
-  skipLogic?: SectionSkipLogic // Added skip logic to section interface
-}
-
-interface SurveySettings {
-  collectLocation: boolean
-  allowAudio: boolean
-  offlineMode: boolean
-  distributionMethods: string[]
-  theme?: {
-    primaryColor: string
-    backgroundColor: string
-    textColor: string
-  }
-  branding?: {
-    showLogo: boolean
-    logoPosition: string
-    logo?: string | null // Add logo field here
-  }
-  security?: {
-    passwordProtected: boolean
-    password?: string
-    preventMultipleSubmissions: boolean
-  }
-  notifications?: {
-    emailOnSubmission: boolean
-  }
-  assignedUsers?: string[]
-  assignedZones?: string[]
-  publicLink?: string; // Add this new field
-}
-
-// Componente SortableSection
+// Props del componente SortableSection
 interface SortableSectionProps {
   section: SurveySection
   index: number
@@ -291,18 +197,18 @@ function SortableSection({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="border rounded-lg bg-card mb-6 overflow-hidden">
-      <div className="bg-muted/30 border-b px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="flex items-center gap-2">
+    <div ref={setNodeRef} style={style} className="border rounded-lg bg-card mb-4 sm:mb-6 overflow-hidden">
+      <div className="bg-muted/30 border-b px-3 sm:px-4 py-2 sm:py-3">
+        <div className="flex items-start sm:items-center justify-between gap-2">
+          <div className="flex items-start sm:items-center gap-2 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 shrink-0 pt-1 sm:pt-0">
               <Grip className="h-4 w-4 text-muted-foreground cursor-move" {...listeners} {...attributes} />
-              <Badge variant="secondary" className="text-xs">
-                Sección {index + 1}
+              <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                {index + 1}
               </Badge>
               {section.skipLogic?.enabled && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                  Salto configurado
+                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 hidden sm:inline-flex">
+                  Salto
                 </Badge>
               )}
             </div>
@@ -605,11 +511,11 @@ function SortableSection({
 async function autoSaveQuestion(sectionId: string, question: Question, surveyId: string) {
   // Validar que la sección tenga un ID real (UUID v4)
   if (!sectionId || sectionId === 'temp-id' || !sectionId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)) {
-    console.warn('autoSaveQuestion: sección sin ID real, no se guarda');
+    debugWarn('autoSaveQuestion: sección sin ID real, no se guarda');
     return 'error';
   }
   if (!surveyId) {
-    console.warn('autoSaveQuestion: encuesta sin ID, no se guarda');
+    debugWarn('autoSaveQuestion: encuesta sin ID, no se guarda');
     return 'error';
   }
   // Preparar datos para upsert
@@ -643,7 +549,7 @@ async function autoSaveQuestion(sectionId: string, question: Question, surveyId:
       console.error('autoSaveQuestion error:', error);
       return 'error';
     }
-    console.log('autoSaveQuestion: pregunta guardada', questionData);
+    debugLog('autoSaveQuestion: pregunta guardada', questionData);
     return 'saved';
   } catch (err) {
     console.error('autoSaveQuestion error:', err);
@@ -669,7 +575,7 @@ const removeSectionSkipLogic = (
 
 // Función para actualizar referencias en la lógica de salto cuando cambian los IDs
 const updateSkipLogicReferences = (sections: SurveySection[], oldId: string, newId: string) => {
-  console.log(`🔄 Actualizando referencias de lógica de salto: ${oldId} -> ${newId}`)
+  debugLog(`🔄 Actualizando referencias de lógica de salto: ${oldId} -> ${newId}`)
 
   // Crear una copia profunda de las secciones para no mutar el estado directamente
   const updatedSections = sections.map((section) => ({
@@ -690,7 +596,7 @@ const updateSkipLogicReferences = (sections: SurveySection[], oldId: string, new
     // Actualizar referencias en secciones
     if (section.skipLogic?.enabled && section.skipLogic.targetSectionId === oldId) {
       section.skipLogic.targetSectionId = newId
-      console.log(`✅ Referencia actualizada en sección "${section.title}": ${oldId} -> ${newId}`)
+      debugLog(`✅ Referencia actualizada en sección "${section.title}": ${oldId} -> ${newId}`)
     }
 
     // Actualizar referencias en preguntas
@@ -699,7 +605,7 @@ const updateSkipLogicReferences = (sections: SurveySection[], oldId: string, new
         question.config.skipLogic.rules.forEach((rule) => {
           if (rule.targetSectionId === oldId) {
             rule.targetSectionId = newId
-            console.log(
+            debugLog(
               `✅ Referencia actualizada en pregunta "${question.text.substring(0, 50)}...": ${oldId} -> ${newId}`,
             )
           }
@@ -716,8 +622,8 @@ const updateSkipLogicReferencesWithQuestionMapping = (
   sections: SurveySection[],
   questionIdMapping: { [oldId: string]: string },
 ) => {
-  console.log("🔄 Actualizando referencias de preguntas en lógica de salto con mapeo de IDs...")
-  console.log("📋 Mapeo de IDs disponible:", questionIdMapping)
+  debugLog("🔄 Actualizando referencias de preguntas en lógica de salto con mapeo de IDs...")
+  debugLog("📋 Mapeo de IDs disponible:", questionIdMapping)
 
   // Crear una copia profunda de las secciones para no mutar el estado directamente
   const updatedSections = sections.map((section) => ({
@@ -741,18 +647,18 @@ const updateSkipLogicReferencesWithQuestionMapping = (
     // Actualizar referencias en secciones
     if (section.skipLogic?.enabled && section.skipLogic.targetQuestionId) {
       const oldQuestionId = section.skipLogic.targetQuestionId
-      console.log(`🔍 Verificando referencia de pregunta en sección "${section.title}": ${oldQuestionId}`)
+      debugLog(`🔍 Verificando referencia de pregunta en sección "${section.title}": ${oldQuestionId}`)
 
       if (questionIdMapping[oldQuestionId]) {
         const newQuestionId = questionIdMapping[oldQuestionId]
         section.skipLogic.targetQuestionId = newQuestionId
-        console.log(
+        debugLog(
           `✅ Referencia de pregunta actualizada en sección "${section.title}": ${oldQuestionId} -> ${newQuestionId}`,
         )
         updatedReferences++
       } else {
-        console.log(`⚠️ No se encontró mapeo para pregunta ID: ${oldQuestionId} en sección "${section.title}"`)
-        console.log(`💡 Esto puede indicar que la pregunta ya tiene un ID válido o que no se procesó correctamente`)
+        debugLog(`⚠️ No se encontró mapeo para pregunta ID: ${oldQuestionId} en sección "${section.title}"`)
+        debugLog(`💡 Esto puede indicar que la pregunta ya tiene un ID válido o que no se procesó correctamente`)
         skippedReferences++
       }
     }
@@ -769,20 +675,20 @@ const updateSkipLogicReferencesWithQuestionMapping = (
           // Actualizar referencias de pregunta específica
           if (rule.targetQuestionId) {
             const oldQuestionId = rule.targetQuestionId
-            console.log(
+            debugLog(
               `🔍 Verificando referencia de pregunta en regla ${ruleIndex + 1} de "${question.text.substring(0, 50)}...": ${oldQuestionId}`,
             )
 
             if (questionIdMapping[oldQuestionId]) {
               const newQuestionId = questionIdMapping[oldQuestionId]
               rule.targetQuestionId = newQuestionId
-              console.log(
+              debugLog(
                 `✅ Referencia de pregunta actualizada en regla ${ruleIndex + 1}: ${oldQuestionId} -> ${newQuestionId}`,
               )
               updatedReferences++
             } else {
-              console.log(`⚠️ No se encontró mapeo para pregunta ID: ${oldQuestionId} en regla ${ruleIndex + 1}`)
-              console.log(
+              debugLog(`⚠️ No se encontró mapeo para pregunta ID: ${oldQuestionId} en regla ${ruleIndex + 1}`)
+              debugLog(
                 `💡 Esto puede indicar que la pregunta ya tiene un ID válido o que no se procesó correctamente`,
               )
               skippedReferences++
@@ -793,7 +699,7 @@ const updateSkipLogicReferencesWithQuestionMapping = (
     })
   })
 
-  console.log(
+  debugLog(
     `📊 Resumen de actualización: ${updatedReferences} referencias actualizadas, ${skippedReferences} referencias omitidas`,
   )
 
@@ -802,7 +708,7 @@ const updateSkipLogicReferencesWithQuestionMapping = (
 
 // Función para validar y corregir referencias de preguntas en la lógica de salto al cargar datos
 const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySection[] => {
-  console.log("🔍 Validando referencias de preguntas en lógica de salto...")
+  debugLog("🔍 Validando referencias de preguntas en lógica de salto...")
 
   // Crear una copia profunda de las secciones
   const validatedSections = sections.map((section) => ({
@@ -837,7 +743,7 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
     if (section.skipLogic?.enabled && section.skipLogic.targetQuestionId) {
       const targetQuestionId = section.skipLogic.targetQuestionId
       if (!allQuestionsMap[targetQuestionId]) {
-        console.log(`⚠️ Referencia de pregunta inválida en sección "${section.title}": ${targetQuestionId}`)
+        debugLog(`⚠️ Referencia de pregunta inválida en sección "${section.title}": ${targetQuestionId}`)
 
         // Buscar una pregunta similar por texto
         const targetQuestionText = section.skipLogic.targetQuestionText || ""
@@ -851,13 +757,13 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
           if (similarQuestion) {
             const [newQuestionId, questionInfo] = similarQuestion
             section.skipLogic.targetQuestionId = newQuestionId
-            console.log(
+            debugLog(
               `✅ Referencia corregida: ${targetQuestionId} -> ${newQuestionId} (${questionInfo.questionText})`,
             )
             fixedReferences++
           } else {
             // Si no se encuentra una pregunta similar, resetear la referencia
-            console.log(`❌ No se pudo encontrar pregunta similar, reseteando referencia`)
+            debugLog(`❌ No se pudo encontrar pregunta similar, reseteando referencia`)
             section.skipLogic.targetQuestionId = undefined
             section.skipLogic.action = "next_section"
             section.skipLogic.enabled = false
@@ -879,7 +785,7 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
           if (rule.targetQuestionId) {
             const targetQuestionId = rule.targetQuestionId
             if (!allQuestionsMap[targetQuestionId]) {
-              console.log(
+              debugLog(
                 `⚠️ Referencia de pregunta inválida en regla de "${question.text.substring(0, 50)}...": ${targetQuestionId}`,
               )
 
@@ -895,13 +801,13 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
                 if (similarQuestion) {
                   const [newQuestionId, questionInfo] = similarQuestion
                   rule.targetQuestionId = newQuestionId
-                  console.log(
+                  debugLog(
                     `✅ Referencia corregida en regla: ${targetQuestionId} -> ${newQuestionId} (${questionInfo.questionText})`,
                   )
                   fixedReferences++
                 } else {
                   // Si no se encuentra, deshabilitar la regla
-                  console.log(`❌ No se pudo encontrar pregunta similar, deshabilitando regla`)
+                  debugLog(`❌ No se pudo encontrar pregunta similar, deshabilitando regla`)
                   rule.targetQuestionId = undefined
                   rule.enabled = false
                 }
@@ -918,9 +824,9 @@ const validateAndFixSkipLogicReferences = (sections: SurveySection[]): SurveySec
   })
 
   if (fixedReferences > 0) {
-    console.log(`✅ Se corrigieron ${fixedReferences} referencias de preguntas inválidas`)
+    debugLog(`✅ Se corrigieron ${fixedReferences} referencias de preguntas inválidas`)
   } else {
-    console.log("✅ Todas las referencias de preguntas son válidas")
+    debugLog("✅ Todas las referencias de preguntas son válidas")
   }
 
   return validatedSections
@@ -968,7 +874,7 @@ export function CreateSurveyForProjectPageContent() {
 
       // Si no hay surveyId, necesitamos crear primero la encuesta
       if (!workingSurveyId) {
-        console.log("🆕 Creando encuesta antes de guardar sección...")
+        debugLog("🆕 Creando encuesta antes de guardar sección...")
 
         if (!surveyTitle || !surveyTitle.trim()) {
           throw new Error("El título de la encuesta es obligatorio para guardar secciones")
@@ -990,7 +896,7 @@ export function CreateSurveyForProjectPageContent() {
           },
         }
 
-        console.log("📝 Intentando crear encuesta con datos:", JSON.stringify(surveyData, null, 2))
+        debugLog("📝 Intentando crear encuesta con datos:", JSON.stringify(surveyData, null, 2))
 
         const { data: newSurvey, error: surveyError } = await supabase
           .from("surveys")
@@ -1010,7 +916,7 @@ export function CreateSurveyForProjectPageContent() {
         setCurrentSurveyId(workingSurveyId)
         setIsEditMode(true)
 
-        console.log("✅ Encuesta creada con ID:", workingSurveyId)
+        debugLog("✅ Encuesta creada con ID:", workingSurveyId)
       }
 
       const section = sections.find((s) => s.id === sectionId)
@@ -1019,7 +925,7 @@ export function CreateSurveyForProjectPageContent() {
       // Validar que el ID sea un UUID válido
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       if (!section.id || !uuidRegex.test(section.id)) {
-        console.warn(`⚠️ ID de sección inválido detectado: ${section.id}. Generando uno nuevo.`)
+        debugWarn(`⚠️ ID de sección inválido detectado: ${section.id}. Generando uno nuevo.`)
         const newId = generateUUID()
         // Actualizar el ID en el estado local para que coincida con el que vamos a guardar
         setSections(prev => prev.map(s => s.id === sectionId ? { ...s, id: newId } : s))
@@ -1036,7 +942,7 @@ export function CreateSurveyForProjectPageContent() {
         skip_logic: section.skipLogic || null,
       }
 
-      console.log("💾 Guardando sección (upsert):", sectionData)
+      debugLog("💾 Guardando sección (upsert):", sectionData)
 
       const { data: savedSection, error: upsertError } = await supabase
         .from("survey_sections")
@@ -1055,7 +961,7 @@ export function CreateSurveyForProjectPageContent() {
       const savedSectionData = savedSection[0]
 
       if (section.questions.length > 0) {
-        console.log(`💾 Guardando ${section.questions.length} preguntas para la sección ${savedSectionData.id}`)
+        debugLog(`💾 Guardando ${section.questions.length} preguntas para la sección ${savedSectionData.id}`)
         // Upsert (insert/update) cada pregunta individualmente para compatibilidad con auto-save
         for (const [index, q] of section.questions.entries()) {
           // Asegurar que la pregunta tenga un ID válido
@@ -1289,10 +1195,82 @@ export function CreateSurveyForProjectPageContent() {
         console.error("Error inesperado al eliminar la pregunta:", err);
       }
     }
+    // F0.5: Limpia referencias a la pregunta borrada en skipLogic.rules / displayLogic.conditions
+    // de OTRAS preguntas y en la skipLogic de secciones. Sin esto quedan reglas huérfanas
+    // que se persisten en el próximo save y pueden romper el renderer.
     setSections((prevSections) =>
-      prevSections.map((s) =>
-        s.id === sectionId ? { ...s, questions: s.questions.filter((q) => q.id !== questionId) } : s,
-      ),
+      prevSections
+        // 1. Quitar la pregunta de la sección indicada.
+        .map((s) =>
+          s.id === sectionId ? { ...s, questions: s.questions.filter((q) => q.id !== questionId) } : s,
+        )
+        // 2. Limpiar referencias a questionId en cualquier sección y cualquier pregunta restante.
+        .map((s) => {
+          // 2a. Limpiar skipLogic a nivel sección si apuntaba a la pregunta borrada.
+          let nextSection: SurveySection = s
+          if (s.skipLogic?.targetQuestionId === questionId) {
+            nextSection = {
+              ...s,
+              skipLogic: {
+                ...s.skipLogic,
+                enabled: false,
+                targetQuestionId: undefined,
+                targetQuestionText: undefined,
+              },
+            }
+          }
+
+          // 2b. Limpiar skipLogic.rules y displayLogic.conditions en cada pregunta restante.
+          const nextQuestions = nextSection.questions.map((q) => {
+            const currentConfig = q.config
+            if (!currentConfig) return q
+
+            let nextConfig = currentConfig
+            let changed = false
+
+            // Filtrar reglas de skipLogic que apuntan a la pregunta borrada.
+            if (currentConfig.skipLogic?.rules?.length) {
+              const filteredRules = currentConfig.skipLogic.rules.filter(
+                (rule) => rule.targetQuestionId !== questionId,
+              )
+              if (filteredRules.length !== currentConfig.skipLogic.rules.length) {
+                nextConfig = {
+                  ...nextConfig,
+                  skipLogic: {
+                    ...currentConfig.skipLogic,
+                    rules: filteredRules,
+                    enabled: filteredRules.length > 0 ? currentConfig.skipLogic.enabled : false,
+                  },
+                }
+                changed = true
+              }
+            }
+
+            // Filtrar conditions de displayLogic que referencian la pregunta borrada.
+            if (currentConfig.displayLogic?.conditions?.length) {
+              const filteredConds = currentConfig.displayLogic.conditions.filter(
+                (cond) => cond.questionId !== questionId,
+              )
+              if (filteredConds.length !== currentConfig.displayLogic.conditions.length) {
+                nextConfig = {
+                  ...nextConfig,
+                  displayLogic: {
+                    ...currentConfig.displayLogic,
+                    conditions: filteredConds,
+                    enabled: filteredConds.length > 0 ? currentConfig.displayLogic.enabled : false,
+                  },
+                }
+                changed = true
+              }
+            }
+
+            return changed ? { ...q, config: nextConfig } : q
+          })
+
+          return nextQuestions === nextSection.questions
+            ? nextSection
+            : { ...nextSection, questions: nextQuestions }
+        }),
     );
   }
 
@@ -1437,7 +1415,7 @@ export function CreateSurveyForProjectPageContent() {
       assignedZoneSurveyors: assignedZoneSurveyors,
     }
 
-    console.log("🔍 Datos de preview con lógica de salto:", previewData)
+    debugLog("🔍 Datos de preview con lógica de salto:", previewData)
     localStorage.setItem("surveyPreviewData", JSON.stringify(previewData))
 
       ; (async () => {
@@ -1493,7 +1471,7 @@ export function CreateSurveyForProjectPageContent() {
             setGeneratedPreviewUrl(previewUrl)
           } catch (err) {
             // Fallback: not allowed to write clipboard — show visible link so user can copy manually
-            console.warn('No se pudo copiar al portapapeles', err)
+            debugWarn('No se pudo copiar al portapapeles', err)
             toast({ title: 'Link listo', description: 'No se pudo copiar automáticamente; usa el link mostrado debajo', variant: 'default' })
             setGeneratedPreviewUrl(previewUrl)
           }
@@ -1725,7 +1703,7 @@ export function CreateSurveyForProjectPageContent() {
       setDeadline(surveyData.deadline ? surveyData.deadline.split("T")[0] : "")
       setSurveyStatus(surveyData.status || "draft")
 
-      console.log("📊 Datos de la encuesta cargados:", {
+      debugLog("📊 Datos de la encuesta cargados:", {
         title: surveyData.title,
         assigned_surveyors: surveyData.assigned_surveyors,
         assigned_zones: surveyData.assigned_zones,
@@ -1756,7 +1734,7 @@ export function CreateSurveyForProjectPageContent() {
 
       if (surveyorZoneError) throw surveyorZoneError
 
-      console.log("🔍 Datos de asignación encuestador-zona:", surveyorZoneData)
+      debugLog("🔍 Datos de asignación encuestador-zona:", surveyorZoneData)
 
       const newAssignedZoneSurveyors: { [zoneId: string]: string[] } = {}
       const newAssignedGeneralSurveyors: string[] = []
@@ -1774,8 +1752,8 @@ export function CreateSurveyForProjectPageContent() {
         }
       })
 
-      console.log("👥 Encuestadores asignados por zona:", newAssignedZoneSurveyors)
-      console.log("👥 Encuestadores generales:", newAssignedGeneralSurveyors)
+      debugLog("👥 Encuestadores asignados por zona:", newAssignedZoneSurveyors)
+      debugLog("👥 Encuestadores generales:", newAssignedGeneralSurveyors)
       setAssignedZoneSurveyors(newAssignedZoneSurveyors)
       setAssignedGeneralSurveyors(newAssignedGeneralSurveyors)
 
@@ -1790,16 +1768,16 @@ export function CreateSurveyForProjectPageContent() {
         const firstAssignedZone = allZones.find((z) => z.id === parsedAssignedZones[0])
         setDisplayedZoneGeometry(firstAssignedZone?.geometry || null)
         setSelectedZoneForPreview(parsedAssignedZones[0])
-        console.log("🗺️ Zona seleccionada para preview:", parsedAssignedZones[0])
-        console.log("🗺️ Geometría de la zona:", firstAssignedZone?.geometry)
+        debugLog("🗺️ Zona seleccionada para preview:", parsedAssignedZones[0])
+        debugLog("🗺️ Geometría de la zona:", firstAssignedZone?.geometry)
       } else {
         setDisplayedZoneGeometry(null)
         setSelectedZoneForPreview(null)
-        console.log("ℹ️ No hay zonas asignadas o no se han cargado las zonas")
+        debugLog("ℹ️ No hay zonas asignadas o no se han cargado las zonas")
       }
 
       // Fetch sections and their questions
-      console.log("🔍 Buscando secciones para survey_id:", currentSurveyId)
+      debugLog("🔍 Buscando secciones para survey_id:", currentSurveyId)
 
       const { data: sectionsData, error: sectionsError } = await supabase
         .from("survey_sections")
@@ -1844,29 +1822,29 @@ export function CreateSurveyForProjectPageContent() {
         throw sectionsError
       }
 
-      console.log("📋 Datos de secciones cargados:", sectionsData)
-      console.log("📋 Número de secciones:", sectionsData?.length || 0)
+      debugLog("📋 Datos de secciones cargados:", sectionsData)
+      debugLog("📋 Número de secciones:", sectionsData?.length || 0)
 
       // Verificar si hay secciones pero sin preguntas
       if (sectionsData && sectionsData.length > 0) {
         sectionsData.forEach((section, index) => {
-          console.log(`📋 Sección ${index + 1}: "${section.title}"`)
-          console.log(`📋 ID de sección: ${section.id}`)
-          console.log(`📋 Preguntas en sección: ${section.questions?.length || 0}`)
+          debugLog(`📋 Sección ${index + 1}: "${section.title}"`)
+          debugLog(`📋 ID de sección: ${section.id}`)
+          debugLog(`📋 Preguntas en sección: ${section.questions?.length || 0}`)
           if (section.questions && section.questions.length > 0) {
             section.questions.forEach((q, qIndex) => {
-              console.log(`  ❓ Pregunta ${qIndex + 1}: "${q.text}" (tipo: ${q.type})`)
+              debugLog(`  ❓ Pregunta ${qIndex + 1}: "${q.text}" (tipo: ${q.type})`)
             })
           } else {
-            console.log(`  ⚠️ Esta sección no tiene preguntas`)
+            debugLog(`  ⚠️ Esta sección no tiene preguntas`)
           }
         })
       } else {
-        console.log("⚠️ No se encontraron secciones para este survey")
+        debugLog("⚠️ No se encontraron secciones para este survey")
       }
 
       const formattedSections: SurveySection[] = sectionsData.map((s) => {
-        console.log(`📋 Procesando sección: "${s.title}" con ${s.questions?.length || 0} preguntas`)
+        debugLog(`📋 Procesando sección: "${s.title}" con ${s.questions?.length || 0} preguntas`)
         return {
           id: s.id,
           title: s.title,
@@ -1916,7 +1894,7 @@ export function CreateSurveyForProjectPageContent() {
         }
       })
 
-      console.log("📋 Secciones formateadas:", formattedSections)
+      debugLog("📋 Secciones formateadas:", formattedSections)
 
       // Validar y corregir referencias de preguntas en la lógica de salto
       const validatedSections = validateAndFixSkipLogicReferences(formattedSections)
@@ -1935,50 +1913,7 @@ export function CreateSurveyForProjectPageContent() {
     }
   }, [currentSurveyId, toast])
 
-  useEffect(() => {
-    async function fetchProject() {
-      setProjectLoading(true)
-      const { data, error } = await supabase
-        .from("projects")
-        .select(
-          `
-      id,
-      name,
-      companies (
-        id,
-        name,
-        logo
-      )
-    `,
-        )
-        .eq("id", projectId)
-        .maybeSingle()
-      if (!error && data) {
-        setProjectData(data)
-      }
-      setProjectLoading(false)
-    }
-    if (projectId) fetchProject()
-  }, [projectId])
-
-  useEffect(() => {
-    async function fetchSurveyorsAndZones() {
-      setSurveyorsLoading(true)
-      setZonesLoading(true)
-      const { data: surveyorsData, error: surveyorsError } = await supabase.from("surveyors").select("id, name, email")
-      if (surveyorsData) setAllSurveyors(surveyorsData)
-      if (surveyorsError) console.error("Error fetching surveyors:", surveyorsError)
-      setSurveyorsLoading(false)
-
-      const { data: zonesData, error: zonesError } = await supabase
-        .from("zones")
-        .select("id, name, geometry, map_snapshot, description")
-      if (zonesData) setAllZones(zonesData)
-      if (zonesError) console.error("Error fetching zones:", zonesError)
-      setZonesLoading(false)
-    }
-    fetchSurveyorsAndZones()
-  }, [])
+  // fetchProject y fetchSurveyorsAndZones consolidados en los useEffects de abajo (F0.3)
 
   useEffect(() => {
     if (!authLoading && user && projectId) {
@@ -2013,7 +1948,7 @@ export function CreateSurveyForProjectPageContent() {
 
   const removeSection = async (sectionId: string) => {
     try {
-      console.log(`🗑️ Iniciando eliminación de sección "${sectionId}"...`)
+      debugLog(`🗑️ Iniciando eliminación de sección "${sectionId}"...`)
 
       // Validar que el sectionId sea un UUID válido
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -2030,7 +1965,7 @@ export function CreateSurveyForProjectPageContent() {
 
       // Si estamos en modo edición y la sección tiene un ID válido en la base de datos
       if (isEditMode && sectionId && sectionId !== "" && sectionId !== "temp-id" && currentSurveyId) {
-        console.log("🔄 PASO 1: Limpiando referencias en la lógica de salto...")
+        debugLog("🔄 PASO 1: Limpiando referencias en la lógica de salto...")
 
         // Limpiar referencias en secciones existentes (usando el estado local)
         for (const section of sections) {
@@ -2039,7 +1974,7 @@ export function CreateSurveyForProjectPageContent() {
             section.skipLogic?.enabled &&
             section.skipLogic.targetSectionId === sectionId
           ) {
-            console.log(`⚠️ Limpiando referencia en sección "${section.title}"`)
+            debugLog(`⚠️ Limpiando referencia en sección "${section.title}"`)
 
             // Validar que el ID de la sección sea un UUID válido antes de actualizar
             if (uuidRegex.test(section.id)) {
@@ -2055,7 +1990,7 @@ export function CreateSurveyForProjectPageContent() {
                 console.error("❌ Error al limpiar lógica de sección:", updateError)
               }
             } else {
-              console.warn("⚠️ Sección con ID inválido encontrada:", section.id)
+              debugWarn("⚠️ Sección con ID inválido encontrada:", section.id)
             }
           }
         }
@@ -2076,7 +2011,7 @@ export function CreateSurveyForProjectPageContent() {
                 })
 
                 if (hasInvalidReferences) {
-                  console.log(`⚠️ Limpiando lógica de pregunta "${question.text.substring(0, 50)}..."`)
+                  debugLog(`⚠️ Limpiando lógica de pregunta "${question.text.substring(0, 50)}..."`)
 
                   // Validar que el ID de la pregunta sea un UUID válido antes de actualizar
                   if (uuidRegex.test(question.id)) {
@@ -2094,7 +2029,7 @@ export function CreateSurveyForProjectPageContent() {
                       console.error("❌ Error al limpiar lógica de pregunta:", updateError)
                     }
                   } else {
-                    console.warn("⚠️ Pregunta con ID inválido encontrada:", question.id)
+                    debugWarn("⚠️ Pregunta con ID inválido encontrada:", question.id)
                   }
                 }
               }
@@ -2102,10 +2037,10 @@ export function CreateSurveyForProjectPageContent() {
           }
         }
 
-        console.log("✅ Referencias limpiadas exitosamente")
+        debugLog("✅ Referencias limpiadas exitosamente")
 
         // PASO 2: Eliminar preguntas de la sección
-        console.log("🗑️ PASO 2: Eliminando preguntas de la sección...")
+        debugLog("🗑️ PASO 2: Eliminando preguntas de la sección...")
 
         // Primero verificar si hay preguntas en la sección
         const { data: questionsInSection, error: checkError } = await supabase
@@ -2118,7 +2053,7 @@ export function CreateSurveyForProjectPageContent() {
           throw new Error(`Error al verificar preguntas: ${checkError.message}`)
         }
 
-        console.log(`📊 Sección tiene ${questionsInSection?.length || 0} preguntas`)
+        debugLog(`📊 Sección tiene ${questionsInSection?.length || 0} preguntas`)
 
         if (questionsInSection && questionsInSection.length > 0) {
           // Intentar eliminar las preguntas
@@ -2147,13 +2082,13 @@ export function CreateSurveyForProjectPageContent() {
             }
           }
 
-          console.log("✅ Preguntas eliminadas exitosamente")
+          debugLog("✅ Preguntas eliminadas exitosamente")
         } else {
-          console.log("ℹ️ No hay preguntas que eliminar en esta sección")
+          debugLog("ℹ️ No hay preguntas que eliminar en esta sección")
         }
 
         // PASO 3: Eliminar la sección
-        console.log("🗑️ PASO 3: Eliminando sección...")
+        debugLog("🗑️ PASO 3: Eliminando sección...")
 
         const { error: deleteSectionError } = await supabase.from("survey_sections").delete().eq("id", sectionId)
 
@@ -2162,18 +2097,23 @@ export function CreateSurveyForProjectPageContent() {
           throw new Error(`Error al eliminar sección: ${deleteSectionError.message}`)
         }
 
-        console.log("✅ Sección eliminada exitosamente")
+        debugLog("✅ Sección eliminada exitosamente")
 
         // PASO 4: Actualizar estado local
-        console.log("🔄 PASO 4: Actualizando estado local...")
+        debugLog("🔄 PASO 4: Actualizando estado local...")
         setSections((prevSections) => prevSections.filter((s) => s.id !== sectionId))
       } else {
         // Modo creación o sección temporal - solo actualizar estado local
-        console.log("📝 Modo creación - eliminando solo del estado local")
+        debugLog("📝 Modo creación - eliminando solo del estado local")
         setSections(sections.filter((s) => s.id !== sectionId))
       }
 
-      console.log("🎉 Eliminación completada exitosamente")
+      // F0.6: limpiar entrada de sectionSaveStates para evitar memory leak
+      setSectionSaveStates((prev) => {
+        const next = { ...prev }
+        delete next[sectionId]
+        return next
+      })
 
       toast({
         title: "Sección eliminada",
@@ -2230,9 +2170,11 @@ export function CreateSurveyForProjectPageContent() {
     setSettings((prevSettings) => ({
       ...prevSettings,
       branding: {
+        showLogo: false,
+        logoPosition: "top",
         ...prevSettings.branding,
         [field]: value,
-      },
+      } as SurveySettings["branding"],
     }))
   }
 
@@ -2240,9 +2182,9 @@ export function CreateSurveyForProjectPageContent() {
     setSections(newSections)
   }
 
-  // Load project data when creating a new survey (no surveyId)
+  // Load project data (create and edit modes)
   useEffect(() => {
-    if (!user || !projectId || currentSurveyId) return // Skip if editing existing survey
+    if (!user || !projectId) return
 
     const fetchProjectData = async () => {
       setProjectLoading(true)
@@ -2271,7 +2213,7 @@ export function CreateSurveyForProjectPageContent() {
           return
         }
 
-        console.log("✅ Datos del proyecto cargados:", projectData)
+        debugLog("✅ Datos del proyecto cargados:", projectData)
         setProjectData(projectData)
       } catch (err: any) {
         console.error("Error fetching project data:", err)
@@ -2287,7 +2229,7 @@ export function CreateSurveyForProjectPageContent() {
     }
 
     fetchProjectData()
-  }, [user, projectId, currentSurveyId, toast])
+  }, [user, projectId, toast])
 
   // Load surveyors data
   useEffect(() => {
@@ -2355,16 +2297,6 @@ export function CreateSurveyForProjectPageContent() {
     fetchZones()
   }, [user, toast])
 
-  // Load survey data for editing
-  useEffect(() => {
-    if (!user || !currentSurveyId) {
-      setInitialLoading(false)
-      return
-    }
-
-    fetchSurveyForEdit()
-  }, [user, currentSurveyId, fetchSurveyForEdit])
-
   // Complete initialization when creating new survey (no surveyId)
   useEffect(() => {
     if (!user || currentSurveyId || projectLoading || surveyorsLoading || zonesLoading) {
@@ -2373,7 +2305,7 @@ export function CreateSurveyForProjectPageContent() {
 
     // If we're creating a new survey and all data is loaded
     setInitialLoading(false)
-    console.log("✅ Inicialización completada para nueva encuesta")
+    debugLog("✅ Inicialización completada para nueva encuesta")
   }, [user, currentSurveyId, projectLoading, surveyorsLoading, zonesLoading])
 
   // Redirect to login if no user
@@ -2439,20 +2371,20 @@ export function CreateSurveyForProjectPageContent() {
           {/* SectionOrganizer mounted below with isOpen prop; removed duplicate conditional render to avoid double mount */}
           <div className="flex-1 space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="details">Detalles</TabsTrigger>
-                <TabsTrigger value="questions">Preguntas</TabsTrigger>
-                <TabsTrigger value="assignment">Asignación</TabsTrigger>
-                <TabsTrigger value="settings">Configuración</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+                <TabsTrigger value="details" className="text-xs sm:text-sm">Detalles</TabsTrigger>
+                <TabsTrigger value="questions" className="text-xs sm:text-sm">Preguntas</TabsTrigger>
+                <TabsTrigger value="assignment" className="text-xs sm:text-sm">Asignación</TabsTrigger>
+                <TabsTrigger value="settings" className="text-xs sm:text-sm">Config.</TabsTrigger>
               </TabsList>
 
               <TabsContent value="details" className="space-y-6">
                 {/* ... existing details content ... */}
-                <Card>
+                <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">Información básica de la encuesta</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-6">
+                  <CardContent className="space-y-4 sm:space-y-6 px-3 sm:px-6">
                     <div className="space-y-2">
                       <Label htmlFor="title" className="text-base font-medium">
                         Título de la encuesta *
@@ -2536,7 +2468,7 @@ export function CreateSurveyForProjectPageContent() {
               </TabsContent>
 
               <TabsContent value="questions" className="space-y-6">
-                <Card>
+                <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
@@ -2550,21 +2482,21 @@ export function CreateSurveyForProjectPageContent() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="px-3 sm:px-6">
                     <div className="space-y-4">
                       
 
                       {sections.length > 0 ? (
                         <div className="space-y-6">
                           {/* Selector de secciones */}
-                          <div className="sticky top-0 z-50 flex items-center justify-between p-4 bg-muted/30 rounded-lg border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
-                            <div className="flex items-center gap-4">
+                          <div className="sticky top-0 z-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 rounded-lg border shadow-sm">
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
 
                               <Select
                                 value={activeSectionIndex.toString()}
                                 onValueChange={(value) => setActiveSectionIndex(Number.parseInt(value))}
                               >
-                                <SelectTrigger className="w-[400px]">
+                                <SelectTrigger className="w-full sm:w-[320px]">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -2596,7 +2528,7 @@ export function CreateSurveyForProjectPageContent() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -2611,7 +2543,8 @@ export function CreateSurveyForProjectPageContent() {
                                 ) : (
                                   <>
                                     <Save className="h-4 w-4 mr-1" />
-                                    Guardar Sección
+                                    <span className="hidden sm:inline">Guardar Sección</span>
+                                    <span className="sm:hidden">Guardar</span>
                                   </>
                                 )}
                               </Button>
@@ -2629,7 +2562,8 @@ export function CreateSurveyForProjectPageContent() {
                                 disabled={isSavingSection}
                               >
                                 <Save className="h-4 w-4 mr-1" />
-                                Guardar todas las secciones
+                                <span className="hidden sm:inline">Guardar todas</span>
+                                <span className="sm:hidden">Todo</span>
                               </Button>
                               <Button
                                 variant="outline"
@@ -2767,7 +2701,7 @@ export function CreateSurveyForProjectPageContent() {
               <TabsContent value="assignment" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 space-y-4">
-                    <Card>
+                    <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                           <MapPin className="h-5 w-5" />
@@ -2775,7 +2709,7 @@ export function CreateSurveyForProjectPageContent() {
                         </CardTitle>
                         <CardDescription>Elige las zonas geográficas donde se realizará la encuesta</CardDescription>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="px-3 sm:px-6">
                         <MultiSelectZones
                           zones={allZones}
                           selectedZoneIds={settings.assignedZones || []}
@@ -2866,7 +2800,7 @@ export function CreateSurveyForProjectPageContent() {
                       onAssignmentChange={handleGeneralSurveyorAssignmentChange}
                     />
 
-                    <Card>
+                    <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
                           <BarChart3 className="h-4 w-4" />
@@ -2895,7 +2829,7 @@ export function CreateSurveyForProjectPageContent() {
                     </Card>
 
                     {displayedZoneGeometry && settings.assignedZones && settings.assignedZones.length > 0 && (
-                      <Card>
+                      <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-base">
                             <Map className="h-4 w-4" />
@@ -2946,12 +2880,12 @@ export function CreateSurveyForProjectPageContent() {
                 </div>
               </TabsContent>
               <TabsContent value="settings" className="space-y-6">
-                <Card>
+                <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                   <CardHeader>
                     <CardTitle>Configuración de la Encuesta</CardTitle>
                     <CardDescription>Administra la configuración de esta encuesta</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-6">
+                  <CardContent className="space-y-4 sm:space-y-6 px-3 sm:px-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <h3 className="text-lg font-medium">Distribución</h3>
@@ -3025,7 +2959,7 @@ export function CreateSurveyForProjectPageContent() {
                     </div>
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-0 shadow-none sm:border sm:shadow-sm">
                   <CardHeader>
                     <CardTitle>Marca (Branding)</CardTitle>
                     <CardDescription>Personaliza la apariencia de tu encuesta</CardDescription>
@@ -3085,9 +3019,9 @@ export function CreateSurveyForProjectPageContent() {
             <EditSurveySettingsModal
               isOpen={showEditSettingsModal}
               onClose={() => setShowEditSettingsModal(false)}
-              currentSettings={settings}
+              currentSettings={settings as any}
               surveyId={currentSurveyId || undefined}
-              previewUrl={generatedPreviewUrl}
+              previewUrl={generatedPreviewUrl ?? undefined}
               onCopyPreview={async () => {
                 if (!generatedPreviewUrl) return
                 try {
@@ -3106,8 +3040,8 @@ export function CreateSurveyForProjectPageContent() {
 
           <SectionOrganizer
             isOpen={showSectionOrganizer}
-            sections={sections}
-            onSectionsChange={(newSections) => {
+            sections={sections as any}
+            onSectionsChange={(newSections: any[]) => {
               const updatedSections = newSections.map((s, index) => ({
                 ...s,
                 order_num: index,

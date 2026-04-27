@@ -479,6 +479,7 @@ export interface SurveySettings {
   branding?: {
     showLogo: boolean
     logoPosition: string
+    logo?: string | null
   }
   security?: {
     passwordProtected: boolean
@@ -490,6 +491,19 @@ export interface SurveySettings {
   }
   assignedUsers?: string[]
   assignedZones?: string[]
+  publicLink?: string
+}
+
+// =====================================================
+// LÓGICA DE SALTO A NIVEL SECCIÓN
+// =====================================================
+
+export interface SectionSkipLogic {
+  enabled: boolean
+  targetSectionId?: string
+  targetQuestionId?: string
+  targetQuestionText?: string
+  action: "next_section" | "specific_section" | "specific_question" | "end_survey"
 }
 
 // =====================================================
@@ -498,14 +512,17 @@ export interface SurveySettings {
 
 export interface SurveySection {
   id: string
-  survey_id: string
+  survey_id?: string
   title: string
   title_html?: string
   description?: string
   order_num: number
   created_at?: string
   updated_at?: string
+  /** skip_logic guardado en BD (snake_case raw) */
   skip_logic?: any
+  /** skipLogic parseado para uso en UI/editor (camelCase) */
+  skipLogic?: SectionSkipLogic
   questions: Question[]
 }
 

@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
 import { CompactRichTextEditor } from "@/components/ui/compact-rich-text-editor"
 import { Badge } from "@/components/ui/badge"
-import { useDebounce } from "use-debounce"
+import { useDebounce, useDebouncedCallback } from "use-debounce"
 import { AdvancedQuestionConfig } from "@/components/advanced-question-config"
 import { MoveQuestionModal } from "@/components/move-question-modal"
 import type { SurveySection } from "@/types-updated"
@@ -176,6 +176,12 @@ export function QuestionEditor({
   const [showEmojiPicker, setShowEmojiPicker] = useState<number | null>(null)
   // Índice de opción que se está editando con editor enriquecido (FullTiptapEditor)
   const [editingOptionRichIndex, setEditingOptionRichIndex] = useState<number | null>(null)
+  // F0.4: Auto-save con debounce 900ms — evita flood de UPSERTs al escribir/cambiar opciones
+  const debouncedAutoSave = useDebouncedCallback(
+    (q: Question, sid: string, svId: string) => autoSaveQuestionHelper(q, sid, svId),
+    900
+  )
+
   // Editor enriquecido para enunciado de pregunta (usa text_html si existe, nunca el texto plano si hay HTML)
   const [localQuestionTextHtml, setLocalQuestionTextHtml] = useState(question.text_html ?? "");
 
@@ -367,9 +373,9 @@ export function QuestionEditor({
                   setOptItems(newOptions)
                   // Update parent state
                   onUpdateQuestion(sectionId, question.id, "options", newOptions)
-                  // Persist immediately using the same helper used by 'Guardar Sección'
+                  // Persist con debounce para evitar flood de UPSERTs al escribir opciones
                   try {
-                    await autoSaveQuestionHelper({ ...question, options: newOptions }, sectionId, surveyId)
+                    debouncedAutoSave({ ...question, options: newOptions }, sectionId, surveyId)
                   } catch (e) {
                     // swallow - helper logs errors; keep UX responsive
                     console.error('Error auto-saving option:', e)
@@ -1404,7 +1410,7 @@ export function QuestionEditor({
                       }
                       const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                      autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                      debouncedAutoSave({ ...question, config: newConfig }, sectionId, surveyId);
                     }}
                     className="w-16"
                   />
@@ -1425,7 +1431,7 @@ export function QuestionEditor({
                       }
                       const newConfig = { ...question.config, ratingMin: min, ratingMax: max, ratingEmojis: emojis };
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                      autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                      debouncedAutoSave({ ...question, config: newConfig }, sectionId, surveyId);
                     }}
                     className="w-16"
                   />
@@ -1455,7 +1461,7 @@ export function QuestionEditor({
                               emojis[idx] = selectedEmoji;
                               const newConfig = { ...question.config, ratingEmojis: emojis };
                               onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                              autoSaveQuestionHelper({ ...question, config: newConfig }, sectionId, surveyId);
+                              debouncedAutoSave({ ...question, config: newConfig }, sectionId, surveyId);
                               setShowEmojiPicker(null);
                             }}
                           />
@@ -1615,7 +1621,7 @@ export function QuestionEditor({
                     }
                     onUpdateQuestion(sectionId, question.id, "config", newConfig)
                     // Auto-guardar inmediatamente
-                    autoSaveQuestionHelper({
+                    debouncedAutoSave({
                       ...question,
                       config: newConfig
                     }, sectionId, surveyId)
@@ -1633,7 +1639,7 @@ export function QuestionEditor({
                     }
                     onUpdateQuestion(sectionId, question.id, "config", newConfig)
                     // Auto-guardar inmediatamente
-                    autoSaveQuestionHelper({
+                    debouncedAutoSave({
                       ...question,
                       config: newConfig
                     }, sectionId, surveyId)
@@ -2052,7 +2058,7 @@ export function QuestionEditor({
                   onValueChange={val => {
                     const newConfig = { ...question.config, timeFormat: val };
                     onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                    autoSaveQuestionHelper({
+                    debouncedAutoSave({
                       ...question,
                       config: newConfig,
                       order_num: question.order_num ?? qIndex ?? 0
@@ -2076,7 +2082,7 @@ export function QuestionEditor({
                     onValueChange={val => {
                       const newConfig = { ...question.config, ampm: val };
                       onUpdateQuestion(sectionId, question.id, "config", newConfig);
-                      autoSaveQuestionHelper({
+                      debouncedAutoSave({
                         ...question,
                         config: newConfig,
                         order_num: question.order_num ?? qIndex ?? 0
@@ -2159,9 +2165,9 @@ export function QuestionEditor({
       <MoveQuestionModal
         isOpen={showMoveModal}
         onClose={() => setShowMoveModal(false)}
-        question={question}
+        question={question as any}
         currentSectionId={sectionId}
-        sections={allSections}
+        sections={allSections as any}
         onMoveQuestion={(questionId, fromSectionId, toSectionId, targetIndex) => {
           if (onMoveQuestion) {
             onMoveQuestion(questionId, fromSectionId, toSectionId, targetIndex)

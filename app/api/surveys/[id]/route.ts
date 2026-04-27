@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
-    console.log(`GET /api/surveys/${id} - Obteniendo encuesta`)
+    // console.log(`GET /api/surveys/${id} - Obteniendo encuesta`)
 
     // Si necesitas validar usuario, hazlo aquí con JWT o session, o elimina este check si no es necesario
 
@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
-    console.log(`PUT /api/surveys/${id} - Actualizando encuesta`)
+    // console.log(`PUT /api/surveys/${id} - Actualizando encuesta`)
 
     const body = await request.json()
     const { title, description, questions, settings, deadline, status } = body
@@ -125,7 +125,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
-    console.log(`DELETE /api/surveys/${id} - Eliminando encuesta`)
+    // console.log(`DELETE /api/surveys/${id} - Eliminando encuesta`)
 
     const {
       data: { user },

@@ -52,6 +52,7 @@ export interface SurveySettings {
   notifications?: NotificationConfig;
   assignedUsers?: string[];
   assignedZones?: string[];
+  publicLink?: string;
 }
 
 export interface QuestionConfig {
