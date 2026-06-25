@@ -39,7 +39,7 @@ const nextConfig = {
   },
 
   // Common server external packages
-  serverExternalPackages: ['@supabase/supabase-js'],
+  serverExternalPackages: ['@supabase/supabase-js', 'pdfkit'],
 
   // Compiler options
   compiler: {
