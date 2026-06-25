@@ -734,6 +734,28 @@ function PreviewSurveyPageContent() {
             isValid = false;
             newErrors[question.id] = "Esta pregunta es obligatoria.";
           }
+        } else if (question.type === 'demographic') {
+          // Las respuestas se guardan como ${question.id}_age y ${question.id}_gender
+          // Se requiere al menos edad O género para considerar respondida
+          const age = answers[`${question.id}_age`];
+          const gender = answers[`${question.id}_gender`];
+          const hasAge = age !== undefined && age !== null && age !== "";
+          const hasGender = gender !== undefined && gender !== null && gender !== "";
+          if (!hasAge && !hasGender) {
+            isValid = false;
+            newErrors[question.id] = "Esta pregunta es obligatoria.";
+          }
+        } else if (question.type === 'contact_info') {
+          // contact_info se valida por onStatusChange (blockedQuestions / status)
+          // Aquí solo verificar que al menos el número de documento esté si includeDocument
+          const val = answers[question.id];
+          const docNum = val?.documentNumber;
+          const hasDoc = docNum !== undefined && docNum !== null && docNum !== "";
+          const includeDoc = question.config?.includeDocument !== false;
+          if (includeDoc && !hasDoc) {
+            isValid = false;
+            newErrors[question.id] = "Esta pregunta es obligatoria.";
+          }
         } else {
           // Standard validation for all other question types
           const answer = answers[question.id];

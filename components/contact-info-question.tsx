@@ -5,11 +5,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, AlertCircle, CheckCircle } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle, UserCheck, XCircle } from "lucide-react"
 import { useDebounce } from "@/hooks/use-debounce"
 import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput"
 
-// Asumimos que el ID de la encuesta está disponible a través de un contexto o props
 interface ContactInfoQuestionProps {
   surveyId: string
   onChange: (value: {
@@ -23,8 +22,8 @@ interface ContactInfoQuestionProps {
     address?: string
     fullName?: string
   }) => void
-  // Accept arbitrary config objects coming from question.config in the editor/preview
-  // We only read a few known flags; other keys are ignored.
+  /** Notifica al padre el estado de verificación del documento */
+  onStatusChange?: (status: "valid" | "blocked" | "error") => void
   config?: any
   initialData?: {
     documentType?: string
@@ -41,7 +40,7 @@ interface ContactInfoQuestionProps {
 
 type VerificationStatus = "idle" | "verifying" | "verified" | "error" | "already_exists"
 
-export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialData }: ContactInfoQuestionProps) {
+export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config = {}, initialData }: ContactInfoQuestionProps) {
   const {
     includeFirstName = true,
     includeLastName = true,
@@ -202,44 +201,51 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
           // non-json response
         }
 
-        if (response.ok) {
+        // La API siempre devuelve 200 — revisar allowed_to_proceed para determinar el estado real
+        const allowed = response.ok && (jsonBody?.allowed_to_proceed !== false)
+
+        if (!allowed) {
+          // BLOQUEADO: ya completó la encuesta
+          setStatus("already_exists")
+          setMessage(
+            jsonBody?.message ||
+            jsonBody?.error ||
+            "Este número de documento ya ha completado esta encuesta."
+          )
+          onStatusChange?.("blocked")
+        } else {
+          // PERMITIDO: puede continuar
           setStatus("verified")
-          setMessage((jsonBody && (jsonBody.message || jsonBody.msg)) || "Puede continuar.")
-          
-          // Auto-fill contact info from prefilled_data if available
-          if (jsonBody?.prefilled_data) {
-            const prefilled = jsonBody.prefilled_data
-            
-            // Parse full_name into firstName and lastName if available
+          setMessage("Puede continuar.")
+          onStatusChange?.("valid")
+
+          // Auto-rellenar campos con datos de encuestas anteriores si los campos están vacíos
+          const prefilled = jsonBody?.prefilled_data
+          if (prefilled) {
+            // Nombre: dividir full_name si no hay firstName/lastName
             if (prefilled.full_name && !firstName && !lastName) {
-              const parts = prefilled.full_name.trim().split(' ')
-              if (parts.length > 0) {
-                setFirstName(parts[0])
-                if (parts.length > 1) {
-                  setLastName(parts.slice(1).join(' '))
-                }
-              }
+              const parts = prefilled.full_name.trim().split(/\s+/)
+              if (parts.length >= 1) setFirstName(parts[0])
+              if (parts.length >= 2) setLastName(parts.slice(1).join(' '))
             }
-            
-            // Auto-fill other contact fields if empty
             if (prefilled.email && !email) setEmail(prefilled.email)
             if (prefilled.phone && !phone) setPhone(prefilled.phone)
             if (prefilled.address && !address) setAddress(prefilled.address)
             if (prefilled.company && !company) setCompany(prefilled.company)
           }
-        } else {
-          setStatus("already_exists")
-          setMessage((jsonBody && (jsonBody.error || jsonBody.message)) || "Este número de documento ya ha completado la encuesta.")
         }
       } catch (error) {
         setStatus("error")
         setMessage("No se pudo verificar el documento. Intente de nuevo.")
+        onStatusChange?.("error")
         console.error("Error verifying document:", error)
       }
     }
 
     verifyResponse()
   }, [debouncedDocumentNumber, documentType, surveyId, documentLengthIsValid, includeDocument])
+
+  const isBlocked = status === "already_exists"
 
   const statusIndicator = useMemo(() => {
     if (!includeDocument) return null
@@ -249,7 +255,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
       case "verified":
         return <CheckCircle className="h-4 w-4 text-green-500" />
       case "already_exists":
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />
+        return <XCircle className="h-4 w-4 text-red-500" />
       case "error":
         return <AlertCircle className="h-4 w-4 text-red-500" />
       default:
@@ -258,8 +264,30 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
   }, [status, includeDocument])
 
   return (
-    <div className="space-y-4 p-4 border rounded-lg bg-background">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className={`space-y-4 p-4 border rounded-lg bg-background transition-all ${isBlocked ? "border-red-300 bg-red-50/40" : ""}`}>
+
+      {/* ── Banner: BLOQUEADO ── */}
+      {isBlocked && (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-red-50 border border-red-200">
+          <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-700">Ya has completado esta encuesta</p>
+            <p className="text-xs text-red-600 mt-0.5">{message}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Banner: datos pre-rellenados ── */}
+      {status === "verified" && (firstName || lastName || email || phone) && (
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-teal-50 border border-teal-200">
+          <UserCheck className="h-4 w-4 text-teal-600 shrink-0" />
+          <p className="text-xs text-teal-700 font-medium">
+            Encontramos tus datos de una encuesta anterior. Puedes editarlos si es necesario.
+          </p>
+        </div>
+      )}
+
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isBlocked ? "opacity-50 pointer-events-none select-none" : ""}`}>
         {includeFirstName && (
           <div className="space-y-2">
             <Label htmlFor="firstName">Nombre</Label>
@@ -268,6 +296,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
               value={firstName}
               onChange={e => setFirstName(e.target.value)}
               placeholder="Ingrese su nombre"
+              disabled={isBlocked}
             />
           </div>
         )}
@@ -279,6 +308,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
               value={lastName}
               onChange={e => setLastName(e.target.value)}
               placeholder="Ingrese su apellido"
+              disabled={isBlocked}
             />
           </div>
         )}
@@ -291,6 +321,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
               value={phone}
               onChange={e => setPhone(e.target.value)}
               placeholder="Ingrese su número de teléfono"
+              disabled={isBlocked}
             />
           </div>
         )}
@@ -305,6 +336,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
                 setEmail(val)
               }}
               placeholder="Ingrese su correo electrónico"
+              disabled={isBlocked}
             />
           </div>
         )}
@@ -316,6 +348,7 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
               value={company}
               onChange={e => setCompany(e.target.value)}
               placeholder="Ingrese el nombre de su empresa"
+              disabled={isBlocked}
             />
           </div>
         )}
@@ -327,16 +360,18 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
               value={address}
               onChange={e => setAddress(e.target.value)}
               placeholder="Ingrese su dirección"
+              disabled={isBlocked}
             />
           </div>
         )}
       </div>
+
       {includeDocument && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="document-type">Tipo de Documento</Label>
-              <Select value={documentType} onValueChange={setDocumentType}>
+              <Select value={documentType} onValueChange={setDocumentType} disabled={isBlocked}>
                 <SelectTrigger id="document-type">
                   <SelectValue placeholder="Seleccione..." />
                 </SelectTrigger>
@@ -366,18 +401,12 @@ export function ContactInfoQuestion({ surveyId, onChange, config = {}, initialDa
               </div>
             </div>
           </div>
-          {message && (
+
+          {/* Mensaje de estado (solo cuando no está bloqueado) */}
+          {!isBlocked && message && (
             <div className="text-sm flex items-center gap-2">
               {statusIndicator}
-              <span
-                className={
-                  status === "error"
-                    ? "text-red-600"
-                    : status === "already_exists"
-                      ? "text-yellow-600"
-                      : "text-muted-foreground"
-                }
-              >
+              <span className={status === "error" ? "text-red-600" : "text-muted-foreground"}>
                 {message}
               </span>
             </div>
