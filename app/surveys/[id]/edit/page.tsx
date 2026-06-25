@@ -242,9 +242,12 @@ export default function EditSurveyPage() {
         })
         .eq("id", params.id)
       if (surveyError) throw surveyError
-      // Actualizar preguntas: borrar y reinsertar (simple)
-      await supabase.from("questions").delete().eq("survey_id", params.id)
-      const questionsToInsert = questions.map((q, idx) => ({
+      // BUGFIX: el patrón DELETE+INSERT sin transacción es destructivo.
+      // Si el INSERT falla (sesión expirada, red, timeout), las preguntas quedaban
+      // borradas permanentemente. Cambiamos a UPSERT por pregunta + eliminación
+      // de preguntas que ya no existen, manteniendo las que sí.
+      const questionsToUpsert = questions.map((q, idx) => ({
+        id: q.id, // UUID necesario para upsert
         survey_id: params.id,
         type: q.type,
         text: q.text,
@@ -259,11 +262,20 @@ export default function EditSurveyPage() {
         style: {},
         parent_id: null,
       }))
-      if (questionsToInsert.length > 0) {
+      if (questionsToUpsert.length > 0) {
         const { error: questionsError } = await supabase
           .from("questions")
-          .insert(questionsToInsert)
+          .upsert(questionsToUpsert, { onConflict: 'id' })
         if (questionsError) throw questionsError
+      }
+      // Eliminar solo las preguntas que fueron borradas por el usuario (no están en el array actual)
+      const currentIds = questionsToUpsert.map(q => q.id).filter(Boolean)
+      if (currentIds.length > 0) {
+        await supabase
+          .from("questions")
+          .delete()
+          .eq("survey_id", params.id)
+          .not("id", "in", `(${currentIds.join(",")})`)
       }
       toast({
         title: "Encuesta actualizada",

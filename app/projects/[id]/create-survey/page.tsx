@@ -1114,20 +1114,25 @@ export function CreateSurveyForProjectPageContent() {
   const [deadline, setDeadline] = useState<string>("")
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [isSavingSection, setIsSavingSection] = useState<boolean>(false)
+  // Ref para el guard de concurrencia: el state React es async y no bloquea
+  // correctamente cuando handleSaveSection se llama en un for-loop (onSaveAll).
+  const isSavingSectionRef = useRef(false)
   // State to show generated preview URL as a visible fallback
   const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
   const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: "saved" | "not-saved" | "error" }>({})
 
-  const handleSaveSection = async (sectionId: string) => {
+  const handleSaveSection = async (sectionId: string, overrideSurveyId?: string) => {
     if (!sections.length || !sectionId) return
 
-    if (isSavingSection) return // Prevent concurrent saves for the same section
-
+    // Usar ref (no state) para el guard — el state es async y no bloquea en for-loops
+    if (isSavingSectionRef.current) return
+    isSavingSectionRef.current = true
     setIsSavingSection(true)
     try {
-      let workingSurveyId = currentSurveyId
+      // overrideSurveyId permite llamar desde handleSave sin depender del state async
+      let workingSurveyId = overrideSurveyId || currentSurveyId
 
       // Si no hay surveyId, necesitamos crear primero la encuesta
       if (!workingSurveyId) {
@@ -1282,6 +1287,7 @@ export function CreateSurveyForProjectPageContent() {
         variant: "destructive",
       })
     } finally {
+      isSavingSectionRef.current = false
       setIsSavingSection(false)
     }
   }
@@ -1546,6 +1552,13 @@ export function CreateSurveyForProjectPageContent() {
             : s,
         ),
       )
+      // BUGFIX: marcar la sección como no guardada cuando se edita una pregunta.
+      // Sin esto, el usuario podía editar texto/opciones sin que se marcara como dirty
+      // y el botón "Guardar" final omitía guardar sus cambios.
+      setSectionSaveStates((prev) => ({
+        ...prev,
+        [sectionId]: "not-saved",
+      }))
     },
     [],
   )
@@ -1553,34 +1566,29 @@ export function CreateSurveyForProjectPageContent() {
   const handleMoveQuestion = useCallback(
     (questionId: string, fromSectionId: string, toSectionId: string, targetIndex?: number): void => {
       setSections((prevSections) => {
-        // Find the question to move
         const fromSection = prevSections.find(s => s.id === fromSectionId)
         const questionToMove = fromSection?.questions.find(q => q.id === questionId)
-        
         if (!questionToMove) return prevSections
-        
         return prevSections.map(section => {
           if (section.id === fromSectionId) {
-            // Remove question from source section
-            return {
-              ...section,
-              questions: section.questions.filter(q => q.id !== questionId)
-            }
+            return { ...section, questions: section.questions.filter(q => q.id !== questionId) }
           } else if (section.id === toSectionId) {
-            // Add question to target section at specified index
             const newQuestions = [...section.questions]
             const insertIndex = targetIndex !== undefined ? targetIndex : newQuestions.length
             newQuestions.splice(insertIndex, 0, questionToMove)
-            return {
-              ...section,
-              questions: newQuestions
-            }
+            return { ...section, questions: newQuestions }
           }
           return section
         })
       })
+      // BUGFIX: marcar ambas secciones como no guardadas al mover una pregunta
+      setSectionSaveStates((prev) => ({
+        ...prev,
+        [fromSectionId]: "not-saved",
+        [toSectionId]: "not-saved",
+      }))
     },
-    []
+    [],
   )
 
   const handleZoneSelectionChange = (selectedIds: string[]) => {
@@ -1808,8 +1816,22 @@ export function CreateSurveyForProjectPageContent() {
         surveyResult = data[0];
       }
 
-      // Guardar asignaciones de encuestador-zona
       const surveyId = surveyResult.id;
+
+      // ── BUGFIX CRÍTICO: guardar todas las secciones/preguntas pendientes ──────
+      // handleSave solo guardaba metadata; las secciones con "not-saved" se perdían.
+      // Pasamos surveyId directamente para no depender del state React (que es async).
+      const pendingSections = sections.filter(s => sectionSaveStates[s.id] !== "saved")
+      if (pendingSections.length > 0) {
+        debugLog(`💾 handleSave: guardando ${pendingSections.length} sección(es) pendientes...`)
+        for (const section of pendingSections) {
+          // Liberar el ref antes de cada llamada (handleSaveSection lo vuelve a tomar)
+          isSavingSectionRef.current = false
+          await handleSaveSection(section.id, surveyId)
+        }
+      }
+
+      // Guardar asignaciones de encuestador-zona
       // 1. Eliminar asignaciones existentes
       await supabase
         .from("survey_surveyor_zones")

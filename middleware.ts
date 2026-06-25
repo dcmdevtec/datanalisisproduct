@@ -1,61 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  
-  // Solo logging en desarrollo para no afectar producción
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🔍 Middleware - Ruta:', pathname)
-  }
+
+  // Crear respuesta mutable para poder escribir cookies actualizadas
+  let response = NextResponse.next({ request })
 
   try {
-    // IMPORTANTE: Solo proteger la ruta de login para evitar que usuarios autenticados vuelvan ahí
+    // Crear cliente SSR para refrescar el token si está próximo a expirar.
+    // Esto evita que sesiones largas (editor de encuestas) fallen silenciosamente.
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) =>
+              request.cookies.set(name, value)
+            )
+            response = NextResponse.next({ request })
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            )
+          },
+        },
+      }
+    )
+
+    // Refrescar sesión — si el access token expiró y hay refresh token válido,
+    // Supabase lo renueva automáticamente y escribe las cookies actualizadas.
+    // No lanzamos error si falla: simplemente dejamos pasar la petición.
+    await supabase.auth.getUser()
+
+    // Redirigir a dashboard si usuario ya autenticado intenta ir a /login
     if (pathname === '/login') {
-      // Verificación ultra-rápida de cookies de Supabase
-      const cookies = request.cookies.getAll()
-      const hasSupabaseCookies = cookies.some(cookie => 
-        cookie.name.startsWith('sb-') && cookie.name.includes('access_token')
-      )
-      
-      if (hasSupabaseCookies) {
-        // Si hay cookies de Supabase, redirigir al dashboard (evitar que usuarios logueados vayan a login)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('✅ Middleware - Usuario ya autenticado, redirigiendo desde login a dashboard')
+          console.log('✅ Middleware - Usuario autenticado, redirigiendo a dashboard')
         }
         return NextResponse.redirect(new URL('/dashboard', request.url))
       }
-      
-      // Si no hay cookies de Supabase, permitir acceso a login
-      if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Middleware - Usuario no autenticado, permitiendo acceso a login')
-      }
-      return NextResponse.next()
     }
 
-    // Para TODAS las demás rutas: ACCESO LIBRE INMEDIATO
-    // No validar cookies, no verificar sesión, permitir navegación libre
-    // Esto evita conflictos con el flujo de login
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ Middleware - Ruta libre, permitiendo acceso sin validación')
-    }
-    
-    return NextResponse.next()
-    
   } catch (error) {
-    // En caso de error, solo log en desarrollo
+    // No bloquear nunca la navegación por errores del middleware
     if (process.env.NODE_ENV === 'development') {
       console.error('❌ Middleware error:', error)
     }
-    
-    // Si hay error, permitir acceso (no bloquear)
-    return NextResponse.next()
   }
+
+  return response
 }
 
-// Configuración optimizada del middleware
+// Interceptar todas las rutas de la aplicación para mantener sesiones activas.
+// Las rutas de assets estáticos se excluyen automáticamente.
 export const config = {
   matcher: [
-    // Solo interceptar la ruta de login para evitar conflictos
-    '/login'
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

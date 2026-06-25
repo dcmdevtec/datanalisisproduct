@@ -24,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         survey_sections (
           id, title, order_num,
           questions (
-            id, text, type, required, order_num, options
+            id, text, type, required, order_num, options, config
           )
         )
       `)
@@ -133,12 +133,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         doc.fillColor(GRAY).fontSize(7.5).font('Helvetica')
            .text(`Tipo: ${typeLabel(q.type || 'text')}`, 78, doc.y + 1)
 
-        // Opciones (si las hay) — maximo 12 para no saturar
+        const qConfig = (q as any).config ?? {}
+
+        // ── Opciones seleccionables (multiple_choice, checkbox, dropdown, ranking, image_choice) ──
         const opts = Array.isArray(q.options) ? q.options.filter(Boolean) : []
-        if (opts.length > 0 && opts.length <= 12) {
+        const MAX_OPTS = 20   // mostrar hasta 20 opciones
+        if (opts.length > 0) {
           doc.moveDown(0.3)
-          for (const opt of opts) {
-            // Extraer label como texto plano (sin Unicode especial)
+          const visibleOpts = opts.slice(0, MAX_OPTS)
+          for (const opt of visibleOpts) {
             let label: string
             if (typeof opt === 'object' && opt !== null) {
               label = String(opt?.label ?? opt?.value ?? opt?.text ?? '')
@@ -147,21 +150,48 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
             label = label.trim()
             if (!label || label === 'undefined') continue
-            // Usar guion ASCII en lugar de Unicode para evitar glifos rotos
+            // Verificar si hay espacio suficiente antes de agregar opción
+            if (doc.y > doc.page.height - 60) doc.addPage()
             doc.fillColor(GRAY).fontSize(8).font('Helvetica')
                .text(`    -  ${label}`, 86, doc.y, { width: W - 46 })
           }
+          if (opts.length > MAX_OPTS) {
+            doc.fillColor(GRAY).fontSize(7.5).font('Helvetica-Oblique')
+               .text(`    ... y ${opts.length - MAX_OPTS} opciones mas`, 86, doc.y)
+          }
         }
 
-        // Para preguntas tipo escala / NPS mostrar rango
+        // ── Para multiple_textboxes: mostrar las etiquetas de cada cuadro ──
+        if (q.type === 'multiple_textboxes') {
+          const labels: string[] = qConfig.textboxLabels ?? opts.map((o: any) =>
+            typeof o === 'object' ? (o?.label ?? o?.value ?? '') : String(o ?? ''))
+          if (labels.length > 0) {
+            doc.moveDown(0.3)
+            labels.forEach((lbl: string, i: number) => {
+              const clean = String(lbl ?? '').trim() || `Campo ${i + 1}`
+              doc.fillColor(GRAY).fontSize(8).font('Helvetica')
+                 .text(`    ${i + 1}.  ${clean}`, 86, doc.y, { width: W - 46 })
+            })
+          }
+        }
+
+        // ── Para escala numerica: mostrar rango real desde config ──
         if (q.type === 'nps') {
           doc.fillColor(GRAY).fontSize(7.5).font('Helvetica-Oblique')
              .text('    Escala del 0 al 10', 86, doc.y + 2)
         }
-        if (q.type === 'scale' || q.type === 'rating') {
-          const scale = (q as any).config?.scaleMax ?? (q as any).ratingScale ?? 5
+        if (q.type === 'scale') {
+          const scaleMin = qConfig.scaleMin ?? 1
+          const scaleMax = qConfig.scaleMax ?? (q as any).ratingScale ?? 10
+          const labelLow  = qConfig.scaleLabels?.[0] ? ` (${qConfig.scaleLabels[0]})` : ''
+          const labelHigh = qConfig.scaleLabels?.[1] ? ` (${qConfig.scaleLabels[1]})` : ''
           doc.fillColor(GRAY).fontSize(7.5).font('Helvetica-Oblique')
-             .text(`    Escala del 1 al ${scale}`, 86, doc.y + 2)
+             .text(`    Escala del ${scaleMin}${labelLow} al ${scaleMax}${labelHigh}`, 86, doc.y + 2)
+        }
+        if (q.type === 'rating') {
+          const stars = qConfig.scaleMax ?? (q as any).ratingScale ?? 5
+          doc.fillColor(GRAY).fontSize(7.5).font('Helvetica-Oblique')
+             .text(`    ${stars} estrellas`, 86, doc.y + 2)
         }
         if (q.type === 'demographic') {
           doc.fillColor(GRAY).fontSize(7.5).font('Helvetica-Oblique')
