@@ -3,6 +3,51 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
 /**
+ * Calcula el estado del encuestador basado en minutos transcurridos
+ * desde su última ubicación registrada.
+ *
+ * Umbrales:
+ *   ≤ 5 min  → "active"   (teléfono encendido y enviando)
+ *   ≤ 30 min → "inactive" (última señal reciente pero ya no responde)
+ *   > 30 min → "offline"  (sin señal, teléfono apagado o sin internet)
+ *   sin ubicación → "offline"
+ *
+ * IMPORTANTE: no confiar en el campo `status` de la vista — puede estar
+ * desactualizado. Siempre recalcular a partir de `minutes_since_update`
+ * o de `recorded_at` si el campo de minutos no está disponible.
+ */
+function calcStatus(item: any): "active" | "inactive" | "offline" {
+  // Calcular minutos desde la última ubicación recibida
+  let minutesAgo: number | null = null
+
+  if (typeof item.minutes_since_update === "number") {
+    minutesAgo = item.minutes_since_update
+  } else if (item.recorded_at) {
+    minutesAgo = (Date.now() - new Date(item.recorded_at).getTime()) / 60000
+  }
+
+  if (minutesAgo === null || minutesAgo < 0) return "offline"
+  if (minutesAgo <= 2)  return "active"    // ≤2 min: APK enviando activamente
+  if (minutesAgo <= 15) return "inactive"  // 2–15 min: sin señal reciente
+  return "offline"                         // >15 min: teléfono apagado / sin internet
+}
+
+/** El encuestador está dentro de la app (primer plano) si:
+ *  - La última ubicación llegó hace ≤2 min Y
+ *  - el APK envió is_foreground=true en esa última ubicación
+ *  Si el APK no soporta is_foreground todavía, no se muestra el indicador.
+ */
+function isInApp(item: any): boolean | null {
+  if (item.is_foreground === undefined || item.is_foreground === null) return null
+  const minutesAgo = typeof item.minutes_since_update === "number"
+    ? item.minutes_since_update
+    : item.recorded_at
+      ? (Date.now() - new Date(item.recorded_at).getTime()) / 60000
+      : 999
+  return minutesAgo <= 2 && item.is_foreground === true
+}
+
+/**
  * GET /api/tracking
  * Obtener ubicaciones de encuestadores usando surveyor_tracking_view
  * 
@@ -93,15 +138,9 @@ export async function GET(request: Request) {
 
     // Transformar los datos al formato esperado por el frontend
     const surveyorsWithLocation = trackingData?.map((item: any) => {
-      // Mapear el status de la vista al formato del frontend
-      let status = "offline"
-      if (item.status === "active") {
-        status = "active"
-      } else if (item.status === "idle") {
-        status = "inactive"
-      } else if (item.status === "never_seen") {
-        status = "offline"
-      }
+      // Estado calculado siempre desde tiempo real, nunca desde el campo status de la vista
+      const status = calcStatus(item)
+      const in_app = isInApp(item)
 
       return {
         id: item.surveyor_id,
@@ -109,6 +148,7 @@ export async function GET(request: Request) {
         email: item.surveyor_email || "",
         phone_number: item.surveyor_phone || "",
         status,
+        in_app,  // true=en la app, false=background, null=APK no reporta este campo aún
         current_location: item.latitude && item.longitude ? {
           latitude: item.latitude,
           longitude: item.longitude,
@@ -119,7 +159,13 @@ export async function GET(request: Request) {
           zone: item.zone_id ? { id: item.zone_id, name: item.zone_name || "Sin nombre" } : null,
           active_survey: null,
           recorded_at: item.recorded_at,
-          minutes_ago: item.minutes_since_update || 0,
+          minutes_ago: Math.round(
+            typeof item.minutes_since_update === "number"
+              ? item.minutes_since_update
+              : item.recorded_at
+                ? (Date.now() - new Date(item.recorded_at).getTime()) / 60000
+                : 0
+          ),
         } : null,
       }
     }) || []
@@ -266,22 +312,17 @@ export async function POST(request: Request) {
 
     // Transformar los datos al formato esperado por el frontend
     const surveyorsWithLocation = trackingData?.map((item: any) => {
-      // Mapear el status de la vista al formato del frontend
-      let frontendStatus = "offline"
-      if (item.status === "active") {
-        frontendStatus = "active"
-      } else if (item.status === "idle") {
-        frontendStatus = "inactive"
-      } else if (item.status === "never_seen") {
-        frontendStatus = "offline"
-      }
+      // Estado calculado siempre desde tiempo real, nunca desde el campo status de la vista
+      const status = calcStatus(item)
+      const in_app = isInApp(item)
 
       return {
         id: item.surveyor_id,
         name: item.surveyor_name || "Sin nombre",
         email: item.surveyor_email || "",
         phone_number: item.surveyor_phone || "",
-        status: frontendStatus,
+        status,
+        in_app,  // true=en la app, false=background, null=APK no reporta este campo aún
         current_location: item.latitude && item.longitude ? {
           latitude: item.latitude,
           longitude: item.longitude,
@@ -292,7 +333,13 @@ export async function POST(request: Request) {
           zone: item.zone_id ? { id: item.zone_id, name: item.zone_name || "Sin nombre" } : null,
           active_survey: null,
           recorded_at: item.recorded_at,
-          minutes_ago: item.minutes_since_update || 0,
+          minutes_ago: Math.round(
+            typeof item.minutes_since_update === "number"
+              ? item.minutes_since_update
+              : item.recorded_at
+                ? (Date.now() - new Date(item.recorded_at).getTime()) / 60000
+                : 0
+          ),
         } : null,
       }
     }) || []

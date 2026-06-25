@@ -523,127 +523,69 @@ function PreviewSurveyPageContent() {
   }, [answers, surveyData])
 
   // Función para evaluar las condiciones de visualización
-  const shouldShowQuestion = useCallback((question: Question): boolean => {
-    // Si no hay lógica de visualización habilitada, mostrar la pregunta
-    if (!question.config?.displayLogic?.enabled) {
-      return true
-    }
+  /** Resuelve el ID real de una pregunta buscando por ID directo o por texto (reconciliación) */
+  const resolveQuestionAnswer = useCallback((questionId: string, questionText?: string): any => {
+    // Búsqueda directa por ID
+    const direct = answers[questionId]
+    if (direct !== undefined && direct !== null && direct !== "") return direct
 
-    const { conditions } = question.config.displayLogic
-
-    // Si no hay condiciones, mostrar la pregunta
-    if (!conditions || conditions.length === 0) {
-      return true
-    }
-
-    // La reconciliación automática se maneja en un efecto separado
-
-    // Debug: Mostrar información de la lógica de visualización
-
-
-    // Evaluar cada condición
-    for (const condition of conditions) {
-      const { questionId, operator, value } = condition
-
-      // RECONCILIACIÓN AUTOMÁTICA: Si el questionId no se encuentra, intentar por texto
-      let actualQuestionId = questionId
-      let answer = answers[questionId]
-
-      // Si no hay respuesta para este ID, intentar reconciliación automática
-      if (answer === undefined || answer === null || answer === "") {
-
-
-        // Buscar la pregunta por texto en todas las secciones
-        let foundQuestion: Question | null = null
-        for (const section of surveyData?.sections || []) {
-          const found = section.questions.find(q => q.text === condition.questionText)
-          if (found) {
-            foundQuestion = found
-
-            actualQuestionId = foundQuestion.id
-            answer = answers[foundQuestion.id]
-            break
-          }
-        }
-
-        // Si aún no se encuentra, intentar por ID similar o buscar en respuestas existentes
-        if (!foundQuestion) {
-
-
-          // Buscar en las respuestas existentes para encontrar la pregunta correcta
-          for (const [responseId, responseValue] of Object.entries(answers)) {
-            // Buscar la pregunta que corresponde a esta respuesta
-            for (const section of surveyData?.sections || []) {
-              const responseQuestion = section.questions.find(q => q.id === responseId)
-              if (responseQuestion && responseQuestion.text === condition.questionText) {
-
-                actualQuestionId = responseId
-                answer = responseValue
-                foundQuestion = responseQuestion
-                break
-              }
-            }
-            if (foundQuestion) break
-          }
-        }
-
-        if (!foundQuestion) {
-
-          return false
-        }
-      }
-
-
-
-      if (answer === undefined || answer === null || answer === "") {
-
-        return false // Si no hay respuesta, no mostrar la pregunta
-      }
-
-      let conditionMet = false
-
-      switch (operator) {
-        case "equals":
-          conditionMet = answer === value
-          break
-        case "not_equals":
-          conditionMet = answer !== value
-          break
-        case "contains":
-          conditionMet = Array.isArray(answer) ? answer.includes(value) : String(answer).includes(value)
-          break
-        case "not_contains":
-          conditionMet = Array.isArray(answer) ? !answer.includes(value) : !String(answer).includes(value)
-          break
-        case "greater_than":
-          conditionMet = Number(answer) > Number(value)
-          break
-        case "less_than":
-          conditionMet = Number(answer) < Number(value)
-          break
-        case "greater_than_or_equal":
-          conditionMet = Number(answer) >= Number(value)
-          break
-        case "less_than_or_equal":
-          conditionMet = Number(answer) <= Number(value)
-          break
-        default:
-          conditionMet = false
-      }
-
-      console.log(`   Condición cumplida: ${conditionMet}`)
-
-      // Si alguna condición no se cumple, no mostrar la pregunta
-      if (!conditionMet) {
-        console.log(`   ❌ Condición no cumplida, ocultando pregunta`)
-        return false
+    // Reconciliación: buscar por texto si el ID no tiene respuesta
+    if (!questionText) return undefined
+    for (const section of surveyData?.sections || []) {
+      const found = section.questions.find(q => q.text === questionText)
+      if (found && found.id !== questionId) {
+        const byText = answers[found.id]
+        if (byText !== undefined && byText !== null && byText !== "") return byText
       }
     }
-
-    console.log(`   ✅ Todas las condiciones cumplidas, mostrando pregunta`)
-    // Si todas las condiciones se cumplen, mostrar la pregunta
-    return true
+    return undefined
   }, [answers, surveyData])
+
+  /** Evalúa una condición individual de display logic */
+  const evaluateCondition = useCallback((condition: any): boolean => {
+    const answer = resolveQuestionAnswer(condition.questionId, condition.questionText)
+    if (answer === undefined || answer === null || answer === "") return false
+
+    switch (condition.operator) {
+      case "equals":
+        return Array.isArray(answer) ? answer.includes(condition.value) : String(answer) === String(condition.value)
+      case "not_equals":
+        return Array.isArray(answer) ? !answer.includes(condition.value) : String(answer) !== String(condition.value)
+      case "contains":
+        return Array.isArray(answer) ? answer.includes(condition.value) : String(answer).includes(String(condition.value))
+      case "not_contains":
+        return Array.isArray(answer) ? !answer.includes(condition.value) : !String(answer).includes(String(condition.value))
+      case "greater_than":
+        return Number(answer) > Number(condition.value)
+      case "less_than":
+        return Number(answer) < Number(condition.value)
+      case "greater_than_or_equal":
+        return Number(answer) >= Number(condition.value)
+      case "less_than_or_equal":
+        return Number(answer) <= Number(condition.value)
+      case "is_empty":
+        return !answer || (Array.isArray(answer) ? answer.length === 0 : String(answer).trim() === "")
+      case "is_not_empty":
+        return !!(answer && (Array.isArray(answer) ? answer.length > 0 : String(answer).trim() !== ""))
+      default:
+        return false
+    }
+  }, [resolveQuestionAnswer])
+
+  const shouldShowQuestion = useCallback((question: Question): boolean => {
+    if (!question.config?.displayLogic?.enabled) return true
+
+    const { conditions, logicalOperator = "AND" } = question.config.displayLogic
+    if (!conditions || conditions.length === 0) return true
+
+    if (logicalOperator === "OR") {
+      // OR: mostrar si AL MENOS UNA condición se cumple
+      return conditions.some((c: any) => evaluateCondition(c))
+    }
+
+    // AND (por defecto): mostrar solo si TODAS las condiciones se cumplen
+    return conditions.every((c: any) => evaluateCondition(c))
+  }, [evaluateCondition])
 
   const handleAnswerChange = useCallback((questionId: string, value: any) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }))
@@ -778,6 +720,19 @@ function PreviewSurveyPageContent() {
               const rowList = unansweredRows.slice(0, 3).join(', ') + (unansweredRows.length > 3 ? `... y ${unansweredRows.length - 3} más` : '');
               newErrors[question.id] = `Esta pregunta es obligatoria. Por favor completa estas filas: ${rowList}`;
             }
+          }
+        } else if (question.type === 'multiple_textboxes') {
+          // Las respuestas se guardan como ${question.id}_0, ${question.id}_1, etc.
+          // Validar que al menos un campo tenga valor
+          const labels = question.config?.textboxLabels || question.options || [];
+          const count = Math.max(labels.length, 1);
+          const hasAtLeastOne = Array.from({ length: count }, (_, idx) => {
+            const v = answers[`${question.id}_${idx}`];
+            return v !== undefined && v !== null && v !== "";
+          }).some(Boolean);
+          if (!hasAtLeastOne) {
+            isValid = false;
+            newErrors[question.id] = "Esta pregunta es obligatoria.";
           }
         } else {
           // Standard validation for all other question types
@@ -959,7 +914,7 @@ function PreviewSurveyPageContent() {
         try {
           // Verificar si es una acción de finalizar encuesta
           if (skipLogic.action === "end_survey") {
-            console.log(`🔥 Skip logic de sección: Finalizando encuesta desde "${currentSection.title}"`)
+
             // Finalizar encuesta inmediatamente
             setSubmissionStatus("idle")
             const ok = await submitResponses()
@@ -974,7 +929,7 @@ function PreviewSurveyPageContent() {
 
           // Si es salto a sección específica
           if (skipLogic.action === "specific_section" && skipLogic.targetSectionId) {
-            console.log(`🔥 Skip logic de sección: Saltando desde "${currentSection.title}" a sección "${skipLogic.targetSectionId}"`)
+
             const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === skipLogic.targetSectionId)
             if (foundSectionIndex !== -1) {
               // Aplicar el salto inmediatamente
@@ -2740,7 +2695,6 @@ function PreviewSurveyPageContent() {
                 onClick={() => {
                   localStorage.removeItem("surveyPreviewAnswers")
                   setAnswers({})
-                  console.log("🧹 Respuestas limpiadas")
                 }}
                 className="text-orange-600 border-orange-200 hover:bg-orange-50 transition-all duration-200 rounded-xl px-3 py-2 text-sm sm:text-base"
               >
@@ -2907,20 +2861,6 @@ function PreviewSurveyPageContent() {
             ) : (
               currentSection.questions.map((question, qIndex) => {
                 // Console log para debugging - muestra la estructura completa de cada pregunta
-                console.log('📋 PREGUNTA DEBUG:', {
-                  index: qIndex,
-                  id: question.id,
-                  type: question.type,
-                  text: question.text,
-                  required: question.required,
-                  options: question.options,
-                  config: question.config,
-                  matrixRows: question.matrixRows,
-                  matrixCols: question.matrixCols,
-                  ratingScale: question.ratingScale,
-                  image: question.image,
-                  completeQuestion: question
-                });
 
                 return renderQuestion(question, qIndex);
               })

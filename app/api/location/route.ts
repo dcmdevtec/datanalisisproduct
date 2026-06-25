@@ -65,6 +65,7 @@ export async function POST(request: Request) {
       app_version,
       device_info,
       active_survey_id,
+      is_foreground = false,   // true = app en primer plano, false = app en background / no enviado
     } = body
 
     if (!surveyor_id) {
@@ -110,12 +111,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Surveyor not found" }, { status: 404 })
     }
 
+    // Si el encuestador no está activo, lo reactivamos automáticamente al recibir ubicación.
+    // Nunca bloquear la actualización de ubicación — si la APK está enviando datos, el encuestador ESTÁ activo.
     if (surveyor.status !== "active") {
-      console.warn("⚠️ Surveyor is not active:", surveyor_id)
-      return NextResponse.json({ 
-        error: "Surveyor is not active",
-        status: surveyor.status 
-      }, { status: 403 })
+      console.log("🔄 Reactivando encuestador que estaba:", surveyor.status, surveyor_id)
+      await supabase
+        .from("surveyors")
+        .update({ status: "active" })
+        .eq("id", surveyor_id)
     }
 
     // Insertar la ubicación
@@ -130,6 +133,7 @@ export async function POST(request: Request) {
       app_version: app_version || null,
       device_info: device_info || null,
       active_survey_id: active_survey_id || null,
+      is_foreground: is_foreground || false,
       recorded_at: new Date().toISOString(),
     }
 

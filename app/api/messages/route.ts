@@ -1,99 +1,164 @@
 import { NextResponse } from "next/server"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
-// Simulación de base de datos de mensajes
-const messages = [
-  {
-    id: "1",
-    sender: "1",
-    receiver: "3",
-    content: "Hola Juan, ¿cómo va la encuesta en la Zona Norte?",
-    timestamp: "2023-05-01T10:30:00Z",
-    read: true,
-  },
-  {
-    id: "2",
-    sender: "3",
-    receiver: "1",
-    content: "Hola Admin, va bien. Ya completé 15 encuestas hoy.",
-    timestamp: "2023-05-01T10:35:00Z",
-    read: true,
-  },
-  {
-    id: "3",
-    sender: "1",
-    receiver: "3",
-    content: "Excelente. ¿Has tenido algún problema con la aplicación?",
-    timestamp: "2023-05-01T10:40:00Z",
-    read: true,
-  },
-  {
-    id: "4",
-    sender: "3",
-    receiver: "1",
-    content: "No, todo funciona correctamente. La sincronización offline es muy útil.",
-    timestamp: "2023-05-01T10:45:00Z",
-    read: false,
-  },
-  {
-    id: "5",
-    sender: "2",
-    receiver: "4",
-    content: "María, necesito que te dirijas a la Zona Sur esta tarde.",
-    timestamp: "2023-05-01T09:20:00Z",
-    read: true,
-  },
-  {
-    id: "6",
-    sender: "4",
-    receiver: "2",
-    content: "Entendido. Estaré allí después del almuerzo.",
-    timestamp: "2023-05-01T09:25:00Z",
-    read: true,
-  },
-  {
-    id: "7",
-    sender: "1",
-    receiver: "all",
-    content: "Recordatorio: La reunión semanal será mañana a las 9:00 AM.",
-    timestamp: "2023-05-01T11:00:00Z",
-    read: false,
-  },
-]
-
-export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const userId = url.searchParams.get("userId")
-
-  if (!userId) {
-    return NextResponse.json({ error: "Se requiere userId" }, { status: 400 })
-  }
-
-  // Filtrar mensajes para el usuario específico o mensajes para todos
-  const userMessages = messages.filter(
-    (msg) => msg.receiver === userId || msg.sender === userId || msg.receiver === "all",
+function getSupabase() {
+  const cookieStore = cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cs) => {
+          try {
+            cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+          } catch {}
+        },
+      },
+    }
   )
-
-  return NextResponse.json(userMessages)
 }
 
-export async function POST(request: Request) {
+/**
+ * GET /api/messages?userId=UUID&with=UUID&limit=50
+ *
+ * Devuelve los mensajes del usuario autenticado.
+ * - Si se pasa `with`, filtra la conversación entre userId y with.
+ * - Si no, devuelve todos los mensajes del usuario (directos + broadcast).
+ * Ordena por timestamp ASC para renderizar en orden cronológico.
+ */
+export async function GET(request: Request) {
   try {
-    const messageData = await request.json()
+    const url = new URL(request.url)
+    const userId = url.searchParams.get("userId")
+    const withUser = url.searchParams.get("with")
+    const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 200)
 
-    // En una aplicación real, validarías los datos y los guardarías en la base de datos
-    const newMessage = {
-      id: crypto.randomUUID(), // ✅ UUID real en lugar de contador numérico
-      ...messageData,
-      timestamp: new Date().toISOString(),
-      read: false,
+    if (!userId) {
+      return NextResponse.json({ error: "Se requiere userId" }, { status: 400 })
     }
 
-    // Simulamos agregar a la base de datos
-    messages.push(newMessage)
+    const supabase = getSupabase()
 
-    return NextResponse.json(newMessage)
-  } catch (error) {
-    console.error("Error al enviar mensaje:", error)
-    return NextResponse.json({ error: "Error al enviar el mensaje" }, { status: 500 })
+    let query = supabase
+      .from("messages")
+      .select("id, sender_id, receiver_id, content, created_at, read, message_type")
+      .order("created_at", { ascending: true })
+      .limit(limit)
+
+    if (withUser) {
+      // Conversación directa entre dos usuarios
+      query = query.or(
+        `and(sender_id.eq.${userId},receiver_id.eq.${withUser}),and(sender_id.eq.${withUser},receiver_id.eq.${userId})`
+      )
+    } else {
+      // Todos los mensajes del usuario + broadcasts
+      query = query.or(`sender_id.eq.${userId},receiver_id.eq.${userId},message_type.eq.broadcast`)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      // Si la tabla no existe aún, devolver array vacío (fallback graceful)
+      console.warn("[messages] Supabase error:", error.message)
+      return NextResponse.json([], { status: 200 })
+    }
+
+    // Mapear al formato que espera la UI (sender/receiver en vez de sender_id/receiver_id)
+    const mapped = (data ?? []).map((m: any) => ({
+      id: m.id,
+      sender: m.sender_id,
+      receiver: m.receiver_id ?? "all",
+      content: m.content,
+      timestamp: m.created_at,
+      read: m.read ?? false,
+      message_type: m.message_type ?? "direct",
+    }))
+
+    return NextResponse.json(mapped)
+  } catch (err: any) {
+    console.error("[messages] GET error:", err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+/**
+ * POST /api/messages
+ * Body: { sender: UUID, receiver: UUID | "all", content: string, message_type?: "direct"|"broadcast" }
+ *
+ * Guarda un mensaje en Supabase y devuelve el registro creado.
+ */
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { sender, receiver, content, message_type = "direct" } = body
+
+    if (!sender || !content?.trim()) {
+      return NextResponse.json({ error: "sender y content son requeridos" }, { status: 400 })
+    }
+
+    const supabase = getSupabase()
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        sender_id: sender,
+        receiver_id: receiver === "all" ? null : receiver,
+        content: content.trim(),
+        message_type,
+        read: false,
+      })
+      .select("id, sender_id, receiver_id, content, created_at, read, message_type")
+      .single()
+
+    if (error) {
+      console.error("[messages] POST insert error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      id: data.id,
+      sender: data.sender_id,
+      receiver: data.receiver_id ?? "all",
+      content: data.content,
+      timestamp: data.created_at,
+      read: data.read,
+      message_type: data.message_type,
+    })
+  } catch (err: any) {
+    console.error("[messages] POST error:", err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+/**
+ * PATCH /api/messages
+ * Body: { ids: string[], read: boolean }
+ *
+ * Marca mensajes como leídos/no leídos.
+ */
+export async function PATCH(request: Request) {
+  try {
+    const { ids, read } = await request.json()
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: "ids array requerido" }, { status: 400 })
+    }
+
+    const supabase = getSupabase()
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ read })
+      .in("id", ids)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ ok: true, updated: ids.length })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

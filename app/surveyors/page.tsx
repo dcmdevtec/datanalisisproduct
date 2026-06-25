@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, Edit, Trash2, UserPlus, MapPin, RefreshCw, Users, Radio } from "lucide-react"
+import { Search, Loader2, Edit, Trash2, UserPlus, MapPin, RefreshCw, Users, Radio, MessageSquare, Send } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import type { Surveyor } from "@/types/surveyor"
 import dynamic from "next/dynamic"
 
@@ -124,6 +125,11 @@ export default function SurveyorsPage() {
   const [surveySearch, setSurveySearch] = useState("")
   const [showSurveyDropdown, setShowSurveyDropdown] = useState(false)
   const [selectedSurveyorId, setSelectedSurveyorId] = useState<string | null>(null)
+
+  // Estado para el modal de mensajes directos
+  const [messagingTo, setMessagingTo] = useState<SurveyorLocation | null>(null)
+  const [messageContent, setMessageContent] = useState("")
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -263,9 +269,41 @@ export default function SurveyorsPage() {
   useEffect(() => {
     if (!autoRefresh) return
 
-    const interval = setInterval(fetchSurveyorLocations, 30000)
+    const interval = setInterval(fetchSurveyorLocations, 15000)
     return () => clearInterval(interval)
   }, [autoRefresh, fetchSurveyorLocations])
+
+  const handleSendDirectMessage = async () => {
+    if (!messagingTo || !messageContent.trim() || !user) return
+    setIsSendingMessage(true)
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: user.id,
+          receiver: messagingTo.id,
+          content: messageContent.trim(),
+          message_type: "direct",
+        }),
+      })
+      if (!res.ok) throw new Error("Error al enviar")
+      toast({
+        title: "Mensaje enviado",
+        description: `Mensaje enviado a ${messagingTo.name}`,
+      })
+      setMessageContent("")
+      setMessagingTo(null)
+    } catch {
+      toast({
+        title: "Error",
+        description: "No se pudo enviar el mensaje",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingMessage(false)
+    }
+  }
 
   const handleAddSurveyor = () => {
     setEditingSurveyor(null)
@@ -751,6 +789,7 @@ export default function SurveyorsPage() {
                             selectedSurveyorId === surveyor.id ? "border-primary bg-muted/20" : ""
                           }`}
                         >
+
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-3 h-3 rounded-full ${
@@ -793,22 +832,50 @@ export default function SurveyorsPage() {
                                 )}
                               </>
                             )}
-                            <Badge
-                              variant="outline"
-                              className={`text-xs ${
-                                surveyor.status === "active"
-                                  ? "border-green-500 text-green-600"
-                                  : surveyor.status === "inactive"
-                                  ? "border-yellow-500 text-yellow-600"
-                                  : "border-gray-400 text-gray-500"
-                              }`}
-                            >
-                              {surveyor.status === "active"
-                                ? "Activo"
-                                : surveyor.status === "inactive"
-                                ? "Inactivo"
-                                : "Offline"}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              {/* Botón enviar mensaje */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 shrink-0"
+                                title={`Enviar mensaje a ${surveyor.name}`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setMessagingTo(surveyor)
+                                  setMessageContent("")
+                                }}
+                              >
+                                <MessageSquare className="h-4 w-4" />
+                              </Button>
+
+                              <div className="flex flex-col items-end gap-1">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    surveyor.status === "active"
+                                      ? "border-green-500 text-green-600 bg-green-50"
+                                      : surveyor.status === "inactive"
+                                      ? "border-yellow-500 text-yellow-600 bg-yellow-50"
+                                      : "border-gray-400 text-gray-500 bg-gray-50"
+                                  }`}
+                                >
+                                  {surveyor.status === "active"
+                                    ? "Activo"
+                                    : surveyor.status === "inactive"
+                                    ? "Inactivo"
+                                    : "Offline"}
+                                </Badge>
+                                {(surveyor as any).in_app === true && (
+                                  <span className="text-[10px] text-blue-600 font-medium flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                                    En la app
+                                  </span>
+                                )}
+                                {(surveyor as any).in_app === false && surveyor.status === "active" && (
+                                  <span className="text-[10px] text-gray-400">Background</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -919,6 +986,72 @@ export default function SurveyorsPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* ── Modal: Enviar mensaje directo al encuestador ── */}
+      <Dialog open={!!messagingTo} onOpenChange={(open) => { if (!open) { setMessagingTo(null); setMessageContent("") } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Enviar mensaje
+            </DialogTitle>
+            <DialogDescription>
+              {messagingTo && (
+                <span>
+                  Para: <strong>{messagingTo.name}</strong>
+                  <span className="ml-2 text-xs text-muted-foreground">{messagingTo.email}</span>
+                  {messagingTo.status === "active" && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-green-600 text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                      Activo ahora
+                    </span>
+                  )}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <Textarea
+              placeholder="Escribe tu mensaje aquí..."
+              className="min-h-[120px] resize-none"
+              value={messageContent}
+              autoFocus
+              onChange={(e) => setMessageContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault()
+                  handleSendDirectMessage()
+                }
+              }}
+            />
+            <p className="text-xs text-muted-foreground">Ctrl+Enter para enviar</p>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setMessagingTo(null); setMessageContent("") }}
+              disabled={isSendingMessage}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSendDirectMessage}
+              disabled={!messageContent.trim() || isSendingMessage}
+              className="gap-2"
+            >
+              {isSendingMessage ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Enviar mensaje
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </DashboardLayout>
   )
 }

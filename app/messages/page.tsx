@@ -48,26 +48,29 @@ export default function MessagesPage() {
     }
   }, [user, authLoading, router])
 
+  const fetchMessages = async () => {
+    if (!user) return
+    try {
+      const res = await fetch(`/api/messages?userId=${user.id}&limit=200`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data)) setMessages(data)
+    } catch (err) {
+      console.error("Error fetching messages:", err)
+    }
+  }
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch users
         const usersResponse = await fetch("/api/users")
-        if (!usersResponse.ok) {
-          throw new Error("Error al cargar usuarios")
-        }
+        if (!usersResponse.ok) throw new Error("Error al cargar usuarios")
         const usersData = await usersResponse.json()
-        setUsers(usersData)
+        setUsers(Array.isArray(usersData) ? usersData : [])
 
         // Fetch messages
-        if (user) {
-          const messagesResponse = await fetch(`/api/messages?userId=${user.id}`)
-          if (!messagesResponse.ok) {
-            throw new Error("Error al cargar mensajes")
-          }
-          const messagesData = await messagesResponse.json()
-          setMessages(messagesData)
-        }
+        await fetchMessages()
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
@@ -84,6 +87,34 @@ export default function MessagesPage() {
       fetchData()
     }
   }, [user, toast])
+
+  // Polling cada 5 segundos para nuevos mensajes (fallback si no hay Realtime)
+  useEffect(() => {
+    if (!user) return
+    const interval = setInterval(fetchMessages, 5000)
+    return () => clearInterval(interval)
+  }, [user])
+
+  // Marcar mensajes como leídos cuando se abre una conversación
+  useEffect(() => {
+    if (!selectedUser || !user) return
+    const unreadIds = messages
+      .filter((m) => m.sender === selectedUser && m.receiver === user.id && !m.read)
+      .map((m) => m.id)
+    if (unreadIds.length === 0) return
+
+    // Actualizar estado local inmediatamente
+    setMessages((prev) =>
+      prev.map((m) => (unreadIds.includes(m.id) ? { ...m, read: true } : m))
+    )
+
+    // Persistir en Supabase en background
+    fetch("/api/messages", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: unreadIds, read: true }),
+    }).catch(() => {})
+  }, [selectedUser])
 
   useEffect(() => {
     // Scroll to bottom when messages change or user selected

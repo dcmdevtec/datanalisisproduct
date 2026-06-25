@@ -16,13 +16,14 @@ const COMMON_DOMAINS = [
   "hotmail.com",
   "outlook.com",
   "yahoo.com",
-  "aol.com",
   "icloud.com",
-  "gmail.com.co",
   "live.com",
   "msn.com",
   "proton.me",
-  "protonmail.com",
+  "yahoo.es",
+  "gmail.com.co",
+  "hotmail.es",
+  "outlook.es",
 ]
 
 export function EmailAutocompleteInput({ value, onChange, domainSelector = false, ...props }: EmailAutocompleteInputProps) {
@@ -31,25 +32,38 @@ export function EmailAutocompleteInput({ value, onChange, domainSelector = false
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [dropdownStyles, setDropdownStyles] = useState<React.CSSProperties | null>(null)
   const portalRef = useRef<HTMLElement | null>(null)
+  const [isFocused, setIsFocused] = useState(false)
 
   useEffect(() => {
-    // When the user types local part and @, show domain suggestions; if they clear domain, show full list
+    if (!isFocused || !value) {
+      setSuggestions([])
+      return
+    }
+
     if (value.includes("@")) {
-      const [localPart, domainPart] = value.split("@")
-      if (domainPart !== undefined) {
-        const fragment = domainPart.trim()
-        const filteredDomains = fragment.length > 0
-          ? COMMON_DOMAINS.filter(domain => domain.startsWith(fragment))
-          : COMMON_DOMAINS
-        setSuggestions(filteredDomains.map(domain => `${localPart}@${domain}`))
-      } else {
-        setSuggestions(COMMON_DOMAINS.map(domain => `${localPart}@${domain}`))
+      // Usuario escribió "@" — filtrar por lo que escribió después
+      const atIdx = value.indexOf("@")
+      const localPart = value.substring(0, atIdx)
+      const domainPart = value.substring(atIdx + 1)
+
+      if (!localPart) {
+        setSuggestions([])
+        return
       }
+
+      const filtered = domainPart.length > 0
+        ? COMMON_DOMAINS.filter(d => d.startsWith(domainPart))
+        : COMMON_DOMAINS
+
+      setSuggestions(filtered.map(d => `${localPart}@${d}`))
+    } else if (value.length >= 2) {
+      // Usuario escribe la parte local — sugerir con todos los dominios
+      setSuggestions(COMMON_DOMAINS.map(d => `${value}@${d}`))
     } else {
       setSuggestions([])
     }
     setActiveSuggestion(0)
-  }, [value])
+  }, [value, isFocused])
 
   // Create or reuse a portal container on mount
   useEffect(() => {
@@ -146,10 +160,17 @@ export function EmailAutocompleteInput({ value, onChange, domainSelector = false
       <div className={`flex ${domainSelector ? 'items-stretch' : ''}`}>
         <Input
           ref={inputRef}
-          type="email"
+          type="text"
+          inputMode="email"
+          autoComplete="off"
           value={value}
           onChange={onChange}
           onKeyDown={handleKeyDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => {
+            // Pequeño delay para permitir el click en la sugerencia
+            setTimeout(() => setIsFocused(false), 150)
+          }}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={suggestions.length > 0}
@@ -183,23 +204,34 @@ export function EmailAutocompleteInput({ value, onChange, domainSelector = false
               id={listboxId}
               role="listbox"
               style={dropdownStyles}
-              className="bg-background border rounded-b-md shadow-lg max-h-60 overflow-auto"
+              className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-auto py-1"
             >
-              {suggestions.map((suggestion, index) => (
-                <li
-                  key={suggestion}
-                  id={`suggestion-${index}`}
-                  role="option"
-                  aria-selected={index === activeSuggestion}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  onMouseEnter={() => setActiveSuggestion(index)}
-                  className={`p-2 cursor-pointer hover:bg-muted ${
-                    index === activeSuggestion ? "bg-muted" : ""
-                  }`}
-                >
-                  {suggestion}
-                </li>
-              ))}
+              {suggestions.map((suggestion, index) => {
+                // Resaltar la parte del dominio visualmente
+                const atIdx = suggestion.indexOf("@")
+                const local = suggestion.substring(0, atIdx + 1)
+                const domain = suggestion.substring(atIdx + 1)
+                return (
+                  <li
+                    key={suggestion}
+                    id={`suggestion-${index}`}
+                    role="option"
+                    aria-selected={index === activeSuggestion}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    onMouseEnter={() => setActiveSuggestion(index)}
+                    className={`px-3 py-2 cursor-pointer text-sm flex items-center gap-0 transition-colors ${
+                      index === activeSuggestion
+                        ? "bg-teal-50 text-teal-900"
+                        : "hover:bg-gray-50 text-gray-800"
+                    }`}
+                  >
+                    <span className="text-gray-500">{local}</span>
+                    <span className={`font-semibold ${index === activeSuggestion ? "text-teal-700" : "text-gray-700"}`}>
+                      {domain}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>,
             portalRef.current,
           )
