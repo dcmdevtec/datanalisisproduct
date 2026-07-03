@@ -38,8 +38,11 @@ const nextConfig = {
     ],
   },
 
-  // Common server external packages
-  serverExternalPackages: ['@supabase/supabase-js', 'pdfkit'],
+  // serverExternalPackages: solo para módulos CJS nativos que webpack no puede bundlear.
+  // @supabase/supabase-js es ESM puro — no debe ir aquí (causa el error de build
+  // "Unexpected character '@'" porque webpack genera código JS inválido al externalizarlo).
+  // pdfkit sí necesita estar aquí porque tiene bindings nativos de Node.js.
+  serverExternalPackages: ['pdfkit'],
 
   // Compiler options
   compiler: {
@@ -70,11 +73,11 @@ const nextConfig = {
       }
     }
 
-    // Supabase specific configuration for server-side
-    if (isServer && process.env.NODE_ENV === 'production') { // Only for production server builds
-      config.externals = config.externals || []
-      config.externals.push('@supabase/supabase-js')
-    }
+    // NOTA: NO agregar @supabase/supabase-js a config.externals manualmente.
+    // Cuando webpack externaliza un módulo ESM con @scope usando config.externals.push(string),
+    // genera código inválido: `const X = @supabase/supabase-js;`
+    // lo que causa el error "Unexpected character '@'" en el build de Docker.
+    // Next.js ya maneja la externalización correcta vía serverExternalPackages.
 
     // Development specific webpack optimizations
     if (dev) {
@@ -103,7 +106,7 @@ const nextConfig = {
 
   // Experimental features
   experimental: {
-    runtime: process.env.NODE_ENV === 'production' ? 'nodejs' : undefined,
+    // runtime: deprecado en Next.js 15, eliminado para evitar warnings en build
     optimizePackageImports: process.env.NODE_ENV === 'development'
       ? ['lucide-react']
       : ['@radix-ui/react-icons', 'lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-tabs'],

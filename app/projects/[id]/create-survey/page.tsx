@@ -800,10 +800,22 @@ async function autoSaveQuestion(sectionId: string, question: Question, surveyId:
     validation_rules: question.config?.validation || null,
   };
   try {
-    // Upsert (insert/update) en Supabase
-    const { error } = await (supabase as any).from('questions').upsert([questionData], { onConflict: 'id' });
-    if (error) {
-      console.error('autoSaveQuestion error:', error);
+    // Guardar vía API route (bypasa RLS de questions — igual que handleSaveSection)
+    const res = await fetch(`/api/surveys/${surveyId}/sections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        section: {
+          id: sectionId,
+          title: 'auto-save',
+          order_num: 0,
+        },
+        questions: [questionData],
+      }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      console.error('autoSaveQuestion error:', json);
       return 'error';
     }
     debugLog('autoSaveQuestion: pregunta guardada', questionData);
@@ -1194,73 +1206,64 @@ export function CreateSurveyForProjectPageContent() {
         section.id = newId
       }
 
-      const sectionData = {
-        id: section.id,
-        survey_id: workingSurveyId,
-        title: (section.title || "Sin título").trim(),
-        title_html: section.title_html || "",
-        description: section.description || "",
-        order_num: sections.findIndex((s) => s.id === sectionId),
-        skip_logic: section.skipLogic || null,
-      }
-
-      debugLog("💾 Guardando sección (upsert):", sectionData)
-
-      const { data: savedSection, error: upsertError } = await supabase
-        .from("survey_sections")
-        .upsert([sectionData], { onConflict: "id" })
-        .select()
-
-      if (upsertError) {
-        console.error("❌ Error de Supabase al hacer upsert de sección:", upsertError)
-        throw new Error(upsertError.message || "Error al guardar la sección en la base de datos")
-      }
-
-      if (!savedSection || savedSection.length === 0) {
-        throw new Error("No se pudo obtener la sección guardada de la base de datos")
-      }
-
-      const savedSectionData = savedSection[0]
-
-      if (section.questions.length > 0) {
-        debugLog(`💾 Guardando ${section.questions.length} preguntas para la sección ${savedSectionData.id}`)
-        // Upsert (insert/update) cada pregunta individualmente para compatibilidad con auto-save
-        for (const [index, q] of section.questions.entries()) {
-          // Asegurar que la pregunta tenga un ID válido
-          if (!q.id || !uuidRegex.test(q.id)) {
-            q.id = generateUUID()
-          }
-
-          const questionData = {
-            id: q.id,
-            survey_id: workingSurveyId,
-            section_id: savedSectionData.id,
-            type: q.type,
-            text: (q.text || "").trim(),
-            options: q.options || [],
-            required: q.required || false,
-            order_num: index,
-            settings: {
-              ...q.config,
-              matrixRows: q.matrixRows,
-              matrixCols: q.matrixCols,
-              ratingScale: q.ratingScale,
-            },
-            matrix_rows: q.matrixRows || [],
-            matrix_cols: q.matrixCols || [],
-            rating_scale: q.ratingScale || null,
-            file_url: q.image || null,
-            skip_logic: q.config?.skipLogic || null,
-            display_logic: q.config?.displayLogic || null,
-            validation_rules: q.config?.validation || null,
-          };
-          const { error: qUpsertError } = await supabase.from("questions").upsert([questionData], { onConflict: "id" });
-          if (qUpsertError) {
-            console.error(`❌ Error al guardar pregunta ${q.id}:`, qUpsertError)
-            throw new Error(qUpsertError.message || `Error al guardar la pregunta ${index + 1}`)
-          }
+      // ── Preparar preguntas para el payload ─────────────────────────────────
+      const uuidRegex2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      const questionsPayload = section.questions.map((q, index) => {
+        // Asegurar UUID válido
+        const qId = (!q.id || !uuidRegex2.test(q.id)) ? generateUUID() : q.id
+        return {
+          id: qId,
+          type: q.type,
+          text: (q.text || '').trim(),
+          options: q.options || [],
+          required: q.required || false,
+          order_num: index,
+          settings: {
+            ...q.config,
+            matrixRows: q.matrixRows,
+            matrixCols: q.matrixCols,
+            ratingScale: q.ratingScale,
+          },
+          matrix_rows: q.matrixRows || [],
+          matrix_cols: q.matrixCols || [],
+          rating_scale: q.ratingScale || null,
+          file_url: q.image || null,
+          skip_logic: q.config?.skipLogic || null,
+          display_logic: q.config?.displayLogic || null,
+          validation_rules: q.config?.validation || null,
         }
+      })
+
+      // ── Llamar API route server-side (usa service_role, bypasa RLS) ─────────
+      // El cliente browser recibe 403 en survey_sections/questions porque RLS
+      // solo tiene política SELECT. La API route usa createAdminClient().
+      debugLog("💾 Enviando sección a /api/surveys/.../sections:", section.id)
+
+      const apiRes = await fetch(`/api/surveys/${workingSurveyId}/sections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section: {
+            id: section.id,
+            title: (section.title || 'Sin título').trim(),
+            title_html: section.title_html || '',
+            description: section.description || '',
+            order_num: sections.findIndex((s) => s.id === sectionId),
+            skip_logic: section.skipLogic || null,
+          },
+          questions: questionsPayload,
+        }),
+      })
+
+      const apiJson = await apiRes.json().catch(() => ({}))
+
+      if (!apiRes.ok || apiJson.error) {
+        const errMsg = apiJson.error || `HTTP ${apiRes.status}`
+        console.error("❌ Error API sections:", errMsg)
+        throw new Error(errMsg)
       }
+
+      const savedSectionData = apiJson.section
 
       // Actualizar estado de guardado
       setSectionSaveStates((prev) => ({
@@ -1424,7 +1427,18 @@ export function CreateSurveyForProjectPageContent() {
           display_logic: newQuestion.config?.displayLogic || null,
           validation_rules: newQuestion.config?.validation || null,
         };
-        const { data, error } = await supabase.from("questions").upsert([questionData], { onConflict: "id" }).select();
+        // Usar API route para bypasear RLS de questions
+        const newQRes = await fetch(`/api/surveys/${currentSurveyId}/sections`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section: { id: sectionId, title: 'auto-save', order_num: 0 },
+            questions: [questionData],
+          }),
+        });
+        const newQJson = await newQRes.json().catch(() => ({}));
+        const data = newQJson.questions || [];
+        const error = newQJson.error || (!newQRes.ok ? `HTTP ${newQRes.status}` : null);
         if (error) {
           console.error("❌ Error al guardar la nueva pregunta:", error);
         } else if (data && data.length > 0 && data[0].id && data[0].id !== newQuestion.id) {
@@ -2259,18 +2273,21 @@ export function CreateSurveyForProjectPageContent() {
             debugLog(`⚠️ Limpiando referencia en sección "${section.title}"`)
 
             // Validar que el ID de la sección sea un UUID válido antes de actualizar
-            if (uuidRegex.test(section.id)) {
-              // Actualizar en la base de datos
-              const { error: updateError } = await supabase
-                .from("survey_sections")
-                .update({
-                  skip_logic: { enabled: false, action: "next_section" },
-                })
-                .eq("id", section.id)
-
-              if (updateError) {
-                console.error("❌ Error al limpiar lógica de sección:", updateError)
-              }
+            if (uuidRegex.test(section.id) && currentSurveyId) {
+              // Limpiar skip_logic vía API route (bypasa RLS)
+              fetch(`/api/surveys/${currentSurveyId}/sections`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  section: {
+                    id: section.id,
+                    title: section.title || 'Sin título',
+                    order_num: section.order_num ?? 0,
+                    skip_logic: { enabled: false, action: "next_section" },
+                  },
+                  questions: [],
+                }),
+              }).catch(e => console.error("❌ Error al limpiar lógica de sección:", e))
             } else {
               debugWarn("⚠️ Sección con ID inválido encontrada:", section.id)
             }
@@ -2324,59 +2341,16 @@ export function CreateSurveyForProjectPageContent() {
         // PASO 2: Eliminar preguntas de la sección
         debugLog("🗑️ PASO 2: Eliminando preguntas de la sección...")
 
-        // Primero verificar si hay preguntas en la sección
-        const { data: questionsInSection, error: checkError } = await supabase
-          .from("questions")
-          .select("id, text")
-          .eq("section_id", sectionId)
+        // PASO 2 y 3: Eliminar preguntas + sección vía API route (bypasa RLS)
+        debugLog("🗑️ PASO 2-3: Eliminando sección vía API route...")
 
-        if (checkError) {
-          console.error("❌ Error al verificar preguntas de la sección:", checkError)
-          throw new Error(`Error al verificar preguntas: ${checkError.message}`)
-        }
-
-        debugLog(`📊 Sección tiene ${questionsInSection?.length || 0} preguntas`)
-
-        if (questionsInSection && questionsInSection.length > 0) {
-          // Intentar eliminar las preguntas
-          const { error: deleteQuestionsError } = await supabase.from("questions").delete().eq("section_id", sectionId)
-
-          if (deleteQuestionsError) {
-            console.error("❌ Error al eliminar preguntas:", deleteQuestionsError)
-            console.error("❌ Detalles del error:", {
-              code: deleteQuestionsError.code,
-              message: deleteQuestionsError.message,
-              details: deleteQuestionsError.details,
-              hint: deleteQuestionsError.hint,
-            })
-
-            // Intentar obtener más información sobre el error
-            if (deleteQuestionsError.code === "23503") {
-              throw new Error(
-                "No se pueden eliminar las preguntas porque están referenciadas por otras partes del sistema (restricción de clave foránea)",
-              )
-            } else if (deleteQuestionsError.code === "42501") {
-              throw new Error("No tienes permisos para eliminar preguntas en esta encuesta")
-            } else if (deleteQuestionsError.code === "22P02") {
-              throw new Error("Error de formato: Los IDs de las preguntas no tienen el formato correcto (UUID)")
-            } else {
-              throw new Error(`Error al eliminar preguntas: ${deleteQuestionsError.message}`)
-            }
-          }
-
-          debugLog("✅ Preguntas eliminadas exitosamente")
-        } else {
-          debugLog("ℹ️ No hay preguntas que eliminar en esta sección")
-        }
-
-        // PASO 3: Eliminar la sección
-        debugLog("🗑️ PASO 3: Eliminando sección...")
-
-        const { error: deleteSectionError } = await supabase.from("survey_sections").delete().eq("id", sectionId)
-
-        if (deleteSectionError) {
-          console.error("❌ Error al eliminar sección:", deleteSectionError)
-          throw new Error(`Error al eliminar sección: ${deleteSectionError.message}`)
+        const delRes = await fetch(
+          `/api/surveys/${currentSurveyId}/sections?sectionId=${sectionId}`,
+          { method: 'DELETE' }
+        )
+        const delJson = await delRes.json().catch(() => ({}))
+        if (!delRes.ok || delJson.error) {
+          throw new Error(delJson.error || `Error al eliminar sección (HTTP ${delRes.status})`)
         }
 
         debugLog("✅ Sección eliminada exitosamente")
