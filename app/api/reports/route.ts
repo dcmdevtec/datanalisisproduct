@@ -170,6 +170,35 @@ export async function GET(request: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }))
 
+    // Responses by hour of day (0–23)
+    const responsesByHour = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }))
+    for (const r of responses || []) {
+      const h = new Date(r.created_at).getHours()
+      responsesByHour[h].count++
+    }
+    const peakHour = responsesByHour.reduce((best, cur) => cur.count > best.count ? cur : best, responsesByHour[0]).hour
+
+    // Active days (days with at least 1 response)
+    const activeDays = Object.keys(responsesByDay).length
+    const avgPerDay = activeDays > 0 ? Math.round(totalResponses / activeDays) : 0
+
+    // Total surveys that have at least 1 response in this filter
+    const surveysWithData = [...new Set((responses || []).map((r: any) => r.survey_id))].length
+
+    // Trend: compare first half vs second half of timeline
+    let trendPct = 0
+    if (responsesTimeline.length >= 4) {
+      const half = Math.floor(responsesTimeline.length / 2)
+      const firstHalf = responsesTimeline.slice(0, half).reduce((s, d) => s + d.count, 0)
+      const secondHalf = responsesTimeline.slice(half).reduce((s, d) => s + d.count, 0)
+      trendPct = firstHalf > 0 ? Math.round(((secondHalf - firstHalf) / firstHalf) * 100) : 0
+    }
+
+    // Peak day (day with most responses)
+    const peakDay = responsesTimeline.length > 0
+      ? responsesTimeline.reduce((best, cur) => cur.count > best.count ? cur : best, responsesTimeline[0])
+      : null
+
     // Previous period comparison
     let prevResponses = 0
     if (dateFrom) {
@@ -261,6 +290,37 @@ export async function GET(request: NextRequest) {
       responsesByDayOfWeek[dayNames[dayIdx]] = (responsesByDayOfWeek[dayNames[dayIdx]] || 0) + 1
     }
     const dailyDistribution = dayNames.map((d) => ({ day: d, count: responsesByDayOfWeek[d] || 0 }))
+
+    // Per-survey performance (works even without assignments — from responses table directly)
+    const surveyPerfMap: Record<string, { title: string; total: number; completed: number; timeDiffs: number[] }> = {}
+    for (const r of responses || []) {
+      const sid = r.survey_id as string
+      const title = (r.surveys as any)?.title || "Sin título"
+      if (!surveyPerfMap[sid]) surveyPerfMap[sid] = { title, total: 0, completed: 0, timeDiffs: [] }
+      surveyPerfMap[sid].total++
+      if (r.status === "completed") {
+        surveyPerfMap[sid].completed++
+        if (r.completed_at && r.created_at) {
+          const diff = (new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000
+          if (diff > 0 && diff < 7200) surveyPerfMap[sid].timeDiffs.push(diff)
+        }
+      }
+    }
+    const surveyPerformance = Object.entries(surveyPerfMap)
+      .map(([, s]) => {
+        const avgSecs = s.timeDiffs.length > 0
+          ? Math.round(s.timeDiffs.reduce((a, b) => a + b, 0) / s.timeDiffs.length) : 0
+        const m = Math.floor(avgSecs / 60)
+        const sec = avgSecs % 60
+        return {
+          title: s.title,
+          totalResponses: s.total,
+          completedResponses: s.completed,
+          completionRate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0,
+          avgTime: avgSecs > 0 ? `${m}:${String(sec).padStart(2, "0")}` : "—",
+        }
+      })
+      .sort((a, b) => b.totalResponses - a.totalResponses)
 
     // === GEOGRAPHIC TAB ===
     const zoneResponseMap: Record<string, { name: string; responseCount: number; completedCount: number }> = {}
@@ -389,9 +449,16 @@ export async function GET(request: NextRequest) {
         nps,
         responseGrowth,
         responsesTimeline,
+        responsesByHour,
+        peakHour,
+        activeDays,
+        avgPerDay,
+        surveysWithData,
+        trendPct,
+        peakDay,
       },
       responses: { questionBreakdowns },
-      performance: { surveyorPerformance, dailyDistribution },
+      performance: { surveyorPerformance, dailyDistribution, surveyPerformance },
       geographic: { zoneBreakdown, zonePolygons, responsePoints },
     })
   } catch (error) {

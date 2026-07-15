@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { BarChart3, Download, Loader2, PieChart, TrendingUp, AlertCircle } from "lucide-react"
+import { BarChart3, Download, Loader2, PieChart, TrendingUp, TrendingDown, AlertCircle, Clock, Calendar, Zap, Target, BookOpen, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
+// Note: PieChart kept for empty state icon
 import { useToast } from "@/components/ui/use-toast"
 import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
 
@@ -30,6 +31,13 @@ interface ReportData {
     nps: number | null
     responseGrowth: number
     responsesTimeline: { date: string; count: number }[]
+    responsesByHour: { hour: number; count: number }[]
+    peakHour: number
+    activeDays: number
+    avgPerDay: number
+    surveysWithData: number
+    trendPct: number
+    peakDay: { date: string; count: number } | null
   }
   responses: {
     questionBreakdowns: {
@@ -50,6 +58,13 @@ interface ReportData {
       completionRate: number
     }[]
     dailyDistribution: { day: string; count: number }[]
+    surveyPerformance: {
+      title: string
+      totalResponses: number
+      completedResponses: number
+      completionRate: number
+      avgTime: string
+    }[]
   }
   geographic: {
     zoneBreakdown: {
@@ -188,6 +203,14 @@ export default function ReportsPage() {
   const maxTimelineCount = Math.max(...(summary?.responsesTimeline?.map((d) => d.count) || [1]))
   const maxDailyCount = Math.max(...(data?.performance?.dailyDistribution?.map((d) => d.count) || [1]))
   const maxZoneResponses = Math.max(...(data?.geographic?.zoneBreakdown?.map((z) => z.responseCount) || [1]))
+  const maxHourCount = Math.max(...(summary?.responsesByHour?.map((h) => h.count) || [1]))
+
+  const formatHour = (h: number) => {
+    const ampm = h < 12 ? "AM" : "PM"
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${display}:00 ${ampm}`
+  }
+
 
   return (
     <DashboardLayout>
@@ -267,71 +290,183 @@ export default function ReportsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div id="export-summary">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" data-export-chart>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Total de Respuestas</CardTitle>
+              <div id="export-summary" className="space-y-6">
+
+                {/* ── Fila 1: KPIs principales ── */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-export-chart>
+                  {/* Total Respuestas */}
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <BarChart3 className="h-3.5 w-3.5 text-[#18b0a4]" /> Total Respuestas
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{summary?.totalResponses?.toLocaleString() ?? "0"}</div>
-                      <p className="text-xs text-muted-foreground">{summary ? formatGrowth(summary.responseGrowth) : ""}</p>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold text-foreground">{summary?.totalResponses?.toLocaleString() ?? "0"}</div>
+                      <div className="flex items-center gap-1 mt-1">
+                        {(summary?.responseGrowth ?? 0) > 0 ? (
+                          <ArrowUpRight className="h-3.5 w-3.5 text-[#18b0a4]" />
+                        ) : (summary?.responseGrowth ?? 0) < 0 ? (
+                          <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />
+                        ) : (
+                          <Minus className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                        <p className={`text-xs font-medium ${(summary?.responseGrowth ?? 0) > 0 ? "text-[#18b0a4]" : (summary?.responseGrowth ?? 0) < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                          {summary ? formatGrowth(summary.responseGrowth) : ""}
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Tasa de Finalización</CardTitle>
+
+                  {/* Tasa Finalización — Donut */}
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <Target className="h-3.5 w-3.5 text-[#18b0a4]" /> Tasa de Finalización
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{summary?.completionRate ?? 0}%</div>
-                      <p className="text-xs text-muted-foreground">Encuestas completadas vs iniciadas</p>
+                    <CardContent className="px-4 pb-4 flex items-center gap-3">
+                      <div className="relative flex-shrink-0" style={{ width: 52, height: 52 }}>
+                        <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                          <circle cx="18" cy="18" r="14" fill="none" stroke="hsl(var(--muted))" strokeWidth="4" />
+                          <circle cx="18" cy="18" r="14" fill="none" stroke="#18b0a4" strokeWidth="4"
+                            strokeDasharray={`${(summary?.completionRate ?? 0) * 0.879} 87.9`}
+                            strokeLinecap="round" />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold">
+                          {summary?.completionRate ?? 0}%
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold">{summary?.completionRate ?? 0}%</div>
+                        <p className="text-xs text-muted-foreground">
+                          {Math.round(((summary?.completionRate ?? 0) / 100) * (summary?.totalResponses ?? 0))} completadas
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Tiempo Promedio</CardTitle>
+
+                  {/* Tiempo Promedio */}
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-[#18b0a4]" /> Tiempo Promedio
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{summary?.avgTime || "—"}</div>
-                      <p className="text-xs text-muted-foreground">Minutos:segundos por encuesta</p>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold font-mono">{summary?.avgTime || "—"}</div>
+                      <p className="text-xs text-muted-foreground mt-1">min:seg por encuesta</p>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">NPS</CardTitle>
+
+                  {/* Preguntas Analizadas */}
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <BookOpen className="h-3.5 w-3.5 text-[#18b0a4]" /> Preguntas Analizadas
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{summary?.nps ?? "—"}</div>
-                      <p className="text-xs text-muted-foreground">{summary?.nps !== null ? "Net Promoter Score" : "Sin datos de NPS"}</p>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold">{data?.responses?.questionBreakdowns?.length ?? 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">con al menos 1 respuesta</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card data-export-chart>
+                {/* ── Fila 2: KPIs secundarios ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <Card className="border-dashed">
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Promedio / día</span>
+                      </div>
+                      <div className="text-2xl font-bold">{summary?.avgPerDay ?? 0}</div>
+                      <p className="text-xs text-muted-foreground">{summary?.activeDays ?? 0} días activos</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-dashed">
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Hora pico</span>
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {summary?.totalResponses ? formatHour(summary.peakHour) : "—"}
+                      </div>
+                      <p className="text-xs text-muted-foreground">mayor actividad</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-dashed">
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <BookOpen className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Encuestas</span>
+                      </div>
+                      <div className="text-2xl font-bold">{summary?.surveysWithData ?? 0}</div>
+                      <p className="text-xs text-muted-foreground">con respuestas</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-dashed">
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        {(summary?.trendPct ?? 0) >= 0
+                          ? <TrendingUp className="h-4 w-4 text-[#18b0a4]" />
+                          : <TrendingDown className="h-4 w-4 text-red-500" />}
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tendencia</span>
+                      </div>
+                      <div className={`text-2xl font-bold ${(summary?.trendPct ?? 0) >= 0 ? "text-[#18b0a4]" : "text-red-500"}`}>
+                        {(summary?.trendPct ?? 0) > 0 ? "+" : ""}{summary?.trendPct ?? 0}%
+                      </div>
+                      <p className="text-xs text-muted-foreground">2ª mitad vs 1ª mitad</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* ── Fila 3: Gráficos principales ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Timeline — ocupa 2 columnas */}
+                  <Card className="lg:col-span-2" data-export-chart>
                     <CardHeader>
-                      <CardTitle>Respuestas por Tiempo</CardTitle>
-                      <CardDescription>Evolución de respuestas en el período</CardDescription>
+                      <CardTitle className="text-base">Evolución de Respuestas</CardTitle>
+                      <CardDescription>Número de respuestas recibidas por día</CardDescription>
                     </CardHeader>
                     <CardContent>
                       {(summary?.responsesTimeline?.length ?? 0) === 0 ? (
-                        <div className="h-80 flex items-center justify-center text-muted-foreground">
+                        <div className="h-56 flex items-center justify-center text-muted-foreground">
                           <div className="text-center">
-                            <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                            <p>No hay datos para el período seleccionado</p>
+                            <TrendingUp className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">No hay datos para el período</p>
                           </div>
                         </div>
                       ) : (
-                        <div className="h-80 flex items-end gap-1 pt-4">
+                        <div className="h-56 flex items-end gap-0.5 pt-6 relative">
+                          {/* Grid lines */}
+                          {[25, 50, 75].map((pct) => (
+                            <div key={pct} className="absolute left-0 right-0 border-t border-dashed border-muted" style={{ bottom: `${pct}%` }} />
+                          ))}
                           {summary!.responsesTimeline.map((d, i) => (
-                            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-                              <span className="text-xs text-muted-foreground mb-1">{d.count}</span>
+                            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
+                              {/* Tooltip on hover */}
+                              <div className="hidden group-hover:flex flex-col items-center absolute mb-1 z-10">
+                                <div className="bg-foreground text-background text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap">
+                                  {d.date.slice(5)}: {d.count}
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground mb-0.5 group-hover:text-primary transition-colors">{d.count > 0 ? d.count : ""}</span>
                               <div
-                                className="w-full bg-primary rounded-t-sm min-h-[4px]"
+                                className="w-full bg-primary/80 hover:bg-primary rounded-t-sm min-h-[3px] transition-all cursor-default"
                                 style={{ height: `${Math.max((d.count / maxTimelineCount) * 100, 2)}%` }}
                               />
-                              {summary!.responsesTimeline.length <= 14 && (
-                                <span className="text-[10px] text-muted-foreground mt-1 truncate w-full text-center">
+                              {summary!.responsesTimeline.length <= 18 && (
+                                <span className="text-[9px] text-muted-foreground mt-1 truncate w-full text-center">
                                   {d.date.slice(5)}
                                 </span>
                               )}
@@ -341,45 +476,176 @@ export default function ReportsPage() {
                       )}
                     </CardContent>
                   </Card>
+
+                  {/* Donut grande completación */}
                   <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle>Distribución por Estado</CardTitle>
-                      <CardDescription>Estado de las respuestas</CardDescription>
+                      <CardTitle className="text-base">Estado de Respuestas</CardTitle>
+                      <CardDescription>Distribución completadas vs pendientes</CardDescription>
                     </CardHeader>
-                    <CardContent className="h-80 flex items-center justify-center">
+                    <CardContent className="flex flex-col items-center justify-center h-56 gap-4">
                       {summary && summary.totalResponses > 0 ? (
-                        <div className="w-full space-y-4">
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span>Completadas</span>
-                              <span className="font-medium">{summary.completionRate}%</span>
-                            </div>
-                            <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
-                              <div className="h-full bg-green-500 rounded-full" style={{ width: `${summary.completionRate}%` }} />
+                        <>
+                          <div className="relative" style={{ width: 120, height: 120 }}>
+                            <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                              <circle cx="18" cy="18" r="14" fill="none" stroke="hsl(var(--muted))" strokeWidth="3.5" />
+                              <circle cx="18" cy="18" r="14" fill="none" stroke="#18b0a4" strokeWidth="3.5"
+                                strokeDasharray={`${summary.completionRate * 0.879} 87.9`}
+                                strokeLinecap="round" className="transition-all duration-700" />
+                              {(100 - summary.completionRate) > 0 && (
+                                <circle cx="18" cy="18" r="14" fill="none" stroke="#e2e8f0" strokeWidth="3.5"
+                                  strokeDasharray={`${(100 - summary.completionRate) * 0.879} 87.9`}
+                                  strokeDashoffset={`${-summary.completionRate * 0.879}`}
+                                  strokeLinecap="round" className="transition-all duration-700" />
+                              )}
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                              <span className="text-2xl font-bold">{summary.completionRate}%</span>
+                              <span className="text-[10px] text-muted-foreground">completadas</span>
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span>Incompletas</span>
-                              <span className="font-medium">{100 - summary.completionRate}%</span>
+                          <div className="w-full space-y-1.5 text-sm">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: "#18b0a4" }} />
+                                <span className="text-muted-foreground">Completadas</span>
+                              </div>
+                              <span className="font-semibold">{Math.round((summary.completionRate / 100) * summary.totalResponses)}</span>
                             </div>
-                            <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
-                              <div className="h-full bg-orange-400 rounded-full" style={{ width: `${100 - summary.completionRate}%` }} />
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-slate-200 flex-shrink-0" />
+                                <span className="text-muted-foreground">Incompletas</span>
+                              </div>
+                              <span className="font-semibold">{Math.round(((100 - summary.completionRate) / 100) * summary.totalResponses)}</span>
                             </div>
                           </div>
-                          <div className="pt-4 text-center text-sm text-muted-foreground">
-                            {summary.totalResponses.toLocaleString()} respuestas totales
-                          </div>
-                        </div>
+                        </>
                       ) : (
                         <div className="text-center text-muted-foreground">
-                          <PieChart className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                          <p>No hay respuestas</p>
+                          <PieChart className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">Sin respuestas aún</p>
                         </div>
                       )}
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* ── Fila 4: Hora del día + Insights ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Distribución por hora */}
+                  <Card className="lg:col-span-2" data-export-chart>
+                    <CardHeader>
+                      <CardTitle className="text-base">Actividad por Hora del Día</CardTitle>
+                      <CardDescription>¿A qué hora responden más las personas?</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(summary?.totalResponses ?? 0) === 0 ? (
+                        <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">Sin datos</div>
+                      ) : (
+                        <div className="h-40 flex items-end gap-px pt-4">
+                          {(summary?.responsesByHour ?? []).map((h, i) => {
+                            const isPeak = h.hour === summary?.peakHour && h.count > 0
+                            return (
+                              <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                                {h.count > 0 && (
+                                  <div className="hidden group-hover:block absolute bottom-full mb-1 z-10 bg-foreground text-background text-[9px] px-1 py-0.5 rounded whitespace-nowrap">
+                                    {formatHour(h.hour)}: {h.count}
+                                  </div>
+                                )}
+                                <div
+                                  className={`w-full rounded-t-sm min-h-[2px] transition-all ${isPeak ? "bg-primary" : "bg-primary/30 hover:bg-primary/60"}`}
+                                  style={{ height: `${Math.max((h.count / maxHourCount) * 100, h.count > 0 ? 4 : 0)}%` }}
+                                />
+                                {i % 6 === 0 && (
+                                  <span className="text-[9px] text-muted-foreground mt-1">{i}h</span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {summary && summary.totalResponses > 0 && (
+                        <p className="text-xs text-muted-foreground mt-3 text-center">
+                          Pico de actividad: <span className="font-semibold text-primary">{formatHour(summary.peakHour)}</span>
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Insights automáticos */}
+                  <Card className="bg-muted/30">
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-yellow-500" />
+                        Insights
+                      </CardTitle>
+                      <CardDescription>Análisis automático del período</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(summary?.totalResponses ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sin datos para analizar</p>
+                      ) : (
+                        <ul className="space-y-3 text-sm">
+                          {/* Tendencia */}
+                          <li className="flex gap-2">
+                            {(summary?.trendPct ?? 0) >= 0
+                              ? <TrendingUp className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
+                              : <TrendingDown className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />}
+                            <span className="text-muted-foreground">
+                              Las respuestas <strong className={(summary?.trendPct ?? 0) >= 0 ? "text-[#18b0a4]" : "text-red-500"}>
+                                {(summary?.trendPct ?? 0) >= 0 ? "subieron" : "bajaron"} {Math.abs(summary?.trendPct ?? 0)}%
+                              </strong> en la segunda mitad del período
+                            </span>
+                          </li>
+                          {/* Día más activo */}
+                          {summary?.peakDay && (
+                            <li className="flex gap-2">
+                              <Calendar className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
+                              <span className="text-muted-foreground">
+                                Día más activo: <strong className="text-foreground">{summary.peakDay.date.slice(5)}</strong> con {summary.peakDay.count} respuestas
+                              </span>
+                            </li>
+                          )}
+                          {/* Hora pico */}
+                          <li className="flex gap-2">
+                            <Clock className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
+                            <span className="text-muted-foreground">
+                              Mayor actividad a las <strong className="text-foreground">{formatHour(summary?.peakHour ?? 0)}</strong>
+                            </span>
+                          </li>
+                          {/* Tasa finalización */}
+                          <li className="flex gap-2">
+                            <Target className="h-4 w-4 flex-shrink-0 mt-0.5 text-[#18b0a4]" />
+                            <span className="text-muted-foreground">
+                              {summary?.completionRate === 100
+                                ? <><strong className="text-[#18b0a4]">100%</strong> de finalización — sin abandonos</>
+                                : summary?.completionRate && summary.completionRate >= 80
+                                ? <><strong className="text-[#18b0a4]">{summary.completionRate}%</strong> de finalización — muy buena tasa</>
+                                : <><strong className="text-amber-500">{summary?.completionRate}%</strong> de finalización — revisar preguntas</>
+                              }
+                            </span>
+                          </li>
+                          {/* Velocidad */}
+                          <li className="flex gap-2">
+                            <BarChart3 className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
+                            <span className="text-muted-foreground">
+                              Promedio de <strong className="text-foreground">{summary?.avgPerDay ?? 0} resp/día</strong> en {summary?.activeDays ?? 0} días activos
+                            </span>
+                          </li>
+                          {/* Preguntas */}
+                          <li className="flex gap-2">
+                            <BookOpen className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
+                            <span className="text-muted-foreground">
+                              <strong className="text-foreground">{data?.responses?.questionBreakdowns?.length ?? 0} preguntas</strong> con datos en este período
+                            </span>
+                          </li>
+                        </ul>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
               </div>
             )}
           </TabsContent>
@@ -470,90 +736,173 @@ export default function ReportsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div id="export-performance">
+              <div id="export-performance" className="space-y-6">
+
+                {/* ── KPIs de rendimiento ── */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Total Respuestas</p>
+                      <div className="text-3xl font-bold">{summary?.totalResponses?.toLocaleString() ?? 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">en el período</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Encuestas Activas</p>
+                      <div className="text-3xl font-bold">{data?.performance?.surveyPerformance?.length ?? 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">con respuestas</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Encuestadores</p>
+                      <div className="text-3xl font-bold">{data?.performance?.surveyorPerformance?.length ?? 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">con asignaciones</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 px-4 pb-4">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Tasa Global</p>
+                      <div className="text-3xl font-bold" style={{ color: "#18b0a4" }}>{summary?.completionRate ?? 0}%</div>
+                      <p className="text-xs text-muted-foreground mt-1">finalización</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* ── Rendimiento por encuesta (siempre visible) ── */}
                 <Card data-export-chart>
                   <CardHeader>
-                    <CardTitle>Rendimiento de Encuestadores</CardTitle>
-                    <CardDescription>Métricas de productividad por encuestador</CardDescription>
+                    <CardTitle>Rendimiento por Encuesta</CardTitle>
+                    <CardDescription>Respuestas, completación y tiempo promedio por encuesta</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {(data?.performance?.surveyorPerformance?.length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de encuestadores</p>
+                    {(data?.performance?.surveyPerformance?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-muted-foreground py-8 text-center">No hay respuestas registradas</p>
                     ) : (
-                      <div className="space-y-4">
-                        <div className="rounded-md border">
-                          <div className="grid grid-cols-4 p-3 font-medium border-b">
-                            <div>Encuestador</div>
-                            <div className="text-center">Asignaciones</div>
-                            <div className="text-center">Completadas</div>
-                            <div className="text-center">Tasa de Finalización</div>
-                          </div>
-                          <div className="divide-y">
-                            {data!.performance.surveyorPerformance.map((s, i) => (
-                              <div key={i} className="grid grid-cols-4 p-3 items-center">
-                                <div className="font-medium">{s.name}</div>
-                                <div className="text-center">{s.totalAssignments}</div>
-                                <div className="text-center">{s.completedAssignments}</div>
-                                <div className="text-center">
-                                  <span className={s.completionRate >= 80 ? "text-green-600" : s.completionRate >= 50 ? "text-orange-500" : "text-red-500"}>
+                      <div className="rounded-md border overflow-hidden">
+                        <div className="grid grid-cols-12 p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                          <div className="col-span-5">Encuesta</div>
+                          <div className="col-span-2 text-center">Respuestas</div>
+                          <div className="col-span-2 text-center">Completadas</div>
+                          <div className="col-span-2 text-center">Tasa</div>
+                          <div className="col-span-1 text-center">Tiempo</div>
+                        </div>
+                        <div className="divide-y">
+                          {data!.performance.surveyPerformance.map((s, i) => (
+                            <div key={i} className="grid grid-cols-12 px-3 py-3 items-center hover:bg-muted/20 transition-colors">
+                              <div className="col-span-5 font-medium text-sm truncate pr-3" title={s.title}>{s.title}</div>
+                              <div className="col-span-2 text-center text-sm">{s.totalResponses}</div>
+                              <div className="col-span-2 text-center text-sm">{s.completedResponses}</div>
+                              <div className="col-span-2 text-center">
+                                <span className="inline-flex items-center gap-1">
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                    style={{ background: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}
+                                  />
+                                  <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
                                     {s.completionRate}%
                                   </span>
-                                </div>
+                                </span>
                               </div>
-                            ))}
-                          </div>
+                              <div className="col-span-1 text-center text-xs text-muted-foreground font-mono">{s.avgTime}</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
                   </CardContent>
                 </Card>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* ── Rendimiento por encuestador (si hay assignments) ── */}
+                {(data?.performance?.surveyorPerformance?.length ?? 0) > 0 && (
                   <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle>Respuestas por Día de la Semana</CardTitle>
-                      <CardDescription>Distribución semanal de respuestas</CardDescription>
+                      <CardTitle>Rendimiento por Encuestador</CardTitle>
+                      <CardDescription>Asignaciones completadas vs pendientes por encuestador</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-64 flex items-end gap-3 pt-4">
-                        {data?.performance?.dailyDistribution?.map((d, i) => (
-                          <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-                            <span className="text-xs text-muted-foreground mb-1">{d.count}</span>
-                            <div
-                              className="w-full bg-primary rounded-t-sm min-h-[4px]"
-                              style={{ height: `${Math.max((d.count / maxDailyCount) * 100, 2)}%` }}
-                            />
-                            <span className="text-xs text-muted-foreground mt-1">{d.day}</span>
-                          </div>
-                        ))}
+                      <div className="rounded-md border overflow-hidden">
+                        <div className="grid grid-cols-4 p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                          <div>Encuestador</div>
+                          <div className="text-center">Asignaciones</div>
+                          <div className="text-center">Completadas</div>
+                          <div className="text-center">Tasa</div>
+                        </div>
+                        <div className="divide-y">
+                          {data!.performance.surveyorPerformance.map((s, i) => (
+                            <div key={i} className="grid grid-cols-4 p-3 items-center hover:bg-muted/20 transition-colors">
+                              <div className="font-medium text-sm">{s.name}</div>
+                              <div className="text-center text-sm">{s.totalAssignments}</div>
+                              <div className="text-center text-sm">{s.completedAssignments}</div>
+                              <div className="text-center">
+                                <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
+                                  {s.completionRate}%
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
+                )}
+
+                {/* ── Distribución semanal ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle>Resumen General</CardTitle>
-                      <CardDescription>Indicadores clave de rendimiento</CardDescription>
+                      <CardTitle className="text-base">Actividad por Día de la Semana</CardTitle>
+                      <CardDescription>¿Qué días se reciben más respuestas?</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-6 pt-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Total encuestadores</span>
-                        <span className="text-2xl font-bold">{data?.performance?.surveyorPerformance?.length ?? 0}</span>
+                    <CardContent>
+                      <div className="h-48 flex items-end gap-3 pt-4">
+                        {data?.performance?.dailyDistribution?.map((d, i) => {
+                          const isMax = d.count === maxDailyCount && d.count > 0
+                          return (
+                            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                              <span className="text-xs text-muted-foreground mb-1">{d.count > 0 ? d.count : ""}</span>
+                              <div
+                                className="w-full rounded-t-sm min-h-[4px] transition-all"
+                                style={{
+                                  height: `${Math.max((d.count / maxDailyCount) * 100, d.count > 0 ? 3 : 0)}%`,
+                                  background: isMax ? "#18b0a4" : "#18b0a420",
+                                }}
+                              />
+                              <span className="text-xs text-muted-foreground mt-1.5 font-medium">{d.day}</span>
+                            </div>
+                          )
+                        })}
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Promedio de finalización</span>
-                        <span className="text-2xl font-bold">
-                          {data?.performance?.surveyorPerformance && data.performance.surveyorPerformance.length > 0
-                            ? Math.round(data.performance.surveyorPerformance.reduce((s, p) => s + p.completionRate, 0) / data.performance.surveyorPerformance.length)
-                            : 0}%
-                        </span>
+                    </CardContent>
+                  </Card>
+
+                  <Card data-export-chart>
+                    <CardHeader>
+                      <CardTitle className="text-base">Velocidad de Campo</CardTitle>
+                      <CardDescription>Ritmo de recolección de respuestas</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5 pt-2">
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">Respuestas totales</span>
+                        <span className="text-xl font-bold">{summary?.totalResponses?.toLocaleString() ?? 0}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Total respuestas período</span>
-                        <span className="text-2xl font-bold">{summary?.totalResponses?.toLocaleString() ?? 0}</span>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">Días con actividad</span>
+                        <span className="text-xl font-bold">{summary?.activeDays ?? 0}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">Promedio diario</span>
+                        <span className="text-xl font-bold" style={{ color: "#18b0a4" }}>{summary?.avgPerDay ?? 0} resp/día</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-muted-foreground">Tiempo promedio</span>
+                        <span className="text-xl font-bold font-mono">{summary?.avgTime || "—"}</span>
                       </div>
                     </CardContent>
                   </Card>
                 </div>
+
               </div>
             )}
           </TabsContent>
