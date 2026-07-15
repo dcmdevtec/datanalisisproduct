@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -11,6 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BarChart3, Download, Loader2, PieChart, TrendingUp, AlertCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
+
+// Dynamic import del mapa para evitar problemas SSR con Leaflet
+const ReportsGeoMap = dynamic(() => import("@/components/reports-geo-map"), {
+  ssr: false,
+  loading: () => <div className="w-full rounded-xl bg-muted animate-pulse" style={{ height: 460 }} />,
+})
 
 interface ReportData {
   companies: { id: string; name: string }[]
@@ -51,6 +58,22 @@ interface ReportData {
       completedCount: number
       percentage: number
       completionRate: number
+    }[]
+    zonePolygons: {
+      id: string
+      name: string
+      geometry: any
+      zoneColor: string
+      responseCount: number
+      completedCount: number
+      completionRate: number
+    }[]
+    responsePoints: {
+      lat: number
+      lng: number
+      status: string
+      createdAt: string
+      source?: string
     }[]
   }
 }
@@ -548,7 +571,32 @@ export default function ReportsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div id="export-geographic">
+              <div id="export-geographic" className="space-y-6">
+                {/* ── Mapa interactivo ── */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base">Mapa de Respuestas</CardTitle>
+                        <CardDescription>
+                          Visualización geográfica de zonas y puntos de respuesta
+                        </CardDescription>
+                      </div>
+                      {(data?.geographic?.responsePoints?.length ?? 0) > 0 && (
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                          {data!.geographic.responsePoints.length.toLocaleString()} puntos
+                        </span>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    <ReportsGeoMap
+                      zonePolygons={data?.geographic?.zonePolygons ?? []}
+                      responsePoints={data?.geographic?.responsePoints ?? []}
+                    />
+                  </CardContent>
+                </Card>
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card data-export-chart>
                     <CardHeader>

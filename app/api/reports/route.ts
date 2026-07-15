@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     // --- Build responses query with filters ---
     let responsesQuery = admin.from("responses").select(
-      "id, survey_id, created_at, completed_at, status, respondent_name, respondent_document_type, surveys(title)"
+      "id, survey_id, created_at, completed_at, status, respondent_name, respondent_document_type, location, surveys(title)"
     )
     if (filteredSurveyIds !== null) {
       if (filteredSurveyIds.length === 0) {
@@ -284,6 +284,100 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.responseCount - a.responseCount)
 
+    // Fetch zone geometries for map rendering
+    const zoneIds = [...new Set((assignments || []).map((a: any) => a.zone_id).filter(Boolean))]
+    let zonePolygons: { id: string; name: string; geometry: any; zoneColor: string; responseCount: number; completedCount: number; completionRate: number }[] = []
+    if (zoneIds.length > 0) {
+      const { data: zonesGeo } = await admin
+        .from("zones")
+        .select("id, name, geometry, zone_color")
+        .in("id", zoneIds)
+      if (zonesGeo) {
+        zonePolygons = zonesGeo
+          .filter((z: any) => z.geometry)
+          .map((z: any) => {
+            const stats = zoneResponseMap[z.id]
+            const rc = stats?.responseCount || 0
+            const cc = stats?.completedCount || 0
+            return {
+              id: z.id,
+              name: z.name,
+              geometry: z.geometry,
+              zoneColor: z.zone_color || "#3b82f6",
+              responseCount: rc,
+              completedCount: cc,
+              completionRate: rc > 0 ? Math.round((cc / rc) * 100) : 0,
+            }
+          })
+      }
+    }
+
+    // Extract individual response location points from responses.location (web/APK with GPS)
+    const responsePointsFromResponses = (responses || [])
+      .filter((r: any) => r.location && typeof r.location === "object" &&
+        typeof (r.location.lat ?? r.location.latitude) === "number" &&
+        typeof (r.location.lng ?? r.location.longitude) === "number")
+      .map((r: any) => ({
+        lat: r.location.lat ?? r.location.latitude,
+        lng: r.location.lng ?? r.location.longitude,
+        status: r.status,
+        createdAt: r.created_at,
+        source: "response" as const,
+      }))
+
+    // Also pull from surveyor_locations: where encuestadores actually were during active surveys
+    // This is the primary source of real location data from the APK
+    let surveyorLocationPoints: { lat: number; lng: number; status: string; createdAt: string; source: "surveyor" }[] = []
+    try {
+      let locQuery = admin
+        .from("surveyor_locations")
+        .select("latitude, longitude, recorded_at, active_survey_id")
+        .not("latitude", "is", null)
+        .not("longitude", "is", null)
+        .order("recorded_at", { ascending: false })
+        .limit(4000)
+
+      if (dateFrom) {
+        locQuery = locQuery.gte("recorded_at", dateFrom.toISOString())
+      }
+
+      // If we have a survey filter, look for locations where the surveyor was actively on those surveys
+      // This works even without assignments (web-only or direct APK usage)
+      if (filteredSurveyIds !== null && filteredSurveyIds.length > 0) {
+        locQuery = locQuery.in("active_survey_id", filteredSurveyIds)
+      } else {
+        // No survey filter: limit by surveyors from assignments if any, otherwise all locations in period
+        const surveyorIds = [...new Set((assignments || []).map((a: any) => a.surveyor_id).filter(Boolean))]
+        if (surveyorIds.length > 0) {
+          locQuery = locQuery.in("surveyor_id", surveyorIds)
+        }
+        // If no surveyor filter either, we still get the most recent 4000 points in the period
+      }
+
+      const { data: locData } = await locQuery
+      if (locData && locData.length > 0) {
+        // Sample evenly to stay under 2000 points for frontend performance
+        const step = Math.max(1, Math.floor(locData.length / 2000))
+        surveyorLocationPoints = locData
+          .filter((_: any, i: number) => i % step === 0)
+          .map((l: any) => ({
+            lat: Number(l.latitude),
+            lng: Number(l.longitude),
+            status: "completed",
+            createdAt: l.recorded_at,
+            source: "surveyor" as const,
+          }))
+      }
+    } catch (geoErr) {
+      console.error("Error fetching surveyor_locations for map:", geoErr)
+    }
+
+    // Merge both sources, response locations take priority, cap at 2000
+    const responsePoints = [
+      ...responsePointsFromResponses,
+      ...surveyorLocationPoints,
+    ].slice(0, 2000)
+
     return NextResponse.json({
       companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
@@ -298,7 +392,7 @@ export async function GET(request: NextRequest) {
       },
       responses: { questionBreakdowns },
       performance: { surveyorPerformance, dailyDistribution },
-      geographic: { zoneBreakdown },
+      geographic: { zoneBreakdown, zonePolygons, responsePoints },
     })
   } catch (error) {
     console.error("Error en reports API:", error)
