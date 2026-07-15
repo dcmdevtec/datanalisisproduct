@@ -84,6 +84,55 @@ export function CompactRichTextEditor({
   const [hasContent, setHasContent] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const blurTimeoutRef = useRef<number | null>(null);
+  // Bandera para detectar clics en portales de Mantine (ColorPicker, Select, etc.)
+  const interactingWithPortalRef = useRef(false);
+  // Referencia al editor de TipTap para poder re-enfocarlo tras interacción con portal
+  const editorRef = useRef<any>(null);
+
+  // Escuchar mousedown en document para detectar interacción con portales de Mantine
+  // (el ColorPicker abre un Popover en un portal fuera del containerRef → causaba blur falso)
+  // Mantine v7 Portal crea un <div data-portal="true"> en document.body
+  useEffect(() => {
+    const handleDocMouseDown = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const target = e.target as Element;
+
+      // Si el clic es dentro del propio container, el blur normal lo maneja
+      if (containerRef.current.contains(target)) return;
+
+      // Recorrer el árbol DOM hacia arriba desde el target buscando un portal de Mantine
+      // Mantine v7 agrega data-portal="true" al div contenedor del Portal
+      let el: Element | null = target;
+      while (el) {
+        if (el.getAttribute('data-portal') === 'true' || el.hasAttribute('data-floating-ui-portal')) {
+          // El clic fue dentro de un portal de Mantine (ej: ColorPicker, Select dropdown)
+          interactingWithPortalRef.current = true;
+
+          // Cancelar cualquier blur pendiente para mantener el toolbar visible
+          if (blurTimeoutRef.current !== null) {
+            window.clearTimeout(blurTimeoutRef.current);
+            blurTimeoutRef.current = null;
+          }
+
+          // Mantener el estado de enfoque activo inmediatamente
+          setIsFocused(true);
+
+          // Después de que el Popover se cierre (~350ms), re-enfocar el editor
+          window.setTimeout(() => {
+            interactingWithPortalRef.current = false;
+            try {
+              editorRef.current?.commands.focus();
+            } catch { /* ignore */ }
+          }, 350);
+
+          return;
+        }
+        el = el.parentElement;
+      }
+    };
+    document.addEventListener('mousedown', handleDocMouseDown, true);
+    return () => document.removeEventListener('mousedown', handleDocMouseDown, true);
+  }, []);
 
   const handleFocus = () => {
     if (blurTimeoutRef.current) {
@@ -98,17 +147,30 @@ export function CompactRichTextEditor({
     if (blurTimeoutRef.current) {
       window.clearTimeout(blurTimeoutRef.current);
     }
-    
+
     blurTimeoutRef.current = window.setTimeout(() => {
+      // No ocultar si el usuario está interactuando con un portal de Mantine (ej: color picker)
+      if (interactingWithPortalRef.current) return;
+
       const relatedTarget = event.relatedTarget as Node;
       const container = containerRef.current;
-      
-      // Solo ocultar si el foco se mueve fuera del container completo
-      if (!container || !relatedTarget || !container.contains(relatedTarget)) {
-        setIsFocused(false);
-        flushPending();
+      const activeEl = document.activeElement as Node;
+
+      // Mantener visible si el foco está dentro del container o en un portal de Mantine
+      if (container && ((relatedTarget && container.contains(relatedTarget)) || (activeEl && container.contains(activeEl)))) {
+        return;
       }
-    }, 150); // Pequeño delay para permitir clics en la toolbar
+      // Verificar portales activos
+      const portals = document.querySelectorAll('[data-portal="true"], [data-floating-ui-portal], .mantine-Popover-dropdown');
+      for (const portal of portals) {
+        if ((relatedTarget && portal.contains(relatedTarget)) || (activeEl && portal.contains(activeEl))) {
+          return;
+        }
+      }
+
+      setIsFocused(false);
+      flushPending();
+    }, 200);
   };
 
   const editor = useEditor({
@@ -132,6 +194,11 @@ export function CompactRichTextEditor({
       setHasContent(html.length > 0 && html !== '<p></p>');
     }
   });
+
+  // Mantener editorRef sincronizado con la instancia del editor para poder llamar focus()
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

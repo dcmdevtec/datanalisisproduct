@@ -723,16 +723,26 @@ function PreviewSurveyPageContent() {
           }
         } else if (question.type === 'multiple_textboxes') {
           // Las respuestas se guardan como ${question.id}_0, ${question.id}_1, etc.
-          // Validar que al menos un campo tenga valor
           const labels = question.config?.textboxLabels || question.options || [];
           const count = Math.max(labels.length, 1);
-          const hasAtLeastOne = Array.from({ length: count }, (_, idx) => {
+          const minRequired = (question.config?.validation as any)?.minRequiredBoxes ?? (question.config as any)?.minRequiredBoxes;
+          const filledCount = Array.from({ length: count }, (_, idx) => {
             const v = answers[`${question.id}_${idx}`];
-            return v !== undefined && v !== null && v !== "";
-          }).some(Boolean);
-          if (!hasAtLeastOne) {
-            isValid = false;
-            newErrors[question.id] = "Esta pregunta es obligatoria.";
+            return v !== undefined && v !== null && v !== "" ? 1 : 0;
+          }).reduce((a: number, b: number) => a + b, 0);
+
+          if (minRequired && minRequired > 0) {
+            // Validar mínimo de campos configurado
+            if (filledCount < minRequired) {
+              isValid = false;
+              newErrors[question.id] = `Debes completar al menos ${minRequired} de ${count} campo(s).`;
+            }
+          } else {
+            // Sin minRequired: si la pregunta es obligatoria, al menos un campo debe tener valor
+            if (filledCount === 0) {
+              isValid = false;
+              newErrors[question.id] = "Esta pregunta es obligatoria. Completa al menos un campo.";
+            }
           }
         } else if (question.type === 'demographic') {
           // Las respuestas se guardan como ${question.id}_age y ${question.id}_gender
@@ -1457,11 +1467,50 @@ function PreviewSurveyPageContent() {
       const renderInput = () => {
         switch (question.type) {
           case "text":
-          case "single_textbox":
-            return <Input {...commonProps} />
+          case "single_textbox": {
+            const maxLen = question.config?.validation?.maxLength || question.config?.maxLength
+            const currentVal = (answers[question.id] as string) || ""
+            return (
+              <div className="space-y-1">
+                <Input
+                  {...commonProps}
+                  maxLength={maxLen || undefined}
+                  value={currentVal}
+                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                />
+                {maxLen && (
+                  <div className="text-xs text-muted-foreground text-right">
+                    <span className={currentVal.length >= maxLen ? "text-red-500 font-medium" : ""}>
+                      {currentVal.length}
+                    </span>/{maxLen}
+                  </div>
+                )}
+              </div>
+            )
+          }
           case "textarea":
-          case "comment_box":
-            return <Textarea {...commonProps} rows={4} />
+          case "comment_box": {
+            const maxLen = question.config?.validation?.maxLength || question.config?.maxLength
+            const currentVal = (answers[question.id] as string) || ""
+            return (
+              <div className="space-y-1">
+                <Textarea
+                  {...commonProps}
+                  rows={4}
+                  maxLength={maxLen || undefined}
+                  value={currentVal}
+                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                />
+                {maxLen && (
+                  <div className="text-xs text-muted-foreground text-right">
+                    <span className={currentVal.length >= maxLen ? "text-red-500 font-medium" : ""}>
+                      {currentVal.length}
+                    </span>/{maxLen}
+                  </div>
+                )}
+              </div>
+            )
+          }
           case "multiple_choice":
             {
               const opts = question.options || []
@@ -1534,16 +1583,56 @@ function PreviewSurveyPageContent() {
                           </Label>
                         </div>
                         {answers[question.id] === "__other__" && (
-                          <input
-                            type="text"
-                            className="mt-2 w-full border rounded px-2 py-1"
-                            value={answers[`${question.id}_other`] || ""}
-                            onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
-                            placeholder="Especifica..."
-                          />
+                          <div className="mt-2">
+                            <Input
+                              autoFocus
+                              value={answers[`${question.id}_other`] || ""}
+                              onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                              placeholder="Por favor especifica tu respuesta..."
+                              className="w-full"
+                            />
+                          </div>
                         )}
                       </div>
                     )}
+                    {/* Campo de texto unificado: muestra Input cuando la opción seleccionada es tipo "Otro" */}
+                    {answers[question.id] && (() => {
+                      const selectedVal = answers[question.id]
+                      // Evitar duplicar el input que ya muestra el bloque allowOther cuando allowOther=true y __other__ no está en opts
+                      const handledByAllowOther =
+                        question.config?.allowOther &&
+                        !opts.some((opt: any) => opt && typeof opt === 'object' ? opt.value === '__other__' : String(opt) === '__other__') &&
+                        selectedVal === '__other__'
+                      if (handledByAllowOther) return null
+                      // Caso 1: valor seleccionado es __other__ (no manejado arriba)
+                      if (selectedVal === '__other__') {
+                        return (
+                          <div className="mt-2">
+                            <Input autoFocus value={answers[`${question.id}_other`] || ''}
+                              onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                              placeholder="Por favor especifica tu respuesta..." className="w-full" />
+                          </div>
+                        )
+                      }
+                      // Caso 2: opción regular cuyo label contiene "otro" (independiente de allowOther)
+                      const selectedOpt = opts.find((opt: any) => {
+                        const v = typeof opt === 'object' && opt !== null ? ((opt as any).value || (opt as any).label) : opt
+                        return v === selectedVal
+                      })
+                      const selectedLabel = selectedOpt
+                        ? (typeof selectedOpt === 'object' ? ((selectedOpt as any).label || (selectedOpt as any).value || '') : String(selectedOpt))
+                        : String(selectedVal || '')
+                      if (/otro/i.test(selectedLabel)) {
+                        return (
+                          <div className="mt-2">
+                            <Input autoFocus value={answers[`${question.id}_other`] || ''}
+                              onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                              placeholder="Por favor especifica tu respuesta..." className="w-full" />
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                   </RadioGroup>
                 )
               }
@@ -1569,22 +1658,64 @@ function PreviewSurveyPageContent() {
                     )
                   })}
                   {question.config?.allowOther && !( (question.options || []).some((opt: any) => opt && typeof opt === 'object' ? (opt.value === '__other__') : String(opt) === '__other__') ) && (
-                    <div className="flex items-center space-x-2 mt-2">
-                      <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
-                      <Label htmlFor={`${question.id}-option-other`}>
-                        {question.config.otherText || 'Otro (especificar)'}
-                      </Label>
+                    <div className="space-y-2 mt-2">
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="__other__" id={`${question.id}-option-other`} />
+                        <Label htmlFor={`${question.id}-option-other`}>
+                          {question.config.otherText || 'Otro (especificar)'}
+                        </Label>
+                      </div>
                       {answers[question.id] === "__other__" && (
-                        <input
-                          type="text"
-                          className="ml-2 border rounded px-2 py-1"
-                          value={answers[`${question.id}_other`] || ""}
-                          onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
-                          placeholder="Especifica..."
-                        />
+                        <div className="ml-6">
+                          <Input
+                            autoFocus
+                            value={answers[`${question.id}_other`] || ""}
+                            onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                            placeholder="Por favor especifica tu respuesta..."
+                            className="w-full"
+                          />
+                        </div>
                       )}
                     </div>
                   )}
+                  {/* Campo de texto unificado: muestra Input cuando la opción seleccionada es tipo "Otro" */}
+                  {answers[question.id] && (() => {
+                    const selectedVal = answers[question.id]
+                    // Evitar duplicar el input que ya muestra el bloque allowOther
+                    const handledByAllowOther =
+                      question.config?.allowOther &&
+                      !opts.some((opt: any) => opt && typeof opt === 'object' ? opt.value === '__other__' : String(opt) === '__other__') &&
+                      selectedVal === '__other__'
+                    if (handledByAllowOther) return null
+                    // Caso 1: valor seleccionado es __other__
+                    if (selectedVal === '__other__') {
+                      return (
+                        <div className="mt-2">
+                          <Input autoFocus value={answers[`${question.id}_other`] || ''}
+                            onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                            placeholder="Por favor especifica tu respuesta..." className="w-full" />
+                        </div>
+                      )
+                    }
+                    // Caso 2: opción regular con label "Otro..." (independiente de allowOther)
+                    const selectedOpt = opts.find((opt: any) => {
+                      const v = typeof opt === 'object' && opt !== null ? ((opt as any).value || (opt as any).label) : opt
+                      return v === selectedVal
+                    })
+                    const selectedLabel = selectedOpt
+                      ? (typeof selectedOpt === 'object' ? ((selectedOpt as any).label || (selectedOpt as any).value || '') : String(selectedOpt))
+                      : String(selectedVal || '')
+                    if (/otro/i.test(selectedLabel)) {
+                      return (
+                        <div className="mt-2">
+                          <Input autoFocus value={answers[`${question.id}_other`] || ""}
+                            onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                            placeholder="Por favor especifica tu respuesta..." className="w-full" />
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </RadioGroup>
               )
             }
@@ -1696,35 +1827,80 @@ function PreviewSurveyPageContent() {
                   );
                 })}
                 {question.config?.allowOther && !( (question.options || []).some((opt: any) => opt && typeof opt === 'object' ? (opt.value === '__other__') : String(opt) === '__other__') ) && (
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Checkbox
-                      id={`${question.id}-option-other`}
-                      checked={selected.includes("__other__")}
-                      disabled={!selected.includes("__other__") && isMaxReached}
-                      onCheckedChange={(checked) => {
-                        let currentAnswers = new Set(selected);
-                        if (checked) {
-                          currentAnswers.add("__other__");
-                        } else {
-                          currentAnswers.delete("__other__");
-                        }
-                        handleAnswerChange(question.id, Array.from(currentAnswers));
-                      }}
-                    />
-                    <Label htmlFor={`${question.id}-option-other`}>
-                      {question.config.otherText || 'Otro (especificar)'}
-                    </Label>
-                    {selected.includes("__other__") && (
-                      <input
-                        type="text"
-                        className="ml-2 border rounded px-2 py-1"
-                        value={answers[`${question.id}_other`] || ""}
-                        onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
-                        placeholder="Especifica..."
+                  <div className="space-y-2 mt-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`${question.id}-option-other`}
+                        checked={selected.includes("__other__")}
+                        disabled={!selected.includes("__other__") && isMaxReached}
+                        onCheckedChange={(checked) => {
+                          let currentAnswers = new Set(selected);
+                          if (checked) {
+                            currentAnswers.add("__other__");
+                          } else {
+                            currentAnswers.delete("__other__");
+                            handleAnswerChange(`${question.id}_other`, "");
+                          }
+                          handleAnswerChange(question.id, Array.from(currentAnswers));
+                        }}
                       />
+                      <Label htmlFor={`${question.id}-option-other`}>
+                        {question.config.otherText || 'Otro (especificar)'}
+                      </Label>
+                    </div>
+                    {selected.includes("__other__") && (
+                      <div className="ml-6">
+                        <Input
+                          autoFocus
+                          value={answers[`${question.id}_other`] || ""}
+                          onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                          placeholder="Por favor especifica tu respuesta..."
+                          className="w-full"
+                        />
+                      </div>
                     )}
                   </div>
                 )}
+                {/* Campo de texto unificado para checkbox: muestra Input cuando hay opción "Otro" seleccionada */}
+                {(() => {
+                  // Evitar duplicar el input cuando allowOther block ya lo maneja (allowOther=true, __other__ no en opts, __other__ seleccionado)
+                  const handledByAllowOther =
+                    question.config?.allowOther &&
+                    !opts.some((opt: any) => opt && typeof opt === 'object' ? opt.value === '__other__' : String(opt) === '__other__') &&
+                    selected.includes('__other__')
+                  if (handledByAllowOther) return null
+                  // Caso 1: __other__ está en la selección (como opción regular)
+                  if (selected.includes("__other__")) {
+                    return (
+                      <div className="mt-2">
+                        <Input autoFocus value={answers[`${question.id}_other`] || ""}
+                          onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                          placeholder="Por favor especifica tu respuesta..." className="w-full" />
+                      </div>
+                    )
+                  }
+                  // Caso 2: alguna opción seleccionada tiene label que contiene "otro" (independiente de allowOther)
+                  const otroSelected = selected.find((sv: string) => {
+                    const matchOpt = opts.find((opt: any) => {
+                      const v = typeof opt === 'object' && opt !== null ? ((opt as any).value || (opt as any).label) : opt
+                      return v === sv
+                    })
+                    const lbl = matchOpt
+                      ? (typeof matchOpt === 'object' ? ((matchOpt as any).label || (matchOpt as any).value || '') : String(matchOpt))
+                      : String(sv || '')
+                    return /otro/i.test(lbl)
+                  })
+                  if (otroSelected) {
+                    return (
+                      <div className="mt-2">
+                        <Input autoFocus value={answers[`${question.id}_other`] || ""}
+                          onChange={e => handleAnswerChange(`${question.id}_other`, e.target.value)}
+                          placeholder="Por favor especifica tu respuesta..." className="w-full" />
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
                 {(minSel > 0 || maxSel < (question.options?.length || 99)) && (
                   <div className="text-xs text-muted-foreground mt-2">
                     {minSel > 0 && maxSel < (question.options?.length || 99)
@@ -1831,42 +2007,87 @@ function PreviewSurveyPageContent() {
             // Get configuration from question.config
             const scaleMin = question.config?.scaleMin ?? 1;
             const scaleMax = question.config?.scaleMax ?? 5;
+            const scaleRange = scaleMax - scaleMin + 1;
             // Support both array format [min, max] and object format {min, max}
             const scaleLabels = question.config?.scaleLabels || [];
-            const minLabel = Array.isArray(scaleLabels) 
-              ? (scaleLabels[0] || "Muy en desacuerdo")
-              : (scaleLabels.min || "Muy en desacuerdo");
-            const maxLabel = Array.isArray(scaleLabels) 
-              ? (scaleLabels[1] || "Muy de acuerdo")
-              : (scaleLabels.max || "Muy de acuerdo");
+            const minLabel = Array.isArray(scaleLabels)
+              ? (scaleLabels[0] || "")
+              : (scaleLabels.min || "");
+            const maxLabel = Array.isArray(scaleLabels)
+              ? (scaleLabels[1] || "")
+              : (scaleLabels.max || "");
 
             // Generate array of scale values
             const scaleValues = Array.from(
-              { length: scaleMax - scaleMin + 1 },
+              { length: scaleRange },
               (_, i) => scaleMin + i
             );
 
+            // Para rangos grandes (>10), usar tamaños más pequeños y grid
+            const isLargeRange = scaleRange > 10;
+            const btnClass = isLargeRange
+              ? `rounded-md text-xs font-medium transition-colors shrink-0 flex items-center justify-center`
+              : `w-10 h-10 rounded-full text-sm font-medium transition-colors shrink-0`;
+            const btnStyle = isLargeRange
+              ? { width: `calc(${100 / scaleRange}% - 2px)`, minWidth: '28px', height: '32px' }
+              : {};
+
             return (
               <div className="space-y-3">
-                <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-between sm:gap-1">
-                  {scaleValues.map((scale) => (
-                    <button
-                      key={scale}
-                      type="button"
-                      onClick={() => handleAnswerChange(question.id, scale)}
-                      className={`w-10 h-10 rounded-full text-sm font-medium transition-colors shrink-0 ${answers[question.id] === scale
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "bg-muted hover:bg-muted/80"
-                        }`}
+                {isLargeRange ? (
+                  // Grid uniforme para rangos grandes (ej: 1-20 → 10 columnas, 2 filas perfectas)
+                  <div className="w-full">
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${Math.min(scaleRange, 10)}, 1fr)`,
+                        gap: '4px',
+                      }}
                     >
-                      {scale}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{minLabel}</span>
-                  <span>{maxLabel}</span>
-                </div>
+                      {scaleValues.map((scale) => (
+                        <button
+                          key={scale}
+                          type="button"
+                          onClick={() => handleAnswerChange(question.id, scale)}
+                          style={{ height: '36px', touchAction: 'manipulation' }}
+                          className={`rounded-md text-xs font-semibold transition-colors ${answers[question.id] === scale
+                            ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/30"
+                            : "bg-muted hover:bg-muted/80"
+                          }`}
+                        >
+                          {scale}
+                        </button>
+                      ))}
+                    </div>
+                    {answers[question.id] !== undefined && (
+                      <div className="mt-2 text-sm font-medium text-center" style={{ color: themeColors.primary }}>
+                        Seleccionado: {answers[question.id]}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-1 justify-between">
+                    {scaleValues.map((scale) => (
+                      <button
+                        key={scale}
+                        type="button"
+                        onClick={() => handleAnswerChange(question.id, scale)}
+                        className={`${btnClass} ${answers[question.id] === scale
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "bg-muted hover:bg-muted/80"
+                        }`}
+                      >
+                        {scale}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {(minLabel || maxLabel) && (
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{minLabel}</span>
+                    <span>{maxLabel}</span>
+                  </div>
+                )}
               </div>
             )
           }
@@ -2391,8 +2612,34 @@ function PreviewSurveyPageContent() {
                   return <Input type="number" min={1} max={matrixRows.length} value={answers[cellKey] || ""} onChange={(e) => handleAnswerChange(cellKey, e.target.value)} className="w-16 text-center" placeholder="#" />;
                 case "radio": {
                   const radioKey = `${question.id}_${rowIdx}`;
+                  const isSelected = answers[radioKey] === col;
                   return (
-                    <input type="radio" name={radioKey} value={col} checked={answers[radioKey] === col} onChange={() => handleAnswerChange(radioKey, col)} className="cursor-pointer w-4 h-4" />
+                    <button
+                      type="button"
+                      // onPointerDown en lugar de onClick → respuesta visual INMEDIATA en mobile (sin delay de 300ms)
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handleAnswerChange(radioKey, col);
+                      }}
+                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center focus:outline-none ${
+                        isSelected
+                          ? "border-primary"
+                          : "border-gray-300 hover:border-gray-400"
+                      }`}
+                      style={{
+                        touchAction: 'manipulation',
+                        ...(isSelected ? { borderColor: themeColors.primary } : {}),
+                      }}
+                      aria-pressed={isSelected}
+                      title={`Seleccionar: ${col}`}
+                    >
+                      {isSelected && (
+                        <div
+                          className="w-3.5 h-3.5 rounded-full"
+                          style={{ backgroundColor: themeColors.primary }}
+                        />
+                      )}
+                    </button>
                   );
                 }
                 default:
@@ -2411,7 +2658,7 @@ function PreviewSurveyPageContent() {
                       </div>
                       <div className="divide-y divide-gray-100">
                         {matrixCols.map((col, colIdx) => (
-                          <label key={colIdx} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer active:bg-gray-50">
+                          <label key={colIdx} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer active:bg-gray-50" style={{ touchAction: 'manipulation' }}>
                             <span className="text-sm text-gray-700 leading-snug flex-1">{col}</span>
                             <div className="shrink-0">
                               {renderMatrixCell(rowIdx, colIdx, col)}
@@ -2822,14 +3069,7 @@ function PreviewSurveyPageContent() {
                 {currentSection.title ? currentSection.title : `Sección ${currentSectionIndex + 1}`}
               </div>
             )}
-            {currentSection.description && (
-              <div className="flex justify-center mt-2 mb-6">
-                <div
-                  className={`max-w-2xl w-full bg-emerald-50/80 rounded-lg shadow p-4 text-center text-emerald-900 text-base border border-emerald-100 font-normal leading-relaxed prose prose-sm max-w-none ${isCompact ? 'line-clamp-2' : ''}`}
-                  dangerouslySetInnerHTML={{ __html: currentSection.description }}
-                />
-              </div>
-            )}
+            {/* Descripción de sección oculta en la vista del encuestado (slide 5) */}
             {/* Eliminado el CSS global que sobrescribía h1/h2 para respetar el HTML enriquecido */}
           </div>
 

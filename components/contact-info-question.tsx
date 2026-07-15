@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, AlertCircle, CheckCircle, UserCheck, XCircle } from "lucide-react"
 import { useDebounce } from "@/hooks/use-debounce"
@@ -40,6 +39,8 @@ interface ContactInfoQuestionProps {
 
 type VerificationStatus = "idle" | "verifying" | "verified" | "error" | "already_exists"
 
+const DEFAULT_FIELD_ORDER = ['firstName', 'lastName', 'phone', 'email', 'company', 'address', 'document']
+
 export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config = {}, initialData }: ContactInfoQuestionProps) {
   const {
     includeFirstName = true,
@@ -49,6 +50,7 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
     includeEmail = true,
     includeCompany = true,
     includeAddress = true,
+    contactFieldOrder = DEFAULT_FIELD_ORDER,
   } = config
 
   const [documentType, setDocumentType] = useState("CC")
@@ -59,9 +61,27 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
   const [email, setEmail] = useState("")
   const [company, setCompany] = useState("")
   const [address, setAddress] = useState("")
+  // Campos estructurados de dirección colombiana
+  const [addrTipoVia, setAddrTipoVia] = useState("") // Calle, Carrera, Diagonal, Transversal
+  const [addrNumPrincipal, setAddrNumPrincipal] = useState("") // ej: 23
+  const [addrNumSecundario, setAddrNumSecundario] = useState("") // ej: 45
+  const [addrComplemento, setAddrComplemento] = useState("") // Apartamento, interior, etc.
   const debouncedDocumentNumber = useDebounce(documentNumber, 500)
   const [status, setStatus] = useState<VerificationStatus>("idle")
   const [message, setMessage] = useState("")
+
+  // Combinar campos estructurados de dirección en el string address
+  useEffect(() => {
+    if (addrTipoVia || addrNumPrincipal) {
+      const built = [
+        addrTipoVia,
+        addrNumPrincipal,
+        addrNumSecundario ? `# ${addrNumSecundario}` : "",
+        addrComplemento,
+      ].filter(Boolean).join(" ").trim()
+      setAddress(built)
+    }
+  }, [addrTipoVia, addrNumPrincipal, addrNumSecundario, addrComplemento])
 
   // Efecto para cargar datos iniciales si cambian (auto-relleno)
   useEffect(() => {
@@ -287,83 +307,87 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
         </div>
       )}
 
+      {/* Campos en el orden configurado por el creador de la encuesta */}
       <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isBlocked ? "opacity-50 pointer-events-none select-none" : ""}`}>
-        {includeFirstName && (
-          <div className="space-y-2">
-            <Label htmlFor="firstName">Nombre</Label>
-            <Input
-              id="firstName"
-              value={firstName}
-              onChange={e => setFirstName(e.target.value)}
-              placeholder="Ingrese su nombre"
-              disabled={isBlocked}
-            />
-          </div>
-        )}
-        {includeLastName && (
-          <div className="space-y-2">
-            <Label htmlFor="lastName">Apellido</Label>
-            <Input
-              id="lastName"
-              value={lastName}
-              onChange={e => setLastName(e.target.value)}
-              placeholder="Ingrese su apellido"
-              disabled={isBlocked}
-            />
-          </div>
-        )}
-        {includePhone && (
-          <div className="space-y-2">
-            <Label htmlFor="phone">Teléfono</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              placeholder="Ingrese su número de teléfono"
-              disabled={isBlocked}
-            />
-          </div>
-        )}
-        {includeEmail && (
-          <div className="space-y-2">
-            <Label htmlFor="email">Correo Electrónico</Label>
-            <EmailAutocompleteInput
-              id="email"
-              value={email}
-              onChange={(eOrVal: any) => {
-                const val = typeof eOrVal === "string" ? eOrVal : eOrVal?.target?.value ?? ""
-                setEmail(val)
-              }}
-              placeholder="Ingrese su correo electrónico"
-              disabled={isBlocked}
-            />
-          </div>
-        )}
-        {includeCompany && (
-          <div className="space-y-2">
-            <Label htmlFor="company">Empresa</Label>
-            <Input
-              id="company"
-              value={company}
-              onChange={e => setCompany(e.target.value)}
-              placeholder="Ingrese el nombre de su empresa"
-              disabled={isBlocked}
-            />
-          </div>
-        )}
-        {includeAddress && (
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="address">Dirección</Label>
-            <Textarea
-              id="address"
-              value={address}
-              onChange={e => setAddress(e.target.value)}
-              placeholder="Ingrese su dirección"
-              disabled={isBlocked}
-            />
-          </div>
-        )}
+        {contactFieldOrder.map((fieldKey: string) => {
+          if (fieldKey === 'firstName' && includeFirstName) return (
+            <div key="firstName" className="space-y-2">
+              <Label htmlFor="firstName">Nombre</Label>
+              <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Ingrese su nombre" disabled={isBlocked} />
+            </div>
+          )
+          if (fieldKey === 'lastName' && includeLastName) return (
+            <div key="lastName" className="space-y-2">
+              <Label htmlFor="lastName">Apellido</Label>
+              <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Ingrese su apellido" disabled={isBlocked} />
+            </div>
+          )
+          if (fieldKey === 'phone' && includePhone) return (
+            <div key="phone" className="space-y-2">
+              <Label htmlFor="phone">Teléfono</Label>
+              <Input id="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Ingrese su número de teléfono" disabled={isBlocked} />
+            </div>
+          )
+          if (fieldKey === 'email' && includeEmail) return (
+            <div key="email" className="space-y-2">
+              <Label htmlFor="email">Correo Electrónico</Label>
+              <EmailAutocompleteInput
+                id="email"
+                value={email}
+                onChange={(eOrVal: any) => {
+                  const val = typeof eOrVal === "string" ? eOrVal : eOrVal?.target?.value ?? ""
+                  setEmail(val)
+                }}
+                placeholder="Ingrese su correo electrónico"
+                disabled={isBlocked}
+              />
+            </div>
+          )
+          if (fieldKey === 'company' && includeCompany) return (
+            <div key="company" className="space-y-2">
+              <Label htmlFor="company">Empresa</Label>
+              <Input id="company" value={company} onChange={e => setCompany(e.target.value)} placeholder="Ingrese el nombre de su empresa" disabled={isBlocked} />
+            </div>
+          )
+          if (fieldKey === 'address' && includeAddress) return (
+            <div key="address" className="space-y-2 md:col-span-2">
+              <Label>Dirección</Label>
+              {/* Formato dirección colombiana */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="addr-tipo" className="text-xs text-muted-foreground">Tipo de Vía</Label>
+                  <Select value={addrTipoVia} onValueChange={setAddrTipoVia} disabled={isBlocked}>
+                    <SelectTrigger id="addr-tipo" className="h-9 text-sm"><SelectValue placeholder="Tipo..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Calle">Calle</SelectItem>
+                      <SelectItem value="Carrera">Carrera</SelectItem>
+                      <SelectItem value="Diagonal">Diagonal</SelectItem>
+                      <SelectItem value="Transversal">Transversal</SelectItem>
+                      <SelectItem value="Avenida">Avenida</SelectItem>
+                      <SelectItem value="Circular">Circular</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="addr-num-principal" className="text-xs text-muted-foreground">Número</Label>
+                  <Input id="addr-num-principal" value={addrNumPrincipal} onChange={e => setAddrNumPrincipal(e.target.value)} placeholder="23" disabled={isBlocked} className="h-9 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="addr-num-sec" className="text-xs text-muted-foreground"># Secundario</Label>
+                  <Input id="addr-num-sec" value={addrNumSecundario} onChange={e => setAddrNumSecundario(e.target.value)} placeholder="45 - 12" disabled={isBlocked} className="h-9 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="addr-complemento" className="text-xs text-muted-foreground">Información adicional</Label>
+                  <Input id="addr-complemento" value={addrComplemento} onChange={e => setAddrComplemento(e.target.value)} placeholder="Apto 301, Bloque B..." disabled={isBlocked} className="h-9 text-sm" />
+                </div>
+              </div>
+              {address && (
+                <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Dirección: </span>{address}</p>
+              )}
+            </div>
+          )
+          return null
+        })}
       </div>
 
       {includeDocument && (

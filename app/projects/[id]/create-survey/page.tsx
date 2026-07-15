@@ -2799,6 +2799,30 @@ export function CreateSurveyForProjectPageContent() {
                             />
                           )}
 
+                          {/* Botón rápido para agregar otra sección */}
+                          <div className="flex justify-center pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 text-xs border-dashed text-muted-foreground hover:text-primary hover:border-primary bg-transparent"
+                              onClick={() => {
+                                const newSection: SurveySection = {
+                                  id: generateUUID(),
+                                  title: `Nueva Sección ${sections.length + 1}`,
+                                  description: "",
+                                  order_num: sections.length,
+                                  questions: [],
+                                  skipLogic: undefined,
+                                }
+                                setSections([...sections, newSection])
+                                setActiveSectionIndex(sections.length)
+                              }}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Agregar otra sección
+                            </Button>
+                          </div>
+
                           {/* Navegación inferior prev / next */}
                           <div className="flex items-center justify-between px-1 pt-1">
                             <Button

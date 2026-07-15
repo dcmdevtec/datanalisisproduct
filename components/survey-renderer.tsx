@@ -675,9 +675,7 @@ export function SurveyRenderer({
             <h2 className="text-2xl font-bold mb-1" style={{ color: themeColors.primary }}>
               {survey.title}
             </h2>
-            {survey.description && (
-              <div className="text-muted-foreground text-sm prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: survey.description }} />
-            )}
+            {/* Descripción oculta en visualización — el encuestado no la ve al responder */}
           </div>
 
           {/* Barra de progreso */}

@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings, Lightbulb, X } from "lucide-react"
+import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings, Lightbulb, X, GripVertical } from "lucide-react"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
@@ -127,6 +127,47 @@ interface QuestionEditorProps {
   qIndex: number // To display question number
   isDragging?: boolean
 }
+
+// ── Ordenamiento manual de campos de contact_info ──────────────────────────
+const DEFAULT_CONTACT_FIELD_ORDER = ['firstName', 'lastName', 'phone', 'email', 'company', 'address', 'document']
+const CONTACT_FIELD_META: Record<string, { label: string; configKey: string }> = {
+  firstName: { label: 'Nombre',            configKey: 'includeFirstName' },
+  lastName:  { label: 'Apellido',          configKey: 'includeLastName' },
+  phone:     { label: 'Teléfono',          configKey: 'includePhone' },
+  email:     { label: 'Correo Electrónico',configKey: 'includeEmail' },
+  company:   { label: 'Empresa',           configKey: 'includeCompany' },
+  address:   { label: 'Dirección',         configKey: 'includeAddress' },
+  document:  { label: 'Documento',         configKey: 'includeDocument' },
+}
+
+function SortableContactField({
+  id, label, enabled, onToggle,
+}: { id: string; label: string; enabled: boolean; onToggle: (v: boolean) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      className="flex items-center gap-3 px-3 py-2 bg-white border rounded-md shadow-sm"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-muted-foreground hover:text-foreground shrink-0 touch-none"
+        tabIndex={-1}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <Switch checked={enabled} onCheckedChange={onToggle} />
+      <span className="text-sm font-medium flex-1 select-none">{label}</span>
+      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+        {enabled ? 'Activo' : 'Oculto'}
+      </span>
+    </div>
+  )
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 export function QuestionEditor({
   question,
@@ -346,7 +387,30 @@ export function QuestionEditor({
     setOptItems(question.options || [])
   }, [question.options])
 
+  // Estado para ordenamiento de campos de contact_info
+  const [contactFieldOrder, setContactFieldOrder] = useState<string[]>(
+    () => question.config?.contactFieldOrder || DEFAULT_CONTACT_FIELD_ORDER
+  )
+  useEffect(() => {
+    setContactFieldOrder(question.config?.contactFieldOrder || DEFAULT_CONTACT_FIELD_ORDER)
+  }, [question.config?.contactFieldOrder])
+
   const sensors = useSensors(useSensor(PointerSensor))
+
+  const handleContactFieldsDragEnd = (event: any) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const from = contactFieldOrder.indexOf(String(active.id))
+    const to = contactFieldOrder.indexOf(String(over.id))
+    if (from !== -1 && to !== -1) {
+      const newOrder = arrayMove(contactFieldOrder, from, to)
+      setContactFieldOrder(newOrder)
+      onUpdateQuestion(sectionId, question.id, "config", {
+        ...question.config,
+        contactFieldOrder: newOrder,
+      })
+    }
+  }
 
   const handleOptionsDragEnd = (event: any) => {
     const { active, over } = event
@@ -1945,114 +2009,63 @@ export function QuestionEditor({
 
         {question.type === "contact_info" && (
           <div className="space-y-4 p-4 border rounded-lg">
-            <Label className="text-lg font-semibold">Configuración de Información de Contacto</Label>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includeFirstName !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includeFirstName: checked,
-                      })
-                    }
-                  />
-                  <Label>Nombre</Label>
+            <div>
+              <Label className="text-lg font-semibold">Configuración de Información de Contacto</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Activa los campos que deseas mostrar y arrastra <GripVertical className="inline h-3 w-3" /> para cambiar el orden.
+              </p>
+            </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleContactFieldsDragEnd}
+            >
+              <SortableContext items={contactFieldOrder} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {contactFieldOrder.map((fieldKey) => {
+                    const meta = CONTACT_FIELD_META[fieldKey]
+                    if (!meta) return null
+                    const isEnabled = question.config?.[meta.configKey] !== false
+                    return (
+                      <SortableContactField
+                        key={fieldKey}
+                        id={fieldKey}
+                        label={meta.label}
+                        enabled={isEnabled}
+                        onToggle={(checked) =>
+                          onUpdateQuestion(sectionId, question.id, "config", {
+                            ...question.config,
+                            [meta.configKey]: checked,
+                          })
+                        }
+                      />
+                    )
+                  })}
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includeLastName !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includeLastName: checked,
-                      })
-                    }
-                  />
-                  <Label>Apellido</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includeEmail !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includeEmail: checked,
-                      })
-                    }
-                  />
-                  <Label>Email</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includePhone !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includePhone: checked,
-                      })
-                    }
-                  />
-                  <Label>Teléfono</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includeCompany !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includeCompany: checked,
-                      })
-                    }
-                  />
-                  <Label>Empresa</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includeAddress !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includeAddress: checked,
-                      })
-                    }
-                  />
-                  <Label>Dirección</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={question.config?.includeDocument !== false}
-                    onCheckedChange={(checked) =>
-                      onUpdateQuestion(sectionId, question.id, "config", {
-                        ...question.config,
-                        includeDocument: checked,
-                      })
-                    }
-                  />
-                  <Label>Documento</Label>
-                </div>
-              </div>
-              <div className="mt-4">
-                <Label className="font-medium">Vista previa</Label>
-                <div className="mt-2 p-4 border rounded-lg bg-muted/20 space-y-3">
-                  {question.config?.includeFirstName !== false && <Input placeholder="Nombre" disabled />}
-                  {question.config?.includeLastName !== false && <Input placeholder="Apellido" disabled />}
-                  {question.config?.includeEmail !== false && <Input placeholder="Email" type="email" disabled />}
-                  {question.config?.includePhone !== false && <Input placeholder="Teléfono" type="tel" disabled />}
-                  {question.config?.includeCompany !== false && <Input placeholder="Empresa" disabled />}
-                  {question.config?.includeAddress !== false && <Textarea placeholder="Dirección" disabled rows={2} />}
-                  {question.config?.includeDocument !== false && (
-                    <div className="flex gap-2">
+              </SortableContext>
+            </DndContext>
+            {/* Vista previa según el orden configurado */}
+            <div className="mt-2">
+              <Label className="font-medium text-sm">Vista previa del orden</Label>
+              <div className="mt-2 p-4 border rounded-lg bg-muted/20 space-y-3">
+                {contactFieldOrder.map((fieldKey) => {
+                  const meta = CONTACT_FIELD_META[fieldKey]
+                  if (!meta) return null
+                  const isEnabled = question.config?.[meta.configKey] !== false
+                  if (!isEnabled) return null
+                  if (fieldKey === 'address') return <Input key={fieldKey} placeholder="Dirección" disabled />
+                  if (fieldKey === 'document') return (
+                    <div key={fieldKey} className="flex gap-2">
                       <Select disabled>
-                        <SelectTrigger className="w-[150px]">
-                          <SelectValue placeholder="Tipo" />
-                        </SelectTrigger>
+                        <SelectTrigger className="w-[150px]"><SelectValue placeholder="Tipo doc." /></SelectTrigger>
                       </Select>
                       <Input placeholder="Número de Documento" disabled />
                     </div>
-                  )}
-                </div>
+                  )
+                  if (fieldKey === 'email') return <Input key={fieldKey} placeholder="Correo Electrónico" type="email" disabled />
+                  if (fieldKey === 'phone') return <Input key={fieldKey} placeholder="Teléfono" type="tel" disabled />
+                  return <Input key={fieldKey} placeholder={meta.label} disabled />
+                })}
               </div>
             </div>
           </div>

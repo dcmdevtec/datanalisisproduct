@@ -1160,6 +1160,49 @@ export function AdvancedQuestionConfig({
               <p className="text-sm text-muted-foreground">La validación de longitud solo aplica para preguntas que requieren una entrada de texto del usuario.</p>
             </Card>
           )}
+
+          {/* Validación específica para multiple_textboxes: mínimo de campos a completar */}
+          {question.type === "multiple_textboxes" && (
+            <div className="rounded-lg shadow-md bg-white border border-blue-100 overflow-hidden mt-4">
+              <div className="px-6 py-4 flex items-start gap-4 bg-gradient-to-r from-white to-blue-50">
+                <div className="flex-shrink-0 mt-1">
+                  <div className="w-10 h-10 rounded-md bg-blue-100 flex items-center justify-center">
+                    <AlertCircle className="h-5 w-5 text-blue-600" />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-blue-800 leading-tight">Campos Requeridos</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Configura cuántos campos de texto debe completar el encuestado.
+                    {question.config?.textboxLabels?.length
+                      ? ` Tienes ${question.config.textboxLabels.length} campo(s) configurado(s).`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="p-6">
+                <div>
+                  <label className="text-sm font-medium text-blue-800 block mb-2">
+                    Mínimo de campos a completar
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={question.config?.textboxLabels?.length || 99}
+                    value={config.validation?.minRequiredBoxes ?? ""}
+                    onChange={(e) =>
+                      updateValidation("minRequiredBoxes", e.target.value ? parseInt(e.target.value) : undefined)
+                    }
+                    placeholder="Dejar vacío = todos opcionales"
+                    className="bg-white border-blue-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-shadow max-w-xs"
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    El encuestado deberá completar al menos este número de campos. Si lo dejas vacío, todos los campos son opcionales (salvo que la pregunta sea obligatoria).
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ),
     },
