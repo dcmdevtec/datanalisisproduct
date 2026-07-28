@@ -31,9 +31,12 @@ interface IncidenceScreenProps {
   zoneName?: string | null
   onStartSurvey: () => void
   onReportIncidence: (reason: string) => Promise<void> | void
+  // true mientras se carga la encuesta (fetch + preparar el motor) tras
+  // pulsar "Inicia encuesta" — antes no había feedback visual en ese lapso.
+  startingSurvey?: boolean
 }
 
-export function IncidenceScreen({ surveyTitle, zoneName, onStartSurvey, onReportIncidence }: IncidenceScreenProps) {
+export function IncidenceScreen({ surveyTitle, zoneName, onStartSurvey, onReportIncidence, startingSurvey = false }: IncidenceScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [otherDetail, setOtherDetail] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -89,14 +92,18 @@ export function IncidenceScreen({ surveyTitle, zoneName, onStartSurvey, onReport
           )}
 
           <div className="flex flex-col gap-2 pt-2">
-            <Button onClick={onStartSurvey} disabled={submitting} className="w-full">
-              <PlayCircle className="h-4 w-4 mr-2" />
+            <Button onClick={onStartSurvey} disabled={submitting || startingSurvey} className="w-full">
+              {startingSurvey ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <PlayCircle className="h-4 w-4 mr-2" />
+              )}
               Inicia encuesta
             </Button>
             <Button
               variant="outline"
               onClick={handleSubmit}
-              disabled={!canSubmit || submitting}
+              disabled={!canSubmit || submitting || startingSurvey}
               className="w-full text-amber-700 border-amber-300 hover:bg-amber-50"
             >
               {submitting ? (

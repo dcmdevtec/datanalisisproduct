@@ -9,6 +9,7 @@ import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
 import { IncidenceScreen } from "@/components/portal-encuestador/incidence-screen"
 import { AbandonSurveyButton } from "@/components/portal-encuestador/abandon-survey-button"
 import { useToast } from "@/components/ui/use-toast"
+import { loadSurveyIntoPreviewStorage } from "@/lib/survey-preview-data"
 import { Loader2 } from "lucide-react"
 
 // Renderer real de encuestas — se carga dinámico (sin SSR) igual que en
@@ -41,6 +42,7 @@ export default function PortalEncuestadorSurveyPage() {
 
   const [stage, setStage] = useState<Stage>("loading")
   const [assignment, setAssignment] = useState<AssignmentInfo | null>(null)
+  const [startingSurvey, setStartingSurvey] = useState(false)
   const verifiedRef = useRef(false)
 
   // Verifica rol + que la encuesta esté realmente asignada a este encuestador.
@@ -86,10 +88,32 @@ export default function PortalEncuestadorSurveyPage() {
   }, [user, authLoading, surveyId])
 
   // "Inicia encuesta": arranca el segmento de grabación dedicado y muestra el renderer.
-  const handleStartSurvey = useCallback(() => {
+  //
+  // CORRECCIÓN CRÍTICA: SurveyPreviewPage (el motor de encuestas compartido)
+  // NUNCA hace fetch por su cuenta — en su montaje SIEMPRE lee
+  // localStorage.getItem("surveyPreviewData") y, si no encuentra nada, hace
+  // router.push("/") de inmediato. La única razón por la que el link
+  // público /encuesta/[id] funciona es que esa página puebla ese localStorage
+  // ANTES de montar el motor (ver lib/survey-preview-data.ts). Antes de este
+  // fix, esta página montaba el motor directo, sin ese paso — por eso al
+  // pulsar "Inicia encuesta" el encuestador terminaba expulsado a la página
+  // principal en vez de ver la encuesta.
+  const handleStartSurvey = useCallback(async () => {
+    if (startingSurvey) return
+    setStartingSurvey(true)
+    const result = await loadSurveyIntoPreviewStorage(surveyId)
+    setStartingSurvey(false)
+    if (!result.ok) {
+      toast({
+        title: "No se pudo abrir la encuesta",
+        description: result.message || "Intenta de nuevo.",
+        variant: "destructive",
+      })
+      return
+    }
     recording.startSurveySegment()
     setStage("survey")
-  }, [recording])
+  }, [recording, surveyId, startingSurvey, toast])
 
   // Motivo de incidencia seleccionado: registra la respuesta (outcome='incidencia')
   // y vuelve al dashboard. No hubo segmento 'survey' que cerrar (no se llegó a
@@ -167,6 +191,7 @@ export default function PortalEncuestadorSurveyPage() {
         zoneName={assignment.zoneName}
         onStartSurvey={handleStartSurvey}
         onReportIncidence={handleReportIncidence}
+        startingSurvey={startingSurvey}
       />
     )
   }
