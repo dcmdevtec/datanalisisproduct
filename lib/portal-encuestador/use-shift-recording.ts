@@ -103,12 +103,22 @@ export function useShiftRecording() {
     formData.append("durationSecs", String(durationSecs))
     if (responseId) formData.append("responseId", responseId)
     try {
-      await fetch(`/api/portal-encuestador/recordings/${segment.recordingId}`, {
+      const res = await fetch(`/api/portal-encuestador/recordings/${segment.recordingId}`, {
         method: "PATCH",
         body: formData,
       })
+      // ANTES: no se revisaba res.ok, así que un 500 del servidor pasaba
+      // completamente desapercibido para este código (fetch solo rechaza la
+      // promesa ante una falla de RED, no ante un status HTTP de error) — lo
+      // único visible era el log automático de la consola del navegador, sin
+      // el detalle real del error. Ahora se lee y loguea el cuerpo de la
+      // respuesta para poder diagnosticar sin acceso a los logs del servidor.
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        console.error(`Error subiendo segmento de audio (${segment.recordingId}, HTTP ${res.status}):`, body?.details || body?.error || body)
+      }
     } catch (err) {
-      console.error("Error subiendo segmento de audio:", err)
+      console.error("Error de red subiendo segmento de audio:", err)
     }
   }, [])
 

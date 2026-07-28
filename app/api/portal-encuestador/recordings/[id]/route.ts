@@ -61,10 +61,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         upload_status: "failed",
         ...responseIdPatch,
       }).eq("id", recordingId)
-      return NextResponse.json({ error: "No se pudo subir el audio" }, { status: 500 })
+      // Se expone el mensaje real del error de Storage (antes solo se veía
+      // en logs del servidor, inaccesibles para el equipo sin dashboard de
+      // Vercel/Supabase) — este endpoint solo lo usan encuestadores
+      // autenticados del propio portal, no es público.
+      return NextResponse.json({ error: "No se pudo subir el audio", details: uploadError.message }, { status: 500 })
     }
 
-    await admin.from("surveyor_recordings").update({
+    const { error: updateError } = await admin.from("surveyor_recordings").update({
       ended_at: new Date().toISOString(),
       storage_path: path,
       duration_secs: durationSecs,
@@ -72,9 +76,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...responseIdPatch,
     }).eq("id", recordingId)
 
+    if (updateError) {
+      console.error("Error actualizando surveyor_recordings tras subir el audio:", updateError)
+      return NextResponse.json({ error: "Audio subido pero no se pudo actualizar el registro", details: updateError.message }, { status: 500 })
+    }
+
     return NextResponse.json({ ok: true, uploaded: true })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error en portal-encuestador/recordings/[id] PATCH:", error)
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+    return NextResponse.json({ error: "Error interno del servidor", details: error?.message || String(error) }, { status: 500 })
   }
 }
