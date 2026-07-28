@@ -13,6 +13,15 @@ import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
 // compartido (app/preview/survey/page.tsx) infiera correctamente el
 // survey_id a partir del pathname, tal como ya hace en /encuesta/[id]
 // público, sin necesitar tocar esa lógica interna.
+//
+// Fuente de la asignación: survey_surveyor_zones, NO la tabla legacy
+// `assignments` (nunca poblada por ningún flujo real — ver
+// sql/2026_07_fix_assignment_source_table.sql). El `id` que se devuelve acá
+// como assignmentId es survey_surveyor_zones.id, que es a lo que ahora
+// apunta responses.assignment_id tras esa migración. Si el encuestador
+// tiene varias filas de zona para la misma encuesta, se toma la más
+// reciente — cualquiera es válida como referencia, solo se necesita UNA
+// fila real que pruebe la asignación.
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const surveyor = await resolveCurrentSurveyor()
@@ -27,10 +36,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const admin = createAdminSupabase() as any
 
     const { data: assignment, error } = await admin
-      .from("assignments")
-      .select("id, survey_id, zone_id, status, deadline, zones(id, name), surveys(id, title, description, status)")
+      .from("survey_surveyor_zones")
+      .select("id, survey_id, zone_id, general_status, zones(id, name), surveys(id, title, description, status)")
       .eq("survey_id", surveyId)
       .eq("surveyor_id", surveyor.surveyorId)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (error || !assignment) {
@@ -47,7 +58,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       surveyId: survey.id,
       title: survey.title,
       description: survey.description,
-      zoneName: (assignment as any).zones?.name ?? "Sin zona asignada",
+      zoneName: assignment.general_status ? "Todas las zonas" : ((assignment as any).zones?.name ?? "Sin zona asignada"),
     })
   } catch (error) {
     console.error("Error en portal-encuestador/assignments/[id] GET:", error)

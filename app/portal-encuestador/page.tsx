@@ -18,12 +18,10 @@ import {
 } from "lucide-react"
 
 interface SurveyItem {
-  assignmentId: string
   surveyId: string
   title: string
   description: string | null
   logo: string | null
-  zoneId: string | null
   zoneName: string
   assignmentStatus: string
   deadline: string | null
@@ -277,7 +275,7 @@ export default function PortalEncuestadorPage() {
             <div className="space-y-2">
               {surveys.map((s) => (
                 <Link
-                  key={s.assignmentId}
+                  key={s.surveyId}
                   href={recording.status === "recording-shift" || recording.status === "recording-survey" ? `/portal-encuestador/encuesta/${s.surveyId}` : "#"}
                   className={recording.status === "denied" ? "pointer-events-none" : ""}
                 >

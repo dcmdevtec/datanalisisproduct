@@ -38,10 +38,13 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminSupabase() as any
 
-    // Verifica que la encuesta pertenezca a este encuestador (misma zona/asignación) —
-    // igual patrón que app/api/portal-encuestador/surveys/route.ts.
+    // Verifica que la encuesta pertenezca a este encuestador (misma zona/asignación).
+    // Fuente: survey_surveyor_zones, no la tabla legacy `assignments` — ver
+    // sql/2026_07_fix_assignment_source_table.sql. El assignmentId que llega
+    // acá es survey_surveyor_zones.id (lo devuelve
+    // GET /api/portal-encuestador/assignments/[surveyId]).
     const { data: assignment } = await admin
-      .from("assignments")
+      .from("survey_surveyor_zones")
       .select("id, survey_id")
       .eq("id", assignmentId)
       .eq("surveyor_id", surveyor.surveyorId)

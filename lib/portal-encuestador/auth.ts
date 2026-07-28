@@ -12,12 +12,29 @@ export async function resolveCurrentSurveyor(): Promise<
   if (!user) return null
 
   const admin = createAdminSupabase()
-  const { data: surveyor } = await admin
+  let { data: surveyor } = await admin
     .from("surveyors")
     .select("id, name, email")
     .eq("user_id", user.id)
     .eq("status", "active")
     .maybeSingle()
+
+  // Fallback para encuestadores creados por POST /api/surveyors ANTES de la
+  // corrección que empezó a setear user_id: ese flujo históricamente hacía
+  // `surveyors.id = <auth user id>` pero nunca tocaba `user_id`, que quedaba
+  // NULL. Sin este fallback, ningún encuestador dado de alta por la UI
+  // "Añadir Encuestador" antes de esta fecha podría entrar al portal aunque
+  // su rol ya estuviera corregido. Ver sql/2026_07_surveyor_portal_backfill.sql
+  // para el backfill que setea user_id definitivamente.
+  if (!surveyor) {
+    const { data: legacySurveyor } = await admin
+      .from("surveyors")
+      .select("id, name, email")
+      .eq("id", user.id)
+      .eq("status", "active")
+      .maybeSingle()
+    surveyor = legacySurveyor
+  }
 
   if (!surveyor) return null
 

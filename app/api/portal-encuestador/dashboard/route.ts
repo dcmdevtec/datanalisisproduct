@@ -23,9 +23,12 @@ export async function GET(request: NextRequest) {
 
     const admin = createAdminSupabase()
 
-    // Resuelve qué respuestas pertenecen a este encuestador vía sus assignments.
+    // Resuelve qué respuestas pertenecen a este encuestador vía sus
+    // asignaciones en survey_surveyor_zones (fuente real — no la tabla
+    // legacy `assignments`, ver sql/2026_07_fix_assignment_source_table.sql).
+    // responses.assignment_id apunta a survey_surveyor_zones.id desde esa migración.
     const { data: assignments } = await admin
-      .from("assignments")
+      .from("survey_surveyor_zones")
       .select("id")
       .eq("surveyor_id", surveyor.surveyorId)
     const assignmentIds = ((assignments as any[]) || []).map((a) => a.id)

@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
+import supabase from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -128,6 +129,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const toggleSidebar = useCallback(() => {
     setOpen(prev => !prev)
   }, [])
+
+  // Guardia de rol: este layout ("Menú simplificado sin permisos - todas
+  // las opciones visibles", ver comentario arriba) no filtra el sidebar por
+  // rol — cualquiera que llegue aquí ve todo el panel admin. Un encuestador
+  // NUNCA debería aterrizar en /dashboard (su superficie es
+  // /portal-encuestador), pero si lo hace por un link viejo, un cambio de
+  // rol, o el bug ya corregido en POST /api/surveyors (encuestadores creados
+  // sin fila en public.users terminaban aquí por defecto), lo sacamos apenas
+  // se detecta. Defensa en profundidad, no reemplaza corregir el origen.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from("users").select("role").eq("id", user.id).single()
+      if (cancelled) return
+      if ((data as any)?.role === "surveyor") {
+        router.push("/portal-encuestador")
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user, router])
 
   return (
     <div className="flex h-screen overflow-hidden">

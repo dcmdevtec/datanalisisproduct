@@ -56,15 +56,18 @@ export async function POST(request: Request) {
 
     // Insert surveyor into public.surveyors table using admin client
     // This overrides the gen_random_uuid() default, which is a common pattern for user profiles.
+    // user_id (además de id) liga esta fila al login del portal de encuestador
+    // — ver lib/portal-encuestador/auth.ts resolveCurrentSurveyor().
     const { data: surveyorData, error: surveyorError } = await supabaseAdmin
       .from("surveyors")
       .insert({
         id: userId, // Link surveyor to auth user ID
+        user_id: userId,
         name,
         email,
         phone_number,
         status: "active", // Default status
-      })
+      } as any)
       .select()
       .single()
 
@@ -73,6 +76,27 @@ export async function POST(request: Request) {
       await supabaseAdmin.auth.admin.deleteUser(userId)
       console.error("Supabase DB Error (Surveyor):", surveyorError.message)
       return NextResponse.json({ error: surveyorError.message }, { status: 500 })
+    }
+
+    // CORRECCIÓN CRÍTICA (bug reportado en producción): este endpoint nunca
+    // creaba la fila correspondiente en `public.users`, que es la tabla que
+    // login/page.tsx, middleware.ts y DashboardLayout consultan para decidir
+    // a dónde redirigir y qué mostrar. Sin esta fila, `role` queda
+    // indefinido y TODA la lógica de "si no es surveyor, mándalo al
+    // dashboard admin" trataba a los encuestadores creados aquí como si
+    // fueran administradores — exactamente el síntoma reportado ("le sale
+    // todo lo de super admin"). Mismo patrón que POST /api/users.
+    const { error: userInsertError } = await supabaseAdmin
+      .from("users")
+      .insert({ id: userId, email, name, role: "surveyor", status: "active", metadata: {} } as any)
+
+    if (userInsertError) {
+      // Si la fila de users ya existe (ej. el email se reutilizó desde un
+      // registro previo), no es fatal — pero si falla por otra razón, se
+      // registra para diagnóstico. No se revierte la creación del
+      // encuestador por esto: preferimos un encuestador sin rol correcto
+      // (visible y corregible desde /users) a perder el registro completo.
+      console.error("Advertencia: no se pudo crear la fila en public.users para el encuestador:", userInsertError.message)
     }
 
     return NextResponse.json(surveyorData, { status: 201 })
@@ -138,6 +162,13 @@ export async function DELETE(request: Request) {
 
     if (dbError) {
       return NextResponse.json({ error: dbError.message }, { status: 500 })
+    }
+
+    // Limpiar también su fila en public.users (creada desde esta misma ruta
+    // al dar de alta al encuestador) para no dejar perfiles huérfanos.
+    const { error: userDeleteError } = await supabaseAdmin.from("users").delete().eq("id", id)
+    if (userDeleteError) {
+      console.warn("No se pudo eliminar la fila de public.users del encuestador:", userDeleteError.message)
     }
 
     // Then delete from Supabase Auth using admin client

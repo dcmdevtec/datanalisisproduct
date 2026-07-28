@@ -3,11 +3,16 @@ import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
 
 // Lista de encuestas del encuestador logueado — Y SOLO de él.
-// La fuente de verdad es `assignments` (survey_id, surveyor_id, zone_id):
-// si no hay un assignment para este surveyor_id, la encuesta no aparece,
-// sin importar si está activa o si otros encuestadores sí la tienen.
-// Esto es exactamente lo pedido: "no les debe aparecer una encuesta
-// diferente si no la tienen asignada".
+// La fuente de verdad es `survey_surveyor_zones` (survey_id, surveyor_id,
+// zone_id, general_status): es la ÚNICA tabla a la que escribe la UI de
+// administración al asignar encuestadores a zonas (ver
+// app/projects/[id]/create-survey/page.tsx). La tabla `assignments` NO se
+// usa aquí — históricamente ningún flujo del producto escribe en ella (ver
+// sql/2026_07_fix_assignment_source_table.sql para el detalle completo).
+// Si no hay una fila para este surveyor_id, la encuesta no aparece, sin
+// importar si está activa o si otros encuestadores sí la tienen — esto es
+// exactamente lo pedido: "no les debe aparecer una encuesta diferente si no
+// la tienen asignada".
 export async function GET() {
   try {
     const surveyor = await resolveCurrentSurveyor()
@@ -17,32 +22,65 @@ export async function GET() {
 
     const admin = createAdminSupabase()
 
-    const { data: assignments, error } = await admin
-      .from("assignments")
-      .select("id, survey_id, zone_id, status, deadline, created_at, zones(id, name), surveys(id, title, description, status, deadline, logo)")
+    const { data: rows, error } = await admin
+      .from("survey_surveyor_zones")
+      .select("id, survey_id, zone_id, general_status, created_at, zones(id, name), surveys(id, title, description, status, deadline, logo)")
       .eq("surveyor_id", surveyor.surveyorId)
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching assignments for surveyor portal:", error)
+      console.error("Error fetching survey_surveyor_zones for surveyor portal:", error)
       return NextResponse.json({ error: "Error al cargar encuestas" }, { status: 500 })
     }
 
-    const items = ((assignments as any[]) || [])
-      // Solo mostramos encuestas activas — una encuesta en borrador/archivada
-      // no debería aparecer como disponible para trabajar en campo.
-      .filter((a) => a.surveys && (a.surveys.status === "active"))
-      .map((a) => ({
-        assignmentId: a.id,
-        surveyId: a.surveys.id,
-        title: a.surveys.title,
-        description: a.surveys.description,
-        logo: a.surveys.logo,
-        zoneId: a.zones?.id ?? null,
-        zoneName: a.zones?.name ?? "Sin zona asignada",
-        assignmentStatus: a.status,
-        deadline: a.deadline ?? a.surveys.deadline ?? null,
-      }))
+    // Un encuestador puede tener varias filas de zona para la MISMA
+    // encuesta (una por cada zona a la que fue asignado, o una general con
+    // zone_id null). El portal muestra una tarjeta por encuesta, no por
+    // zona — se agrupan y se listan los nombres de zona juntos.
+    const bySurvey = new Map<string, {
+      surveyId: string; title: string; description: string | null; logo: string | null
+      assignmentStatus: string; deadline: string | null; zoneNames: string[]
+    }>()
+
+    for (const row of (rows as any[]) || []) {
+      const survey = row.surveys
+      if (!survey || survey.status !== "active") continue // solo encuestas activas en campo
+
+      const existing = bySurvey.get(survey.id)
+      const zoneName = row.general_status ? "Todas las zonas" : (row.zones?.name ?? "Sin zona asignada")
+
+      if (existing) {
+        if (!existing.zoneNames.includes(zoneName)) existing.zoneNames.push(zoneName)
+      } else {
+        bySurvey.set(survey.id, {
+          surveyId: survey.id,
+          title: survey.title,
+          description: survey.description,
+          logo: survey.logo,
+          assignmentStatus: "assigned",
+          deadline: row.zone_id ? null : (survey.deadline ?? null), // se completa abajo si aplica
+          zoneNames: [zoneName],
+        })
+      }
+      // deadline: preferir el de la encuesta si no hay uno específico por zona
+      const entry = bySurvey.get(survey.id)!
+      if (!entry.deadline) entry.deadline = survey.deadline ?? null
+    }
+
+    const items = Array.from(bySurvey.values()).map((s) => ({
+      // El portal navega por surveyId (ver app/portal-encuestador/page.tsx y
+      // app/portal-encuestador/encuesta/[surveyId]/page.tsx), así que no se
+      // expone un "assignmentId" de lista — el endpoint de verificación de
+      // propiedad (GET /api/portal-encuestador/assignments/[surveyId])
+      // resuelve el id real que se necesita para grabar respuestas.
+      surveyId: s.surveyId,
+      title: s.title,
+      description: s.description,
+      logo: s.logo,
+      zoneName: s.zoneNames.join(", "),
+      assignmentStatus: s.assignmentStatus,
+      deadline: s.deadline,
+    }))
 
     return NextResponse.json({ surveyorName: surveyor.name, items })
   } catch (error) {
