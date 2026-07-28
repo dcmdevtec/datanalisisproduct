@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createServerSupabase()
     const body = await request.json()
     // Accept both `answers` and `response_answers` (frontend uses response_answers)
-    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name } = body
+    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name, assignment_id, outcome } = body
     const effectiveAnswers = answers || response_answers
 
     if (!survey_id) {
@@ -71,6 +71,11 @@ export async function POST(request: NextRequest) {
       respondent_document_type: respondent_document_type || null,
       respondent_document_number: respondent_document_number || null,
       respondent_name: respondent_name || null,
+      // assignment_id: liga la respuesta al encuestador/zona (portal de encuestador).
+      // outcome: clasificación efectiva/incidencia/abandonada (ver sql/2026_07_reports_outcome_and_hierarchy.sql).
+      // Ambos opcionales y aditivos — si no vienen, se comporta exactamente igual que antes.
+      ...(assignment_id ? { assignment_id } : {}),
+      outcome: outcome === "efectiva" || outcome === "incidencia" || outcome === "abandonada" ? outcome : "efectiva",
     }
 
     // ---------------------------------------------------------------

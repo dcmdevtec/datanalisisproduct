@@ -31,12 +31,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const file = formData.get("file") as File | null
     const durationSecsRaw = formData.get("durationSecs")
     const durationSecs = durationSecsRaw ? parseInt(String(durationSecsRaw), 10) : null
+    // responseId opcional: se conoce recién cuando la encuesta se envía o se
+    // registra su abandono/incidencia — llega en ese momento, no al abrir.
+    const responseIdRaw = formData.get("responseId")
+    const responseId = responseIdRaw ? String(responseIdRaw) : null
+    const responseIdPatch = responseId && recording.scope === "survey" ? { response_id: responseId } : {}
 
     if (!file || file.size === 0) {
       // Segmento vacío (ej. usuario cerró sesión sin grabar nada útil) — se marca sin audio.
       await admin.from("surveyor_recordings").update({
         ended_at: new Date().toISOString(),
         upload_status: "failed",
+        ...responseIdPatch,
       }).eq("id", recordingId)
       return NextResponse.json({ ok: true, uploaded: false })
     }
@@ -53,6 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       await admin.from("surveyor_recordings").update({
         ended_at: new Date().toISOString(),
         upload_status: "failed",
+        ...responseIdPatch,
       }).eq("id", recordingId)
       return NextResponse.json({ error: "No se pudo subir el audio" }, { status: 500 })
     }
@@ -62,6 +69,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       storage_path: path,
       duration_secs: durationSecs,
       upload_status: "uploaded",
+      ...responseIdPatch,
     }).eq("id", recordingId)
 
     return NextResponse.json({ ok: true, uploaded: true })

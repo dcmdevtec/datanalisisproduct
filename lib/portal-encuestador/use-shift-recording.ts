@@ -63,12 +63,16 @@ export function useShiftRecording() {
   }
 
   // Sube el blob acumulado de un segmento y lo marca terminado en el backend.
-  const uploadSegment = useCallback(async (segment: StartedSegment) => {
+  // responseId es opcional: para segmentos scope='survey' recién se conoce al
+  // enviar/abandonar la encuesta, así que se adjunta en este punto (cierre),
+  // no al abrir el segmento.
+  const uploadSegment = useCallback(async (segment: StartedSegment, responseId?: string | null) => {
     const blob = new Blob(segment.chunks, { type: segment.recorder.mimeType || "audio/webm" })
     const durationSecs = Math.round((Date.now() - segment.startedAt) / 1000)
     const formData = new FormData()
     formData.append("file", blob, `${segment.recordingId}.webm`)
     formData.append("durationSecs", String(durationSecs))
+    if (responseId) formData.append("responseId", responseId)
     try {
       await fetch(`/api/portal-encuestador/recordings/${segment.recordingId}`, {
         method: "PATCH",
@@ -101,8 +105,10 @@ export function useShiftRecording() {
     return segment
   }, [])
 
-  // Corta el segmento actual (si hay uno) y sube su audio.
-  const closeCurrentSegment = useCallback(async () => {
+  // Corta el segmento actual (si hay uno) y sube su audio. responseId opcional:
+  // se pasa cuando ya se conoce (fin de encuesta enviada/abandonada) para
+  // ligar el segmento 'survey' a su fila real en `responses`.
+  const closeCurrentSegment = useCallback(async (responseId?: string | null) => {
     const segment = currentSegmentRef.current
     if (!segment) return
     currentSegmentRef.current = null
@@ -113,7 +119,7 @@ export function useShiftRecording() {
       segment.recorder.onstop = () => resolve()
       segment.recorder.stop()
     })
-    await uploadSegment(segment)
+    await uploadSegment(segment, responseId)
   }, [uploadSegment])
 
   // Programa el corte/reinicio automático de un segmento 'shift' cada N minutos,
@@ -173,23 +179,27 @@ export function useShiftRecording() {
   }, [openSegment, scheduleShiftRotation])
 
   // Al abrir una encuesta: corta el segmento de fondo y arranca uno dedicado
-  // a esa encuesta (ligado a response_id) — así queda grabada individualmente.
-  const startSurveySegment = useCallback(async (responseId: string) => {
+  // a esa encuesta. responseId es opcional y normalmente NO se conoce en este
+  // punto (la fila en `responses` recién se crea al enviar/abandonar) — se
+  // liga después, en endSurveySegment, cuando ya existe.
+  const startSurveySegment = useCallback(async (responseId?: string) => {
     if (status !== "recording-shift" && status !== "recording-survey") return
     await closeCurrentSegment()
     const segment = await openSegment("survey", responseId)
     if (segment) {
       currentSegmentRef.current = segment
-      currentSurveyResponseIdRef.current = responseId
+      currentSurveyResponseIdRef.current = responseId ?? null
       setStatus("recording-survey")
     }
   }, [status, closeCurrentSegment, openSegment])
 
   // Al terminar/abandonar la encuesta: corta el segmento de la encuesta y
-  // retoma automáticamente la grabación de fondo del turno.
-  const endSurveySegment = useCallback(async () => {
+  // retoma automáticamente la grabación de fondo del turno. responseId se
+  // pasa aquí (ya se conoce: se acaba de enviar o registrar el abandono) para
+  // ligar el audio de esta encuesta a su fila real en `responses`.
+  const endSurveySegment = useCallback(async (responseId?: string) => {
     if (status !== "recording-survey") return
-    await closeCurrentSegment()
+    await closeCurrentSegment(responseId ?? currentSurveyResponseIdRef.current)
     currentSurveyResponseIdRef.current = null
     const segment = await openSegment("shift")
     if (segment) {

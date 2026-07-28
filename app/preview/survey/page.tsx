@@ -161,7 +161,18 @@ interface PreviewSurveyData {
 
 
 
-function PreviewSurveyPageContent() {
+// Props opcionales, aditivas: si no se pasan, el componente se comporta
+// exactamente igual que antes (usado por /preview/survey y /encuesta/[id]
+// públicos). El portal de encuestador (/portal-encuestador/encuesta/[id])
+// las usa para: (1) ligar la respuesta al assignment del encuestador
+// logueado, y (2) enterarse de cuándo termina el envío sin necesidad de
+// tocar el flujo interno de envío/skip-logic de este componente.
+interface PreviewSurveyPageContentProps {
+  assignmentId?: string
+  onSubmitted?: (responseId: string) => void
+}
+
+function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPageContentProps = {}) {
   // ...existing code...
   const router = useRouter()
   const [surveyData, setSurveyData] = useState<PreviewSurveyData | null>(null)
@@ -859,6 +870,10 @@ function PreviewSurveyPageContent() {
       timestamp: new Date().toISOString(),
     }
 
+    // Portal de encuestador: liga la respuesta al assignment (zona/encuestador)
+    // para que Reportes y el rendimiento por encuestador funcionen con datos reales.
+    if (assignmentId) payload.assignment_id = assignmentId
+
     if (respondentId) payload.respondent_public_id = respondentId
     const dt = localStorage.getItem(docTypeKey)
     const dn = localStorage.getItem(docNumKey)
@@ -922,13 +937,20 @@ function PreviewSurveyPageContent() {
       }
 
       toast({ title: 'Encuesta completada', description: 'Gracias por tu participación' })
+      // Avisa al contenedor (portal de encuestador) que la respuesta se guardó,
+      // pasando el response_id real para cerrar el segmento de audio de esta
+      // encuesta y marcarla como 'efectiva'. No-op para /preview y /encuesta
+      // públicos, que no pasan este callback.
+      if (json && json.response_id) {
+        try { onSubmitted?.(json.response_id) } catch (cbErr) { console.error('Error en onSubmitted:', cbErr) }
+      }
       return true
     } catch (err) {
       console.error('Error de red al enviar respuestas:', err)
       toast({ title: 'Error', description: 'Error de red al enviar respuestas', variant: 'destructive' })
       return false
     }
-  }, [answers, inferredSurveyId, surveyData, toast])
+  }, [answers, inferredSurveyId, surveyData, toast, assignmentId, onSubmitted])
 
   const handleNextSection = useCallback(async () => {
     if (!currentSection) return
@@ -3178,7 +3200,7 @@ function PreviewSurveyPageContent() {
   )
 }
 
-export default function SurveyPreviewPage() {
+export default function SurveyPreviewPage(props: PreviewSurveyPageContentProps = {}) {
   // El fondo general ahora se maneja con .preview-bg
-  return <PreviewSurveyPageContent />
+  return <PreviewSurveyPageContent {...props} />
 }

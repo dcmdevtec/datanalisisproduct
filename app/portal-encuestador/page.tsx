@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
 import supabase from "@/lib/supabase/client"
-import { useShiftRecording } from "@/lib/portal-encuestador/use-shift-recording"
+import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,7 +41,7 @@ interface DashboardKpis {
 export default function PortalEncuestadorPage() {
   const { user, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
-  const recording = useShiftRecording()
+  const recording = useRecordingContext()
 
   const [roleChecked, setRoleChecked] = useState(false)
   const [isSurveyor, setIsSurveyor] = useState(false)
@@ -281,7 +281,7 @@ export default function PortalEncuestadorPage() {
               {surveys.map((s) => (
                 <Link
                   key={s.assignmentId}
-                  href={recording.status === "recording-shift" || recording.status === "recording-survey" ? `/encuesta/${s.surveyId}` : "#"}
+                  href={recording.status === "recording-shift" || recording.status === "recording-survey" ? `/portal-encuestador/encuesta/${s.surveyId}` : "#"}
                   className={recording.status === "denied" ? "pointer-events-none" : ""}
                 >
                   <Card className="hover:border-primary/40 transition-colors">

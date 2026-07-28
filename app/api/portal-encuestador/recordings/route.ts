@@ -4,8 +4,13 @@ import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
 
 // Crea un nuevo segmento de grabación (metadata primero, el audio se sube
 // después vía PATCH /recordings/[id] cuando el segmento termina).
-// scope='survey' requiere responseId — scope='shift' es un tramo de fondo
-// entre encuestas y no lleva responseId.
+//
+// IMPORTANTE: scope='survey' NO requiere responseId al crear el segmento.
+// El motor de encuestas (app/preview/survey/page.tsx) solo genera la fila
+// en `responses` cuando el encuestador ENVÍA la encuesta (no al abrirla),
+// así que grabamos la encuesta desde que se abre sin saber todavía su
+// response_id, y lo asociamos al cerrar el segmento (PATCH .../[id]) una
+// vez que la respuesta ya se guardó o se registró el abandono/incidencia.
 export async function POST(request: NextRequest) {
   try {
     const surveyor = await resolveCurrentSurveyor()
@@ -18,9 +23,6 @@ export async function POST(request: NextRequest) {
 
     if (!shiftId || (scope !== "shift" && scope !== "survey")) {
       return NextResponse.json({ error: "shiftId y scope ('shift'|'survey') son requeridos" }, { status: 400 })
-    }
-    if (scope === "survey" && !responseId) {
-      return NextResponse.json({ error: "responseId es requerido cuando scope='survey'" }, { status: 400 })
     }
 
     // surveyor_shifts / surveyor_recordings son tablas nuevas (ver
