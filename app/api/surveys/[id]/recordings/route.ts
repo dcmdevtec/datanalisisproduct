@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: responses, error: responsesError } = await admin
       .from("responses")
-      .select("id, outcome, incidence_type, submitted_at, created_at")
+      .select("id, outcome, incidence_type, completed_at, created_at")
       .eq("survey_id", surveyId)
 
     if (responsesError) {
