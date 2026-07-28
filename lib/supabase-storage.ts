@@ -40,10 +40,22 @@ export async function initializeBuckets(): Promise<void> {
             if (!existingBucketNames.includes(bucket.name)) {
                 console.log(`Creating bucket: ${bucket.name}`)
                 try {
+                    // response-media guarda audio/video de respuestas y grabaciones del
+                    // portal de encuestador (surveyor_recordings), no solo imágenes —
+                    // restringir a solo tipos 'image/*' aquí causaba que Supabase Storage
+                    // rechazara CUALQUIER subida de audio a este bucket con
+                    // "mime type audio/webm is not supported" (bug encontrado en
+                    // producción: los segmentos de grabación del portal nunca se
+                    // guardaban). survey-images también guarda ahora video adjunto a
+                    // preguntas (question.image / columna questions.file_url), además
+                    // de las imágenes de opciones — mismo motivo, mismo fix.
+                    const isMediaBucket = bucket.name === 'response-media' || bucket.name === 'survey-images'
                     const { error: createError } = await supabase.storage.createBucket(bucket.name, {
                         public: bucket.isPublic,
-                        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-                        fileSizeLimit: 10 * 1024 * 1024, // 10MB
+                        allowedMimeTypes: isMediaBucket
+                            ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'video/webm', 'video/mp4', 'video/quicktime']
+                            : ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+                        fileSizeLimit: isMediaBucket ? 50 * 1024 * 1024 : 10 * 1024 * 1024, // grabaciones/videos pueden pesar más que una imagen
                     })
 
                     if (createError) {

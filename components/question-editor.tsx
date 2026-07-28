@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import EmojiPicker from "./EmojiPicker"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings, Lightbulb, X, GripVertical } from "lucide-react"
+import { Plus, Trash2, Copy, ChevronDown, ChevronUp, Type, Settings, Lightbulb, X, GripVertical, Film, Loader2 } from "lucide-react"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AdvancedRichTextEditor } from "@/components/ui/advanced-rich-text-editor"
@@ -188,6 +188,10 @@ export function QuestionEditor({
   // Bulk-add matrix columns UI
   const [showMatrixBulk, setShowMatrixBulk] = useState<boolean>(false)
   const [matrixBulkText, setMatrixBulkText] = useState<string>("")
+  // Subida de imagen/video adjunto a la pregunta (question.image / columna
+  // questions.file_url) — se muestra arriba del enunciado sin importar el
+  // tipo de pregunta, para poder armar encuestas "a partir de un video".
+  const [uploadingMedia, setUploadingMedia] = useState(false)
   // tabs removed: configuration moved to AdvancedQuestionConfig. Show inline controls instead.
 
   const {
@@ -945,6 +949,80 @@ export function QuestionEditor({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Media adjunta a la pregunta (imagen o video) — aplica a CUALQUIER
+            tipo de pregunta, se muestra arriba del enunciado al tomar la
+            encuesta. Pensado para encuestas "a partir de un video": se
+            adjunta el video acá y la respuesta se resuelve con el tipo de
+            pregunta normal (opción múltiple, texto, escala, etc). Usa la
+            columna questions.file_url, que ya existía en el schema pero
+            nunca tuvo control en el editor. */}
+        <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+          <Label className="font-medium text-sm">Imagen o video de la pregunta (opcional)</Label>
+          {question.image ? (
+            <div className="space-y-2">
+              {/\.(mp4|webm|mov|ogg)(\?|$)/i.test(question.image) ? (
+                <video src={question.image} controls className="max-w-full max-h-64 rounded-lg" />
+              ) : (
+                <img src={question.image} alt="" className="max-w-full max-h-64 rounded-lg object-contain" />
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  onUpdateQuestion(sectionId, question.id, "image", null)
+                  autoSaveQuestionHelper({ ...question, image: null } as Question, sectionId, surveyId)
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" /> Quitar
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <input
+                id={`question-media-input-${question.id}`}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const f = e.target.files && e.target.files[0]
+                  if (!f) return
+                  setUploadingMedia(true)
+                  try {
+                    const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import('@/lib/supabase-storage')
+                    const isVideo = f.type.startsWith('video/')
+                    // resizeImage usa un <canvas>, solo tiene sentido para imágenes.
+                    const toUpload = isVideo ? f : await resizeImage(f, 1600, 1200)
+                    const extension = getExtensionFromMimeType(f.type) || (isVideo ? 'mp4' : 'jpg')
+                    const fileName = generateUniqueFileName(`question_${question.id}_media`, extension)
+                    const publicUrl = await uploadImage('survey-images', `${question.id}/${fileName}`, toUpload)
+                    onUpdateQuestion(sectionId, question.id, "image", publicUrl)
+                    autoSaveQuestionHelper({ ...question, image: publicUrl } as Question, sectionId, surveyId)
+                  } catch (error: any) {
+                    console.error('Error uploading question media:', error)
+                    alert(`Error subiendo el archivo: ${error.message || 'Error desconocido'}`)
+                  } finally {
+                    setUploadingMedia(false)
+                    e.target.value = ''
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={uploadingMedia}
+                onClick={() => document.getElementById(`question-media-input-${question.id}`)?.click()}
+              >
+                {uploadingMedia ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Film className="h-4 w-4 mr-1.5" />
+                )}
+                {uploadingMedia ? "Subiendo..." : "Adjuntar imagen o video"}
+              </Button>
+            </div>
+          )}
         </div>
 
         {question.type === "ranking" && (

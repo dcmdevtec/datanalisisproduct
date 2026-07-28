@@ -2823,6 +2823,28 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             </div>
           </div>
 
+          {/* Imagen o video adjunto a la pregunta (question.image / questions.file_url).
+              Se muestra arriba de la respuesta sin importar el tipo de pregunta —
+              permite encuestas "a partir de un video": se adjunta el video acá y
+              se responde con el tipo de pregunta normal (opción múltiple, texto, etc). */}
+          {question.image && (
+            <div className="ml-0 sm:ml-14 mb-4 sm:mb-6">
+              {/\.(mp4|webm|mov|ogg)(\?|$)/i.test(question.image) ? (
+                <video
+                  src={question.image}
+                  controls
+                  className="w-full max-h-[420px] rounded-xl border border-gray-200 bg-black"
+                />
+              ) : (
+                <img
+                  src={question.image}
+                  alt=""
+                  className="w-full max-h-[420px] rounded-xl border border-gray-200 object-contain bg-gray-50"
+                />
+              )}
+            </div>
+          )}
+
           {/* Contenido de la pregunta */}
           <div className="ml-0 sm:ml-14">
             <div className="mt-3 sm:mt-6">{renderInput()}</div>
