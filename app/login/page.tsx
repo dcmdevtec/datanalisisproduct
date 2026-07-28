@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import ClientLayout from "../client-layout"
+import supabase from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,12 +28,29 @@ function LoginPageContent() {
     console.log('🔍 LoginPage - Estado actual:', { user: !!user, loading: authLoading, pathname: window.location.pathname })
   }, [user, authLoading])
 
-  // Si ya hay usuario autenticado, redirigir al dashboard
+  // Si ya hay usuario autenticado, redirigir según su rol.
+  // role === 'surveyor' -> portal de encuestador (encuestas por zona + grabación).
+  // cualquier otro rol -> dashboard administrativo, como antes.
   useEffect(() => {
-    if (user && !authLoading) {
-      console.log('🚀 LoginPage - Usuario autenticado, redirigiendo a dashboard')
-      router.push('/dashboard')
-    }
+    if (!user || authLoading) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: userInfo } = await supabase.from("users").select("role").eq("id", user.id).single()
+        if (cancelled) return
+        if ((userInfo as any)?.role === "surveyor") {
+          console.log('🚀 LoginPage - Encuestador autenticado, redirigiendo al portal')
+          router.push('/portal-encuestador')
+        } else {
+          console.log('🚀 LoginPage - Usuario autenticado, redirigiendo a dashboard')
+          router.push('/dashboard')
+        }
+      } catch (err) {
+        console.error('Error resolviendo rol para redirección:', err)
+        if (!cancelled) router.push('/dashboard')
+      }
+    })()
+    return () => { cancelled = true }
   }, [user, authLoading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {

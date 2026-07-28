@@ -36,14 +36,17 @@ export async function middleware(request: NextRequest) {
     // No lanzamos error si falla: simplemente dejamos pasar la petición.
     await supabase.auth.getUser()
 
-    // Redirigir a dashboard si usuario ya autenticado intenta ir a /login
+    // Redirigir si usuario ya autenticado intenta ir a /login — al portal de
+    // encuestador si su rol es 'surveyor', al dashboard administrativo si no.
     if (pathname === '/login') {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        const { data: userInfo } = await supabase.from('users').select('role').eq('id', user.id).single()
+        const destination = (userInfo as any)?.role === 'surveyor' ? '/portal-encuestador' : '/dashboard'
         if (process.env.NODE_ENV === 'development') {
-          console.log('✅ Middleware - Usuario autenticado, redirigiendo a dashboard')
+          console.log(`✅ Middleware - Usuario autenticado, redirigiendo a ${destination}`)
         }
-        return NextResponse.redirect(new URL('/dashboard', request.url))
+        return NextResponse.redirect(new URL(destination, request.url))
       }
     }
 

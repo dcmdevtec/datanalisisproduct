@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import "leaflet/dist/leaflet.css"
+import { Maximize2, Minimize2 } from "lucide-react"
 
 interface ZonePolygon {
   id: string
@@ -14,10 +15,15 @@ interface ZonePolygon {
 }
 
 interface ResponsePoint {
+  id?: string
   lat: number
   lng: number
   status: string
+  outcome?: "efectiva" | "incidencia" | "abandonada" | null
   createdAt: string
+  surveyorName?: string | null
+  respondentName?: string | null
+  durationSecs?: number | null
   source?: string
 }
 
@@ -27,11 +33,31 @@ interface ReportsGeoMapProps {
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
+// Se usa solo para las ZONAS (polígonos), que siguen midiéndose por tasa de completación.
 function completionColor(rate: number): string {
   if (rate >= 75) return "#22c55e"  // verde
   if (rate >= 50) return "#f59e0b"  // amarillo
   if (rate >= 25) return "#f97316"  // naranja
   return "#ef4444"                   // rojo
+}
+
+// Colores por tipo de respuesta (pptx slide 24): Verde=Efectiva, Amarillo=Abandonada, Rojo=Incidencia.
+const outcomeColor: Record<string, string> = {
+  efectiva: "#22c55e",
+  abandonada: "#eab308",
+  incidencia: "#ef4444",
+}
+const outcomeLabel: Record<string, string> = {
+  efectiva: "Efectiva",
+  abandonada: "Abandonada",
+  incidencia: "Incidencia",
+}
+
+function formatDuration(secs: number | null | undefined): string {
+  if (secs === null || secs === undefined) return "—"
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return `${m}:${String(s).padStart(2, "0")}`
 }
 
 // Centro de Colombia como fallback
@@ -45,6 +71,13 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
   const [isClient, setIsClient] = useState(false)
   const [showPoints, setShowPoints] = useState(true)
   const [showZones, setShowZones] = useState(true)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  // Filtro por tipo (slide 24): todas | efectiva | incidencia | abandonada
+  const [typeFilter, setTypeFilter] = useState<"all" | "efectiva" | "incidencia" | "abandonada">("all")
+
+  const filteredPoints = typeFilter === "all"
+    ? responsePoints
+    : responsePoints.filter((p) => (p.outcome ?? null) === typeFilter)
 
   useEffect(() => { setIsClient(true) }, [])
 
@@ -124,7 +157,25 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
       renderLayers(L, mapRef.current)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zonePolygons, responsePoints, showPoints, showZones, isClient])
+  }, [zonePolygons, filteredPoints, showPoints, showZones, isClient])
+
+  // Leaflet no detecta automáticamente que el contenedor cambió de tamaño al
+  // entrar/salir de pantalla completa — hay que forzar el recálculo.
+  useEffect(() => {
+    if (!mapRef.current) return
+    const t = setTimeout(() => {
+      try { mapRef.current.invalidateSize() } catch { }
+    }, 50)
+    return () => clearTimeout(t)
+  }, [isFullscreen])
+
+  // Permite cerrar pantalla completa con la tecla Escape
+  useEffect(() => {
+    if (!isFullscreen) return
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") setIsFullscreen(false) }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isFullscreen])
 
   const renderLayers = async (L: any, map: any) => {
     if (!map) return
@@ -211,42 +262,47 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
       }
     }
 
-    // ── PUNTOS DE RESPUESTA ───────────────────────────────────────────────────
-    if (showPoints && responsePoints.length > 0) {
-      // Agrupar puntos muy cercanos para no saturar (grid simple 4 decimales)
-      const grid: Record<string, { lat: number; lng: number; count: number; completed: number }> = {}
-      for (const p of responsePoints) {
-        const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`
-        if (!grid[key]) grid[key] = { lat: p.lat, lng: p.lng, count: 0, completed: 0 }
-        grid[key].count++
-        if (p.status === "completed") grid[key].completed++
-      }
+    // ── PUNTOS DE RESPUESTA (individuales e independientes — pptx slide 24) ────
+    // Cada punto se dibuja por separado, sin agrupar por celda. El color indica
+    // el tipo de respuesta (verde=efectiva, amarillo=abandonada, rojo=incidencia);
+    // para puntos sin clasificación (rastro de encuestador) se usa gris neutro.
+    if (showPoints && filteredPoints.length > 0) {
+      for (const p of filteredPoints) {
+        const color = p.outcome ? outcomeColor[p.outcome] : "#94a3b8"
 
-      for (const cell of Object.values(grid)) {
-        const rate = cell.count > 0 ? Math.round((cell.completed / cell.count) * 100) : 0
-        const color = completionColor(rate)
-        const r = Math.min(6 + Math.log2(cell.count + 1) * 3, 18) // radio dinámico por densidad
-
-        const circle = L.circleMarker([cell.lat, cell.lng], {
-          radius: r,
+        const circle = L.circleMarker([p.lat, p.lng], {
+          radius: 7,
           fillColor: color,
           color: "#fff",
           weight: 1.5,
           opacity: 1,
-          fillOpacity: 0.85,
+          fillOpacity: 0.9,
         })
 
-        const isSurveyorSource = responsePoints.some(p => p.source === "surveyor")
-        circle.bindPopup(`
-          <div style="font-family:system-ui,sans-serif;font-size:12px">
-            <div style="font-weight:700;margin-bottom:4px;font-size:13px">📍 ${isSurveyorSource ? "Actividad de encuestador" : "Respuestas"}</div>
-            <div style="color:#555">Registros: <strong>${cell.count}</strong></div>
-          </div>`, { maxWidth: 180 })
+        const isSurveyorTrace = p.source === "surveyor"
+        const popupHtml = isSurveyorTrace
+          ? `
+          <div style="font-family:system-ui,sans-serif;font-size:12px;min-width:160px">
+            <div style="font-weight:700;margin-bottom:4px;font-size:13px">📍 Actividad de encuestador</div>
+            ${p.surveyorName ? `<div style="color:#555">Encuestador: <strong>${p.surveyorName}</strong></div>` : ""}
+            <div style="color:#888;font-size:11px;margin-top:2px">${new Date(p.createdAt).toLocaleString("es-CO")}</div>
+          </div>`
+          : `
+          <div style="font-family:system-ui,sans-serif;font-size:12px;min-width:180px">
+            <div style="font-weight:700;margin-bottom:6px;font-size:13px">📍 ${p.outcome ? outcomeLabel[p.outcome] : "Respuesta"}</div>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div style="color:#555">Encuestador: <strong>${p.surveyorName || "Sin asignar"}</strong></div>
+              <div style="color:#555">Encuestado: <strong>${p.respondentName || "Anónimo"}</strong></div>
+              <div style="color:#555">Duración: <strong>${formatDuration(p.durationSecs)}</strong></div>
+              <div style="color:#888;font-size:11px;margin-top:2px">${new Date(p.createdAt).toLocaleString("es-CO")}</div>
+            </div>
+          </div>`
 
+        circle.bindPopup(popupHtml, { maxWidth: 220 })
         circle.addTo(map)
         layersRef.current.push(circle)
 
-        bounds.push([cell.lat, cell.lng])
+        bounds.push([p.lat, p.lng])
       }
     }
 
@@ -267,15 +323,30 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
     )
   }
 
-  const hasData = zonePolygons.length > 0 || responsePoints.length > 0
+  const hasData = zonePolygons.length > 0 || filteredPoints.length > 0
+  const hasOutcomeData = responsePoints.some((p) => !!p.outcome)
 
   return (
-    <div className="relative w-full rounded-xl overflow-hidden border shadow-sm" style={{ height: 460 }}>
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[2000] rounded-none border-0"
+          : "relative w-full rounded-xl overflow-hidden border shadow-sm"
+      }
+      style={isFullscreen ? {} : { height: 460 }}
+    >
       {/* Mapa */}
       <div ref={containerRef} className="w-full h-full" />
 
       {/* Controles de capa — esquina superior derecha */}
       <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
+        <button
+          onClick={() => setIsFullscreen((v) => !v)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border bg-white border-gray-200 text-gray-700 transition-all hover:bg-gray-50"
+        >
+          {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          {isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+        </button>
         <button
           onClick={() => setShowZones((v) => !v)}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border transition-all ${showZones ? "bg-white border-gray-200 text-gray-700" : "bg-gray-100 border-gray-300 text-gray-400"}`}
@@ -290,32 +361,62 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
           <span className="w-3 h-3 rounded-full inline-block" style={{ background: "#22c55e", opacity: showPoints ? 1 : 0.4 }} />
           Respuestas
         </button>
+        {/* Filtro por tipo de respuesta (slide 24) — solo tiene sentido si hay datos clasificados */}
+        {hasOutcomeData && (
+          <div className="flex flex-col gap-1 bg-white border border-gray-200 rounded-lg shadow-md p-1.5">
+            {(["all", "efectiva", "incidencia", "abandonada"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={`flex items-center gap-2 px-2 py-1 rounded text-xs font-medium transition-all ${typeFilter === t ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: t === "all" ? "#94a3b8" : outcomeColor[t] }} />
+                {t === "all" ? "Todas" : outcomeLabel[t]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Leyenda — esquina inferior izquierda */}
-      <div className="absolute bottom-6 left-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-2">
-        <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tasa de completación</p>
-        <div className="flex flex-col gap-1">
-          {[
-            { color: "#22c55e", label: "≥ 75% — Alta" },
-            { color: "#f59e0b", label: "50-74% — Media" },
-            { color: "#f97316", label: "25-49% — Baja" },
-            { color: "#ef4444", label: "< 25% — Crítica" },
-          ].map(({ color, label }) => (
-            <div key={label} className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: color }} />
-              <span className="text-[10px] text-gray-600">{label}</span>
+      <div className="absolute bottom-6 left-3 z-[1000] flex flex-col gap-2">
+        {hasOutcomeData && (
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-2">
+            <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tipo de respuesta</p>
+            <div className="flex flex-col gap-1">
+              {(["efectiva", "abandonada", "incidencia"] as const).map((t) => (
+                <div key={t} className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: outcomeColor[t] }} />
+                  <span className="text-[10px] text-gray-600">{outcomeLabel[t]}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+        )}
+        <div className="bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-2">
+          <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tasa de completación (zonas)</p>
+          <div className="flex flex-col gap-1">
+            {[
+              { color: "#22c55e", label: "≥ 75% — Alta" },
+              { color: "#f59e0b", label: "50-74% — Media" },
+              { color: "#f97316", label: "25-49% — Baja" },
+              { color: "#ef4444", label: "< 25% — Crítica" },
+            ].map(({ color, label }) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: color }} />
+                <span className="text-[10px] text-gray-600">{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Contador de puntos */}
-      {responsePoints.length > 0 && (
+      {filteredPoints.length > 0 && (
         <div className="absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-1.5">
           <p className="text-xs text-gray-600">
-            <span className="font-bold text-gray-800">{responsePoints.length.toLocaleString()}</span>{" "}
-            {responsePoints.some(p => p.source === "surveyor") ? "ubicaciones de encuestadores" : "respuestas georeferenciadas"}
+            <span className="font-bold text-gray-800">{filteredPoints.length.toLocaleString()}</span>{" "}
+            {filteredPoints.some(p => p.source === "surveyor") ? "ubicaciones de encuestadores" : "respuestas georeferenciadas"}
           </p>
         </div>
       )}

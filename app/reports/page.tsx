@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
@@ -9,10 +9,18 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { BarChart3, Download, Loader2, PieChart, TrendingUp, TrendingDown, AlertCircle, Clock, Calendar, Zap, Target, BookOpen, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
-// Note: PieChart kept for empty state icon
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  BarChart3, Download, Loader2, PieChart as PieChartIcon, TrendingUp, TrendingDown, AlertCircle,
+  Clock, Calendar, Zap, Target, BookOpen, ArrowUpRight, ArrowDownRight, Minus,
+  CheckCircle2, AlertTriangle, XCircle, Users2, ChartPie, ChartNoAxesColumn, ChartBarBig, LineChart as LineChartIcon, Table2, Tags,
+} from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
+import { QuestionChart, type ChartType } from "@/components/reports/question-chart"
+import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
+import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
 
 // Dynamic import del mapa para evitar problemas SSR con Leaflet
 const ReportsGeoMap = dynamic(() => import("@/components/reports-geo-map"), {
@@ -24,6 +32,7 @@ interface ReportData {
   companies: { id: string; name: string }[]
   projects: { id: string; name: string; companyId: string }[]
   surveys: { id: string; title: string; projectId: string }[]
+  surveyors: { id: string; name: string; supervisorId: string | null }[]
   summary: {
     totalResponses: number
     completionRate: number
@@ -38,6 +47,10 @@ interface ReportData {
     surveysWithData: number
     trendPct: number
     peakDay: { date: string; count: number } | null
+    efectivas: number
+    incidencias: number
+    abandonadas: number
+    tasaRespuestasEfectivas: number
   }
   responses: {
     questionBreakdowns: {
@@ -48,14 +61,21 @@ interface ReportData {
       average?: string
       distribution?: { label: string; count: number; percentage: number }[]
       sampleAnswers?: string[]
+      timeline?: { date: string; count: number }[]
     }[]
   }
   performance: {
     surveyorPerformance: {
       name: string
+      supervisorId: string | null
       totalAssignments: number
       completedAssignments: number
       completionRate: number
+      efectivas: number
+      incidencias: number
+      abandonadas: number
+      totalRegistros: number
+      tasaRespuestas: number
     }[]
     dailyDistribution: { day: string; count: number }[]
     surveyPerformance: {
@@ -87,7 +107,11 @@ interface ReportData {
       lat: number
       lng: number
       status: string
+      outcome?: "efectiva" | "incidencia" | "abandonada" | null
       createdAt: string
+      surveyorName?: string | null
+      respondentName?: string | null
+      durationSecs?: number | null
       source?: string
     }[]
   }
@@ -99,6 +123,14 @@ function formatGrowth(value: number): string {
   return `${sign}${value}% vs período anterior`
 }
 
+const chartTypeOptions: { value: ChartType; label: string; icon: typeof ChartPie }[] = [
+  { value: "pie", label: "Torta", icon: ChartPie },
+  { value: "donut", label: "Anillo", icon: PieChartIcon },
+  { value: "barsV", label: "Barras verticales", icon: ChartBarBig },
+  { value: "barsH", label: "Barras horizontales", icon: ChartNoAxesColumn },
+  { value: "trend", label: "Tendencia", icon: LineChartIcon },
+]
+
 export default function ReportsPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -109,7 +141,17 @@ export default function ReportsPage() {
   const [selectedCompany, setSelectedCompany] = useState<string>("all")
   const [selectedProject, setSelectedProject] = useState<string>("all")
   const [selectedSurvey, setSelectedSurvey] = useState<string>("all")
-  const [selectedPeriod, setSelectedPeriod] = useState<string>("month")
+  const [selectedSurveyor, setSelectedSurveyor] = useState<string>("all")
+  const [selectedTipo, setSelectedTipo] = useState<string>("all")
+  // Rango de fechas real (pptx slide 19), reemplaza el selector de "período" fijo.
+  const [dateFrom, setDateFrom] = useState<string>("")
+  const [dateTo, setDateTo] = useState<string>("")
+
+  // Estado del selector de gráficos en "Análisis de resultados" (slide 21)
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string>("")
+  const [chartType, setChartType] = useState<ChartType>("barsV")
+  const [showDataTable, setShowDataTable] = useState(true)
+  const [showLabels, setShowLabels] = useState(true)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -144,17 +186,26 @@ export default function ReportsPage() {
     }
   ) ?? []
 
+  // Query string de filtros globales, reutilizado por el fetch principal y por
+  // la pestaña de Respuestas Individuales (que pagina por su cuenta).
+  const filterParams = useMemo(() => {
+    const params = new URLSearchParams({
+      company: selectedCompany,
+      project: selectedProject,
+      survey: selectedSurvey,
+      surveyor: selectedSurveyor,
+      tipo: selectedTipo,
+    })
+    if (dateFrom) params.set("dateFrom", dateFrom)
+    if (dateTo) params.set("dateTo", dateTo)
+    return params
+  }, [selectedCompany, selectedProject, selectedSurvey, selectedSurveyor, selectedTipo, dateFrom, dateTo])
+
   const fetchData = useCallback(async () => {
     if (!user) return
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        company: selectedCompany,
-        project: selectedProject,
-        survey: selectedSurvey,
-        period: selectedPeriod,
-      })
-      const res = await fetch(`/api/reports?${params}`)
+      const res = await fetch(`/api/reports?${filterParams}`)
       if (!res.ok) throw new Error("fetch failed")
       const json = await res.json()
       setData(json)
@@ -163,24 +214,26 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user, selectedCompany, selectedProject, selectedSurvey, selectedPeriod, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, filterParams.toString(), toast])
 
   const handleExport = async (tab: string) => {
     if (!data) return
     setExporting(tab)
     try {
+      const periodLabel = dateFrom || dateTo ? `${dateFrom || "inicio"}_a_${dateTo || "hoy"}` : "todo"
       switch (tab) {
         case "summary":
-          await exportSummary(data, selectedPeriod)
+          await exportSummary(data, periodLabel)
           break
         case "responses":
-          await exportResponses(data, selectedPeriod)
+          await exportResponses(data, periodLabel)
           break
         case "performance":
-          await exportPerformance(data, selectedPeriod)
+          await exportPerformance(data, periodLabel)
           break
         case "geographic":
-          await exportGeographic(data, selectedPeriod)
+          await exportGeographic(data, periodLabel)
           break
       }
       toast({ title: "Exportado", description: "El reporte se descargó correctamente" })
@@ -188,6 +241,23 @@ export default function ReportsPage() {
       toast({ title: "Error", description: "No se pudo exportar el reporte", variant: "destructive" })
     } finally {
       setExporting(null)
+    }
+  }
+
+  // Compartir link público de resultados (slide 21: "compartir un link para que la
+  // persona que lo tenga pueda verlo en línea"). El link apunta a la vista pública
+  // de resultados de la encuesta seleccionada.
+  const handleShareLink = async () => {
+    if (selectedSurvey === "all") {
+      toast({ title: "Selecciona una encuesta", description: "Para compartir resultados primero elige una encuesta específica en los filtros", variant: "destructive" })
+      return
+    }
+    const url = `${window.location.origin}/reports/public/${selectedSurvey}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast({ title: "Link copiado", description: "El enlace de resultados públicos se copió al portapapeles" })
+    } catch {
+      toast({ title: "Link de resultados", description: url })
     }
   }
 
@@ -211,68 +281,130 @@ export default function ReportsPage() {
     return `${display}:00 ${ampm}`
   }
 
+  const questionBreakdowns = data?.responses?.questionBreakdowns ?? []
+  const selectedQuestion = questionBreakdowns.find((q) => q.questionId === selectedQuestionId) ?? questionBreakdowns[0]
+
+  const surveyorRows: SurveyorPerformanceRow[] = (data?.performance?.surveyorPerformance ?? []).map((s) => ({
+    name: s.name,
+    supervisorId: s.supervisorId,
+    totalRegistros: s.totalRegistros,
+    incidencias: s.incidencias,
+    abandonadas: s.abandonadas,
+    efectivas: s.efectivas,
+    tasaRespuestas: s.tasaRespuestas,
+    completionRate: s.completionRate,
+  }))
 
   return (
     <DashboardLayout>
       <div className="p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold">Reportes y Análisis</h1>
             <p className="text-muted-foreground">Visualiza y analiza los datos recopilados</p>
           </div>
-          <div className="mt-10 flex flex-col sm:flex-row gap-2 flex-wrap">
-            <Select value={selectedCompany} onValueChange={handleCompanyChange}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Empresa" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las empresas</SelectItem>
-                {data?.companies?.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedProject} onValueChange={handleProjectChange}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Proyecto" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los proyectos</SelectItem>
-                {filteredProjects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedSurvey} onValueChange={setSelectedSurvey}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Encuesta" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las encuestas</SelectItem>
-                {filteredSurveys.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-full sm:w-[150px]">
-                <SelectValue placeholder="Seleccionar período" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="week">Última semana</SelectItem>
-                <SelectItem value="month">Último mes</SelectItem>
-                <SelectItem value="quarter">Último trimestre</SelectItem>
-                <SelectItem value="year">Último año</SelectItem>
-                <SelectItem value="all">Todo el tiempo</SelectItem>
-              </SelectContent>
-            </Select>
+
+          {/* ── Filtros globales (pptx slide 19): aplican a las 5 pestañas ── */}
+          <div className="flex flex-col sm:flex-row gap-2 flex-wrap items-end">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Empresa</Label>
+              <Select value={selectedCompany} onValueChange={handleCompanyChange}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las empresas</SelectItem>
+                  {data?.companies?.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Proyecto</Label>
+              <Select value={selectedProject} onValueChange={handleProjectChange}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Proyecto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los proyectos</SelectItem>
+                  {filteredProjects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Encuesta</Label>
+              <Select value={selectedSurvey} onValueChange={setSelectedSurvey}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Encuesta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las encuestas</SelectItem>
+                  {filteredSurveys.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Encuestador</Label>
+              <Select value={selectedSurveyor} onValueChange={setSelectedSurveyor}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Encuestador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {data?.surveyors?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Tipo de encuesta</Label>
+              <Select value={selectedTipo} onValueChange={setSelectedTipo}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="efectiva">Efectiva</SelectItem>
+                  <SelectItem value="incidencia">Incidencia</SelectItem>
+                  <SelectItem value="abandonada">Abandonada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Desde</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full sm:w-[150px]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Hasta</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full sm:w-[150px]" />
+            </div>
+            {(dateFrom || dateTo || selectedSurveyor !== "all" || selectedTipo !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedSurveyor("all"); setSelectedTipo("all") }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
           </div>
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Tags className="h-3 w-3" />
+            &quot;Efectiva / Incidencia / Abandonada&quot; se calcula automáticamente a partir del estado de la respuesta mientras la app no envíe la clasificación completa (ver nota en Resumen).
+          </p>
         </div>
 
         <Tabs defaultValue="summary" className="space-y-6">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="summary">Resumen</TabsTrigger>
-            <TabsTrigger value="responses">Respuestas</TabsTrigger>
+            <TabsTrigger value="responses">Análisis de resultados</TabsTrigger>
+            <TabsTrigger value="individual">Respuestas Individuales</TabsTrigger>
             <TabsTrigger value="performance">Rendimiento</TabsTrigger>
             <TabsTrigger value="geographic">Geográfico</TabsTrigger>
           </TabsList>
@@ -292,14 +424,13 @@ export default function ReportsPage() {
             ) : (
               <div id="export-summary" className="space-y-6">
 
-                {/* ── Fila 1: KPIs principales ── */}
+                {/* ── Fila 1: KPIs de tipo de encuesta (pptx slide 20) ── */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-export-chart>
-                  {/* Total Respuestas */}
                   <Card className="relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
                     <CardHeader className="pb-1 pt-4 px-4">
                       <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                        <BarChart3 className="h-3.5 w-3.5 text-[#18b0a4]" /> Total Respuestas
+                        <BarChart3 className="h-3.5 w-3.5 text-[#18b0a4]" /> Total Registros
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
@@ -319,12 +450,68 @@ export default function ReportsPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Tasa Finalización — Donut */}
                   <Card className="relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
                     <CardHeader className="pb-1 pt-4 px-4">
                       <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                        <Target className="h-3.5 w-3.5 text-[#18b0a4]" /> Tasa de Finalización
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[#18b0a4]" /> Encuestas Efectivas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold text-[#18b0a4]">{summary?.efectivas?.toLocaleString() ?? "0"}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{summary?.tasaRespuestasEfectivas ?? 0}% del total</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-red-500" /> Incidencias
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold text-red-500">{summary?.incidencias?.toLocaleString() ?? "0"}</div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(summary?.totalResponses ?? 0) > 0 ? Math.round(((summary?.incidencias ?? 0) / (summary?.totalResponses || 1)) * 100) : 0}% del total
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <XCircle className="h-3.5 w-3.5 text-amber-500" /> Encuestas Abandonadas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold text-amber-500">{summary?.abandonadas?.toLocaleString() ?? "0"}</div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(summary?.totalResponses ?? 0) > 0 ? Math.round(((summary?.abandonadas ?? 0) / (summary?.totalResponses || 1)) * 100) : 0}% del total
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {!(data?.summary?.incidencias) && (
+                  <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 rounded-md p-3 border border-dashed">
+                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                    <span>
+                      &quot;Incidencias&quot; siempre muestra 0 hasta que la APK empiece a enviar la clasificación de cada respuesta
+                      (pantalla previa a la encuesta). Mientras tanto, &quot;Efectivas&quot; y &quot;Abandonadas&quot; se calculan a partir
+                      del estado actual de la respuesta como una aproximación razonable.
+                    </span>
+                  </div>
+                )}
+
+                {/* ── Fila 2: KPIs principales ── */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-export-chart>
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <Target className="h-3.5 w-3.5 text-[#18b0a4]" /> Tasa de Respuestas
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4 pb-4 flex items-center gap-3">
@@ -332,23 +519,20 @@ export default function ReportsPage() {
                         <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                           <circle cx="18" cy="18" r="14" fill="none" stroke="hsl(var(--muted))" strokeWidth="4" />
                           <circle cx="18" cy="18" r="14" fill="none" stroke="#18b0a4" strokeWidth="4"
-                            strokeDasharray={`${(summary?.completionRate ?? 0) * 0.879} 87.9`}
+                            strokeDasharray={`${(summary?.tasaRespuestasEfectivas ?? 0) * 0.879} 87.9`}
                             strokeLinecap="round" />
                         </svg>
                         <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold">
-                          {summary?.completionRate ?? 0}%
+                          {summary?.tasaRespuestasEfectivas ?? 0}%
                         </span>
                       </div>
                       <div>
-                        <div className="text-2xl font-bold">{summary?.completionRate ?? 0}%</div>
-                        <p className="text-xs text-muted-foreground">
-                          {Math.round(((summary?.completionRate ?? 0) / 100) * (summary?.totalResponses ?? 0))} completadas
-                        </p>
+                        <div className="text-2xl font-bold">{summary?.tasaRespuestasEfectivas ?? 0}%</div>
+                        <p className="text-xs text-muted-foreground">efectivas / total</p>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Tiempo Promedio */}
                   <Card className="relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
                     <CardHeader className="pb-1 pt-4 px-4">
@@ -358,11 +542,23 @@ export default function ReportsPage() {
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
                       <div className="text-3xl font-bold font-mono">{summary?.avgTime || "—"}</div>
-                      <p className="text-xs text-muted-foreground mt-1">min:seg por encuesta</p>
+                      <p className="text-xs text-muted-foreground mt-1">min:seg por encuesta efectiva</p>
                     </CardContent>
                   </Card>
 
-                  {/* Preguntas Analizadas */}
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
+                    <CardHeader className="pb-1 pt-4 px-4">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <Users2 className="h-3.5 w-3.5 text-[#18b0a4]" /> Total Encuestadores
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      <div className="text-3xl font-bold">{data?.performance?.surveyorPerformance?.length ?? 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">con registros en el período</p>
+                    </CardContent>
+                  </Card>
+
                   <Card className="relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
                     <CardHeader className="pb-1 pt-4 px-4">
@@ -371,72 +567,18 @@ export default function ReportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
-                      <div className="text-3xl font-bold">{data?.responses?.questionBreakdowns?.length ?? 0}</div>
+                      <div className="text-3xl font-bold">{questionBreakdowns.length}</div>
                       <p className="text-xs text-muted-foreground mt-1">con al menos 1 respuesta</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* ── Fila 2: KPIs secundarios ── */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <Card className="border-dashed">
-                    <CardContent className="pt-4 px-4 pb-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Promedio / día</span>
-                      </div>
-                      <div className="text-2xl font-bold">{summary?.avgPerDay ?? 0}</div>
-                      <p className="text-xs text-muted-foreground">{summary?.activeDays ?? 0} días activos</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-dashed">
-                    <CardContent className="pt-4 px-4 pb-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Hora pico</span>
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {summary?.totalResponses ? formatHour(summary.peakHour) : "—"}
-                      </div>
-                      <p className="text-xs text-muted-foreground">mayor actividad</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-dashed">
-                    <CardContent className="pt-4 px-4 pb-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <BookOpen className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Encuestas</span>
-                      </div>
-                      <div className="text-2xl font-bold">{summary?.surveysWithData ?? 0}</div>
-                      <p className="text-xs text-muted-foreground">con respuestas</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-dashed">
-                    <CardContent className="pt-4 px-4 pb-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        {(summary?.trendPct ?? 0) >= 0
-                          ? <TrendingUp className="h-4 w-4 text-[#18b0a4]" />
-                          : <TrendingDown className="h-4 w-4 text-red-500" />}
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tendencia</span>
-                      </div>
-                      <div className={`text-2xl font-bold ${(summary?.trendPct ?? 0) >= 0 ? "text-[#18b0a4]" : "text-red-500"}`}>
-                        {(summary?.trendPct ?? 0) > 0 ? "+" : ""}{summary?.trendPct ?? 0}%
-                      </div>
-                      <p className="text-xs text-muted-foreground">2ª mitad vs 1ª mitad</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* ── Fila 3: Gráficos principales ── */}
+                {/* ── Fila 3: Evolución de respuestas (tendencia por día) ── */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Timeline — ocupa 2 columnas */}
                   <Card className="lg:col-span-2" data-export-chart>
                     <CardHeader>
                       <CardTitle className="text-base">Evolución de Respuestas</CardTitle>
-                      <CardDescription>Número de respuestas recibidas por día</CardDescription>
+                      <CardDescription>Tendencia de respuestas recibidas por día</CardDescription>
                     </CardHeader>
                     <CardContent>
                       {(summary?.responsesTimeline?.length ?? 0) === 0 ? (
@@ -477,53 +619,26 @@ export default function ReportsPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Donut grande completación */}
+                  {/* Donut de tipo de encuesta */}
                   <Card data-export-chart>
                     <CardHeader>
-                      <CardTitle className="text-base">Estado de Respuestas</CardTitle>
-                      <CardDescription>Distribución completadas vs pendientes</CardDescription>
+                      <CardTitle className="text-base">Distribución por Tipo</CardTitle>
+                      <CardDescription>Efectivas vs Incidencias vs Abandonadas</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-col items-center justify-center h-56 gap-4">
+                    <CardContent className="flex flex-col items-center justify-center h-56 gap-3">
                       {summary && summary.totalResponses > 0 ? (
-                        <>
-                          <div className="relative" style={{ width: 120, height: 120 }}>
-                            <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                              <circle cx="18" cy="18" r="14" fill="none" stroke="hsl(var(--muted))" strokeWidth="3.5" />
-                              <circle cx="18" cy="18" r="14" fill="none" stroke="#18b0a4" strokeWidth="3.5"
-                                strokeDasharray={`${summary.completionRate * 0.879} 87.9`}
-                                strokeLinecap="round" className="transition-all duration-700" />
-                              {(100 - summary.completionRate) > 0 && (
-                                <circle cx="18" cy="18" r="14" fill="none" stroke="#e2e8f0" strokeWidth="3.5"
-                                  strokeDasharray={`${(100 - summary.completionRate) * 0.879} 87.9`}
-                                  strokeDashoffset={`${-summary.completionRate * 0.879}`}
-                                  strokeLinecap="round" className="transition-all duration-700" />
-                              )}
-                            </svg>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="text-2xl font-bold">{summary.completionRate}%</span>
-                              <span className="text-[10px] text-muted-foreground">completadas</span>
-                            </div>
-                          </div>
-                          <div className="w-full space-y-1.5 text-sm">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: "#18b0a4" }} />
-                                <span className="text-muted-foreground">Completadas</span>
-                              </div>
-                              <span className="font-semibold">{Math.round((summary.completionRate / 100) * summary.totalResponses)}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-slate-200 flex-shrink-0" />
-                                <span className="text-muted-foreground">Incompletas</span>
-                              </div>
-                              <span className="font-semibold">{Math.round(((100 - summary.completionRate) / 100) * summary.totalResponses)}</span>
-                            </div>
-                          </div>
-                        </>
+                        <QuestionChart
+                          type="donut"
+                          showLabels={true}
+                          distribution={[
+                            { label: "Efectivas", count: summary.efectivas, percentage: Math.round((summary.efectivas / summary.totalResponses) * 100) },
+                            { label: "Incidencias", count: summary.incidencias, percentage: Math.round((summary.incidencias / summary.totalResponses) * 100) },
+                            { label: "Abandonadas", count: summary.abandonadas, percentage: Math.round((summary.abandonadas / summary.totalResponses) * 100) },
+                          ]}
+                        />
                       ) : (
                         <div className="text-center text-muted-foreground">
-                          <PieChart className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                          <PieChartIcon className="h-10 w-10 mx-auto mb-2 opacity-30" />
                           <p className="text-sm">Sin respuestas aún</p>
                         </div>
                       )}
@@ -533,7 +648,6 @@ export default function ReportsPage() {
 
                 {/* ── Fila 4: Hora del día + Insights ── */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Distribución por hora */}
                   <Card className="lg:col-span-2" data-export-chart>
                     <CardHeader>
                       <CardTitle className="text-base">Actividad por Hora del Día</CardTitle>
@@ -587,7 +701,6 @@ export default function ReportsPage() {
                         <p className="text-sm text-muted-foreground">Sin datos para analizar</p>
                       ) : (
                         <ul className="space-y-3 text-sm">
-                          {/* Tendencia */}
                           <li className="flex gap-2">
                             {(summary?.trendPct ?? 0) >= 0
                               ? <TrendingUp className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
@@ -598,7 +711,6 @@ export default function ReportsPage() {
                               </strong> en la segunda mitad del período
                             </span>
                           </li>
-                          {/* Día más activo */}
                           {summary?.peakDay && (
                             <li className="flex gap-2">
                               <Calendar className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
@@ -607,37 +719,33 @@ export default function ReportsPage() {
                               </span>
                             </li>
                           )}
-                          {/* Hora pico */}
                           <li className="flex gap-2">
                             <Clock className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
                             <span className="text-muted-foreground">
                               Mayor actividad a las <strong className="text-foreground">{formatHour(summary?.peakHour ?? 0)}</strong>
                             </span>
                           </li>
-                          {/* Tasa finalización */}
                           <li className="flex gap-2">
                             <Target className="h-4 w-4 flex-shrink-0 mt-0.5 text-[#18b0a4]" />
                             <span className="text-muted-foreground">
-                              {summary?.completionRate === 100
-                                ? <><strong className="text-[#18b0a4]">100%</strong> de finalización — sin abandonos</>
-                                : summary?.completionRate && summary.completionRate >= 80
-                                ? <><strong className="text-[#18b0a4]">{summary.completionRate}%</strong> de finalización — muy buena tasa</>
-                                : <><strong className="text-amber-500">{summary?.completionRate}%</strong> de finalización — revisar preguntas</>
+                              {summary?.tasaRespuestasEfectivas === 100
+                                ? <><strong className="text-[#18b0a4]">100%</strong> de respuestas efectivas</>
+                                : summary?.tasaRespuestasEfectivas && summary.tasaRespuestasEfectivas >= 80
+                                ? <><strong className="text-[#18b0a4]">{summary.tasaRespuestasEfectivas}%</strong> de respuestas efectivas — muy buena tasa</>
+                                : <><strong className="text-amber-500">{summary?.tasaRespuestasEfectivas}%</strong> de respuestas efectivas — revisar campo</>
                               }
                             </span>
                           </li>
-                          {/* Velocidad */}
                           <li className="flex gap-2">
                             <BarChart3 className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
                             <span className="text-muted-foreground">
                               Promedio de <strong className="text-foreground">{summary?.avgPerDay ?? 0} resp/día</strong> en {summary?.activeDays ?? 0} días activos
                             </span>
                           </li>
-                          {/* Preguntas */}
                           <li className="flex gap-2">
                             <BookOpen className="h-4 w-4 text-[#18b0a4] flex-shrink-0 mt-0.5" />
                             <span className="text-muted-foreground">
-                              <strong className="text-foreground">{data?.responses?.questionBreakdowns?.length ?? 0} preguntas</strong> con datos en este período
+                              <strong className="text-foreground">{questionBreakdowns.length} preguntas</strong> con datos en este período
                             </span>
                           </li>
                         </ul>
@@ -650,77 +758,137 @@ export default function ReportsPage() {
             )}
           </TabsContent>
 
-          {/* ==================== RESPUESTAS ==================== */}
+          {/* ==================== ANÁLISIS DE RESULTADOS (antes "Respuestas") ==================== */}
           <TabsContent value="responses" className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleShareLink}>
+                Compartir link
+              </Button>
               <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("responses")} disabled={exporting === "responses"}>
                 {exporting === "responses" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exporting === "responses" ? "Exportando..." : "Exportar Respuestas"}
+                {exporting === "responses" ? "Exportando..." : "Descargar PDF"}
               </Button>
             </div>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : (data?.responses?.questionBreakdowns?.length ?? 0) === 0 ? (
+            ) : questionBreakdowns.length === 0 ? (
               <Card>
                 <CardContent className="py-16 text-center">
                   <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <p className="text-muted-foreground">No hay datos de respuestas para el período y encuesta seleccionados</p>
+                  <p className="text-muted-foreground">No hay datos de respuestas para los filtros seleccionados</p>
                 </CardContent>
               </Card>
             ) : (
               <Card id="export-responses" data-export-chart>
                 <CardHeader>
-                  <CardTitle>Análisis de Respuestas</CardTitle>
-                  <CardDescription>Desglose detallado por pregunta ({data!.responses.questionBreakdowns.length} preguntas con respuestas)</CardDescription>
+                  <CardTitle>Análisis de Resultados</CardTitle>
+                  <CardDescription>Selecciona una pregunta y el tipo de gráfico para visualizarla ({questionBreakdowns.length} preguntas con respuestas)</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-8">
-                  {data!.responses.questionBreakdowns.map((qb) => (
-                    <div key={qb.questionId} className="space-y-4 pb-6 border-b last:border-0">
-                      <div className="flex items-start justify-between gap-4">
-                        <h3 className="text-lg font-medium">{qb.text || "Pregunta sin texto"}</h3>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">{qb.totalAnswers} respuestas</span>
-                      </div>
+                <CardContent className="space-y-6">
+                  {/* Selector de pregunta + tipo de gráfico + toggles (slide 21) */}
+                  <div className="flex flex-col lg:flex-row gap-3 lg:items-end pb-4 border-b">
+                    <div className="flex-1 min-w-0">
+                      <Label className="text-xs text-muted-foreground mb-1 block">Pregunta a graficar</Label>
+                      <Select value={selectedQuestion?.questionId ?? ""} onValueChange={setSelectedQuestionId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Selecciona una pregunta" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {questionBreakdowns.map((q) => (
+                            <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-1 flex-wrap">
+                      {chartTypeOptions.map((opt) => {
+                        const Icon = opt.icon
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => setChartType(opt.value)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium border transition-all ${chartType === opt.value ? "bg-[#18b0a4] text-white border-[#18b0a4]" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
+                            title={opt.label}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">{opt.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
 
-                      {qb.distribution && qb.distribution.length > 0 ? (
-                        <>
-                          {qb.average && (
-                            <p className="text-sm text-muted-foreground">Promedio: <span className="font-semibold text-foreground">{qb.average}</span></p>
-                          )}
-                          <div className="space-y-2">
-                            {qb.distribution.map((d, i) => (
-                              <div key={i} className="space-y-1">
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="truncate max-w-[60%]">{d.label}</span>
-                                  <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
-                                </div>
-                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                  <div className="h-full bg-primary rounded-full" style={{ width: `${d.percentage}%` }} />
-                                </div>
+                  <div className="flex gap-4 text-sm">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} className="rounded" />
+                      Mostrar etiquetas
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={showDataTable} onChange={(e) => setShowDataTable(e.target.checked)} className="rounded" />
+                      <Table2 className="h-3.5 w-3.5" /> Mostrar tabla de datos
+                    </label>
+                  </div>
+
+                  {selectedQuestion && (
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <h3 className="text-lg font-medium">{selectedQuestion.text}</h3>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">{selectedQuestion.totalAnswers} respuestas</span>
+                      </div>
+                      {selectedQuestion.average && (
+                        <p className="text-sm text-muted-foreground">Promedio: <span className="font-semibold text-foreground">{selectedQuestion.average}</span></p>
+                      )}
+
+                      <QuestionChart
+                        type={chartType}
+                        distribution={selectedQuestion.distribution ?? []}
+                        timeline={selectedQuestion.timeline ?? []}
+                        showLabels={showLabels}
+                      />
+
+                      {showDataTable && (selectedQuestion.distribution?.length ?? 0) > 0 && (
+                        <div className="rounded-md border overflow-hidden mt-4">
+                          <div className="grid grid-cols-3 p-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/50 border-b">
+                            <div>Opción</div>
+                            <div className="text-center">Respuestas</div>
+                            <div className="text-center">Porcentaje</div>
+                          </div>
+                          <div className="divide-y">
+                            {selectedQuestion.distribution!.map((d, i) => (
+                              <div key={i} className="grid grid-cols-3 p-2 text-sm items-center">
+                                <div className="truncate">{d.label}</div>
+                                <div className="text-center">{d.count}</div>
+                                <div className="text-center">{d.percentage}%</div>
                               </div>
                             ))}
                           </div>
-                        </>
-                      ) : qb.sampleAnswers && qb.sampleAnswers.length > 0 ? (
+                        </div>
+                      )}
+
+                      {selectedQuestion.sampleAnswers && selectedQuestion.sampleAnswers.length > 0 && (
                         <div className="space-y-2">
-                          {qb.sampleAnswers.map((ans, i) => (
+                          {selectedQuestion.sampleAnswers.map((ans, i) => (
                             <div key={i} className="p-3 border rounded-md">
                               <p className="text-sm text-muted-foreground">&ldquo;{ans}&rdquo;</p>
                             </div>
                           ))}
-                          {qb.totalAnswers > 5 && (
-                            <p className="text-xs text-muted-foreground">Mostrando 5 de {qb.totalAnswers} respuestas</p>
+                          {selectedQuestion.totalAnswers > 5 && (
+                            <p className="text-xs text-muted-foreground">Mostrando 5 de {selectedQuestion.totalAnswers} respuestas</p>
                           )}
                         </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Sin datos para mostrar</p>
                       )}
                     </div>
-                  ))}
+                  )}
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* ==================== RESPUESTAS INDIVIDUALES ==================== */}
+          <TabsContent value="individual" className="space-y-6">
+            <IndividualResponsesTab filterParams={filterParams} />
           </TabsContent>
 
           {/* ==================== RENDIMIENTO ==================== */}
@@ -764,13 +932,24 @@ export default function ReportsPage() {
                   <Card>
                     <CardContent className="pt-4 px-4 pb-4">
                       <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Tasa Global</p>
-                      <div className="text-3xl font-bold" style={{ color: "#18b0a4" }}>{summary?.completionRate ?? 0}%</div>
-                      <p className="text-xs text-muted-foreground mt-1">finalización</p>
+                      <div className="text-3xl font-bold" style={{ color: "#18b0a4" }}>{summary?.tasaRespuestasEfectivas ?? 0}%</div>
+                      <p className="text-xs text-muted-foreground mt-1">respuestas efectivas</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* ── Rendimiento por encuesta (siempre visible) ── */}
+                {/* ── Rendimiento por encuestador (slide 23: tabla ordenable) ── */}
+                <Card data-export-chart>
+                  <CardHeader>
+                    <CardTitle>Rendimiento por Encuestador</CardTitle>
+                    <CardDescription>Click en cualquier columna para ordenar. Supervisor pendiente de asignación en el módulo de usuarios.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <SortablePerformanceTable rows={surveyorRows} />
+                  </CardContent>
+                </Card>
+
+                {/* ── Rendimiento por encuesta (se mantiene, ya existía) ── */}
                 <Card data-export-chart>
                   <CardHeader>
                     <CardTitle>Rendimiento por Encuesta</CardTitle>
@@ -813,40 +992,6 @@ export default function ReportsPage() {
                     )}
                   </CardContent>
                 </Card>
-
-                {/* ── Rendimiento por encuestador (si hay assignments) ── */}
-                {(data?.performance?.surveyorPerformance?.length ?? 0) > 0 && (
-                  <Card data-export-chart>
-                    <CardHeader>
-                      <CardTitle>Rendimiento por Encuestador</CardTitle>
-                      <CardDescription>Asignaciones completadas vs pendientes por encuestador</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="rounded-md border overflow-hidden">
-                        <div className="grid grid-cols-4 p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
-                          <div>Encuestador</div>
-                          <div className="text-center">Asignaciones</div>
-                          <div className="text-center">Completadas</div>
-                          <div className="text-center">Tasa</div>
-                        </div>
-                        <div className="divide-y">
-                          {data!.performance.surveyorPerformance.map((s, i) => (
-                            <div key={i} className="grid grid-cols-4 p-3 items-center hover:bg-muted/20 transition-colors">
-                              <div className="font-medium text-sm">{s.name}</div>
-                              <div className="text-center text-sm">{s.totalAssignments}</div>
-                              <div className="text-center text-sm">{s.completedAssignments}</div>
-                              <div className="text-center">
-                                <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
-                                  {s.completionRate}%
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
 
                 {/* ── Distribución semanal ── */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -928,7 +1073,7 @@ export default function ReportsPage() {
                       <div>
                         <CardTitle className="text-base">Mapa de Respuestas</CardTitle>
                         <CardDescription>
-                          Visualización geográfica de zonas y puntos de respuesta
+                          Visualización geográfica de zonas y puntos de respuesta (individuales)
                         </CardDescription>
                       </div>
                       {(data?.geographic?.responsePoints?.length ?? 0) > 0 && (
