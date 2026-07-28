@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { useAuth } from "@/components/auth-provider"
@@ -41,11 +41,21 @@ export default function PortalEncuestadorSurveyPage() {
 
   const [stage, setStage] = useState<Stage>("loading")
   const [assignment, setAssignment] = useState<AssignmentInfo | null>(null)
+  const verifiedRef = useRef(false)
 
   // Verifica rol + que la encuesta esté realmente asignada a este encuestador.
+  // OJO: recording.status DELIBERADAMENTE no está en las dependencias. Si lo
+  // estuviera, cada vez que handleStartSurvey/endSurveySegment cambian el
+  // status ("recording-shift" <-> "recording-survey") este efecto se
+  // repetiría completo y pisaría stage con "incidence" otra vez, devolviendo
+  // al encuestador a la pantalla de incidencia justo después de haber
+  // arrancado la encuesta. Solo nos interesa el status en el momento en que
+  // se entra a la página (gate inicial), no como trigger de re-verificación.
   useEffect(() => {
+    if (verifiedRef.current) return
     if (authLoading) return
     if (!user) { router.push("/login"); return }
+    verifiedRef.current = true
     let cancelled = false
     ;(async () => {
       const { data } = await supabase.from("users").select("role").eq("id", user.id).single()
@@ -73,7 +83,7 @@ export default function PortalEncuestadorSurveyPage() {
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, surveyId, recording.status])
+  }, [user, authLoading, surveyId])
 
   // "Inicia encuesta": arranca el segmento de grabación dedicado y muestra el renderer.
   const handleStartSurvey = useCallback(() => {

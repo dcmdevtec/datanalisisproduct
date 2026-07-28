@@ -27,10 +27,20 @@ function calcStatus(item: any): "active" | "inactive" | "offline" {
   }
 
   if (minutesAgo === null || minutesAgo < 0) return "offline"
-  if (minutesAgo <= 2)  return "active"    // ≤2 min: APK enviando activamente
-  if (minutesAgo <= 15) return "inactive"  // 2–15 min: sin señal reciente
-  return "offline"                         // >15 min: teléfono apagado / sin internet
+  if (minutesAgo <= 5)  return "active"    // ≤5 min: APK enviando activamente
+  if (minutesAgo <= 30) return "inactive"  // 5–30 min: sin señal reciente
+  return "offline"                         // >30 min: teléfono apagado / sin internet
 }
+// CORRECCIÓN (revisión previa a puesta en uso real): esta función estaba en
+// 2/15 min, en desacuerdo con su propio comentario de arriba, con la vista
+// v_surveyor_latest_location y con GET /api/location (ambas usan 5/30 min).
+// tracking_config.update_interval_seconds tiene un default de 60s y puede
+// llegar a 300s (5 min) — con un corte de "active" en 2 min, cualquier
+// retraso normal de GPS/red/Doze de Android hace que el encuestador
+// parpadee a "inactivo" entre un ping y el siguiente aunque la APK esté
+// funcionando bien. Esto coincide exactamente con el síntoma reportado
+// ("aparece activo una vez y después aparece inactivo"): es un umbral
+// demasiado agresivo en este archivo, no necesariamente un problema de la APK.
 
 /** El encuestador está dentro de la app (primer plano) si:
  *  - La última ubicación llegó hace ≤2 min Y

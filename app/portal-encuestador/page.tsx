@@ -134,13 +134,10 @@ export default function PortalEncuestadorPage() {
     await signOut()
   }
 
-  // Mejor esfuerzo: cerrar el turno si cierran la pestaña/navegador.
-  useEffect(() => {
-    const handler = () => { recording.endShift() }
-    window.addEventListener("pagehide", handler)
-    return () => window.removeEventListener("pagehide", handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Nota: el listener de "pagehide" para cerrar el turno vive ahora dentro
+  // de useShiftRecording (lib/portal-encuestador/use-shift-recording.ts),
+  // no aquí — así sigue activo aunque el encuestador esté en una encuesta
+  // (/portal-encuestador/encuesta/[surveyId]) y no en este dashboard.
 
   if (authLoading || !roleChecked) {
     return (

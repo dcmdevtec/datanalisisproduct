@@ -12,6 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Loader2, Send, Search } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
 
 type Message = {
   id: string
@@ -41,6 +44,10 @@ export default function MessagesPage() {
   const [newMessage, setNewMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // "Nuevo Anuncio" (broadcast) — antes el botón no tenía onClick, era inerte.
+  const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false)
+  const [broadcastContent, setBroadcastContent] = useState("")
+  const [sendingBroadcast, setSendingBroadcast] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -48,11 +55,25 @@ export default function MessagesPage() {
     }
   }, [user, authLoading, router])
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (notifyOnError = false) => {
     if (!user) return
     try {
       const res = await fetch(`/api/messages?userId=${user.id}&limit=200`)
-      if (!res.ok) return
+      if (!res.ok) {
+        // Antes esto fallaba en silencio siempre — ahora, si el error viene
+        // de una llamada explícita (no del polling de fondo), se avisa.
+        // El polling cada 5s sigue silencioso para no ser ruidoso.
+        if (notifyOnError) {
+          const body = await res.json().catch(() => ({}))
+          toast({
+            title: "Error al cargar mensajes",
+            description: body?.error || "No se pudieron cargar los mensajes",
+            variant: "destructive",
+          })
+        }
+        console.error("Error fetching messages: HTTP", res.status)
+        return
+      }
       const data = await res.json()
       if (Array.isArray(data)) setMessages(data)
     } catch (err) {
@@ -70,7 +91,7 @@ export default function MessagesPage() {
         setUsers(Array.isArray(usersData) ? usersData : [])
 
         // Fetch messages
-        await fetchMessages()
+        await fetchMessages(true)
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
@@ -151,6 +172,41 @@ export default function MessagesPage() {
         description: "No se pudo enviar el mensaje",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleSendBroadcast = async () => {
+    if (!broadcastContent.trim() || !user || sendingBroadcast) return
+    setSendingBroadcast(true)
+    try {
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: user.id,
+          receiver: "all",
+          content: broadcastContent,
+          message_type: "broadcast",
+        }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body?.error || "Error al publicar el anuncio")
+      }
+      const sentMessage = await response.json()
+      setMessages((prev) => [...prev, sentMessage])
+      setBroadcastContent("")
+      setBroadcastDialogOpen(false)
+      toast({ title: "Anuncio publicado" })
+    } catch (error: any) {
+      console.error("Error sending broadcast:", error)
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo publicar el anuncio",
+        variant: "destructive",
+      })
+    } finally {
+      setSendingBroadcast(false)
     }
   }
 
@@ -246,7 +302,11 @@ export default function MessagesPage() {
     return users.find((u) => u.id === userId)
   }
 
-  const getUserInitials = (name: string) => {
+  // name puede venir null/undefined si el usuario no tiene perfil completo
+  // (ej. creado directamente en Supabase Auth) — antes esto rompía toda la
+  // pantalla con un TypeError no capturado.
+  const getUserInitials = (name?: string | null) => {
+    if (!name) return "?"
     return name
       .split(" ")
       .map((n) => n[0])
@@ -257,7 +317,7 @@ export default function MessagesPage() {
 
   const conversations = getConversations()
   const filteredConversations = conversations.filter((conv) =>
-    conv.user.name.toLowerCase().includes(searchTerm.toLowerCase()),
+    (conv.user.name || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
   const broadcastMessages = getBroadcastMessages()
 
@@ -422,7 +482,7 @@ export default function MessagesPage() {
               <div className="max-w-2xl mx-auto space-y-4">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-bold">Anuncios</h2>
-                  <Button>Nuevo Anuncio</Button>
+                  <Button onClick={() => setBroadcastDialogOpen(true)}>Nuevo Anuncio</Button>
                 </div>
 
                 {loading ? (
@@ -456,6 +516,28 @@ export default function MessagesPage() {
           </div>
         </Tabs>
       </div>
+
+      <Dialog open={broadcastDialogOpen} onOpenChange={setBroadcastDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nuevo anuncio</DialogTitle>
+            <DialogDescription>Se enviará a todos los usuarios como mensaje de anuncio.</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Escribe el anuncio..."
+            className="min-h-[100px]"
+            value={broadcastContent}
+            onChange={(e) => setBroadcastContent(e.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBroadcastDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSendBroadcast} disabled={!broadcastContent.trim() || sendingBroadcast}>
+              {sendingBroadcast ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Publicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

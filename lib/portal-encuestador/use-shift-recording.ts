@@ -210,14 +210,18 @@ export function useShiftRecording() {
   }, [status, closeCurrentSegment, openSegment, scheduleShiftRotation])
 
   // Cierra todo: corta el segmento en curso, sube el audio y marca el turno
-  // como terminado. Se llama al cerrar sesión.
+  // como terminado. Se llama al cerrar sesión. keepalive:true permite que el
+  // fetch de cierre siga en curso brevemente aunque la pestaña ya se esté
+  // descargando (caso pagehide, ver más abajo) — sin esto, el navegador
+  // puede cancelar la petición a mitad de camino y el turno queda "activo"
+  // para siempre en la base de datos.
   const endShift = useCallback(async () => {
     await closeCurrentSegment()
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (shiftIdRef.current) {
       try {
-        await fetch(`/api/portal-encuestador/shifts/${shiftIdRef.current}`, { method: "PATCH" })
+        await fetch(`/api/portal-encuestador/shifts/${shiftIdRef.current}`, { method: "PATCH", keepalive: true })
       } catch (err) {
         console.error("Error cerrando turno:", err)
       }
@@ -226,6 +230,19 @@ export function useShiftRecording() {
     setShiftId(null)
     setStatus("idle")
   }, [closeCurrentSegment])
+
+  // Mejor esfuerzo: si se cierra la pestaña/navegador desde CUALQUIER página
+  // del portal (dashboard o una encuesta en curso), intenta cerrar el turno.
+  // Vive aquí (a nivel del hook, instanciado una sola vez en
+  // app/portal-encuestador/layout.tsx) y no en cada página, porque si
+  // viviera en la página del dashboard se perdería al navegar a una
+  // encuesta (esa página se desmonta y se lleva su listener con ella).
+  useEffect(() => {
+    const handler = () => { endShift() }
+    window.addEventListener("pagehide", handler)
+    return () => window.removeEventListener("pagehide", handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Mejor esfuerzo: si la pestaña se oculta o se está por cerrar, intenta
   // cortar y subir el segmento en curso. No hay garantía de que complete

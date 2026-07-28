@@ -60,9 +60,21 @@ export async function GET(request: Request) {
     const { data, error } = await query
 
     if (error) {
-      // Si la tabla no existe aún, devolver array vacío (fallback graceful)
-      console.warn("[messages] Supabase error:", error.message)
-      return NextResponse.json([], { status: 200 })
+      // CORRECCIÓN (revisión previa a puesta en uso): antes esto devolvía []
+      // con 200 para CUALQUIER error de Supabase, no solo "la tabla no
+      // existe". Eso hacía que un error real (RLS mal configurado, columna
+      // renombrada, etc.) se viera exactamente igual que "no hay mensajes"
+      // — imposible de distinguir desde la UI o los logs del cliente. Ahora
+      // solo se hace fallback silencioso para 42P01 (relation does not
+      // exist, es decir la migración db/migrations/2026-05-05_create_messages.sql
+      // no se ha corrido todavía); cualquier otro error se propaga como 500
+      // para que sea visible.
+      if (error.code === "42P01") {
+        console.warn("[messages] Tabla 'messages' no existe aún — devolviendo lista vacía. Ejecutar db/migrations/2026-05-05_create_messages.sql")
+        return NextResponse.json([], { status: 200 })
+      }
+      console.error("[messages] Supabase error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     // Mapear al formato que espera la UI (sender/receiver en vez de sender_id/receiver_id)
