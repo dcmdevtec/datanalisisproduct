@@ -23,6 +23,7 @@ function loadGoogleFont(font: string) {
   document.head.appendChild(link);
 }
 import { RankingPreviewDraggable } from "@/components/RankingPreviewDraggable"
+import { SignaturePad } from "@/components/signature-pad"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -2503,13 +2504,17 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               )
             }
           case "signature":
+            // Antes esto era un placeholder estático sin funcionalidad real
+            // ("simulado en preview"). Ahora es un canvas de firma real —
+            // funciona con mouse, dedo (touch) o lápiz óptico. El valor
+            // guardado es un PNG en base64 (data URL), igual de simple que
+            // cómo el resto de tipos de pregunta guardan su respuesta en
+            // `answers[question.id]`.
             return (
-              <div className="space-y-2">
-                <div className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
-                  <p className="text-muted-foreground">Área para firma (simulado en preview)</p>
-                </div>
-                <p className="text-sm text-muted-foreground">En la encuesta real, aquí aparecería un canvas para firmar</p>
-              </div>
+              <SignaturePad
+                value={typeof answers[question.id] === "string" ? answers[question.id] : null}
+                onChange={(dataUrl) => handleAnswerChange(question.id, dataUrl)}
+              />
             )
           case "demographic":
             return (
