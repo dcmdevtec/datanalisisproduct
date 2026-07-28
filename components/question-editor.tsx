@@ -1037,6 +1037,34 @@ export function QuestionEditor({
           </div>
         </div>
 
+        {/* Vista previa inline de la imagen/video adjunto — antes solo se veía
+            al abrir el popover del ícono, y no quedaba claro que la subida
+            había funcionado. Solo ocupa espacio cuando SÍ hay media (si no
+            hay nada adjunto, no se renderiza nada acá). */}
+        {question.image && (
+          <div className="flex items-start gap-3 p-2 border rounded-lg bg-muted/20">
+            {/\.(mp4|webm|mov|ogg)(\?|$)/i.test(question.image) ? (
+              <video src={question.image} controls className="h-24 rounded-md shrink-0" />
+            ) : (
+              <img src={question.image} alt="" className="h-24 rounded-md object-contain shrink-0" />
+            )}
+            <div className="flex-1 min-w-0 pt-1">
+              <p className="text-xs text-muted-foreground">Imagen/video adjunto a esta pregunta.</p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-destructive/80 hover:text-destructive mt-1"
+                onClick={() => {
+                  onUpdateQuestion(sectionId, question.id, "image", null)
+                  autoSaveQuestionHelper({ ...question, image: null } as Question, sectionId, surveyId)
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Quitar
+              </Button>
+            </div>
+          </div>
+        )}
+
         {question.type === "ranking" && (
           <div className="space-y-4 p-4 border rounded-lg">
             <Label className="text-lg font-semibold">Opciones para Rankear</Label>

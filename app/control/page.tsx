@@ -50,7 +50,55 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-8">
-              
+
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.4 - Portal de Encuestador y Correcciones</h2>
+                <p className="text-gray-700 mb-2">📅 Fecha de liberación: 28 de julio del 2026</p>
+                <h3 className="font-bold text-green-700 mb-1">🆕 Nuevas Funcionalidades:</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li>
+                    <strong>Grabaciones de audio en el detalle de la encuesta:</strong> en Encuestas → abrir una encuesta,
+                    nueva sección &quot;Grabaciones de Audio&quot; para escuchar en línea y descargar el audio capturado por el
+                    Portal de Encuestador durante cada respuesta.
+                  </li>
+                  <li>
+                    <strong>Firma digital funcional:</strong> la pregunta tipo Firma ahora se firma de verdad con el
+                    mouse o el dedo (antes era solo un espacio simulado).
+                  </li>
+                  <li>
+                    <strong>Imagen o video en cualquier pregunta:</strong> en el editor de creación/edición de encuestas,
+                    junto a cada pregunta hay un ícono de película para adjuntar una imagen o un video que se muestra
+                    al encuestado antes de responder — útil para encuestas basadas en un video.
+                  </li>
+                </ul>
+                <h3 className="font-bold text-green-700 mb-1">🐛 Correcciones:</h3>
+                <ul className="list-disc ml-6 text-gray-700 mb-2">
+                  <li>
+                    <strong>Portal de Encuestador:</strong> los usuarios con rol Encuestador ahora entran directo a su
+                    portal al iniciar sesión, en vez de ver el panel de administrador.
+                  </li>
+                  <li>
+                    Las encuestas asignadas por zona ahora aparecen correctamente en el Portal de Encuestador (antes la
+                    lista se veía vacía aunque sí hubiera asignación).
+                  </li>
+                  <li>
+                    Se corrigió el botón &quot;Inicia encuesta&quot; del Portal de Encuestador, que en algunos casos devolvía
+                    al encuestador a la pantalla principal en vez de abrir la encuesta.
+                  </li>
+                  <li>
+                    Se corrigió el guardado de las grabaciones de audio del turno y de cada encuesta en el Portal de
+                    Encuestador (fallaban por restricciones de tipo y tamaño de archivo).
+                  </li>
+                  <li>
+                    <strong>Ubicación de encuestadores</strong> (Encuestas → mapa de ubicación en tiempo real): se corrigió
+                    el umbral que marcaba a un encuestador como &quot;Inactivo&quot; poco después de estar activo.
+                  </li>
+                  <li>
+                    <strong>Módulo de Mensajes:</strong> se corrigió el botón &quot;Nuevo Anuncio&quot;, que antes no hacía nada.
+                  </li>
+                </ul>
+              </div>
+
                <div>
               <h2 className="text-xl font-semibold text-gray-800 mb-2">Versión 1.0.3 - Mejoras y Correcciones</h2>
               <p className="text-gray-700 mb-2">📅 Fecha de liberación: 14 de noviembre del 2025</p>
