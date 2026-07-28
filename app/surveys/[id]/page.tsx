@@ -25,6 +25,8 @@ import {
   Plus,
   RefreshCw,
   Radio,
+  Mic,
+  Download,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase-browser"
@@ -92,6 +94,13 @@ export default function SurveyDetailsPage() {
   const [surveyorLocations, setSurveyorLocations] = useState<any[]>([])
   const [loadingLocations, setLoadingLocations] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
+
+  // Estados para grabaciones de audio del portal de encuestador (ver
+  // app/api/surveys/[id]/recordings/route.ts) — segmentos scope='survey'
+  // ligados a las respuestas de esta encuesta específica.
+  const [recordings, setRecordings] = useState<any[]>([])
+  const [loadingRecordings, setLoadingRecordings] = useState(false)
+  const [recordingsError, setRecordingsError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -221,6 +230,30 @@ export default function SurveyDetailsPage() {
     return () => clearInterval(interval)
   }, [autoRefresh, survey?.assigned_surveyors, fetchSurveyorLocations])
 
+  // Carga las grabaciones de audio del portal de encuestador para esta
+  // encuesta. Las URLs firmadas expiran a la hora, así que se re-piden en
+  // cada carga de la página (no se cachean entre sesiones).
+  const fetchRecordings = useCallback(async () => {
+    if (!surveyId) return
+    setLoadingRecordings(true)
+    setRecordingsError(null)
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/recordings`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data?.details || data?.error || "No se pudieron cargar las grabaciones")
+      setRecordings(data.recordings || [])
+    } catch (err: any) {
+      console.error("Error fetching recordings:", err)
+      setRecordingsError(err.message || "No se pudieron cargar las grabaciones")
+    } finally {
+      setLoadingRecordings(false)
+    }
+  }, [surveyId])
+
+  useEffect(() => {
+    if (surveyId) fetchRecordings()
+  }, [surveyId, fetchRecordings])
+
   if (authLoading || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -267,6 +300,20 @@ export default function SurveyDetailsPage() {
     survey.assigned_surveyors?.map((id) => allSurveyors.find((s) => s.id === id)).filter(Boolean) || []
   const assignedZones = survey.assigned_zones ? allZones.filter((z) => survey.assigned_zones.includes(z.id)) : []
   const displayedZone = displayedZoneId ? allZones.find((z) => z.id === displayedZoneId) : null
+
+  const formatDuration = (secs: number | null) => {
+    if (secs === null || secs === undefined) return "—"
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return `${m}:${s.toString().padStart(2, "0")}`
+  }
+
+  const outcomeLabel = (outcome: string | null) => {
+    if (outcome === "efectiva") return { label: "Efectiva", variant: "default" as const }
+    if (outcome === "abandonada") return { label: "Abandonada", variant: "secondary" as const }
+    if (outcome === "incidencia") return { label: "Incidencia", variant: "outline" as const }
+    return { label: "Sin definir", variant: "outline" as const }
+  }
 
   const handleZoneChange = (zoneId: string) => {
     setDisplayedZoneId(zoneId)
@@ -638,6 +685,76 @@ export default function SurveyDetailsPage() {
             </Card>
           </div>
         )}
+
+        {/* Sección de Grabaciones de Audio (portal de encuestador) */}
+        <div className="mt-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Mic className="h-5 w-5" /> Grabaciones de Audio
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={fetchRecordings} disabled={loadingRecordings}>
+                  <RefreshCw className={`h-4 w-4 ${loadingRecordings ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingRecordings && recordings.length === 0 ? (
+                <div className="flex items-center justify-center h-[150px]">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : recordingsError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Error</AlertTitle>
+                  <p>{recordingsError}</p>
+                </Alert>
+              ) : recordings.length > 0 ? (
+                <div className="space-y-3">
+                  {recordings.map((rec) => {
+                    const outcome = outcomeLabel(rec.outcome)
+                    return (
+                      <div key={rec.id} className="flex flex-col gap-2 p-3 rounded-lg border bg-card sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium">{rec.surveyorName}</p>
+                            <Badge variant={outcome.variant} className="text-xs">{outcome.label}</Badge>
+                            {rec.incidenceType && (
+                              <span className="text-xs text-muted-foreground">({rec.incidenceType})</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {rec.startedAt ? format(new Date(rec.startedAt), "dd/MM/yyyy HH:mm") : "Fecha desconocida"}
+                            {" · "}Duración: {formatDuration(rec.durationSecs)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {rec.audioUrl ? (
+                            <>
+                              <audio controls preload="none" src={rec.audioUrl} className="h-9 max-w-[220px]" />
+                              <Button variant="outline" size="icon" asChild>
+                                <a href={rec.audioUrl} download={rec.fileName} title="Descargar audio">
+                                  <Download className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Audio no disponible</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-[150px] text-muted-foreground">
+                  <Mic className="h-10 w-10 mb-2 opacity-50" />
+                  <p className="text-sm">No hay grabaciones para esta encuesta todavía</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </DashboardLayout>
   )
