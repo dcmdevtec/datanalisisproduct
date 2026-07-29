@@ -47,6 +47,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ContactInfoQuestion } from "@/components/contact-info-question"
 import { LocationQuestion } from "@/components/location-question"
+import { CameraCaptureModal } from "@/components/camera-capture-modal"
 
 // Tipos para la lógica de secciones y preguntas
 interface Question {
@@ -195,6 +196,11 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   const submissionTokenRef = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
   )
+  // Modal de cámara para preguntas tipo archivo/foto (auditoría 2026-07-29):
+  // guarda el questionId de la pregunta para la que está abierto, o null si
+  // está cerrado. Un solo modal compartido entre todas las preguntas de
+  // archivo de la sección actual, en vez de uno por pregunta.
+  const [cameraModalQuestionId, setCameraModalQuestionId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<{ [questionId: string]: string }>({})
   const [blockedQuestions, setBlockedQuestions] = useState<Set<string>>(new Set())
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
@@ -543,33 +549,68 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     )
   }
 
+  // BUG (reporte 2026-07-29): la key de localStorage para las respuestas EN
+  // CURSO (antes de enviar) era el string fijo "surveyPreviewAnswers", sin
+  // distinguir de qué encuesta — si en el mismo dispositivo/navegador se
+  // abría una encuesta distinta antes de terminar/enviar la anterior (muy
+  // real en campo: un encuestador que cambia de encuesta a medio llenar, o
+  // abandona una), las respuestas de la primera se colaban como estado
+  // inicial de la segunda. Se namespacea por surveyId, igual que ya se hace
+  // para respondent_public_id_${surveyId} etc.
+  const previewAnswersKey = inferredSurveyId ? `surveyPreviewAnswers_${inferredSurveyId}` : "surveyPreviewAnswers"
+
   // Cargar respuestas guardadas al inicializar
   useEffect(() => {
-    if (surveyData) {
-      const storedAnswers = localStorage.getItem("surveyPreviewAnswers")
-      if (storedAnswers) {
-        try {
-          const parsedAnswers = JSON.parse(storedAnswers)
-
-          setAnswers(parsedAnswers)
-        } catch (error) {
-          console.error("❌ Error cargando respuestas guardadas:", error)
+    if (!surveyData) return
+    try {
+      const stored = localStorage.getItem(previewAnswersKey)
+      if (stored) {
+        setAnswers(JSON.parse(stored))
+      } else if (inferredSurveyId) {
+        // Migración de una sola vez: una sesión que ya estaba en curso antes
+        // de este fix guardó bajo la key vieja sin namespacing.
+        const legacy = localStorage.getItem("surveyPreviewAnswers")
+        if (legacy) {
+          setAnswers(JSON.parse(legacy))
+          localStorage.removeItem("surveyPreviewAnswers")
         }
       }
+    } catch (error) {
+      console.error("❌ Error cargando respuestas guardadas:", error)
     }
-  }, [surveyData])
+    // Solo debe correr al resolverse survey/surveyId, no en cada cambio de answers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyData, inferredSurveyId])
 
   // Guardar respuestas automáticamente cuando cambien
   useEffect(() => {
     if (surveyData && Object.keys(answers).length > 0) {
       try {
-        localStorage.setItem("surveyPreviewAnswers", JSON.stringify(answers))
-
+        localStorage.setItem(previewAnswersKey, JSON.stringify(answers))
       } catch (error) {
         console.error("❌ Error guardando respuestas:", error)
       }
     }
-  }, [answers, surveyData])
+  }, [answers, surveyData, previewAnswersKey])
+
+  // Borra el borrador de respuestas en curso guardado en localStorage
+  // (reporte 2026-07-29). Antes esto solo pasaba si la persona hacía clic
+  // manual en "Iniciar otra" — si cerraba la pestaña justo después de
+  // enviar, sin pasar por ese botón, el borrador quedaba cacheado y se
+  // precargaba solo si el MISMO link se volvía a abrir después (kiosco,
+  // varios respondentes con el mismo link, o el mismo encuestador
+  // reabriendo la encuesta para la siguiente persona) — mostrando
+  // respuestas de otra persona ya "completadas". Se llama automáticamente
+  // apenas el envío queda a salvo (enviado, o encolado offline), no solo
+  // al reiniciar manualmente.
+  const clearStoredPreviewAnswers = useCallback(() => {
+    try {
+      localStorage.removeItem(previewAnswersKey)
+      localStorage.removeItem("surveyPreviewAnswers") // key vieja sin namespacing, por si acaso
+    } catch (e) {
+      console.warn("No se pudo limpiar el borrador de respuestas en localStorage", e)
+    }
+  }, [previewAnswersKey])
 
   // Función para evaluar las condiciones de visualización
   /** Resuelve el ID real de una pregunta buscando por ID directo o por texto (reconciliación) */
@@ -644,6 +685,52 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       return newErrors
     })
   }, [])
+
+  // Resuelve el survey_id igual que submitResponses (infiere de la URL si el
+  // state todavía no lo tiene) — factorizado aquí para que también lo use la
+  // subida de archivos de preguntas tipo archivo/foto más abajo.
+  const resolveSurveyId = useCallback((): string | null => {
+    if (inferredSurveyId) return inferredSurveyId
+    try {
+      const parts = window.location.pathname.split("/").filter(Boolean)
+      let idx = parts.indexOf("survey")
+      if (idx === -1) idx = parts.indexOf("encuesta")
+      if (idx !== -1 && parts.length > idx + 1) return parts[idx + 1]
+    } catch { }
+    return null
+  }, [inferredSurveyId])
+
+  // Sube un archivo real de una pregunta tipo archivo/foto (auditoría
+  // 2026-07-29 — antes solo se guardaba el nombre, ver
+  // app/api/response-files/upload/route.ts para el porqué). Si falla por
+  // red (no por validación del servidor), devuelve un descriptor "pending"
+  // con el File embebido para que se guarde igual en la respuesta y se
+  // suba después desde la cola offline (lib/offline-queue.ts) — nunca se
+  // pierde la foto por falta de señal.
+  const uploadResponseFile = useCallback(async (file: File, questionId: string): Promise<any> => {
+    const surveyId = resolveSurveyId()
+    const base = { name: file.name, type: file.type, size: file.size }
+    if (!surveyId) return { ...base, status: "pending", file }
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      form.append("survey_id", surveyId)
+      form.append("question_id", questionId)
+      const res = await fetch("/api/response-files/upload", { method: "POST", body: form })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        // Error de VALIDACIÓN del servidor (tipo/tamaño/pregunta inválida) —
+        // no es un problema de red, reintentarlo después no lo arregla.
+        toast({ title: "No se pudo subir el archivo", description: body?.error || "Error desconocido", variant: "destructive" })
+        return null
+      }
+      const json = await res.json()
+      return { ...base, status: "uploaded", path: json.path }
+    } catch (err) {
+      console.error("Error de red subiendo archivo de respuesta, se guarda para reintentar:", err)
+      return { ...base, status: "pending", file }
+    }
+  }, [resolveSurveyId, toast])
 
   const handleStatusChange = useCallback((questionId: string, status: "valid" | "blocked" | "error") => {
     setBlockedQuestions((prev) => {
@@ -971,6 +1058,53 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     if (dn) payload.respondent_document_number = dn
     if (rn) payload.respondent_name = rn
 
+    // Preguntas tipo archivo/foto (auditoría 2026-07-29): si alguna quedó
+    // con un File sin subir (falló por red al momento de tomar la foto, o
+    // el envío llegó mientras la subida seguía en curso), se reintenta
+    // aquí — el JSON.stringify de más abajo no puede serializar un objeto
+    // File, así que esto tiene que resolverse ANTES de construir el
+    // request. Si sigue sin poder subirse (todavía sin señal), todo el
+    // envío se encola completo con el File embebido — lib/offline-queue.ts
+    // lo termina de subir cuando vuelva la conexión.
+    let hasUnresolvedFiles = false
+    for (const ans of validAnswers as any[]) {
+      if (!Array.isArray(ans.value)) continue
+      for (let i = 0; i < ans.value.length; i++) {
+        const item = ans.value[i]
+        const pending = item && typeof item === 'object' && (item.status === 'pending' || item.status === 'uploading') && item.file
+        if (!pending) continue
+        const result = await uploadResponseFile(item.file, ans.question_id)
+        if (result && result.status === 'uploaded') {
+          ans.value[i] = result
+        } else {
+          hasUnresolvedFiles = true
+        }
+      }
+    }
+
+    if (hasUnresolvedFiles) {
+      try {
+        const { enqueueResponse } = await import('@/lib/offline-queue')
+        const queuedId = await enqueueResponse(payload)
+        if (queuedId) {
+          // Ya quedó a salvo en IndexedDB — se limpia el borrador de
+          // localStorage para que no se precargue en la siguiente encuesta
+          // que abra esta persona/dispositivo (ver clearStoredPreviewAnswers).
+          clearStoredPreviewAnswers()
+          toast({
+            title: 'Sin conexión',
+            description: 'No hay señal para subir los archivos adjuntos. Tu respuesta y tus fotos/documentos se guardaron en el dispositivo y se enviarán automáticamente cuando vuelva la conexión.',
+            duration: 8000,
+          })
+          return false
+        }
+      } catch (queueErr) {
+        console.error('No se pudo encolar la respuesta con archivos pendientes:', queueErr)
+      }
+      toast({ title: 'Error', description: 'No se pudieron subir los archivos adjuntos. Intenta de nuevo cuando tengas señal.', variant: 'destructive' })
+      return false
+    }
+
     try {
       const res = await fetch('/api/responses', {
         method: 'POST',
@@ -1025,6 +1159,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
         }
       }
 
+      clearStoredPreviewAnswers()
       toast({ title: 'Encuesta completada', description: 'Gracias por tu participación' })
       // Avisa al contenedor (portal de encuestador) que la respuesta se guardó,
       // pasando el response_id real para cerrar el segmento de audio de esta
@@ -1048,6 +1183,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
         const { enqueueResponse } = await import('@/lib/offline-queue')
         const queuedId = await enqueueResponse(payload)
         if (queuedId) {
+          clearStoredPreviewAnswers()
           toast({
             title: 'Sin conexión',
             description: 'No hay señal en este momento. Tu respuesta se guardó en el dispositivo y se enviará automáticamente cuando vuelva la conexión.',
@@ -1062,7 +1198,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       return false
     }
     }
-  }, [answers, inferredSurveyId, surveyData, toast, assignmentId, onSubmitted])
+  }, [answers, inferredSurveyId, surveyData, toast, assignmentId, onSubmitted, uploadResponseFile, clearStoredPreviewAnswers])
 
   const handleNextSection = useCallback(async () => {
     if (!currentSection) return
@@ -1270,12 +1406,8 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   const clearAndResetSurvey = useCallback(() => {
     // Clear in-memory answers
     setAnswers({})
-    // Remove persisted preview answers
-    try {
-      localStorage.removeItem('surveyPreviewAnswers')
-    } catch (e) {
-      console.warn('Error clearing localStorage surveyPreviewAnswers', e)
-    }
+    // Remove persisted preview answers (key namespaceada por encuesta + la vieja sin namespacing)
+    clearStoredPreviewAnswers()
 
     // Optionally clear respondent ids for this preview survey
     if (inferredSurveyId) {
@@ -1301,7 +1433,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     } catch (e) {
       // ignore
     }
-  }, [inferredSurveyId, toast])
+  }, [inferredSurveyId, toast, clearStoredPreviewAnswers])
 
   // Componente Likert con segmentos clickeables - GARANTIZA que nunca quede entre opciones
   const LikertSliderWithDivisions = ({
@@ -2520,48 +2652,88 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             {
               const fileCfg = question.config?.fileUploadConfig || { maxFiles: 1 }
               const maxFilesAllowed = typeof fileCfg.maxFiles === 'number' ? fileCfg.maxFiles : Number(fileCfg.maxFiles) || 1
-              const currentFiles: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
+              // Auditoría 2026-07-29: el valor de esta pregunta ahora es un
+              // arreglo de descriptores {status:'uploaded'|'uploading'|'pending',
+              // name, type, size, path?, file?} — antes era solo un arreglo de
+              // nombres en texto plano y el contenido real nunca se subía (ver
+              // app/api/response-files/upload/route.ts). Se soporta el formato
+              // viejo (string) por compatibilidad con respuestas ya guardadas
+              // en localStorage antes de este cambio.
+              const rawCurrent = answers[question.id]
+              const currentFiles: any[] = Array.isArray(rawCurrent) ? rawCurrent : (rawCurrent ? [rawCurrent] : [])
+              const normalizedCurrent = currentFiles.map((f) => (typeof f === "string" ? { status: "uploaded", name: f } : f))
+
+              const allowedTypes = ["image/jpeg", "image/png", "application/pdf"]
+              const maxSize = 20 * 1024 * 1024 // 20 MB
 
               // Compartido entre "Agregar archivos" (selector nativo) y "Tomar
-              // foto" (capture=environment, abre la cámara directo en móviles) —
+              // foto" (modal de cámara vía getUserMedia — funciona igual en PC
+              // y celular/tablet; ver components/camera-capture-modal.tsx) —
               // pptx slide 14: "Debemos tener la opción de incorporar la cámara
               // del celular".
-              const handleFilesSelected = (fileList: FileList | null, inputEl: HTMLInputElement) => {
-                const files = Array.from(fileList || [])
+              //
+              // handleAnswerChange guarda el valor directo (no soporta forma de
+              // updater funcional), así que la resolución final de cada subida
+              // se hace leyendo/escribiendo answers[question.id] secuencialmente
+              // en vez de con un setState updater — evita condiciones de carrera
+              // entre subidas de varias fotos seleccionadas a la vez.
+              const processFilesSequential = async (files: File[]) => {
                 if (files.length === 0) return
-
-                const existing: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
-                const newNames = files.map(f => f.name)
-                const combined = [...existing, ...newNames]
-
-                if (combined.length > maxFilesAllowed) {
-                  alert(`Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Tienes ${existing.length} y seleccionaste ${newNames.length}.`)
-                  inputEl.value = ""
+                const existing = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
+                if (existing.length + files.length > maxFilesAllowed) {
+                  toast({
+                    title: "Demasiados archivos",
+                    description: `Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Tienes ${existing.length} y seleccionaste ${files.length}.`,
+                    variant: "destructive",
+                  })
                   return
                 }
-
-                const allowedTypes = ["image/jpeg", "image/png", "application/pdf"]
-                const maxSize = 20 * 1024 * 1024 // 20 MB
                 for (const file of files) {
                   if (!allowedTypes.includes(file.type)) {
-                    alert("Solo se permiten archivos JPG, PNG o PDF.")
-                    inputEl.value = ""
+                    toast({ title: "Formato no permitido", description: "Solo se permiten archivos JPG, PNG o PDF.", variant: "destructive" })
                     return
                   }
                   if (file.size > maxSize) {
-                    alert("El archivo no debe superar los 20 MB.")
-                    inputEl.value = ""
+                    toast({ title: "Archivo muy grande", description: "El archivo no debe superar los 20 MB.", variant: "destructive" })
                     return
                   }
                 }
 
-                // Guardar solo nombres de archivos en el preview (no subir archivos aquí)
-                handleAnswerChange(question.id, combined)
+                // file va embebido incluso en el placeholder "uploading": si el
+                // envío ocurre antes de que la subida resuelva (poco probable
+                // pero posible con doble tap rápido), submitResponses y la cola
+                // offline igual tienen el File real para reintentar en vez de
+                // quedarse con un descriptor huérfano sin contenido.
+                let working = [...existing, ...files.map((f) => ({ status: "uploading", name: f.name, type: f.type, size: f.size, file: f }))]
+                handleAnswerChange(question.id, working)
+
+                for (let i = 0; i < files.length; i++) {
+                  const result = await uploadResponseFile(files[i], question.id)
+                  const targetIndex = existing.length + i
+                  working = working.map((f, idx) => (idx === targetIndex ? (result ?? { status: "error", name: files[i].name }) : f))
+                  handleAnswerChange(question.id, working)
+                }
+              }
+
+              const handleFilesSelected = (fileList: FileList | null, inputEl: HTMLInputElement) => {
+                const files = Array.from(fileList || [])
                 inputEl.value = ""
+                processFilesSequential(files)
               }
 
               return (
                 <div className="space-y-2">
+                  {cameraModalQuestionId === question.id && (
+                    <CameraCaptureModal
+                      open
+                      onClose={() => setCameraModalQuestionId(null)}
+                      onCapture={(file) => {
+                        setCameraModalQuestionId(null)
+                        processFilesSequential([file])
+                      }}
+                    />
+                  )}
+
                   {/* hidden file input to allow programmatic click for "Agregar archivos" */}
                   <input
                     type="file"
@@ -2571,12 +2743,15 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     onChange={(e) => handleFilesSelected(e.target.files, e.currentTarget)}
                     accept=".jpg,.jpeg,.png,.pdf"
                   />
-                  {/* capture="environment" fuerza la cámara trasera en vez del
-                      selector de galería/archivos — solo tiene efecto en
-                      navegadores móviles, en desktop se ignora sin romper nada. */}
+                  {/* Respaldo silencioso si getUserMedia no está disponible en
+                      este navegador (muy poco común) — capture="environment"
+                      abre la cámara nativa en móviles; en desktop cualquier
+                      navegador lo ignora, por eso el botón visible ahora abre
+                      el modal de cámara (CameraCaptureModal) en vez de este
+                      input directamente. */}
                   <input
                     type="file"
-                    id={`file-input-camera-${question.id}`}
+                    id={`file-input-camera-fallback-${question.id}`}
                     style={{ display: 'none' }}
                     accept="image/*"
                     capture="environment"
@@ -2587,9 +2762,19 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     <label htmlFor={`file-input-${question.id}`} className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
                       Agregar archivos
                     </label>
-                    <label htmlFor={`file-input-camera-${question.id}`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") {
+                          setCameraModalQuestionId(question.id)
+                        } else {
+                          document.getElementById(`file-input-camera-fallback-${question.id}`)?.click()
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
+                    >
                       <Camera className="h-4 w-4" /> Tomar foto
-                    </label>
+                    </button>
                     <div className="text-xs text-muted-foreground">Máx archivos: <b>{maxFilesAllowed}</b></div>
                   </div>
 
@@ -2597,28 +2782,38 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     Formatos permitidos: <b>JPG, PNG, PDF</b> &nbsp;|&nbsp; Tamaño máximo: <b>20 MB</b>
                   </div>
 
-                  {currentFiles && currentFiles.length > 0 && (
+                  {normalizedCurrent.length > 0 && (
                     <div className="text-sm text-muted-foreground">
                       <div className="flex items-center justify-between">
                         <div>Archivos seleccionados:</div>
                         <button
                           type="button"
                           className="text-sm text-red-600 hover:underline"
-                          onClick={() => {
-                            // Vaciar lista
-                            handleAnswerChange(question.id, [])
-                          }}
+                          onClick={() => handleAnswerChange(question.id, [])}
                         >
                           Eliminar todos
                         </button>
                       </div>
-                      <ul className="mt-2 list-disc list-inside">
-                        {currentFiles.map((n, i) => (
-                          <li key={i} className="flex items-center justify-between">
-                            <span>{n}</span>
+                      <ul className="mt-2 space-y-1">
+                        {normalizedCurrent.map((f, i) => (
+                          <li key={i} className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 truncate">
+                              {f.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />}
+                              <span className="truncate">{f.name}</span>
+                              {f.status === "pending" && (
+                                <span className="text-[10px] uppercase tracking-wide text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 flex-shrink-0">
+                                  Se subirá al recuperar señal
+                                </span>
+                              )}
+                              {f.status === "error" && (
+                                <span className="text-[10px] uppercase tracking-wide text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 flex-shrink-0">
+                                  Error
+                                </span>
+                              )}
+                            </span>
                             <button
                               type="button"
-                              className="text-sm text-red-600 ml-4"
+                              className="text-sm text-red-600 ml-4 flex-shrink-0"
                               onClick={() => {
                                 const arr = Array.isArray(answers[question.id]) ? [...answers[question.id]] : (answers[question.id] ? [answers[question.id]] : [])
                                 arr.splice(i, 1)

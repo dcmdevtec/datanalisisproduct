@@ -31,6 +31,9 @@ interface DetailQuestion {
   type: string
   answer: string
   audioUrl: string | null
+  // Preguntas tipo archivo/foto (auditoría 2026-07-29): URLs firmadas de
+  // corta duración generadas por la API — ver app/api/reports/individual/[id]/route.ts.
+  fileUrls?: { name: string; url: string | null; type: string }[]
 }
 
 interface DetailResponse {
@@ -237,6 +240,25 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                               <Download className="h-3.5 w-3.5" />
                             </Button>
                           </a>
+                        </div>
+                      )}
+                      {q.fileUrls && q.fileUrls.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {q.fileUrls.map((f, idx) =>
+                            f.url ? (
+                              f.type?.startsWith("image/") ? (
+                                <a key={idx} href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block">
+                                  <img src={f.url} alt={f.name} className="h-20 w-20 object-cover rounded-md border" />
+                                </a>
+                              ) : (
+                                <a key={idx} href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs bg-muted/40 rounded-md px-2 py-1.5 border hover:bg-muted">
+                                  <Download className="h-3.5 w-3.5" /> {f.name}
+                                </a>
+                              )
+                            ) : (
+                              <span key={idx} className="text-xs text-muted-foreground italic">{f.name} (URL no disponible)</span>
+                            )
+                          )}
                         </div>
                       )}
                     </div>

@@ -36,25 +36,32 @@ export async function initializeBuckets(): Promise<void> {
 
         const existingBucketNames = buckets?.map(b => b.name) || []
 
+        // response-media guarda audio/video de respuestas y grabaciones del
+        // portal de encuestador (surveyor_recordings), no solo imágenes —
+        // restringir a solo tipos 'image/*' aquí causaba que Supabase Storage
+        // rechazara CUALQUIER subida de audio a este bucket con
+        // "mime type audio/webm is not supported" (bug encontrado en
+        // producción: los segmentos de grabación del portal nunca se
+        // guardaban). survey-images también guarda ahora video adjunto a
+        // preguntas (question.image / columna questions.file_url), además
+        // de las imágenes de opciones — mismo motivo, mismo fix. Se agrega
+        // 'application/pdf' (auditoría 2026-07-29): las preguntas tipo
+        // archivo/foto ahora suben el PDF/imagen real al bucket
+        // response-media (ver app/api/response-files/upload/route.ts) y la
+        // UI de esa pregunta explícitamente permite PDF.
+        const mediaMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'video/webm', 'video/mp4', 'video/quicktime']
+        const nonMediaMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
         for (const bucket of requiredBuckets) {
+            const isMediaBucket = bucket.name === 'response-media' || bucket.name === 'survey-images'
+            const allowedMimeTypes = isMediaBucket ? mediaMimeTypes : nonMediaMimeTypes
+
             if (!existingBucketNames.includes(bucket.name)) {
                 console.log(`Creating bucket: ${bucket.name}`)
                 try {
-                    // response-media guarda audio/video de respuestas y grabaciones del
-                    // portal de encuestador (surveyor_recordings), no solo imágenes —
-                    // restringir a solo tipos 'image/*' aquí causaba que Supabase Storage
-                    // rechazara CUALQUIER subida de audio a este bucket con
-                    // "mime type audio/webm is not supported" (bug encontrado en
-                    // producción: los segmentos de grabación del portal nunca se
-                    // guardaban). survey-images también guarda ahora video adjunto a
-                    // preguntas (question.image / columna questions.file_url), además
-                    // de las imágenes de opciones — mismo motivo, mismo fix.
-                    const isMediaBucket = bucket.name === 'response-media' || bucket.name === 'survey-images'
                     const { error: createError } = await supabase.storage.createBucket(bucket.name, {
                         public: bucket.isPublic,
-                        allowedMimeTypes: isMediaBucket
-                            ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'video/webm', 'video/mp4', 'video/quicktime']
-                            : ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+                        allowedMimeTypes,
                         fileSizeLimit: isMediaBucket ? 50 * 1024 * 1024 : 10 * 1024 * 1024, // grabaciones/videos pueden pesar más que una imagen
                     })
 
@@ -67,6 +74,30 @@ export async function initializeBuckets(): Promise<void> {
                 } catch (createError) {
                     console.error(`Failed to create bucket ${bucket.name}:`, createError)
                     console.warn(`Please create the bucket '${bucket.name}' manually in your Supabase dashboard`)
+                }
+            } else if (isMediaBucket) {
+                // El bucket ya existe (caso típico en producción) — createBucket
+                // no aplica aquí, así que sin este updateBucket la ampliación de
+                // allowedMimeTypes de arriba nunca llegaría a un bucket que ya
+                // estaba creado. Si esto falla por permisos (createClient usa la
+                // anon key, y actualizar buckets normalmente requiere
+                // service_role), queda como advertencia en consola — no rompe
+                // el resto del script, y se puede hacer el mismo cambio a mano
+                // desde Supabase Dashboard → Storage → response-media → Edit
+                // bucket → agregar 'application/pdf' a los tipos permitidos.
+                try {
+                    const { error: updateError } = await supabase.storage.updateBucket(bucket.name, {
+                        public: bucket.isPublic,
+                        allowedMimeTypes,
+                        fileSizeLimit: 50 * 1024 * 1024,
+                    })
+                    if (updateError) {
+                        console.warn(`No se pudo actualizar los tipos MIME permitidos de '${bucket.name}' (puede requerir permisos de service_role):`, updateError.message)
+                    } else {
+                        console.log(`Bucket ${bucket.name} actualizado con los tipos MIME vigentes`)
+                    }
+                } catch (updateError) {
+                    console.warn(`No se pudo actualizar el bucket '${bucket.name}':`, updateError)
                 }
             }
         }

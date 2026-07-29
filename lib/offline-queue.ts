@@ -131,6 +131,72 @@ async function removePendingResponse(localId: string): Promise<void> {
   }
 }
 
+/** Reemplaza el payload guardado de un envío en cola (usado para persistir
+ * qué archivos ya se subieron, así un flush interrumpido a mitad de camino
+ * no vuelve a subir el mismo archivo dos veces en el siguiente intento). */
+async function updatePendingPayload(localId: string, payload: any): Promise<void> {
+  if (!hasIndexedDB()) return
+  try {
+    const db = await openDB()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite")
+      const store = tx.objectStore(STORE_NAME)
+      const getReq = store.get(localId)
+      getReq.onsuccess = () => {
+        const existing = getReq.result as PendingResponse | undefined
+        if (existing) {
+          existing.payload = payload
+          store.put(existing)
+        }
+      }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+  } catch (err) {
+    console.error("[offline-queue] No se pudo actualizar el payload en la cola offline:", err)
+  }
+}
+
+/**
+ * Preguntas tipo archivo/foto (auditoría 2026-07-29) guardan en el answer un
+ * arreglo de descriptores; los que quedaron sin subir por falta de señal
+ * llevan el File real embebido (status 'pending'/'uploading') — IndexedDB
+ * los persiste tal cual (soporta Blob/File de forma nativa), pero
+ * JSON.stringify NO puede serializarlos, así que hay que subirlos aquí
+ * ANTES de intentar el POST a /api/responses. Devuelve false si sigue
+ * habiendo archivos sin subir (todavía sin señal) — en ese caso ni si
+ * quiera vale la pena intentar el POST de la respuesta todavía.
+ */
+async function resolvePendingFiles(payload: any): Promise<boolean> {
+  if (!payload || !Array.isArray(payload.response_answers)) return true
+  let allResolved = true
+  for (const ans of payload.response_answers) {
+    if (!Array.isArray(ans.value)) continue
+    for (let i = 0; i < ans.value.length; i++) {
+      const item = ans.value[i]
+      const hasEmbeddedFile = item && typeof item === "object" && (item.status === "pending" || item.status === "uploading") && item.file
+      if (!hasEmbeddedFile) continue
+      try {
+        const form = new FormData()
+        form.append("file", item.file)
+        form.append("survey_id", payload.survey_id)
+        form.append("question_id", ans.question_id)
+        const res = await fetch("/api/response-files/upload", { method: "POST", body: form })
+        if (res.ok) {
+          const json = await res.json()
+          ans.value[i] = { status: "uploaded", name: item.name, type: item.type, size: item.size, path: json.path }
+        } else {
+          allResolved = false
+        }
+      } catch {
+        allResolved = false
+      }
+    }
+  }
+  return allResolved
+}
+
 async function markAttempt(localId: string, error: string): Promise<void> {
   if (!hasIndexedDB()) return
   try {
@@ -180,6 +246,18 @@ export async function flushQueue(): Promise<{ synced: number; failed: number; re
     const pending = await getPendingResponses()
     for (const item of pending) {
       try {
+        // Primero resuelve archivos pendientes (fotos/PDF de preguntas tipo
+        // archivo que quedaron sin subir por falta de señal) — si todavía no
+        // se pueden subir, ni se intenta el POST de la respuesta esta vuelta.
+        const filesResolved = await resolvePendingFiles(item.payload)
+        if (!filesResolved) {
+          await updatePendingPayload(item.localId, item.payload) // guarda lo que sí se alcanzó a subir
+          await markAttempt(item.localId, "Archivos adjuntos aún sin subir (sin conexión)")
+          failed += 1
+          continue
+        }
+        await updatePendingPayload(item.localId, item.payload)
+
         const res = await fetch("/api/responses", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

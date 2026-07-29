@@ -71,23 +71,45 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const questions = answerList
-      .filter((a: any) => a.questions !== null)
-      .map((a: any) => {
-        const q = a.questions
-        const media = mediaByAnswerId[a.id] || []
-        const audio = media.find((m) => m.type === "audio" && m.remoteUrl) || null
-        return {
-          questionId: q.id,
-          text: q.text || "Sin texto",
-          type: q.type,
-          orderNum: q.order_num ?? 0,
-          answer: extractValue(a.value),
-          rawAnswer: a.value,
-          audioUrl: audio?.remoteUrl ?? null,
-        }
-      })
-      .sort((a, b) => a.orderNum - b.orderNum)
+    const questions = (await Promise.all(
+      answerList
+        .filter((a: any) => a.questions !== null)
+        .map(async (a: any) => {
+          const q = a.questions
+          const media = mediaByAnswerId[a.id] || []
+          const audio = media.find((m) => m.type === "audio" && m.remoteUrl) || null
+
+          // Preguntas tipo archivo/foto (auditoría 2026-07-29): el valor
+          // real ahora es un arreglo de descriptores {status:'uploaded',
+          // path, name, type} (ver app/api/response-files/upload/route.ts
+          // y app/preview/survey/page.tsx). Se generan URLs firmadas de
+          // corta duración (1h) para poder verlas/descargarlas desde el
+          // panel — el bucket 'response-media' es privado, igual que las
+          // grabaciones de audio (mismo patrón que
+          // app/api/surveys/[id]/recordings/route.ts).
+          let fileUrls: { name: string; url: string | null; type: string }[] = []
+          if ((q.type === "file" || q.type === "image_upload") && Array.isArray(a.value)) {
+            const withPath = a.value.filter((f: any) => f && typeof f === "object" && typeof f.path === "string")
+            fileUrls = await Promise.all(
+              withPath.map(async (f: any) => {
+                const { data: signed } = await admin.storage.from("response-media").createSignedUrl(f.path, 3600)
+                return { name: f.name || f.path.split("/").pop(), url: signed?.signedUrl ?? null, type: f.type || "" }
+              })
+            )
+          }
+
+          return {
+            questionId: q.id,
+            text: q.text || "Sin texto",
+            type: q.type,
+            orderNum: q.order_num ?? 0,
+            answer: extractValue(a.value),
+            rawAnswer: a.value,
+            audioUrl: audio?.remoteUrl ?? null,
+            fileUrls,
+          }
+        })
+    )).sort((a, b) => a.orderNum - b.orderNum)
 
     const durationSecs = (r.completed_at && r.created_at)
       ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)

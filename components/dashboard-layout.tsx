@@ -293,7 +293,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </Sheet>
 
       {/* Main content */}
-      <div className="flex-1 md:ml-64 lg:ml-72 flex flex-col">
+      {/* min-w-0 (feedback 2026-07-29): sin esto, un hijo flex-1 no se
+          encoge por debajo del ancho intrínseco de su contenido — si una
+          página adentro tiene algo ancho (p.ej. la tabla de Encuestas con 5
+          botones de acción por fila), este wrapper crecía para acomodarlo
+          en vez de dejar que el propio overflow-x-auto de esa tabla hiciera
+          scroll interno. Como el contenedor raíz de arriba tiene
+          overflow-hidden, el sobrante simplemente se recortaba sin scrollbar
+          ni aviso — exactamente el "las cosas no cuadran" reportado. Afecta
+          a TODAS las páginas envueltas por este layout, no solo una. */}
+      <div className="flex-1 min-w-0 md:ml-64 lg:ml-72 flex flex-col">
         {/* Top bar */}
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -303,7 +312,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto bg-gray-50">
+        <main className="flex-1 min-w-0 overflow-auto bg-gray-50">
           {children}
         </main>
       </div>
