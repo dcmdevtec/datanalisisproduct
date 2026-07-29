@@ -101,6 +101,7 @@ export default function SurveyDetailsPage() {
   const [recordings, setRecordings] = useState<any[]>([])
   const [loadingRecordings, setLoadingRecordings] = useState(false)
   const [recordingsError, setRecordingsError] = useState<string | null>(null)
+  const [deletingRecordingId, setDeletingRecordingId] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -253,6 +254,23 @@ export default function SurveyDetailsPage() {
   useEffect(() => {
     if (surveyId) fetchRecordings()
   }, [surveyId, fetchRecordings])
+
+  const handleDeleteRecording = useCallback(async (recordingId: string) => {
+    if (!confirm("¿Eliminar esta grabación de audio? Esta acción no se puede deshacer.")) return
+    setDeletingRecordingId(recordingId)
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/recordings/${recordingId}`, { method: "DELETE" })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data?.details || data?.error || "No se pudo eliminar la grabación")
+      setRecordings((prev) => prev.filter((r) => r.id !== recordingId))
+      toast({ title: "Grabación eliminada" })
+    } catch (err: any) {
+      console.error("Error deleting recording:", err)
+      toast({ title: "Error", description: err.message || "No se pudo eliminar la grabación", variant: "destructive" })
+    } finally {
+      setDeletingRecordingId(null)
+    }
+  }, [surveyId, toast])
 
   if (authLoading || loading) {
     return (
@@ -741,6 +759,20 @@ export default function SurveyDetailsPage() {
                           ) : (
                             <span className="text-xs text-muted-foreground">Audio no disponible</span>
                           )}
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            disabled={deletingRecordingId === rec.id}
+                            onClick={() => handleDeleteRecording(rec.id)}
+                            title="Eliminar grabación"
+                          >
+                            {deletingRecordingId === rec.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
                         </div>
                       </div>
                     )

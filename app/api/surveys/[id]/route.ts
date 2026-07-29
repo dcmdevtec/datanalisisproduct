@@ -140,6 +140,46 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     if (surveyCheckError) return NextResponse.json({ error: "Encuesta no encontrada" }, { status: 404 })
 
+    // Borrar las grabaciones de audio del portal de encuestador (surveyor_recordings)
+    // ligadas a las respuestas de esta encuesta ANTES de tocar `surveys`/`responses`.
+    // El FK surveyor_recordings.response_id -> responses.id es ON DELETE SET NULL,
+    // no CASCADE (ver sql/2026_07_surveyor_portal.sql) — si dejáramos que el
+    // borrado de la encuesta cascadeara solo, estas filas quedarían huérfanas
+    // (response_id en null) y el archivo de audio en Storage jamás se borraría.
+    // También limpia (getSupabaseClient() ya usa la service role key, así que
+    // tiene acceso a Storage).
+    const { data: surveyResponses } = await supabase.from("responses").select("id").eq("survey_id", id)
+    const responseIds = ((surveyResponses as any[]) || []).map((r) => r.id)
+
+    if (responseIds.length > 0) {
+      const { data: surveyRecordings } = await (supabase as any)
+        .from("surveyor_recordings")
+        .select("id, storage_path")
+        .in("response_id", responseIds)
+
+      const recordingList = (surveyRecordings as any[]) || []
+      const storagePaths = recordingList.map((r) => r.storage_path).filter(Boolean)
+
+      if (storagePaths.length > 0) {
+        const { error: storageDeleteError } = await supabase.storage.from("response-media").remove(storagePaths)
+        if (storageDeleteError) {
+          console.error("Error eliminando audios de Storage al borrar la encuesta:", storageDeleteError.message)
+          // No bloqueamos el borrado de la encuesta por esto — mejor una encuesta
+          // borrada con algún archivo huérfano en Storage que no poder borrarla.
+        }
+      }
+
+      if (recordingList.length > 0) {
+        const { error: recordingsDeleteError } = await (supabase as any)
+          .from("surveyor_recordings")
+          .delete()
+          .in("response_id", responseIds)
+        if (recordingsDeleteError) {
+          console.error("Error eliminando filas de surveyor_recordings al borrar la encuesta:", recordingsDeleteError.message)
+        }
+      }
+    }
+
     const { error: questionsError } = await supabase.from("questions").delete().eq("survey_id", id)
 
     if (questionsError) return NextResponse.json({ error: questionsError.message }, { status: 500 })
