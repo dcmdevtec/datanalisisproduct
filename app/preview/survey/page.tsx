@@ -35,7 +35,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, ArrowRight, Loader2, Star, CheckCircle, AlertCircle, Info, Target } from "lucide-react"
+import { ArrowLeft, ArrowRight, Loader2, Star, CheckCircle, AlertCircle, Info, Target, Camera } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -46,6 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ContactInfoQuestion } from "@/components/contact-info-question"
+import { LocationQuestion } from "@/components/location-question"
 
 // Tipos para la lógica de secciones y preguntas
 interface Question {
@@ -2410,6 +2411,45 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               const fileCfg = question.config?.fileUploadConfig || { maxFiles: 1 }
               const maxFilesAllowed = typeof fileCfg.maxFiles === 'number' ? fileCfg.maxFiles : Number(fileCfg.maxFiles) || 1
               const currentFiles: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
+
+              // Compartido entre "Agregar archivos" (selector nativo) y "Tomar
+              // foto" (capture=environment, abre la cámara directo en móviles) —
+              // pptx slide 14: "Debemos tener la opción de incorporar la cámara
+              // del celular".
+              const handleFilesSelected = (fileList: FileList | null, inputEl: HTMLInputElement) => {
+                const files = Array.from(fileList || [])
+                if (files.length === 0) return
+
+                const existing: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
+                const newNames = files.map(f => f.name)
+                const combined = [...existing, ...newNames]
+
+                if (combined.length > maxFilesAllowed) {
+                  alert(`Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Tienes ${existing.length} y seleccionaste ${newNames.length}.`)
+                  inputEl.value = ""
+                  return
+                }
+
+                const allowedTypes = ["image/jpeg", "image/png", "application/pdf"]
+                const maxSize = 20 * 1024 * 1024 // 20 MB
+                for (const file of files) {
+                  if (!allowedTypes.includes(file.type)) {
+                    alert("Solo se permiten archivos JPG, PNG o PDF.")
+                    inputEl.value = ""
+                    return
+                  }
+                  if (file.size > maxSize) {
+                    alert("El archivo no debe superar los 20 MB.")
+                    inputEl.value = ""
+                    return
+                  }
+                }
+
+                // Guardar solo nombres de archivos en el preview (no subir archivos aquí)
+                handleAnswerChange(question.id, combined)
+                inputEl.value = ""
+              }
+
               return (
                 <div className="space-y-2">
                   {/* hidden file input to allow programmatic click for "Agregar archivos" */}
@@ -2418,47 +2458,27 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     id={`file-input-${question.id}`}
                     style={{ display: 'none' }}
                     multiple={maxFilesAllowed > 1}
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || [])
-                      if (files.length === 0) return
-
-                      const existing: string[] = Array.isArray(answers[question.id]) ? answers[question.id] : (answers[question.id] ? [answers[question.id]] : [])
-                      // Merge names while keeping order
-                      const newNames = files.map(f => f.name)
-                      const combined = [...existing, ...newNames]
-
-                      // Validar cantidad total
-                      if (combined.length > maxFilesAllowed) {
-                        alert(`Solo se permiten hasta ${maxFilesAllowed} archivo${maxFilesAllowed > 1 ? 's' : ''}. Tienes ${existing.length} y seleccionaste ${newNames.length}.`)
-                        e.currentTarget.value = ""
-                        return
-                      }
-
-                      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"]
-                      const maxSize = 20 * 1024 * 1024 // 20 MB
-                      for (const file of files) {
-                        if (!allowedTypes.includes(file.type)) {
-                          alert("Solo se permiten archivos JPG, PNG o PDF.")
-                          e.currentTarget.value = ""
-                          return
-                        }
-                        if (file.size > maxSize) {
-                          alert("El archivo no debe superar los 20 MB.")
-                          e.currentTarget.value = ""
-                          return
-                        }
-                      }
-
-                      // Guardar solo nombres de archivos en el preview (no subir archivos aquí)
-                      handleAnswerChange(question.id, combined)
-                      e.currentTarget.value = ""
-                    }}
+                    onChange={(e) => handleFilesSelected(e.target.files, e.currentTarget)}
                     accept=".jpg,.jpeg,.png,.pdf"
                   />
+                  {/* capture="environment" fuerza la cámara trasera en vez del
+                      selector de galería/archivos — solo tiene efecto en
+                      navegadores móviles, en desktop se ignora sin romper nada. */}
+                  <input
+                    type="file"
+                    id={`file-input-camera-${question.id}`}
+                    style={{ display: 'none' }}
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => handleFilesSelected(e.target.files, e.currentTarget)}
+                  />
 
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center flex-wrap gap-2">
                     <label htmlFor={`file-input-${question.id}`} className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
                       Agregar archivos
+                    </label>
+                    <label htmlFor={`file-input-camera-${question.id}`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50">
+                      <Camera className="h-4 w-4" /> Tomar foto
                     </label>
                     <div className="text-xs text-muted-foreground">Máx archivos: <b>{maxFilesAllowed}</b></div>
                   </div>
@@ -2554,6 +2574,15 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                 onStatusChange={(status) => handleStatusChange(question.id, status)}
                 config={question.config}
                 initialData={answers[question.id]}
+              />
+            )
+          case "location":
+            // Pregunta tipo Ubicación (slide 17): geolocalización automática del
+            // navegador + reverse geocoding, campos editables. Solo web.
+            return (
+              <LocationQuestion
+                value={answers[question.id] || null}
+                onChange={(val) => handleAnswerChange(question.id, val)}
               />
             )
           case "ranking": {

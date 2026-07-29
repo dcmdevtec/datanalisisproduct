@@ -64,12 +64,16 @@ function PieOrDonut({ distribution, donut, showLabels }: { distribution: Distrib
         )}
       </svg>
       {showLabels && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 w-full max-w-md">
+        // Con pocas categorías (ej. Efectivas/Incidencias/Abandonadas) una sola
+        // columna evita que el label se trunque ("Efect...", "Inciden...") —
+        // el grid de 2 columnas se reserva para preguntas con muchas opciones,
+        // donde sí vale la pena aprovechar el ancho.
+        <div className={`grid ${distribution.length > 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-x-6 gap-y-1.5 w-full max-w-md`}>
           {distribution.map((d, i) => (
             <div key={i} className="flex items-center gap-2 text-sm min-w-0">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
-              <span className="truncate flex-1 text-muted-foreground" title={d.label}>{d.label}</span>
-              <span className="font-medium whitespace-nowrap">{d.count} ({d.percentage}%)</span>
+              <span className="flex-1 text-muted-foreground truncate" title={d.label}>{d.label}</span>
+              <span className="font-medium whitespace-nowrap flex-shrink-0">{d.count} ({d.percentage}%)</span>
             </div>
           ))}
         </div>

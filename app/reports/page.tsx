@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import {
   BarChart3, Download, Loader2, PieChart as PieChartIcon, TrendingUp, TrendingDown, AlertCircle,
   Clock, Calendar, Zap, Target, BookOpen, ArrowUpRight, ArrowDownRight, Minus,
-  CheckCircle2, AlertTriangle, XCircle, Users2, ChartPie, ChartNoAxesColumn, ChartBarBig, LineChart as LineChartIcon, Table2, Tags,
+  CheckCircle2, AlertTriangle, XCircle, Users2, ChartPie, ChartNoAxesColumn, ChartBarBig, LineChart as LineChartIcon, Table2, Tags, Grid3x3,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
@@ -33,6 +33,9 @@ interface ReportData {
   projects: { id: string; name: string; companyId: string }[]
   surveys: { id: string; title: string; projectId: string }[]
   surveyors: { id: string; name: string; supervisorId: string | null }[]
+  // Slide 19: jerarquía Encuestador -> Supervisor -> Coordinador.
+  supervisors?: { id: string; name: string }[]
+  coordinators?: { id: string; name: string }[]
   summary: {
     totalResponses: number
     completionRate: number
@@ -63,6 +66,14 @@ interface ReportData {
       sampleAnswers?: string[]
       timeline?: { date: string; count: number }[]
     }[]
+    // Preguntas usables para el filtro avanzado (slide 21), con sus valores posibles.
+    filterableQuestions?: { questionId: string; text: string; values: string[] }[]
+    // Tablas cruzadas (slide 21): cruce de respuestas entre dos preguntas.
+    crosstab?: {
+      rowQuestion: string; colQuestion: string
+      rows: string[]; cols: string[]; matrix: number[][]
+      rowTotals: number[]; colTotals: number[]; total: number
+    } | null
   }
   performance: {
     surveyorPerformance: {
@@ -142,6 +153,10 @@ export default function ReportsPage() {
   const [selectedProject, setSelectedProject] = useState<string>("all")
   const [selectedSurvey, setSelectedSurvey] = useState<string>("all")
   const [selectedSurveyor, setSelectedSurveyor] = useState<string>("all")
+  // Slide 19: filtros de jerarquía. Elegir un coordinador ya incluye a todos
+  // los supervisores/encuestadores debajo de él (ver resolución en la API).
+  const [selectedSupervisor, setSelectedSupervisor] = useState<string>("all")
+  const [selectedCoordinator, setSelectedCoordinator] = useState<string>("all")
   const [selectedTipo, setSelectedTipo] = useState<string>("all")
   // Rango de fechas real (pptx slide 19), reemplaza el selector de "período" fijo.
   const [dateFrom, setDateFrom] = useState<string>("")
@@ -152,6 +167,15 @@ export default function ReportsPage() {
   const [chartType, setChartType] = useState<ChartType>("barsV")
   const [showDataTable, setShowDataTable] = useState(true)
   const [showLabels, setShowLabels] = useState(true)
+
+  // Filtro avanzado (slide 21): "filtrar las gráficas según lo que contestaron
+  // en una pregunta en particular". Se aplica a todo el reporte vía filterParams.
+  const [advancedFilterQuestionId, setAdvancedFilterQuestionId] = useState<string>("")
+  const [advancedFilterValue, setAdvancedFilterValue] = useState<string>("")
+
+  // Tablas cruzadas (slide 21): cruce de dos preguntas de tipo choice/rating.
+  const [crossRowQuestionId, setCrossRowQuestionId] = useState<string>("")
+  const [crossColQuestionId, setCrossColQuestionId] = useState<string>("")
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -194,12 +218,22 @@ export default function ReportsPage() {
       project: selectedProject,
       survey: selectedSurvey,
       surveyor: selectedSurveyor,
+      supervisor: selectedSupervisor,
+      coordinator: selectedCoordinator,
       tipo: selectedTipo,
     })
     if (dateFrom) params.set("dateFrom", dateFrom)
     if (dateTo) params.set("dateTo", dateTo)
+    if (advancedFilterQuestionId && advancedFilterValue) {
+      params.set("filterQuestionId", advancedFilterQuestionId)
+      params.set("filterValue", advancedFilterValue)
+    }
+    if (crossRowQuestionId && crossColQuestionId) {
+      params.set("crossRowQuestionId", crossRowQuestionId)
+      params.set("crossColQuestionId", crossColQuestionId)
+    }
     return params
-  }, [selectedCompany, selectedProject, selectedSurvey, selectedSurveyor, selectedTipo, dateFrom, dateTo])
+  }, [selectedCompany, selectedProject, selectedSurvey, selectedSurveyor, selectedSupervisor, selectedCoordinator, selectedTipo, dateFrom, dateTo, advancedFilterQuestionId, advancedFilterValue, crossRowQuestionId, crossColQuestionId])
 
   const fetchData = useCallback(async () => {
     if (!user) return
@@ -363,6 +397,34 @@ export default function ReportsPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Supervisor</Label>
+              <Select value={selectedSupervisor} onValueChange={setSelectedSupervisor}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Supervisor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {data?.supervisors?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Coordinador</Label>
+              <Select value={selectedCoordinator} onValueChange={setSelectedCoordinator}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Coordinador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {data?.coordinators?.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Tipo de encuesta</Label>
               <Select value={selectedTipo} onValueChange={setSelectedTipo}>
                 <SelectTrigger className="w-full sm:w-[160px]">
@@ -384,11 +446,11 @@ export default function ReportsPage() {
               <Label className="text-xs text-muted-foreground">Hasta</Label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full sm:w-[150px]" />
             </div>
-            {(dateFrom || dateTo || selectedSurveyor !== "all" || selectedTipo !== "all") && (
+            {(dateFrom || dateTo || selectedSurveyor !== "all" || selectedSupervisor !== "all" || selectedCoordinator !== "all" || selectedTipo !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedSurveyor("all"); setSelectedTipo("all") }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedSurveyor("all"); setSelectedSupervisor("all"); setSelectedCoordinator("all"); setSelectedTipo("all") }}
               >
                 Limpiar filtros
               </Button>
@@ -625,7 +687,10 @@ export default function ReportsPage() {
                       <CardTitle className="text-base">Distribución por Tipo</CardTitle>
                       <CardDescription>Efectivas vs Incidencias vs Abandonadas</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-col items-center justify-center h-56 gap-3">
+                    {/* min-h en vez de h-56 fijo: con leyenda + donut el contenido real
+                        mide más que 224px, y con altura fija el SVG se salía por arriba
+                        y quedaba montado sobre el título de la tarjeta. */}
+                    <CardContent className="flex flex-col items-center justify-center min-h-56 gap-3 py-6">
                       {summary && summary.totalResponses > 0 ? (
                         <QuestionChart
                           type="donut"
@@ -766,7 +831,11 @@ export default function ReportsPage() {
               </Button>
               <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("responses")} disabled={exporting === "responses"}>
                 {exporting === "responses" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exporting === "responses" ? "Exportando..." : "Descargar PDF"}
+                {/* OJO: este export genera un .xlsx real (ExcelJS), no un PDF — el
+                    botón decía "Descargar PDF" pero descargaba Excel, lo cual es
+                    engañoso. Se corrige la etiqueta; generar un PDF de verdad
+                    queda pendiente como pedido aparte. */}
+                {exporting === "responses" ? "Exportando..." : "Descargar Excel"}
               </Button>
             </div>
             {loading ? (
@@ -829,6 +898,149 @@ export default function ReportsPage() {
                       <input type="checkbox" checked={showDataTable} onChange={(e) => setShowDataTable(e.target.checked)} className="rounded" />
                       <Table2 className="h-3.5 w-3.5" /> Mostrar tabla de datos
                     </label>
+                  </div>
+
+                  {/* Filtro avanzado (slide 21): filtra TODO el reporte (no solo esta
+                      pestaña) según lo que se contestó en otra pregunta puntual. */}
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <Tags className="h-3.5 w-3.5" /> Filtro avanzado
+                      <span className="text-xs font-normal text-muted-foreground">— muestra solo respuestas que contestaron algo específico en otra pregunta</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Select
+                        value={advancedFilterQuestionId || "none"}
+                        onValueChange={(v) => { setAdvancedFilterQuestionId(v === "none" ? "" : v); setAdvancedFilterValue("") }}
+                      >
+                        <SelectTrigger className="sm:w-64">
+                          <SelectValue placeholder="Pregunta condición" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin filtro</SelectItem>
+                          {(data?.responses?.filterableQuestions ?? []).map((q) => (
+                            <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={advancedFilterValue || "none"}
+                        onValueChange={(v) => setAdvancedFilterValue(v === "none" ? "" : v)}
+                        disabled={!advancedFilterQuestionId}
+                      >
+                        <SelectTrigger className="sm:w-64">
+                          <SelectValue placeholder="Valor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Selecciona un valor</SelectItem>
+                          {(data?.responses?.filterableQuestions ?? [])
+                            .find((q) => q.questionId === advancedFilterQuestionId)
+                            ?.values.map((v) => (
+                              <SelectItem key={v} value={v}>{v}</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {advancedFilterQuestionId && advancedFilterValue && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setAdvancedFilterQuestionId(""); setAdvancedFilterValue("") }}
+                        >
+                          Limpiar filtro
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Tablas cruzadas (slide 21): cruza las respuestas de dos preguntas
+                      y muestra cuántas respuestas cayeron en cada combinación. */}
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <Grid3x3 className="h-3.5 w-3.5" /> Tabla cruzada
+                      <span className="text-xs font-normal text-muted-foreground">— cruza las respuestas de dos preguntas</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Select
+                        value={crossRowQuestionId || "none"}
+                        onValueChange={(v) => setCrossRowQuestionId(v === "none" ? "" : v)}
+                      >
+                        <SelectTrigger className="sm:w-64">
+                          <SelectValue placeholder="Pregunta (filas)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Selecciona pregunta</SelectItem>
+                          {(data?.responses?.filterableQuestions ?? [])
+                            .filter((q) => q.questionId !== crossColQuestionId)
+                            .map((q) => (
+                              <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={crossColQuestionId || "none"}
+                        onValueChange={(v) => setCrossColQuestionId(v === "none" ? "" : v)}
+                      >
+                        <SelectTrigger className="sm:w-64">
+                          <SelectValue placeholder="Pregunta (columnas)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Selecciona pregunta</SelectItem>
+                          {(data?.responses?.filterableQuestions ?? [])
+                            .filter((q) => q.questionId !== crossRowQuestionId)
+                            .map((q) => (
+                              <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {(crossRowQuestionId || crossColQuestionId) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setCrossRowQuestionId(""); setCrossColQuestionId("") }}
+                        >
+                          Limpiar
+                        </Button>
+                      )}
+                    </div>
+
+                    {data?.responses?.crosstab && (
+                      <div className="overflow-x-auto pt-2">
+                        <table className="text-sm border-collapse w-full">
+                          <thead>
+                            <tr>
+                              <th className="border p-2 bg-muted/50 text-left align-bottom">
+                                <div className="text-xs text-muted-foreground font-normal">{data.responses.crosstab.rowQuestion}</div>
+                                <div className="text-xs text-muted-foreground font-normal">↓ / {data.responses.crosstab.colQuestion} →</div>
+                              </th>
+                              {data.responses.crosstab.cols.map((c) => (
+                                <th key={c} className="border p-2 bg-muted/50 text-center font-medium whitespace-nowrap">{c}</th>
+                              ))}
+                              <th className="border p-2 bg-muted/50 text-center font-semibold">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.responses.crosstab.rows.map((r, ri) => (
+                              <tr key={r}>
+                                <td className="border p-2 font-medium whitespace-nowrap">{r}</td>
+                                {data.responses.crosstab!.matrix[ri].map((v, ci) => (
+                                  <td key={ci} className="border p-2 text-center">{v}</td>
+                                ))}
+                                <td className="border p-2 text-center font-semibold bg-muted/20">{data.responses.crosstab!.rowTotals[ri]}</td>
+                              </tr>
+                            ))}
+                            <tr>
+                              <td className="border p-2 font-semibold bg-muted/20">Total</td>
+                              {data.responses.crosstab.colTotals.map((v, ci) => (
+                                <td key={ci} className="border p-2 text-center font-semibold bg-muted/20">{v}</td>
+                              ))}
+                              <td className="border p-2 text-center font-bold bg-muted/30">{data.responses.crosstab.total}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {crossRowQuestionId && crossColQuestionId && !data?.responses?.crosstab && (
+                      <p className="text-xs text-muted-foreground pt-1">No hay respuestas suficientes para cruzar estas dos preguntas.</p>
+                    )}
                   </div>
 
                   {selectedQuestion && (

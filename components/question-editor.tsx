@@ -771,6 +771,7 @@ export function QuestionEditor({
               <SelectItem value="rating">⭐ Valoración</SelectItem>
               <SelectItem value="file">📎 Archivo</SelectItem>
               <SelectItem value="signature">✍️ Firma</SelectItem>
+              <SelectItem value="location">📍 Ubicación (GPS)</SelectItem>
               <SelectItem value="likert">📈 Escala Likert</SelectItem>
               <SelectItem value="net_promoter">📊 Net Promoter Score</SelectItem>
               <SelectItem value="comment_box">💬 Caja de comentarios</SelectItem>

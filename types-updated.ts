@@ -557,6 +557,7 @@ export type QuestionType =
   | 'contact_info'
   | 'single_textbox'
   | 'multiple_textboxes'
+  | 'location'
 
 // =====================================================
 // OPERADORES DE VALIDACIÓN

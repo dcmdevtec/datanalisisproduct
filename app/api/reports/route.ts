@@ -57,6 +57,19 @@ export async function GET(request: NextRequest) {
     const surveyFilter = searchParams.get("survey") || "all"
     const surveyorFilter = searchParams.get("surveyor") || "all"
     const tipoFilter = searchParams.get("tipo") || "all" // all | efectiva | incidencia | abandonada
+    // Filtro avanzado (pptx slide 21: "filtrar las gráficas teniendo en cuenta lo
+    // que contestaron en una pregunta en particular"). Se aplica a TODO el reporte
+    // (no solo al gráfico seleccionado) para que resumen/rendimiento/geográfico
+    // queden consistentes con el mismo subconjunto de respuestas.
+    const filterQuestionId = searchParams.get("filterQuestionId")
+    const filterValue = searchParams.get("filterValue")
+    // Jerarquía Encuestador -> Supervisor -> Coordinador (slide 19).
+    const supervisorFilter = searchParams.get("supervisor") || "all"
+    const coordinatorFilter = searchParams.get("coordinator") || "all"
+    // Tablas cruzadas (slide 21): cruzar respuestas de dos preguntas de tipo
+    // choice/rating, contando cuántas respuestas cayeron en cada combinación.
+    const crossRowQuestionId = searchParams.get("crossRowQuestionId")
+    const crossColQuestionId = searchParams.get("crossColQuestionId")
     // Rango de fechas real (slide 19). Se aceptan ISO date strings (YYYY-MM-DD).
     // Se mantiene compatibilidad con el antiguo parámetro "period" por si algún
     // enlace o export guardado todavía lo usa.
@@ -97,13 +110,37 @@ export async function GET(request: NextRequest) {
     const { data: allCompanies } = await admin.from("companies").select("id, name").order("name")
     const { data: allProjects } = await admin.from("projects").select("id, name, company_id").order("name")
     const { data: allSurveys } = await admin.from("surveys").select("id, title, project_id").order("created_at", { ascending: false })
-    // Encuestadores para el selector de filtro (slide 19). Se listan todos los activos;
-    // el filtro "supervisor_id" (jerarquía) se deja preparado para cuando exista el dato.
+    // Encuestadores para el selector de filtro (slide 19).
     const { data: allSurveyors } = await admin
       .from("surveyors")
       .select("id, name, supervisor_id")
       .eq("status", "active")
       .order("name")
+    // Supervisores y coordinadores para los selectores de jerarquía (slide 19).
+    // Ambos viven en public.users (roles 'supervisor' y 'coordinator' — ver
+    // sql/2026_07_reports_outcome_and_hierarchy.sql).
+    const { data: allSupervisors } = await admin.from("users").select("id, name").eq("role", "supervisor").order("name")
+    const { data: allCoordinators } = await admin.from("users").select("id, name").eq("role", "coordinator").order("name")
+
+    // Resuelve qué encuestadores caen bajo el supervisor/coordinador elegido.
+    // coordinator manda sobre supervisor si ambos vienen seteados (es más
+    // específico en la jerarquía... al revés: coordinador es el nivel más alto,
+    // así que filtrar por coordinador ya incluye a todos sus supervisores).
+    let hierarchySurveyorIds: string[] | null = null
+    if (coordinatorFilter !== "all") {
+      const { data: supsUnderCoordinator } = await admin
+        .from("users").select("id").eq("role", "supervisor").eq("coordinator_id", coordinatorFilter)
+      const supIds = ((supsUnderCoordinator as any[]) || []).map((s) => s.id)
+      if (supIds.length === 0) {
+        hierarchySurveyorIds = []
+      } else {
+        const { data: survsUnderSup } = await admin.from("surveyors").select("id").in("supervisor_id", supIds)
+        hierarchySurveyorIds = ((survsUnderSup as any[]) || []).map((s) => s.id)
+      }
+    } else if (supervisorFilter !== "all") {
+      const { data: survsUnderSup } = await admin.from("surveyors").select("id").eq("supervisor_id", supervisorFilter)
+      hierarchySurveyorIds = ((survsUnderSup as any[]) || []).map((s) => s.id)
+    }
 
     // Resolve survey IDs based on cascading filters
     let filteredSurveyIds: string[] | null = null // null = no filter (all)
@@ -117,14 +154,21 @@ export async function GET(request: NextRequest) {
       filteredSurveyIds = (allSurveys || []).filter((s: any) => companyProjectIds.includes(s.project_id)).map((s: any) => s.id)
     }
 
-    // Si hay filtro por encuestador, resolvemos primero los assignment_id que le pertenecen,
-    // porque responses no tiene surveyor_id directo (solo assignment_id -> assignments.surveyor_id).
+    // Si hay filtro por encuestador (directo o vía jerarquía supervisor/coordinador),
+    // resolvemos primero los assignment_id que le pertenecen, porque responses no
+    // tiene surveyor_id directo (solo assignment_id -> assignments.surveyor_id).
     let filteredAssignmentIds: string[] | null = null
-    if (surveyorFilter !== "all") {
-      let assignmentIdQuery = admin.from("assignments").select("id").eq("surveyor_id", surveyorFilter)
-      if (filteredSurveyIds !== null) assignmentIdQuery = assignmentIdQuery.in("survey_id", filteredSurveyIds)
-      const { data: matchingAssignments } = await assignmentIdQuery
-      filteredAssignmentIds = (matchingAssignments || []).map((a: any) => a.id)
+    if (surveyorFilter !== "all" || hierarchySurveyorIds !== null) {
+      if (hierarchySurveyorIds !== null && hierarchySurveyorIds.length === 0) {
+        filteredAssignmentIds = []
+      } else {
+        let assignmentIdQuery = admin.from("assignments").select("id")
+        if (surveyorFilter !== "all") assignmentIdQuery = assignmentIdQuery.eq("surveyor_id", surveyorFilter)
+        else if (hierarchySurveyorIds !== null) assignmentIdQuery = assignmentIdQuery.in("surveyor_id", hierarchySurveyorIds)
+        if (filteredSurveyIds !== null) assignmentIdQuery = assignmentIdQuery.in("survey_id", filteredSurveyIds)
+        const { data: matchingAssignments } = await assignmentIdQuery
+        filteredAssignmentIds = (matchingAssignments || []).map((a: any) => a.id)
+      }
     }
 
     const emptyResponse = () => NextResponse.json({
@@ -132,13 +176,15 @@ export async function GET(request: NextRequest) {
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
       surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id })),
       surveyors: (allSurveyors || []).map((s: any) => ({ id: s.id, name: s.name, supervisorId: s.supervisor_id })),
+      supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
+      coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
       summary: {
         totalResponses: 0, completionRate: 0, avgTime: "0:00", nps: null, responseGrowth: 0,
         responsesTimeline: [], responsesByHour: [], peakHour: 0, activeDays: 0, avgPerDay: 0,
         surveysWithData: 0, trendPct: 0, peakDay: null,
         efectivas: 0, incidencias: 0, abandonadas: 0, tasaRespuestasEfectivas: 0,
       },
-      responses: { questionBreakdowns: [] },
+      responses: { questionBreakdowns: [], filterableQuestions: [], crosstab: null },
       performance: { surveyorPerformance: [], dailyDistribution: [], surveyPerformance: [] },
       geographic: { zoneBreakdown: [], zonePolygons: [], responsePoints: [] },
       individual: { total: 0 },
@@ -170,7 +216,7 @@ export async function GET(request: NextRequest) {
     // depende del fallback resolveOutcome() y no solo de la columna outcome.
     // (cast a any[]: el generado de tipos de Supabase para esta tabla resuelve a `never`
     // en este proyecto — mismo patrón que ya usaba el resto del archivo)
-    const responses: any[] = ((rawResponses as any[]) || []).filter((r: any) => {
+    let responses: any[] = ((rawResponses as any[]) || []).filter((r: any) => {
       if (tipoFilter === "all") return true
       return resolveOutcome(r) === tipoFilter
     })
@@ -179,7 +225,7 @@ export async function GET(request: NextRequest) {
 
     // --- Answers: filter by response IDs from our filtered responses ---
     const responseIds = responses.map((r: any) => r.id)
-    const responseById: Record<string, any> = {}
+    let responseById: Record<string, any> = {}
     for (const r of responses) responseById[r.id] = r
 
     let answers: any[] = []
@@ -198,6 +244,103 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Preguntas usables para el filtro avanzado (solo tipo choice/rating, con al
+    // menos una respuesta), calculadas ANTES de aplicar el filtro avanzado — así
+    // las opciones del selector de "valor" no se reducen solas al aplicar uno.
+    const filterableQuestionsMap: Record<string, { questionId: string; text: string; values: Set<string> }> = {}
+    for (const a of answers) {
+      const q = a.questions
+      if (!q || !["multiple_choice", "single_choice", "dropdown", "radio", "checkbox", "rating", "nps", "likert", "scale"].includes(q.type)) continue
+      if (!filterableQuestionsMap[q.id]) filterableQuestionsMap[q.id] = { questionId: q.id, text: q.text || "Sin texto", values: new Set() }
+      const extracted = extractValue(a.value)
+      const vals = Array.isArray(extracted) ? extracted : [extracted]
+      for (const v of vals) if (v !== "") filterableQuestionsMap[q.id].values.add(v)
+    }
+    const filterableQuestions = Object.values(filterableQuestionsMap).map((q) => ({
+      questionId: q.questionId,
+      text: q.text,
+      values: Array.from(q.values).sort(),
+    }))
+
+    // --- Filtro avanzado: narrow responses/answers al subconjunto que respondió
+    // filterValue en filterQuestionId. Se hace DESPUÉS de fetchear answers (con
+    // el set completo de responseIds) porque necesitamos ver la respuesta a esa
+    // pregunta antes de decidir qué queda.
+    if (filterQuestionId && filterValue) {
+      const matchingResponseIds = new Set(
+        answers
+          .filter((a: any) => a.question_id === filterQuestionId)
+          .filter((a: any) => {
+            const extracted = extractValue(a.value)
+            const vals = Array.isArray(extracted) ? extracted : [extracted]
+            return vals.includes(filterValue)
+          })
+          .map((a: any) => a.response_id)
+      )
+      responses = responses.filter((r: any) => matchingResponseIds.has(r.id))
+      answers = answers.filter((a: any) => matchingResponseIds.has(a.response_id))
+      responseById = {}
+      for (const r of responses) responseById[r.id] = r
+      if (responses.length === 0) {
+        const empty = emptyResponse()
+        const emptyJson = await empty.json()
+        emptyJson.responses.filterableQuestions = filterableQuestions
+        emptyJson.responses.crosstab = null
+        return NextResponse.json(emptyJson)
+      }
+    }
+
+    // --- Tablas cruzadas (slide 21): cruza las respuestas de dos preguntas sobre
+    // el subconjunto de respuestas ya filtrado (incluye filtro avanzado si hay uno
+    // activo), para que la tabla siempre refleje lo mismo que el resto del reporte.
+    let crosstab: {
+      rowQuestion: string; colQuestion: string
+      rows: string[]; cols: string[]; matrix: number[][]
+      rowTotals: number[]; colTotals: number[]; total: number
+    } | null = null
+    if (crossRowQuestionId && crossColQuestionId) {
+      const rowQ = filterableQuestionsMap[crossRowQuestionId]
+      const colQ = filterableQuestionsMap[crossColQuestionId]
+      if (rowQ && colQ) {
+        // response_id -> valores respondidos en cada pregunta (puede haber más de
+        // uno si es checkbox, cada combinación cuenta por separado)
+        const byResponseRow: Record<string, string[]> = {}
+        const byResponseCol: Record<string, string[]> = {}
+        for (const a of answers) {
+          if (a.question_id !== crossRowQuestionId && a.question_id !== crossColQuestionId) continue
+          const extracted = extractValue(a.value)
+          const vals = (Array.isArray(extracted) ? extracted : [extracted]).filter((v: string) => v !== "")
+          if (vals.length === 0) continue
+          const target = a.question_id === crossRowQuestionId ? byResponseRow : byResponseCol
+          target[a.response_id] = vals
+        }
+        const rows = Array.from(rowQ.values).sort()
+        const cols = Array.from(colQ.values).sort()
+        const rowIndex: Record<string, number> = {}
+        rows.forEach((r, i) => { rowIndex[r] = i })
+        const colIndex: Record<string, number> = {}
+        cols.forEach((c, i) => { colIndex[c] = i })
+        const matrix: number[][] = rows.map(() => cols.map(() => 0))
+        let total = 0
+        for (const responseId of Object.keys(byResponseRow)) {
+          const colVals = byResponseCol[responseId]
+          if (!colVals) continue
+          for (const rv of byResponseRow[responseId]) {
+            for (const cv of colVals) {
+              const ri = rowIndex[rv]
+              const ci = colIndex[cv]
+              if (ri === undefined || ci === undefined) continue
+              matrix[ri][ci]++
+              total++
+            }
+          }
+        }
+        const rowTotals = matrix.map((row) => row.reduce((s, v) => s + v, 0))
+        const colTotals = cols.map((_, ci) => matrix.reduce((s, row) => s + row[ci], 0))
+        crosstab = { rowQuestion: rowQ.text, colQuestion: colQ.text, rows, cols, matrix, rowTotals, colTotals, total }
+      }
+    }
+
     // --- Assignments (for performance + geo tabs) ---
     let assignmentsQuery = admin
       .from("assignments")
@@ -207,6 +350,8 @@ export async function GET(request: NextRequest) {
     }
     if (surveyorFilter !== "all") {
       assignmentsQuery = assignmentsQuery.eq("surveyor_id", surveyorFilter)
+    } else if (hierarchySurveyorIds !== null) {
+      assignmentsQuery = assignmentsQuery.in("surveyor_id", hierarchySurveyorIds.length > 0 ? hierarchySurveyorIds : ["__none__"])
     }
     const { data: rawAssignments } = await assignmentsQuery
     const assignments: any[] = (rawAssignments as any[]) || []
@@ -595,6 +740,8 @@ export async function GET(request: NextRequest) {
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
       surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id })),
       surveyors: (allSurveyors || []).map((s: any) => ({ id: s.id, name: s.name, supervisorId: s.supervisor_id })),
+      supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
+      coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
       summary: {
         totalResponses,
         completionRate,
@@ -614,7 +761,7 @@ export async function GET(request: NextRequest) {
         abandonadas,
         tasaRespuestasEfectivas,
       },
-      responses: { questionBreakdowns },
+      responses: { questionBreakdowns, filterableQuestions, crosstab },
       performance: { surveyorPerformance, dailyDistribution, surveyPerformance },
       geographic: { zoneBreakdown, zonePolygons, responsePoints },
       individual: { total: responses.length },
