@@ -30,7 +30,16 @@ export async function POST(request: Request) {
   // con el cliente) — los casos de "encuesta sin login" son un flujo
   // separado que no pasa por esta ruta. Se exige entonces que exista sesión
   // Y que el surveyor_id del body sea el del propio usuario autenticado.
-  const currentSurveyor = await resolveCurrentSurveyor()
+  //
+  // requireActive: false (fix 2026-07-29) — este endpoint reactiva
+  // automáticamente al encuestador un poco más abajo si su status no es
+  // 'active' ("nunca bloquear la actualización de ubicación"). Con el
+  // default (requireActive: true), resolveCurrentSurveyor() devolvía null
+  // para cualquier encuestador no-activo y esta ruta respondía 401 ANTES de
+  // llegar a esa reactivación — dejándolo bloqueado para siempre (nunca
+  // podía volver a reportar ubicación ni reactivarse solo). Esto es lo que
+  // producía "No se pudo reportar tu ubicación al servidor" en el portal.
+  const currentSurveyor = await resolveCurrentSurveyor({ requireActive: false })
   if (!currentSurveyor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 })
   }
