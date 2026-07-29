@@ -37,7 +37,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const { data: assignment, error } = await admin
       .from("survey_surveyor_zones")
-      .select("id, survey_id, zone_id, general_status, zones(id, name), surveys(id, title, description, status)")
+      .select("id, survey_id, zone_id, general_status, zones(id, name), surveys(id, title, description, status, settings)")
       .eq("survey_id", surveyId)
       .eq("surveyor_id", surveyor.surveyorId)
       .order("created_at", { ascending: false })
@@ -59,6 +59,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       title: survey.title,
       description: survey.description,
       zoneName: assignment.general_status ? "Todas las zonas" : ((assignment as any).zones?.name ?? "Sin zona asignada"),
+      // allowAudio/collectLocation (pedido 2026-07-29: hacer que el toggle
+      // de la encuesta sí controle el comportamiento real, en vez de ser
+      // decorativo — ver use-shift-recording.ts/use-location-tracking.ts).
+      // Default a true cuando no está definido explícitamente (encuestas
+      // viejas sin este campo poblado no deben perder audio/ubicación por
+      // accidente).
+      allowAudio: survey.settings?.allowAudio !== false,
+      collectLocation: survey.settings?.collectLocation !== false,
     })
   } catch (error) {
     console.error("Error en portal-encuestador/assignments/[id] GET:", error)

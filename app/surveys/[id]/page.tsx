@@ -466,6 +466,18 @@ export default function SurveyDetailsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Corrección 2026-07-29: originalmente estos badges eran
+                      decorativos (el motor de grabación/tracking los
+                      ignoraba, siempre grababa todo). El usuario pidió que
+                      SÍ fueran funcionales de verdad — ahora
+                      settings.allowAudio/collectLocation realmente pausan la
+                      grabación de audio y el reporte de ubicación mientras
+                      el encuestador está DENTRO de esta encuesta puntual
+                      (ver lib/portal-encuestador/use-shift-recording.ts y
+                      use-location-tracking.ts). Fuera de una encuesta, el
+                      turno completo del encuestador se sigue grabando y
+                      ubicando siempre, sin excepción — esto solo afecta el
+                      segmento específico de esta encuesta. */}
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Recolección de Ubicación</p>
                     <Badge variant={survey.settings?.collectLocation ? "default" : "outline"}>

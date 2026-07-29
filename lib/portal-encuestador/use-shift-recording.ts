@@ -60,6 +60,19 @@ export function useShiftRecording() {
   const pendingResumeScopeRef = useRef<"shift" | "survey">("shift")
   const pendingResumeResponseIdRef = useRef<string | null>(null)
   const currentSurveyResponseIdRef = useRef<string | null>(null)
+  // Pedido 2026-07-29: la encuesta tiene un toggle "Grabación de Audio" en
+  // su configuración que antes no hacía nada (el motor siempre grababa). El
+  // usuario confirmó que sí quiere que sea funcional de verdad — aunque
+  // contradice la política de "grabar siempre" pedida antes, aquí la
+  // diferencia es que SOLO un admin puede desactivarlo (vive en la
+  // configuración de la encuesta, no lo controla el encuestador en campo).
+  // Cuando está desactivado para la encuesta actual, no se abre ningún
+  // segmento 'survey' — el micrófono queda "en pausa" (el MediaStream sigue
+  // vivo para no perder el permiso ni tener que pedirlo de nuevo, pero no se
+  // graba ni sube nada) hasta terminar/abandonar esa encuesta puntual. Este
+  // ref evita que el handler de visibilitychange confunda "en pausa a
+  // propósito" con "se interrumpió la grabación, hay que retomarla".
+  const audioPausedForSurveyRef = useRef(false)
 
   // BUG DE PRODUCCIÓN (2026-07-28): "Inicia encuesta" sin protección contra
   // reentrancia dejaba que startSurveySegment, la rotación automática del
@@ -249,13 +262,27 @@ export function useShiftRecording() {
   // a esa encuesta. responseId es opcional y normalmente NO se conoce en este
   // punto (la fila en `responses` recién se crea al enviar/abandonar) — se
   // liga después, en endSurveySegment, cuando ya existe.
-  const startSurveySegment = useCallback(async (responseId?: string) => {
+  //
+  // recordAudio (pedido 2026-07-29): si la encuesta tiene
+  // settings.allowAudio=false, no se abre ningún segmento — el MediaStream
+  // del micrófono sigue vivo (no se libera el permiso) pero no se graba ni
+  // sube nada mientras dure esta encuesta puntual. audioPausedForSurveyRef
+  // marca este caso para que el handler de visibilitychange no lo confunda
+  // con una interrupción a medio grabar y trate de "retomar" grabación que
+  // nunca debió existir.
+  const startSurveySegment = useCallback(async (responseId?: string, recordAudio: boolean = true) => {
     await runExclusive(async () => {
       if (statusRef.current !== "recording-shift" && statusRef.current !== "recording-survey") return
       // Ya estamos en la encuesta (llamada duplicada, ej. doble click) — no
       // abrir un segundo segmento sobre el mismo MediaStream.
       if (currentSegmentRef.current?.scope === "survey") return
       await closeCurrentSegment()
+      currentSurveyResponseIdRef.current = null
+      if (!recordAudio) {
+        audioPausedForSurveyRef.current = true
+        setStatus("recording-survey")
+        return
+      }
       const segment = await openSegment("survey", responseId)
       if (segment) {
         currentSegmentRef.current = segment
@@ -268,12 +295,16 @@ export function useShiftRecording() {
   // Al terminar/abandonar la encuesta: corta el segmento de la encuesta y
   // retoma automáticamente la grabación de fondo del turno. responseId se
   // pasa aquí (ya se conoce: se acaba de enviar o registrar el abandono) para
-  // ligar el audio de esta encuesta a su fila real en `responses`.
+  // ligar el audio de esta encuesta a su fila real en `responses`. Si la
+  // encuesta tenía el audio pausado (ver startSurveySegment), closeCurrentSegment
+  // no hace nada (no hay segmento que cerrar) y solo se retoma la grabación
+  // de fondo normalmente.
   const endSurveySegment = useCallback(async (responseId?: string) => {
     await runExclusive(async () => {
       if (statusRef.current !== "recording-survey") return
       await closeCurrentSegment(responseId ?? currentSurveyResponseIdRef.current)
       currentSurveyResponseIdRef.current = null
+      audioPausedForSurveyRef.current = false
       const segment = await openSegment("shift")
       if (segment) {
         currentSegmentRef.current = segment
@@ -291,6 +322,7 @@ export function useShiftRecording() {
   // para siempre en la base de datos.
   const endShift = useCallback(async () => {
     await closeCurrentSegment()
+    audioPausedForSurveyRef.current = false
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (shiftIdRef.current) {
@@ -333,7 +365,13 @@ export function useShiftRecording() {
             ? currentSurveyResponseIdRef.current
             : null
           await closeCurrentSegment()
-        } else if (document.visibilityState === "visible" && !currentSegmentRef.current && shiftIdRef.current && streamRef.current) {
+        } else if (
+          document.visibilityState === "visible" &&
+          !currentSegmentRef.current &&
+          shiftIdRef.current &&
+          streamRef.current &&
+          !audioPausedForSurveyRef.current // no "retomar" grabación en una encuesta con audio desactivado a propósito (ver startSurveySegment)
+        ) {
           // Volvimos a primer plano sin un segmento activo — retoma grabando
           // en el mismo scope en el que estaba antes de ocultarse.
           const scope = pendingResumeScopeRef.current ?? "shift"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { RecordingStatus } from "./use-shift-recording"
 
 // Mismo intervalo que usa la APK por defecto (tracking_config.update_interval_seconds
@@ -8,6 +8,8 @@ import type { RecordingStatus } from "./use-shift-recording"
 // seguimiento se comporta igual sin importar si el encuestador trabaja desde
 // la APK o desde el navegador.
 const LOCATION_UPDATE_INTERVAL_MS = 60 * 1000
+
+export type LocationTrackingStatus = "idle" | "active" | "denied" | "error"
 
 // Pregunta del usuario (2026-07-29): "[el mapa de encuestadores activo/
 // inactivo] ya lo hace con la apk pero con el de la web no se si lo hace" —
@@ -24,7 +26,23 @@ const LOCATION_UPDATE_INTERVAL_MS = 60 * 1000
 // A diferencia del micrófono, el permiso de geolocalización NO bloquea el
 // trabajo si se niega: solo significa que ese encuestador no se verá en el
 // mapa, igual que pasaría con la APK sin GPS disponible.
-export function useLocationTracking(status: RecordingStatus, activeSurveyId?: string | null) {
+//
+// BUG encontrado en la primera versión (2026-07-29, "no aparezco activo en
+// el mapa"): tanto un permiso de ubicación denegado por el navegador como un
+// rechazo del servidor (401/500) quedaban en un simple console.warn/error —
+// invisibles para cualquiera que no tuviera las herramientas de desarrollador
+// abiertas. A diferencia de `fetch` fallando por RED (que sí rechaza la
+// promesa y entra al .catch), una respuesta HTTP no-ok como 401 resuelve la
+// promesa igual — sin revisar `res.ok` ese caso pasaba completamente
+// desapercibido. Ahora el hook expone un status que la UI puede mostrar.
+// enabled (pedido 2026-07-29): igual que con el audio, el toggle
+// "Recolección de Ubicación" de la encuesta ahora sí pausa el reporte de
+// ubicación mientras el encuestador está DENTRO de esa encuesta puntual —
+// fuera de una encuesta (dashboard, caminando entre asignaciones) el
+// tracking de fondo sigue funcionando siempre, solo se pausa para la
+// encuesta específica que lo desactivó.
+export function useLocationTracking(status: RecordingStatus, activeSurveyId?: string | null, enabled: boolean = true) {
+  const [trackingStatus, setTrackingStatus] = useState<LocationTrackingStatus>("idle")
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSurveyIdRef = useRef<string | null | undefined>(activeSurveyId)
   useEffect(() => {
@@ -32,15 +50,19 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
   }, [activeSurveyId])
 
   useEffect(() => {
-    const tracking = status === "recording-shift" || status === "recording-survey"
+    const tracking = (status === "recording-shift" || status === "recording-survey") && enabled
     if (!tracking) {
       if (timerRef.current) {
         clearInterval(timerRef.current)
         timerRef.current = null
       }
+      setTrackingStatus("idle")
       return
     }
-    if (typeof navigator === "undefined" || !navigator.geolocation) return
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setTrackingStatus("error")
+      return
+    }
 
     const sendUpdate = () => {
       navigator.geolocation.getCurrentPosition(
@@ -56,10 +78,24 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
               active_survey_id: activeSurveyIdRef.current || undefined,
               is_foreground: typeof document !== "undefined" ? document.visibilityState === "visible" : true,
             }),
-          }).catch((err) => console.error("[location-tracking] Error enviando ubicación:", err))
+          })
+            .then(async (res) => {
+              if (!res.ok) {
+                const body = await res.json().catch(() => ({}))
+                console.error("[location-tracking] El servidor rechazó la ubicación:", res.status, body?.error || body)
+                setTrackingStatus("error")
+                return
+              }
+              setTrackingStatus("active")
+            })
+            .catch((err) => {
+              console.error("[location-tracking] Error de red enviando ubicación:", err)
+              setTrackingStatus("error")
+            })
         },
         (err) => {
           console.warn("[location-tracking] No se pudo obtener la ubicación:", err.message)
+          setTrackingStatus(err.code === err.PERMISSION_DENIED ? "denied" : "error")
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
       )
@@ -73,5 +109,7 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
         timerRef.current = null
       }
     }
-  }, [status])
+  }, [status, enabled])
+
+  return trackingStatus
 }

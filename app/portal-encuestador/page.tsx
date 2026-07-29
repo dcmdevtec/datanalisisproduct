@@ -304,6 +304,22 @@ export default function PortalEncuestadorPage() {
             </p>
           </div>
         )}
+        {/* Bug reportado 2026-07-29 ("no aparezco activo en el mapa"): un
+            permiso de ubicación denegado (o rechazado por el servidor) era
+            antes completamente invisible en la interfaz — solo se veía en la
+            consola del navegador. A diferencia del micrófono esto no bloquea
+            el trabajo, pero si no se avisa, nadie sabe por qué no aparece en
+            el mapa de seguimiento. */}
+        {(recording.locationStatus === "denied" || recording.locationStatus === "error") && (
+          <div className="bg-amber-50 border-t border-amber-200 px-4 py-2">
+            <p className="text-xs text-amber-700 flex items-center gap-1.5">
+              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+              {recording.locationStatus === "denied"
+                ? "Sin permiso de ubicación — no aparecerás activo en el mapa de seguimiento. Actívalo en la configuración del navegador."
+                : "No se pudo reportar tu ubicación al servidor — puede que no aparezcas activo en el mapa de seguimiento."}
+            </p>
+          </div>
+        )}
         {/* Cola offline (auditoría 2026-07-29): respuestas guardadas en este
             dispositivo mientras no había señal, pendientes de sincronizar. */}
         {pendingSyncCount > 0 && (

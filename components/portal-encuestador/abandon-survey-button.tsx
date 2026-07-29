@@ -29,7 +29,15 @@ export function AbandonSurveyButton({ onAbandon }: AbandonSurveyButtonProps) {
 
   return (
     <>
-      <div className="fixed bottom-4 right-4 z-50">
+      {/* Bug reportado 2026-07-29 ("estorba"): estaba fijo en bottom-4
+          right-4, exactamente donde vive el botón principal "Finalizar
+          Encuesta"/"Siguiente Sección" del motor de encuestas (también
+          alineado a la derecha, abajo) — se superponían. Se mueve a la
+          esquina superior derecha, que quedó libre desde que se retiró el
+          botón "Limpiar Respuestas" del header (ver comentario de seguridad
+          en app/preview/survey/page.tsx) y no compite con ningún control de
+          navegación de la encuesta. */}
+      <div className="fixed top-4 right-4 z-50">
         <Button
           variant="destructive"
           size="sm"

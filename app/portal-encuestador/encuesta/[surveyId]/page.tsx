@@ -25,6 +25,13 @@ interface AssignmentInfo {
   title: string
   description: string | null
   zoneName: string
+  // Pedido 2026-07-29: toggles reales de la encuesta (antes decorativos,
+  // ver app/api/portal-encuestador/assignments/[id]/route.ts) — controlan
+  // si esta encuesta puntual graba audio y reporta ubicación mientras se
+  // está respondiendo. Fuera de una encuesta (dashboard, entre asignaciones)
+  // ambos siguen activos siempre, sin importar esta configuración.
+  allowAudio: boolean
+  collectLocation: boolean
 }
 
 // Ruta autenticada de toma de encuesta para el portal de encuestador. NO usa
@@ -43,6 +50,14 @@ export default function PortalEncuestadorSurveyPage() {
   const [stage, setStage] = useState<Stage>("loading")
   const [assignment, setAssignment] = useState<AssignmentInfo | null>(null)
   const [startingSurvey, setStartingSurvey] = useState(false)
+  // Bug reportado 2026-07-29 ("al finalizar la encuesta no se está limpiando
+  // el botón de abandonar"): handleSubmitted espera 1.5s antes de navegar de
+  // vuelta al dashboard (para que se alcance a ver la pantalla de "enviada"
+  // del motor de encuestas) — durante esa ventana `stage` seguía siendo
+  // "survey" y el botón "Abandonar encuesta" quedaba visible y clickeable
+  // sobre una encuesta que ya se envió. Este flag lo oculta de inmediato,
+  // sin esperar a la navegación.
+  const [justSubmitted, setJustSubmitted] = useState(false)
   const verifiedRef = useRef(false)
 
   // Verifica rol + que la encuesta esté realmente asignada a este encuestador.
@@ -111,9 +126,10 @@ export default function PortalEncuestadorSurveyPage() {
       })
       return
     }
-    recording.startSurveySegment()
+    recording.startSurveySegment(undefined, assignment?.allowAudio !== false)
+    recording.setLocationEnabled(assignment?.collectLocation !== false)
     setStage("survey")
-  }, [recording, surveyId, startingSurvey, toast])
+  }, [recording, surveyId, startingSurvey, toast, assignment])
 
   // Motivo de incidencia seleccionado: registra la respuesta (outcome='incidencia')
   // y vuelve al dashboard. No hubo segmento 'survey' que cerrar (no se llegó a
@@ -148,11 +164,13 @@ export default function PortalEncuestadorSurveyPage() {
       })
       const json = await res.json().catch(() => ({}))
       await recording.endSurveySegment(json?.response_id)
+      recording.setLocationEnabled(true) // se sale de la encuesta — retoma el tracking de fondo aunque esta encuesta lo tuviera desactivado
       toast({ title: "Encuesta abandonada", description: "Se registró el abandono." })
       router.push("/portal-encuestador")
     } catch (err) {
       console.error(err)
       await recording.endSurveySegment()
+      recording.setLocationEnabled(true)
       router.push("/portal-encuestador")
     }
   }, [assignment, recording, router, toast])
@@ -162,6 +180,8 @@ export default function PortalEncuestadorSurveyPage() {
   // response_id real y vuelve al dashboard tras un momento.
   const handleSubmitted = useCallback((responseId: string) => {
     recording.endSurveySegment(responseId)
+    recording.setLocationEnabled(true) // se sale de la encuesta — retoma el tracking de fondo aunque esta encuesta lo tuviera desactivado
+    setJustSubmitted(true)
     setTimeout(() => router.push("/portal-encuestador"), 1500)
   }, [recording, router])
 
@@ -200,7 +220,7 @@ export default function PortalEncuestadorSurveyPage() {
     return (
       <>
         <SurveyPreviewPage assignmentId={assignment.assignmentId} onSubmitted={handleSubmitted} />
-        <AbandonSurveyButton onAbandon={handleAbandon} />
+        {!justSubmitted && <AbandonSurveyButton onAbandon={handleAbandon} />}
       </>
     )
   }
