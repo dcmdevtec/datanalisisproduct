@@ -71,7 +71,14 @@ export async function POST(request: Request) {
 
     // Validar campos requeridos
     const {
-      surveyor_id,
+      // surveyor_id ahora es opcional (auditoría 2026-07-29, tracking desde
+      // el portal web): la APK lo manda explícito, pero el portal web no
+      // tiene forma fácil de conocer su propio surveyor_id del lado del
+      // cliente sin una llamada extra — como ya se exige sesión válida
+      // arriba (resolveCurrentSurveyor), si el body no lo trae simplemente
+      // se usa el del usuario autenticado. Si SÍ lo trae, se sigue
+      // exigiendo que coincida con el propio (ver validación abajo).
+      surveyor_id: bodySurveyorId,
       latitude,
       longitude,
       accuracy,
@@ -83,9 +90,7 @@ export async function POST(request: Request) {
       is_foreground = false,   // true = app en primer plano, false = app en background / no enviado
     } = body
 
-    if (!surveyor_id) {
-      return NextResponse.json({ error: "surveyor_id is required" }, { status: 400 })
-    }
+    const surveyor_id = bodySurveyorId || currentSurveyor.surveyorId
 
     if (surveyor_id !== currentSurveyor.surveyorId) {
       console.warn("⚠️ Intento de reportar ubicación de otro encuestador:", { autenticado: currentSurveyor.surveyorId, solicitado: surveyor_id })

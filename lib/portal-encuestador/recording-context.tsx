@@ -2,6 +2,7 @@
 
 import { createContext, useContext, ReactNode } from "react"
 import { useShiftRecording } from "./use-shift-recording"
+import { useLocationTracking } from "./use-location-tracking"
 
 // El hook useShiftRecording mantiene un MediaStream de micrófono vivo en un
 // ref — si se instanciara por página (un hook distinto en /portal-encuestador
@@ -16,6 +17,10 @@ const RecordingContext = createContext<RecordingContextValue | null>(null)
 
 export function RecordingProvider({ children }: { children: ReactNode }) {
   const recording = useShiftRecording()
+  // Reporta ubicación a /api/location mientras el turno está grabando (ver
+  // use-location-tracking.ts) — vive aquí, junto al motor de grabación, para
+  // que también persista al navegar entre el dashboard y una encuesta.
+  useLocationTracking(recording.status)
   return <RecordingContext.Provider value={recording}>{children}</RecordingContext.Provider>
 }
 
