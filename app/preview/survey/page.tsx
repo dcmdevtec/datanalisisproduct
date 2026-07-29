@@ -2723,16 +2723,26 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
 
               return (
                 <div className="space-y-2">
-                  {cameraModalQuestionId === question.id && (
-                    <CameraCaptureModal
-                      open
-                      onClose={() => setCameraModalQuestionId(null)}
-                      onCapture={(file) => {
-                        setCameraModalQuestionId(null)
-                        processFilesSequential([file])
-                      }}
-                    />
-                  )}
+                  {/* Bug reportado 2026-07-29: "estoy tratando de cerrar la
+                      ventana de la camara y demora y no cierra" — antes este
+                      modal se montaba/desmontaba condicionalmente con `open`
+                      fijo en `true`, así que Radix Dialog nunca recibía una
+                      transición real true→false: al desmontar de golpe, la
+                      limpieza interna de Radix (bloqueo de scroll del body,
+                      pointer-events, trampa de foco) no se ejecutaba por su
+                      camino normal y la página quedaba semi-congelada aunque
+                      el modal ya no fuera visible. Ahora el componente queda
+                      siempre montado y `open` es una prop real que alterna,
+                      dándole a Radix la oportunidad de cerrar y limpiar
+                      correctamente. */}
+                  <CameraCaptureModal
+                    open={cameraModalQuestionId === question.id}
+                    onClose={() => setCameraModalQuestionId(null)}
+                    onCapture={(file) => {
+                      setCameraModalQuestionId(null)
+                      processFilesSequential([file])
+                    }}
+                  />
 
                   {/* hidden file input to allow programmatic click for "Agregar archivos" */}
                   <input
