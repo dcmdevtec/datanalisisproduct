@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
+import { requireRole } from "@/lib/api-auth"
 
 // Cliente SSR de Supabase (sin helpers de nextjs)
 function getSupabaseClient() {
@@ -9,14 +10,16 @@ function getSupabaseClient() {
   return createClient<Database>(supabaseUrl, supabaseKey)
 }
 
-// GET encuesta por ID
+// GET encuesta por ID — INTENCIONALMENTE público, sin auth. app/encuesta/[id]/page.tsx
+// (la toma de encuesta pública, respondentes anónimos vía QR/link) llama
+// directamente a esta ruta para renderizar el formulario — gatearla rompería
+// el flujo público de toma de encuesta. Exponer preguntas/opciones no es
+// sensible por sí solo (a diferencia de datos de usuarios/ubicación/mensajes).
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
     // console.log(`GET /api/surveys/${id} - Obteniendo encuesta`)
-
-    // Si necesitas validar usuario, hazlo aquí con JWT o session, o elimina este check si no es necesario
 
     const { data, error } = await supabase
       .from("surveys")
@@ -47,7 +50,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 // PUT actualizar encuesta
+// SEGURIDAD (auditoría 2026-07-29): el check anterior (`supabase.auth.getUser()`
+// sobre un cliente de SERVICE ROLE, que no lee cookies de sesión) no
+// resolvía realmente al usuario logueado — o siempre fallaba con 401, o
+// dependía de que el caller reenviara un JWT que nada en el frontend envía.
+// Se reemplaza por requireRole(), que sí lee la sesión real del navegador.
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
@@ -55,11 +66,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const body = await request.json()
     const { title, description, questions, settings, deadline, status } = body
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
     const { data: existingSurvey, error: surveyCheckError } = await supabase
       .from("surveys")
@@ -121,16 +127,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 // DELETE encuesta
+// Mismo fix de seguridad que PUT arriba.
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
     // console.log(`DELETE /api/surveys/${id} - Eliminando encuesta`)
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
     const { data: existingSurvey, error: surveyCheckError } = await supabase
       .from("surveys")

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { requireRole } from "@/lib/api-auth"
 
 // Lista las grabaciones de audio del portal de encuestador ligadas a ESTA
 // encuesta, para el módulo de detalle (app/surveys/[id]/page.tsx).
@@ -16,7 +17,13 @@ import { createAdminSupabase } from "@/lib/supabase-server"
 // Solo se listan segmentos con upload_status='uploaded' (los 'failed' o
 // 'pending' no tienen audio real que reproducir) y se genera una URL firmada
 // de corta duración por cada uno (bucket 'response-media' es privado).
+// SEGURIDAD (auditoría 2026-07-29): sin auth, esto devolvía URLs firmadas a
+// audios de encuestadores (grabaciones de campo) a cualquiera con el ID de
+// la encuesta.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   try {
     const { id: surveyId } = await params
     const admin = createAdminSupabase() as any

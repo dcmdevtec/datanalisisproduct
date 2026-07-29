@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { requireRole } from '@/lib/api-auth'
 
+// SEGURIDAD (auditoría 2026-07-29): sin auth, cualquiera con el ID de la
+// encuesta podía descargar el contenido completo en PDF sin login.
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   try {
     // pdfkit debe estar en serverExternalPackages para no ser bundleado por webpack
     // eslint-disable-next-line @typescript-eslint/no-require-imports

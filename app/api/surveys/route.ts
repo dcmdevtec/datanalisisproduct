@@ -47,6 +47,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error al obtener rol" }, { status: 500 })
   }
 
+  // SEGURIDAD (auditoría 2026-07-29): el rol se consultaba pero nunca se
+  // usaba para nada — cualquier usuario autenticado (incl. surveyor/client)
+  // podía listar todas las encuestas de la organización.
+  if (!["admin", "supervisor"].includes((userInfo as any)?.role)) {
+    return NextResponse.json({ error: "No tienes permiso para esta acción" }, { status: 403 })
+  }
+
   const query = supabase.from("surveys").select("*, questions(*)").order("created_at", { ascending: false })
 
   const { data, error } = await query
@@ -80,6 +87,10 @@ export async function POST(request: Request) {
 
   if (userError) {
     return NextResponse.json({ error: "Error al verificar permisos" }, { status: 500 })
+  }
+
+  if (!["admin", "supervisor"].includes((userInfo as any)?.role)) {
+    return NextResponse.json({ error: "No tienes permiso para esta acción" }, { status: 403 })
   }
 
   const logo = settings?.branding?.logo || null
@@ -161,6 +172,10 @@ export async function PUT(request: Request) {
 
   if (userError) {
     return NextResponse.json({ error: "Error al verificar permisos" }, { status: 500 })
+  }
+
+  if (!["admin", "supervisor"].includes((userInfo as any)?.role)) {
+    return NextResponse.json({ error: "No tienes permiso para esta acción" }, { status: 403 })
   }
 
   const { data: existingSurvey, error: checkError } = await supabase

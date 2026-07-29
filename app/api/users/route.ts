@@ -21,10 +21,21 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/supabase"
+import { requireRole } from "@/lib/api-auth"
 
 type UserRow = Database["public"]["Tables"]["users"]["Row"]
 
+// SEGURIDAD (auditoría 2026-07-29): esta ruta usa el cliente de service-role,
+// que ignora RLS por completo — antes no tenía NINGÚN check de sesión/rol,
+// así que cualquiera con la URL podía listar todos los usuarios (GET) o
+// crear una cuenta admin nueva (POST). Solo admins pueden usarla ahora.
 export async function GET(request: Request) {
+  // admin + supervisor: /messages (usada por ambos roles) necesita el listado
+  // de usuarios para armar la lista de conversaciones. Crear cuentas (POST)
+  // sigue restringido solo a admin más abajo.
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   // Use admin client to bypass RLS and list all users
   try {
     const supabaseAdmin = createAdminClient()
@@ -44,6 +55,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   // Create user in Supabase Auth (admin) and insert profile + role rows
   const supabaseAdmin = createAdminClient()
 

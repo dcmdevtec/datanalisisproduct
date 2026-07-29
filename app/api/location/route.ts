@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
+import { requireRole } from "@/lib/api-auth"
 
 /**
  * POST /api/location
@@ -19,6 +21,19 @@ import { cookies } from "next/headers"
  */
 export async function POST(request: Request) {
   console.log("🔵 POST /api/location - Receiving location update")
+
+  // SEGURIDAD (auditoría 2026-07-29): antes este endpoint no exigía sesión
+  // ni verificaba que el `surveyor_id` del body perteneciera a quien hace
+  // el request — cualquier usuario autenticado (o incluso sin login) podía
+  // insertar ubicación a nombre de OTRO encuestador. Tanto la APK como la
+  // web exigen login del encuestador antes de reportar ubicación (confirmado
+  // con el cliente) — los casos de "encuesta sin login" son un flujo
+  // separado que no pasa por esta ruta. Se exige entonces que exista sesión
+  // Y que el surveyor_id del body sea el del propio usuario autenticado.
+  const currentSurveyor = await resolveCurrentSurveyor()
+  if (!currentSurveyor) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  }
 
   // Validar configuración
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -70,6 +85,11 @@ export async function POST(request: Request) {
 
     if (!surveyor_id) {
       return NextResponse.json({ error: "surveyor_id is required" }, { status: 400 })
+    }
+
+    if (surveyor_id !== currentSurveyor.surveyorId) {
+      console.warn("⚠️ Intento de reportar ubicación de otro encuestador:", { autenticado: currentSurveyor.surveyorId, solicitado: surveyor_id })
+      return NextResponse.json({ error: "No puedes reportar ubicación de otro encuestador" }, { status: 403 })
     }
 
     if (typeof latitude !== "number" || typeof longitude !== "number") {
@@ -204,6 +224,21 @@ export async function POST(request: Request) {
  */
 export async function GET(request: Request) {
   console.log("🔵 GET /api/location - Getting latest location")
+
+  // SEGURIDAD (auditoría 2026-07-29): antes cualquiera podía consultar la
+  // ubicación y datos de contacto de cualquier encuestador sin login. Ahora:
+  // admin/supervisor pueden ver a cualquiera; un encuestador solo puede
+  // consultar su propia ubicación.
+  const { searchParams: authParams } = new URL(request.url)
+  const requestedSurveyorId = authParams.get("surveyor_id")
+  const roleAuth = await requireRole(["admin", "supervisor", "surveyor"])
+  if (!roleAuth.ok) return roleAuth.response
+  if (roleAuth.user.role === "surveyor") {
+    const currentSurveyor = await resolveCurrentSurveyor()
+    if (!currentSurveyor || currentSurveyor.surveyorId !== requestedSurveyorId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+  }
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return NextResponse.json({ error: "Server configuration error" }, { status: 500 })

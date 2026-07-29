@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
 import supabase from "@/lib/supabase/client"
 import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
+import { getPendingCount, flushQueue } from "@/lib/offline-queue"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/ui/logo"
 import {
   Loader2, Mic, MicOff, LogOut, MapPin, Clock, CheckCircle2, AlertTriangle, XCircle,
-  BarChart3, RefreshCw, ChevronRight, ShieldAlert,
+  BarChart3, RefreshCw, ChevronRight, ShieldAlert, MessageSquare,
 } from "lucide-react"
 
 interface SurveyItem {
@@ -51,6 +52,15 @@ export default function PortalEncuestadorPage() {
   const [kpisLoading, setKpisLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  // Contador de mensajes directos sin leer, para el botón de Mensajes del
+  // header (módulo de mensajes del encuestador — antes no existía acceso
+  // a esto desde el portal).
+  const [unreadMessages, setUnreadMessages] = useState(0)
+  // Cola offline (auditoría 2026-07-29): respuestas que un encuestador
+  // completó sin señal y quedaron guardadas en IndexedDB (lib/offline-queue.ts)
+  // esperando a sincronizarse. syncing evita disparar varios flush a la vez.
+  const [pendingSyncCount, setPendingSyncCount] = useState(0)
+  const [syncing, setSyncing] = useState(false)
 
   const shiftStartedRef = useRef(false)
 
@@ -114,6 +124,70 @@ export default function PortalEncuestadorPage() {
     if (!roleChecked) return
     fetchKpis()
   }, [roleChecked, fetchKpis])
+
+  // Badge de mensajes sin leer en el header — polling liviano cada 15s.
+  useEffect(() => {
+    if (!roleChecked || !user) return
+    const fetchUnread = async () => {
+      try {
+        const res = await fetch(`/api/messages?userId=${user.id}&limit=200`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setUnreadMessages(data.filter((m: any) => m.receiver === user.id && !m.read).length)
+        }
+      } catch {
+        // silencioso, no es crítico para el dashboard
+      }
+    }
+    fetchUnread()
+    const interval = setInterval(fetchUnread, 15000)
+    return () => clearInterval(interval)
+  }, [roleChecked, user])
+
+  // Cola offline (auditoría 2026-07-29): intenta sincronizar respuestas
+  // pendientes al entrar al dashboard, cada vez que vuelve la conexión
+  // (evento 'online'), y en un polling liviano cada 20s por si el navegador
+  // nunca dispara 'online' explícitamente (pasa con conexiones que van y
+  // vienen sin llegar a marcarse "offline" del todo).
+  useEffect(() => {
+    if (!roleChecked) return
+    let cancelled = false
+    const syncNow = async () => {
+      setSyncing(true)
+      try {
+        await flushQueue()
+      } finally {
+        if (!cancelled) {
+          setPendingSyncCount(await getPendingCount())
+          setSyncing(false)
+        }
+      }
+    }
+    const refreshCountOnly = async () => {
+      if (!cancelled) setPendingSyncCount(await getPendingCount())
+    }
+    refreshCountOnly()
+    syncNow()
+    const onOnline = () => syncNow()
+    window.addEventListener("online", onOnline)
+    const interval = setInterval(syncNow, 20000)
+    return () => {
+      cancelled = true
+      window.removeEventListener("online", onOnline)
+      clearInterval(interval)
+    }
+  }, [roleChecked])
+
+  const handleSyncNow = useCallback(async () => {
+    setSyncing(true)
+    try {
+      await flushQueue()
+    } finally {
+      setPendingSyncCount(await getPendingCount())
+      setSyncing(false)
+    }
+  }, [])
 
   // Arranca el turno (y por lo tanto la grabación) apenas se confirma el
   // consentimiento — que a su vez se pide apenas se confirma que es un
@@ -207,6 +281,16 @@ export default function PortalEncuestadorPage() {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <RecordingBadge status={recording.status} />
+            <Link href="/portal-encuestador/mensajes">
+              <Button variant="ghost" size="sm" className="relative">
+                <MessageSquare className="h-4 w-4" />
+                {unreadMessages > 0 && (
+                  <Badge className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px] leading-none flex items-center justify-center">
+                    {unreadMessages > 9 ? "9+" : unreadMessages}
+                  </Badge>
+                )}
+              </Button>
+            </Link>
             <Button variant="ghost" size="sm" onClick={handleSignOut}>
               <LogOut className="h-4 w-4" />
             </Button>
@@ -218,6 +302,21 @@ export default function PortalEncuestadorPage() {
               <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0" />
               {recording.error || "Sin permiso de micrófono — no podrás iniciar encuestas hasta activarlo."}
             </p>
+          </div>
+        )}
+        {/* Cola offline (auditoría 2026-07-29): respuestas guardadas en este
+            dispositivo mientras no había señal, pendientes de sincronizar. */}
+        {pendingSyncCount > 0 && (
+          <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-amber-700 flex items-center gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 flex-shrink-0 ${syncing ? "animate-spin" : ""}`} />
+              {pendingSyncCount === 1
+                ? "1 respuesta guardada sin conexión, pendiente de sincronizar."
+                : `${pendingSyncCount} respuestas guardadas sin conexión, pendientes de sincronizar.`}
+            </p>
+            <Button variant="ghost" size="sm" className="h-6 text-xs text-amber-700 hover:text-amber-900" onClick={handleSyncNow} disabled={syncing}>
+              {syncing ? "Sincronizando..." : "Sincronizar ahora"}
+            </Button>
           </div>
         )}
       </div>

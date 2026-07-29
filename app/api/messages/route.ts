@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { resolveAuthedUser, resolveAllowedMessageReceivers } from "@/lib/api-auth"
 
 function getSupabase() {
   const cookieStore = cookies()
@@ -21,23 +22,30 @@ function getSupabase() {
 }
 
 /**
- * GET /api/messages?userId=UUID&with=UUID&limit=50
+ * GET /api/messages?with=UUID&limit=50
  *
- * Devuelve los mensajes del usuario autenticado.
- * - Si se pasa `with`, filtra la conversación entre userId y with.
+ * Devuelve los mensajes del usuario AUTENTICADO (sesión, no un parámetro de
+ * la URL — ver nota de seguridad abajo).
+ * - Si se pasa `with`, filtra la conversación entre el usuario y `with`.
  * - Si no, devuelve todos los mensajes del usuario (directos + broadcast).
  * Ordena por timestamp ASC para renderizar en orden cronológico.
+ *
+ * SEGURIDAD (auditoría 2026-07-29): antes `userId` venía del query string sin
+ * verificar sesión — cualquiera podía leer los mensajes de cualquier otro
+ * usuario pasando su UUID (IDOR). Ahora el usuario siempre sale de la
+ * cookie de sesión; el parámetro `userId` ya no se usa para nada.
  */
 export async function GET(request: Request) {
   try {
+    const authedUser = await resolveAuthedUser()
+    if (!authedUser) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    }
+    const userId = authedUser.id
+
     const url = new URL(request.url)
-    const userId = url.searchParams.get("userId")
     const withUser = url.searchParams.get("with")
     const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 200)
-
-    if (!userId) {
-      return NextResponse.json({ error: "Se requiere userId" }, { status: 400 })
-    }
 
     const supabase = getSupabase()
 
@@ -97,17 +105,44 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/messages
- * Body: { sender: UUID, receiver: UUID | "all", content: string, message_type?: "direct"|"broadcast" }
+ * Body: { receiver: UUID | "all", content: string, message_type?: "direct"|"broadcast" }
  *
- * Guarda un mensaje en Supabase y devuelve el registro creado.
+ * Guarda un mensaje en Supabase y devuelve el registro creado. `sender`
+ * sale de la sesión, nunca del body (ver nota de seguridad).
+ *
+ * SEGURIDAD (auditoría 2026-07-29): antes `sender` venía del body sin
+ * verificar — cualquiera podía enviar mensajes SUPLANTANDO a cualquier otro
+ * usuario, y `receiver` no se validaba contra ningún set de contactos
+ * permitido (un encuestador podía escribirle a otro encuestador pese a que
+ * la UI del portal solo muestra supervisor+admins). Ahora:
+ *   - sender = usuario de la sesión, siempre.
+ *   - receiver = "all" (broadcast) solo permitido para admin/supervisor.
+ *   - receiver = un usuario puntual: debe estar en la lista de contactos
+ *     permitidos para el rol del remitente (resolveAllowedMessageReceivers).
  */
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { sender, receiver, content, message_type = "direct" } = body
+    const authedUser = await resolveAuthedUser()
+    if (!authedUser) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    }
 
-    if (!sender || !content?.trim()) {
-      return NextResponse.json({ error: "sender y content son requeridos" }, { status: 400 })
+    const body = await request.json()
+    const { receiver, content, message_type = "direct" } = body
+
+    if (!receiver || !content?.trim()) {
+      return NextResponse.json({ error: "receiver y content son requeridos" }, { status: 400 })
+    }
+
+    if (receiver === "all") {
+      if (authedUser.role !== "admin" && authedUser.role !== "supervisor") {
+        return NextResponse.json({ error: "No tienes permiso para publicar anuncios" }, { status: 403 })
+      }
+    } else {
+      const allowed = await resolveAllowedMessageReceivers(authedUser)
+      if (!allowed.any && !allowed.ids.includes(receiver)) {
+        return NextResponse.json({ error: "No puedes enviar mensajes a este usuario" }, { status: 403 })
+      }
     }
 
     const supabase = getSupabase()
@@ -115,10 +150,10 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("messages")
       .insert({
-        sender_id: sender,
+        sender_id: authedUser.id,
         receiver_id: receiver === "all" ? null : receiver,
         content: content.trim(),
-        message_type,
+        message_type: receiver === "all" ? "broadcast" : message_type,
         read: false,
       })
       .select("id, sender_id, receiver_id, content, created_at, read, message_type")
@@ -148,10 +183,18 @@ export async function POST(request: Request) {
  * PATCH /api/messages
  * Body: { ids: string[], read: boolean }
  *
- * Marca mensajes como leídos/no leídos.
+ * Marca mensajes como leídos/no leídos. Solo puede marcar mensajes donde
+ * el usuario autenticado es el RECEPTOR (antes no se validaba nada — ver
+ * nota de seguridad: cualquiera podía marcar como leído/no leído mensajes
+ * de cualquier otra persona).
  */
 export async function PATCH(request: Request) {
   try {
+    const authedUser = await resolveAuthedUser()
+    if (!authedUser) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    }
+
     const { ids, read } = await request.json()
 
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -160,16 +203,17 @@ export async function PATCH(request: Request) {
 
     const supabase = getSupabase()
 
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from("messages")
       .update({ read })
       .in("id", ids)
+      .eq("receiver_id", authedUser.id)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, updated: ids.length })
+    return NextResponse.json({ ok: true, updated: count ?? ids.length })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

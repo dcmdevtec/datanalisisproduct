@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { requireRole } from '@/lib/api-auth'
 
 /**
  * POST /api/surveys/[id]/sections
@@ -9,11 +10,18 @@ import { createAdminClient } from '@/lib/supabase/server'
  *
  * El cliente browser no puede hacer upsert directo porque RLS solo
  * tiene política SELECT para anon/authenticated en survey_sections.
+ *
+ * SEGURIDAD (auditoría 2026-07-29): esta ruta no tenía NINGÚN check de
+ * sesión/rol — cualquiera con el ID de una encuesta podía sobrescribir o
+ * borrar sus preguntas/secciones sin login.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   try {
     const { id: surveyId } = await params
     const body = await request.json()
@@ -136,6 +144,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   try {
     const { id: surveyId } = await params
     const sectionId = request.nextUrl.searchParams.get('sectionId')

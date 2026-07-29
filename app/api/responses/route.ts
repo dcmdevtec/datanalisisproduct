@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createServerSupabase()
     const body = await request.json()
     // Accept both `answers` and `response_answers` (frontend uses response_answers)
-    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name, assignment_id, outcome } = body
+    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name, assignment_id, outcome, client_submission_id } = body
     const effectiveAnswers = answers || response_answers
 
     if (!survey_id) {
@@ -55,6 +55,34 @@ export async function POST(request: NextRequest) {
 
     if (!effectiveAnswers || !Array.isArray(effectiveAnswers) || effectiveAnswers.length === 0) {
       return NextResponse.json({ error: "Se requieren respuestas" }, { status: 400 })
+    }
+
+    // IDEMPOTENCIA (auditoría 2026-07-29): el botón "Finalizar Encuesta" no
+    // tenía guardia de reentrada, así que un doble tap o un reintento tras un
+    // error de red podían crear dos filas en `responses` para el mismo envío.
+    // El cliente ahora manda una `client_submission_id` estable por sesión de
+    // llenado (ver app/preview/survey/page.tsx, submissionTokenRef). Si ya
+    // existe una respuesta con esa misma llave para esta encuesta, la
+    // devolvemos tal cual en vez de insertar un duplicado. Requiere la
+    // columna `client_submission_id` (ver sql/2026_07_responses_idempotency.sql);
+    // si la migración aún no corrió en esta base, la consulta simplemente no
+    // encuentra nada (columna ausente => error controlado) y seguimos con el
+    // flujo normal de inserción, sin romper el envío.
+    if (typeof client_submission_id === "string" && client_submission_id.trim().length > 0) {
+      const { data: existing, error: existingError } = await (supabase as any)
+        .from("responses")
+        .select("id")
+        .eq("survey_id", survey_id)
+        .eq("client_submission_id", client_submission_id)
+        .maybeSingle()
+      if (!existingError && existing?.id) {
+        return NextResponse.json({
+          success: true,
+          message: "Respuesta ya registrada (envío duplicado detectado)",
+          response_id: existing.id,
+          duplicate: true,
+        })
+      }
     }
 
     // Obtener usuario actual
@@ -76,6 +104,9 @@ export async function POST(request: NextRequest) {
       // Ambos opcionales y aditivos — si no vienen, se comporta exactamente igual que antes.
       ...(assignment_id ? { assignment_id } : {}),
       outcome: outcome === "efectiva" || outcome === "incidencia" || outcome === "abandonada" ? outcome : "efectiva",
+      ...(typeof client_submission_id === "string" && client_submission_id.trim().length > 0
+        ? { client_submission_id }
+        : {}),
     }
 
     // ---------------------------------------------------------------
@@ -152,6 +183,29 @@ export async function POST(request: NextRequest) {
     }
 
     if (responseError) {
+      // Carrera de idempotencia: dos requests con la misma client_submission_id
+      // llegaron casi al mismo tiempo (p.ej. doble tap que alcanzó a pasar la
+      // verificación previa antes de que el primer insert terminara). El
+      // índice único responses_client_submission_id_unique
+      // (sql/2026_07_responses_idempotency.sql) rechaza el segundo insert con
+      // 23505 — en vez de devolver error al usuario, buscamos la fila que sí
+      // se creó y la devolvemos como si fuera la respuesta de este request.
+      if (responseError.code === '23505' && typeof client_submission_id === 'string' && client_submission_id.trim().length > 0) {
+        const { data: raced } = await (supabase as any)
+          .from('responses')
+          .select('id')
+          .eq('survey_id', survey_id)
+          .eq('client_submission_id', client_submission_id)
+          .maybeSingle()
+        if (raced?.id) {
+          return NextResponse.json({
+            success: true,
+            message: 'Respuesta ya registrada (envío duplicado detectado)',
+            response_id: raced.id,
+            duplicate: true,
+          })
+        }
+      }
       console.error('Error al crear respuesta después de reintentos:', responseError)
       return NextResponse.json({ error: responseError.message || 'Error creando respuesta', details: responseError }, { status: 500 })
     }

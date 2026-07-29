@@ -1038,6 +1038,14 @@ export default function ReportsPage() {
                         </table>
                       </div>
                     )}
+                    {data?.responses?.crosstab && data.responses.crosstab.total === 0 && (
+                      <p className="text-xs text-amber-600 pt-1">
+                        Ninguna respuesta contestó ambas preguntas a la vez (todas las celdas dan 0). Esto suele pasar
+                        cuando las dos preguntas pertenecen a encuestas distintas, o cuando el &quot;Filtro avanzado&quot;
+                        de arriba ya redujo las respuestas a un subconjunto que no tocó estas preguntas. Prueba
+                        seleccionando una &quot;Encuesta&quot; específica en los filtros de arriba, o limpiando el filtro avanzado.
+                      </p>
+                    )}
                     {crossRowQuestionId && crossColQuestionId && !data?.responses?.crosstab && (
                       <p className="text-xs text-muted-foreground pt-1">No hay respuestas suficientes para cruzar estas dos preguntas.</p>
                     )}

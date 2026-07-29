@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
+import { requireRole } from "@/lib/api-auth"
 
 // Lista paginada de respuestas individuales (pptx slide 22: "Respuestas Individuales").
 // Reutiliza exactamente los mismos filtros globales del módulo de Reportes
@@ -10,11 +11,13 @@ function resolveOutcome(r: { outcome?: string | null; status?: string | null }):
   return r.status === "completed" ? "efectiva" : "abandonada"
 }
 
+// SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol —
+// exponía nombre/documento/respuestas individuales de respondentes a
+// cualquier usuario autenticado, incl. encuestadores.
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerSupabase()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    const auth = await requireRole(["admin", "supervisor"])
+    if (!auth.ok) return auth.response
 
     const { searchParams } = new URL(request.url)
     const companyFilter = searchParams.get("company") || "all"

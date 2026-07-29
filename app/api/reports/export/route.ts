@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import * as XLSX from "xlsx"
+import { requireRole } from "@/lib/api-auth"
 
 function extractValue(val: any): string {
   if (val === null || val === undefined) return ""
@@ -49,11 +50,11 @@ function sendWorkbook(wb: XLSX.WorkBook, filename: string) {
   })
 }
 
+// SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol.
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerSupabase()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    const auth = await requireRole(["admin", "supervisor"])
+    if (!auth.ok) return auth.response
 
     const { searchParams } = new URL(request.url)
     const companyFilter = searchParams.get("company") || "all"

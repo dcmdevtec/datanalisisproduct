@@ -57,6 +57,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Encuesta no encontrada" }, { status: 404 })
     }
 
+    // SEGURIDAD (auditoría 2026-07-29): antes se consultaba `status` pero
+    // nunca se comparaba contra nada — cualquier encuesta, incluida un
+    // borrador (`draft`) o una de prueba (`prueba`), era públicamente
+    // visible en el momento en que alguien conociera su UUID (y esos UUID ya
+    // aparecen en URLs internas autenticadas, no son verdaderamente
+    // secretos). Solo se permite el link público para encuestas que ya
+    // están corriendo o cerradas: active | completed | archived.
+    const shareableStatuses = ["active", "completed", "archived"]
+    if (!shareableStatuses.includes((survey as any).status)) {
+      return NextResponse.json({ error: "Esta encuesta no tiene resultados disponibles públicamente" }, { status: 403 })
+    }
+
     const { data: responses } = await admin
       .from("responses")
       .select("id, created_at")

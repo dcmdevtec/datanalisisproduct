@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
+import { requireRole } from "@/lib/api-auth"
 
 // Extract a displayable string from a JSONB answer value
 function extractValue(val: any): string | string[] {
@@ -45,11 +46,13 @@ function resolveOutcome(r: { outcome?: string | null; status?: string | null }):
   return r.status === "completed" ? "efectiva" : "abandonada"
 }
 
+// SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol — un
+// encuestador autenticado podía consultar analítica de toda la organización
+// (incl. datos de otros encuestadores y respondentes).
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerSupabase()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    const auth = await requireRole(["admin", "supervisor"])
+    if (!auth.ok) return auth.response
 
     const { searchParams } = new URL(request.url)
     const companyFilter = searchParams.get("company") || "all"

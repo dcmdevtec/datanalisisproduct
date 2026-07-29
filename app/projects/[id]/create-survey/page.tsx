@@ -1134,8 +1134,17 @@ export function CreateSurveyForProjectPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [sections, setSections] = useState<SurveySection[]>([])
   const [sectionSaveStates, setSectionSaveStates] = useState<{ [key: string]: "saved" | "not-saved" | "error" }>({})
+  // Autosave con debounce (auditoría 2026-07-29): antes de esto, secciones y
+  // preguntas solo se guardaban al presionar "Actualizar/Crear Encuesta" —
+  // cerrar la pestaña o perder conexión en el medio perdía todo el trabajo,
+  // aunque sectionSaveStates ya sabía perfectamente qué quedaba pendiente
+  // ("not-saved"). autoSaveStatus alimenta el indicador junto al botón
+  // principal; autoSaveTimerRef es el debounce (ver efecto más abajo, junto
+  // a handleSaveSection).
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleSaveSection = async (sectionId: string, overrideSurveyId?: string) => {
+  const handleSaveSection = async (sectionId: string, overrideSurveyId?: string, options?: { silent?: boolean }) => {
     if (!sections.length || !sectionId) return
 
     // Usar ref (no state) para el guard — el state es async y no bloquea en for-loops
@@ -1271,10 +1280,18 @@ export function CreateSurveyForProjectPageContent() {
         [savedSectionData.id]: "saved",
       }))
 
-      toast({
-        title: "Sección guardada",
-        description: "Los cambios han sido guardados exitosamente",
-      })
+      // Autosave (auditoría 2026-07-29): no mostrar el toast de éxito en
+      // cada ciclo automático — sería ruido constante mientras la persona
+      // sigue editando. El indicador "Guardado automáticamente" junto al
+      // botón principal ya cubre ese feedback. El guardado manual (botón
+      // por sección / "Guardar todas") sí sigue mostrando el toast.
+      if (!options?.silent) {
+        toast({
+          title: "Sección guardada",
+          description: "Los cambios han sido guardados exitosamente",
+        })
+      }
+      return true
     } catch (error: any) {
       console.error("Error detallado al guardar la sección:", error)
       setSectionSaveStates((prev) => ({
@@ -1284,16 +1301,56 @@ export function CreateSurveyForProjectPageContent() {
 
       const errorMessage = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error))
 
+      // A diferencia del éxito, sí avisamos de errores incluso en modo
+      // silencioso (autoguardado) — que algo no se guardó es información
+      // que la persona necesita, no ruido.
       toast({
-        title: "Error al guardar",
+        title: options?.silent ? "No se pudo autoguardar" : "Error al guardar",
         description: errorMessage || "Ocurrió un error al guardar la sección",
         variant: "destructive",
       })
+      return false
     } finally {
       isSavingSectionRef.current = false
       setIsSavingSection(false)
     }
   }
+
+  // Efecto de autosave: se re-arma en cada cambio de `sections` (nueva
+  // referencia en cada edición) o `sectionSaveStates`, y espera 2.5s de
+  // inactividad antes de disparar. Si el usuario sigue escribiendo, el
+  // cleanup cancela el timer anterior — así no se autoguarda a cada tecla,
+  // solo cuando hay una pausa real.
+  useEffect(() => {
+    const hasPending = sections.some((s) => sectionSaveStates[s.id] !== "saved")
+    if (!hasPending) return
+    // Sin título todavía no se puede crear/actualizar nada en el backend
+    // (handleSaveSection lo exige para crear la encuesta la primera vez).
+    // Se espera en silencio a que la persona escriba un título en vez de
+    // mostrarle un error de autoguardado por algo que aún no ha llenado.
+    if (!surveyTitle.trim()) return
+
+    const timer = setTimeout(async () => {
+      // No pisar un guardado manual (botón "Guardar sección" / "Guardar
+      // todas" / "Actualizar Encuesta") que ya esté en curso.
+      if (isSavingSectionRef.current || isSaving) return
+      const pending = sections.filter((s) => sectionSaveStates[s.id] !== "saved")
+      if (pending.length === 0) return
+
+      setAutoSaveStatus("saving")
+      let hadError = false
+      for (const section of pending) {
+        isSavingSectionRef.current = false
+        const ok = await handleSaveSection(section.id, currentSurveyId || undefined, { silent: true })
+        if (!ok) hadError = true
+      }
+      setAutoSaveStatus(hadError ? "error" : "saved")
+    }, 2500)
+
+    autoSaveTimerRef.current = timer
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, sectionSaveStates, surveyTitle, isSaving, currentSurveyId])
 
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
@@ -3175,26 +3232,42 @@ export function CreateSurveyForProjectPageContent() {
 
                   </CardContent>
                 </Card>
-                <div className="flex flex-col sm:flex-row justify-between gap-4 pt-6 border-t">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t">
                   <Button variant="outline" className="gap-2 bg-transparent" onClick={() => setActiveTab("assignment")}>
                     <ArrowLeft className="h-4 w-4" /> Anterior: Preguntas
                   </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-full"
-                    style={{ backgroundColor: "#18b0a4" }}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> {isEditMode ? "Actualizando..." : "Guardando..."}
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" /> {isEditMode ? "Actualizar Encuesta" : "Crear Encuesta"}
-                      </>
+                  <div className="flex items-center gap-3">
+                    {/* Indicador de autoguardado (auditoría 2026-07-29) */}
+                    {autoSaveStatus !== "idle" && !isSaving && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        {autoSaveStatus === "saving" && (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> Autoguardando...</>
+                        )}
+                        {autoSaveStatus === "saved" && (
+                          <span className="text-emerald-600">Guardado automáticamente</span>
+                        )}
+                        {autoSaveStatus === "error" && (
+                          <span className="text-red-600">No se pudo autoguardar — revisa tu conexión</span>
+                        )}
+                      </span>
                     )}
-                  </Button>
+                    <Button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-full"
+                      style={{ backgroundColor: "#18b0a4" }}
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> {isEditMode ? "Actualizando..." : "Guardando..."}
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4" /> {isEditMode ? "Actualizar Encuesta" : "Crear Encuesta"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
 

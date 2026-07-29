@@ -181,6 +181,20 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0)
   const [answers, setAnswers] = useState<{ [questionId: string]: any }>({})
   const [submissionStatus, setSubmissionStatus] = useState<"idle" | "success" | "error">("idle")
+  // SEGURIDAD/INTEGRIDAD (auditoría 2026-07-29): "Finalizar Encuesta" no tenía
+  // guardia de reentrada ni deshabilitaba el botón mientras se enviaba, así que
+  // un doble tap (común en campo con conexión lenta) creaba dos filas en
+  // `responses` para la misma persona. `isSubmittingResponse` deshabilita el
+  // botón visualmente; `submissionInFlightRef` bloquea llamadas concurrentes
+  // aunque el re-render aún no haya aplicado el disabled; `submissionTokenRef`
+  // es una llave de idempotencia estable durante la vida de este componente,
+  // reenviada en cada intento (incl. reintentos tras error de red) para que
+  // /api/responses pueda detectar y descartar duplicados del mismo envío.
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
+  const submissionInFlightRef = useRef(false)
+  const submissionTokenRef = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+  )
   const [validationErrors, setValidationErrors] = useState<{ [questionId: string]: string }>({})
   const [blockedQuestions, setBlockedQuestions] = useState<Set<string>>(new Set())
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
@@ -210,6 +224,28 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Cola offline (auditoría 2026-07-29): reintenta en segundo plano envíos
+  // que quedaron guardados en IndexedDB por falta de señal (ver
+  // lib/offline-queue.ts y el catch de submitResponses más abajo). Corre
+  // tanto en el portal del encuestador como en /preview y /encuesta
+  // públicos — si esta misma pestaña recupera conexión mientras el
+  // encuestado sigue en ella, no hace falta esperar a que alguien visite
+  // el dashboard del portal para que se sincronice.
+  useEffect(() => {
+    let cancelled = false
+    const tryFlush = () => {
+      import('@/lib/offline-queue').then(({ flushQueue }) => {
+        if (!cancelled) flushQueue().catch(() => { })
+      }).catch(() => { })
+    }
+    tryFlush()
+    window.addEventListener('online', tryFlush)
+    return () => {
+      cancelled = true
+      window.removeEventListener('online', tryFlush)
+    }
   }, [])
 
 
@@ -797,6 +833,23 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   // Submit responses helper: includes respondent_public_id and document fields if available
   const submitResponses = useCallback(async () => {
     if (!surveyData) return
+    // Guardia de reentrada: si ya hay un envío en curso, ignora llamadas
+    // adicionales (doble tap, doble disparo del handler, etc.) en vez de
+    // crear una segunda respuesta.
+    if (submissionInFlightRef.current) {
+      console.warn('⏳ submitResponses ya está en curso, se ignora llamada duplicada')
+      return false
+    }
+    submissionInFlightRef.current = true
+    setIsSubmittingResponse(true)
+    try {
+      return await submitResponsesInner()
+    } finally {
+      submissionInFlightRef.current = false
+      setIsSubmittingResponse(false)
+    }
+
+    async function submitResponsesInner() {
     // infer survey id from pathname
     let surveyId: string | null = inferredSurveyId
     if (!surveyId) {
@@ -846,6 +899,35 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     for (const [matrixId, matrixData] of Object.entries(matrixAnswers)) {
       if (!normalizedAnswers[matrixId]) {
         normalizedAnswers[matrixId] = matrixData
+        continue
+      }
+      // BUG (auditoría 2026-07-29): "Otro, especificar" guarda la selección
+      // bajo answers[question.id] (a veces el marcador literal "__other__",
+      // a veces un array que lo incluye, a veces una opción normal cuyo
+      // label contiene "otro") y el texto libre bajo answers[`${question.id}_other`].
+      // Como normalizedAnswers[matrixId] ya existía desde el primer pase (la
+      // selección), esta rama nunca se ejecutaba y el texto que la persona
+      // escribió se descartaba silenciosamente — quedaba guardado el literal
+      // "__other__" en vez de su respuesta real. Se fusiona aquí en vez de
+      // sobreescribir, para no perder ni la selección ni el texto libre.
+      const otherText = matrixData && typeof matrixData === 'object' ? (matrixData as any).other : undefined
+      if (typeof otherText === 'string' && otherText.trim().length > 0) {
+        const current = normalizedAnswers[matrixId]
+        if (current === '__other__') {
+          // Único valor era el marcador "otro": el texto libre ES la respuesta.
+          normalizedAnswers[matrixId] = otherText
+        } else if (Array.isArray(current) && current.includes('__other__')) {
+          // Selección múltiple: sustituye el marcador por el texto libre,
+          // conservando el resto de opciones marcadas.
+          normalizedAnswers[matrixId] = current.map((v: any) => (v === '__other__' ? otherText : v))
+        } else if (typeof current === 'string' || Array.isArray(current)) {
+          // Opción regular con texto adicional (su label contiene "otro"):
+          // conserva la opción seleccionada y anexa el texto libre.
+          normalizedAnswers[matrixId] = { value: current, otherText }
+        }
+        // Si current no calza con ninguno de los casos anteriores (p.ej. ya
+        // es un objeto de celdas de matriz real), se deja intacto para no
+        // romper otros tipos de pregunta que usan esta misma consolidación.
       }
     }
 
@@ -870,6 +952,11 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       survey_id: surveyId,
       response_answers: validAnswers,
       timestamp: new Date().toISOString(),
+      // Llave de idempotencia (auditoría 2026-07-29): estable para todos los
+      // intentos de este componente, permite a /api/responses detectar
+      // reintentos/doble envío del mismo formulario y devolver la respuesta
+      // ya creada en vez de insertar una fila duplicada.
+      client_submission_id: submissionTokenRef.current,
     }
 
     // Portal de encuestador: liga la respuesta al assignment (zona/encuestador)
@@ -949,8 +1036,31 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       return true
     } catch (err) {
       console.error('Error de red al enviar respuestas:', err)
+      // COLA OFFLINE (auditoría 2026-07-29): esto es una falla de RED (fetch
+      // no llegó al servidor), no un rechazo del backend — típico de un
+      // encuestador en campo sin señal. Antes esta rama solo mostraba un
+      // toast de error y la respuesta se perdía si cerraba la app; ahora se
+      // guarda en IndexedDB (lib/offline-queue.ts) para reintentarse sola
+      // cuando vuelva la conexión, usando la misma client_submission_id así
+      // que no se duplica si el servidor sí llegó a recibir el envío antes
+      // de que se cortara la respuesta.
+      try {
+        const { enqueueResponse } = await import('@/lib/offline-queue')
+        const queuedId = await enqueueResponse(payload)
+        if (queuedId) {
+          toast({
+            title: 'Sin conexión',
+            description: 'No hay señal en este momento. Tu respuesta se guardó en el dispositivo y se enviará automáticamente cuando vuelva la conexión.',
+            duration: 8000,
+          })
+          return false
+        }
+      } catch (queueErr) {
+        console.error('No se pudo encolar la respuesta offline:', queueErr)
+      }
       toast({ title: 'Error', description: 'Error de red al enviar respuestas', variant: 'destructive' })
       return false
+    }
     }
   }, [answers, inferredSurveyId, surveyData, toast, assignmentId, onSubmitted])
 
@@ -3036,17 +3146,16 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               >
                 <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" /> Volver
               </Button>
-              {/* Botón para limpiar respuestas (testing) */}
-              <Button
-                variant="outline"
-                onClick={() => {
-                  localStorage.removeItem("surveyPreviewAnswers")
-                  setAnswers({})
-                }}
-                className="text-orange-600 border-orange-200 hover:bg-orange-50 transition-all duration-200 rounded-xl px-3 py-2 text-sm sm:text-base"
-              >
-                Limpiar Respuestas
-              </Button>
+              {/*
+                SEGURIDAD (auditoría 2026-07-29): existía aquí un botón "Limpiar
+                Respuestas" marcado como "(testing)" en el código, visible para
+                cualquier persona tomando la encuesta (pública o desde el portal
+                del encuestador), sin confirmación ni gating por rol/entorno. Un
+                toque accidental borraba todas las respuestas ya diligenciadas
+                de la sección actual sin forma de deshacerlo. Se retira por
+                completo del flujo de producción — no tiene un uso legítimo
+                para el encuestado ni el encuestador en campo.
+              */}
             </div>
             <div className="flex flex-col items-center justify-center">
               {/* Mostrar logo si existe en branding_config.logo (base64) */}
@@ -3211,7 +3320,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
           <div className="flex flex-col sm:flex-row justify-between gap-3 mt-4 sm:mt-12 pt-4 sm:pt-8 border-t border-gray-200 px-4 pb-4 sm:px-0 sm:pb-0">
             <Button
               onClick={handlePreviousSection}
-              disabled={currentSectionIndex === 0}
+              disabled={currentSectionIndex === 0 || isSubmittingResponse}
               variant="outline"
               className="px-4 sm:px-8 py-3 sm:py-4 text-sm sm:text-base rounded-xl border-2 hover:bg-gray-50 transition-all duration-200 disabled:opacity-50 order-2 sm:order-1"
             >
@@ -3220,13 +3329,16 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
 
             <Button
               onClick={handleNextSection}
-              className="px-6 sm:px-10 py-3 sm:py-4 text-sm sm:text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 order-1 sm:order-2"
+              disabled={isSubmittingResponse}
+              className="px-6 sm:px-10 py-3 sm:py-4 text-sm sm:text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 order-1 sm:order-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
               style={{
                 background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primary}dd, ${themeColors.primary}bb)`,
                 color: 'white'
               }}
             >
-              {currentSectionIndex === totalSections - 1 ? "Finalizar Encuesta" : "Siguiente Sección"}{" "}
+              {isSubmittingResponse
+                ? "Enviando..."
+                : (currentSectionIndex === totalSections - 1 ? "Finalizar Encuesta" : "Siguiente Sección")}{" "}
               <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 ml-2" />
             </Button>
           </div>

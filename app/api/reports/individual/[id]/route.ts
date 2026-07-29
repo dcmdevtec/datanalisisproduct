@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
+import { requireRole } from "@/lib/api-auth"
 
 // Detalle de una respuesta individual (pptx slide 22): preguntas + respuestas
 // de esa encuesta en particular, más audio si existe (tabla media_files,
@@ -27,11 +28,11 @@ function resolveOutcome(r: { outcome?: string | null; status?: string | null }):
   return r.status === "completed" ? "efectiva" : "abandonada"
 }
 
+// SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createServerSupabase()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    const auth = await requireRole(["admin", "supervisor"])
+    if (!auth.ok) return auth.response
 
     const { id: responseId } = await params
     const admin = createAdminSupabase()

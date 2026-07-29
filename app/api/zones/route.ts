@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { requireRole } from "@/lib/api-auth"
 
 // Validador y extractor de GeoJSON mejorado
 function processGeoJSON(obj: any): { isValid: boolean; geometry: any; error?: string } {
@@ -150,7 +151,13 @@ function isValidGeoJSON(obj: any): boolean {
   return processGeoJSON(obj).isValid
 }
 
+// SEGURIDAD (auditoría 2026-07-29): sin ningún check de sesión/rol antes —
+// cualquiera podía leer/crear/editar/borrar zonas de geocerca. Lectura:
+// admin+supervisor. Mutaciones: solo admin.
 export async function GET(request: Request) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   console.log("🔵 GET /api/zones - Starting request")
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -290,6 +297,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   let cookieStore
   let supabase
 
@@ -434,6 +444,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   let cookieStore
   let supabase
 
@@ -582,6 +595,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   let cookieStore
   let supabase
 

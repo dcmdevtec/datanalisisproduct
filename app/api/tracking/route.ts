@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { requireRole } from "@/lib/api-auth"
 
 /**
  * Calcula el estado del encuestador basado en minutos transcurridos
@@ -69,6 +70,12 @@ function isInApp(item: any): boolean | null {
  */
 export async function GET(request: Request) {
   console.log("🔵 GET /api/tracking - Getting surveyor locations from view")
+
+  // SEGURIDAD (auditoría 2026-07-29): esta ruta devuelve ubicación GPS en
+  // vivo, batería y contacto de TODOS los encuestadores. Antes no tenía
+  // ningún check de sesión/rol — cualquiera con la URL podía verla.
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
@@ -247,6 +254,12 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   console.log("🔵 POST /api/tracking - Getting surveyor locations from view")
+
+  // Misma protección que GET — este POST también solo LEE ubicaciones
+  // (filtros vía body en vez de query string), no es el endpoint donde el
+  // encuestador reporta su propia posición (eso vive en /api/location).
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return NextResponse.json({ error: "Server configuration error" }, { status: 500 })

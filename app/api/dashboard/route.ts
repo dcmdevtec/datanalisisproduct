@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
+import { requireRole } from "@/lib/api-auth"
 
+// SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol — un
+// encuestador autenticado podía consultar analítica de toda la organización.
 export async function GET() {
   try {
+    const auth = await requireRole(["admin", "supervisor"])
+    if (!auth.ok) return auth.response
+
     const supabase = await createServerSupabase()
-
-    // Verify authenticated user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-    }
-
     const admin = createAdminSupabase()
 
     // Run all queries in parallel

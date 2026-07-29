@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import type { Database } from "@/types/supabase"
+import { requireRole } from "@/lib/api-auth"
 
 type SurveyorUpdate = Database["public"]["Tables"]["surveyors"]["Update"]
 
+// SEGURIDAD (auditoría 2026-07-29): PUT puede resetear la contraseña de
+// cualquier encuestador — no tenía ningún check de sesión/rol. Mismo
+// criterio que /api/surveyors: lectura admin+supervisor, mutaciones solo admin.
 export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   const { id } = params
   const supabase = await createServerSupabase()
   const { data: surveyor, error } = await supabase.from("surveyors").select("*").eq("id", id).single()
@@ -22,6 +29,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   const { id } = params
   const { name, email, phone_number, password, status } = (await request.json()) as SurveyorUpdate
   const adminSupabase = createAdminSupabase()
@@ -63,6 +73,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   const { id } = params
   const adminSupabase = createAdminSupabase()
 

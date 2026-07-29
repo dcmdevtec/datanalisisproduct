@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { requireRole } from "@/lib/api-auth"
 
 // Elimina UNA grabación de audio del portal de encuestador (surveyor_recordings)
 // ligada a esta encuesta: borra el archivo en Storage (bucket 'response-media')
 // y la fila en la base de datos. Usado por el botón "Eliminar" de la sección
 // Grabaciones de Audio en app/surveys/[id]/page.tsx.
+//
+// SEGURIDAD (auditoría 2026-07-29): sin auth, cualquiera podía borrar
+// grabaciones de encuestadores sin login.
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string; recordingId: string }> }) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   try {
     const { id: surveyId, recordingId } = await params
     const admin = createAdminSupabase() as any

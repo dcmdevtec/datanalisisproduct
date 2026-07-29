@@ -2,10 +2,19 @@ import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server" // Import both clients
 import { cookies } from "next/headers"
 import type { Database } from "@/types/supabase"
+import { requireRole } from "@/lib/api-auth"
 
 type SurveyorInsert = Database["public"]["Tables"]["surveyors"]["Insert"]
 
+// SEGURIDAD (auditoría 2026-07-29): esta ruta no tenía NINGÚN check de
+// sesión/rol. PUT en particular puede resetear la contraseña de cualquier
+// encuestador (toma de control de cuenta) — quedaba abierto a cualquiera
+// que conociera la URL. GET/lectura: admin + supervisor. Mutaciones
+// (crear/editar/borrar encuestadores, incl. contraseña): solo admin.
 export async function GET(request: Request) {
+  const auth = await requireRole(["admin", "supervisor"])
+  if (!auth.ok) return auth.response
+
   const cookieStore = cookies()
   const supabase = createClient(cookieStore) // Use regular client for GET
 
@@ -28,6 +37,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   const supabaseAdmin = createAdminClient() // Use admin client for POST
   const { name, email, phone_number, password } = (await request.json()) as SurveyorInsert & { password?: string }
 
@@ -107,6 +119,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   const supabaseAdmin = createAdminClient() // Use admin client for PUT
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id") // This is the surveyor's ID (which is also the auth user ID)
@@ -148,6 +163,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
   const supabaseAdmin = createAdminClient() // Use admin client for DELETE
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id") // This is the surveyor's ID (which is also the auth user ID)
