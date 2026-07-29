@@ -17,7 +17,19 @@ import { requireRole } from "@/lib/api-auth"
  * desactualizado. Siempre recalcular a partir de `minutes_since_update`
  * o de `recorded_at` si el campo de minutos no está disponible.
  */
-function calcStatus(item: any): "active" | "inactive" | "offline" {
+function calcStatus(item: any, lastLogoutAt?: string | null): "active" | "inactive" | "offline" {
+  // Fix 2026-07-29: si el encuestador cerró sesión explícitamente (botón de
+  // salir en el portal web) DESPUÉS de su última ubicación registrada,
+  // mostrarlo "offline" de inmediato en vez de esperar a que pase el
+  // umbral de 5 min por inactividad. surveyors.last_logout_at se actualiza
+  // en app/api/portal-encuestador/shifts/[id]/route.ts al cerrar el turno.
+  // Si vuelve a iniciar sesión y llega una ubicación más nueva que
+  // last_logout_at, este chequeo deja de aplicar solo (se compara contra
+  // recorded_at cada vez).
+  if (lastLogoutAt && (!item.recorded_at || new Date(lastLogoutAt).getTime() > new Date(item.recorded_at).getTime())) {
+    return "offline"
+  }
+
   // Calcular minutos desde la última ubicación recibida
   let minutesAgo: number | null = null
 
@@ -153,10 +165,29 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Failed to fetch tracking data" }, { status: 500 })
     }
 
+    // Fix 2026-07-29: surveyor_tracking_view no expone last_logout_at (su
+    // definición ya trae columnas fijas de antes de este fix, y no queríamos
+    // arriesgar un CREATE OR REPLACE VIEW a ciegas sin ver su SQL completo).
+    // En vez de eso, se consulta aparte contra `surveyors` y se cruza por
+    // surveyor_id en memoria — ver calcStatus() más arriba.
+    const surveyorIdsForLogout = Array.from(
+      new Set((trackingData || []).map((item: any) => item.surveyor_id).filter(Boolean))
+    )
+    let lastLogoutMap: Record<string, string | null> = {}
+    if (surveyorIdsForLogout.length > 0) {
+      const { data: logoutRows } = await supabase
+        .from("surveyors")
+        .select("id, last_logout_at")
+        .in("id", surveyorIdsForLogout)
+      lastLogoutMap = Object.fromEntries(
+        (logoutRows || []).map((r: any) => [r.id, r.last_logout_at])
+      )
+    }
+
     // Transformar los datos al formato esperado por el frontend
     const surveyorsWithLocation = trackingData?.map((item: any) => {
       // Estado calculado siempre desde tiempo real, nunca desde el campo status de la vista
-      const status = calcStatus(item)
+      const status = calcStatus(item, lastLogoutMap[item.surveyor_id])
       const in_app = isInApp(item)
 
       return {
@@ -194,7 +225,7 @@ export async function GET(request: Request) {
       inactive: surveyorsWithLocation.filter(s => s.status === "inactive").length,
       offline: surveyorsWithLocation.filter(s => s.status === "offline").length,
       in_zone: surveyorsWithLocation.filter(s => s.current_location?.is_in_zone).length,
-      out_of_zone: surveyorsWithLocation.filter(s => 
+      out_of_zone: surveyorsWithLocation.filter(s =>
         s.current_location && !s.current_location.is_in_zone
       ).length,
       low_battery: surveyorsWithLocation.filter(s => 
@@ -333,10 +364,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to fetch tracking data" }, { status: 500 })
     }
 
+    // Fix 2026-07-29: surveyor_tracking_view no expone last_logout_at (su
+    // definición ya trae columnas fijas de antes de este fix, y no queríamos
+    // arriesgar un CREATE OR REPLACE VIEW a ciegas sin ver su SQL completo).
+    // En vez de eso, se consulta aparte contra `surveyors` y se cruza por
+    // surveyor_id en memoria — ver calcStatus() más arriba.
+    const surveyorIdsForLogout = Array.from(
+      new Set((trackingData || []).map((item: any) => item.surveyor_id).filter(Boolean))
+    )
+    let lastLogoutMap: Record<string, string | null> = {}
+    if (surveyorIdsForLogout.length > 0) {
+      const { data: logoutRows } = await supabase
+        .from("surveyors")
+        .select("id, last_logout_at")
+        .in("id", surveyorIdsForLogout)
+      lastLogoutMap = Object.fromEntries(
+        (logoutRows || []).map((r: any) => [r.id, r.last_logout_at])
+      )
+    }
+
     // Transformar los datos al formato esperado por el frontend
     const surveyorsWithLocation = trackingData?.map((item: any) => {
       // Estado calculado siempre desde tiempo real, nunca desde el campo status de la vista
-      const status = calcStatus(item)
+      const status = calcStatus(item, lastLogoutMap[item.surveyor_id])
       const in_app = isInApp(item)
 
       return {
@@ -374,7 +424,7 @@ export async function POST(request: Request) {
       inactive: surveyorsWithLocation.filter(s => s.status === "inactive").length,
       offline: surveyorsWithLocation.filter(s => s.status === "offline").length,
       in_zone: surveyorsWithLocation.filter(s => s.current_location?.is_in_zone).length,
-      out_of_zone: surveyorsWithLocation.filter(s => 
+      out_of_zone: surveyorsWithLocation.filter(s =>
         s.current_location && !s.current_location.is_in_zone
       ).length,
       low_battery: surveyorsWithLocation.filter(s => 
