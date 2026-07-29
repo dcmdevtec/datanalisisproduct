@@ -2,7 +2,7 @@
 
 import { Alert, AlertTitle } from "@/components/ui/alert"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -27,7 +27,10 @@ import {
   Radio,
   Mic,
   Download,
+  Search,
 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase-browser"
 import { format } from "date-fns"
@@ -102,6 +105,11 @@ export default function SurveyDetailsPage() {
   const [loadingRecordings, setLoadingRecordings] = useState(false)
   const [recordingsError, setRecordingsError] = useState<string | null>(null)
   const [deletingRecordingId, setDeletingRecordingId] = useState<string | null>(null)
+  // Búsqueda por nombre de encuestador dentro de la sección de grabaciones
+  // (feedback 2026-07-29: "van a haber muchos encuestadores... eso se debe
+  // ver mejor organizado" — con decenas de encuestadores y varios audios
+  // cada uno por encuesta, una lista plana se vuelve inmanejable).
+  const [recordingsSearch, setRecordingsSearch] = useState("")
 
   useEffect(() => {
     async function fetchData() {
@@ -271,6 +279,32 @@ export default function SurveyDetailsPage() {
       setDeletingRecordingId(null)
     }
   }, [surveyId, toast])
+
+  // Agrupa las grabaciones por encuestador (surveyorId — no por nombre, ver
+  // comentario en app/api/surveys/[id]/recordings/route.ts) y aplica el
+  // filtro de búsqueda. Cada grupo conserva el orden ya-descendente por
+  // fecha que devuelve la API. Los grupos se ordenan por la grabación más
+  // reciente de cada encuestador, para que quien tuvo actividad hace poco
+  // aparezca primero — eso es lo que un admin normalmente quiere ver.
+  const recordingGroups = useMemo(() => {
+    const bySurveyor = new Map<string, { surveyorId: string; surveyorName: string; items: any[] }>()
+    for (const rec of recordings) {
+      const key = rec.surveyorId || rec.surveyorName || "desconocido"
+      if (!bySurveyor.has(key)) {
+        bySurveyor.set(key, { surveyorId: key, surveyorName: rec.surveyorName || "Encuestador desconocido", items: [] })
+      }
+      bySurveyor.get(key)!.items.push(rec)
+    }
+    const query = recordingsSearch.trim().toLowerCase()
+    const groups = Array.from(bySurveyor.values())
+      .filter((g) => !query || g.surveyorName.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const aLatest = a.items[0]?.startedAt ? new Date(a.items[0].startedAt).getTime() : 0
+        const bLatest = b.items[0]?.startedAt ? new Date(b.items[0].startedAt).getTime() : 0
+        return bLatest - aLatest
+      })
+    return groups
+  }, [recordings, recordingsSearch])
 
   if (authLoading || loading) {
     return (
@@ -704,18 +738,37 @@ export default function SurveyDetailsPage() {
           </div>
         )}
 
-        {/* Sección de Grabaciones de Audio (portal de encuestador) */}
+        {/* Sección de Grabaciones de Audio (portal de encuestador) —
+            agrupadas por encuestador (feedback 2026-07-29: con muchos
+            encuestadores y varios audios cada uno por encuesta, la lista
+            plana anterior se volvía imposible de recorrer). */}
         <div className="mt-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CardTitle className="flex items-center gap-2">
                   <Mic className="h-5 w-5" /> Grabaciones de Audio
+                  {recordings.length > 0 && (
+                    <span className="text-sm font-normal text-muted-foreground">
+                      · {recordingGroups.length} encuestador{recordingGroups.length !== 1 ? "es" : ""} · {recordings.length} grabación{recordings.length !== 1 ? "es" : ""}
+                    </span>
+                  )}
                 </CardTitle>
                 <Button variant="ghost" size="sm" onClick={fetchRecordings} disabled={loadingRecordings}>
                   <RefreshCw className={`h-4 w-4 ${loadingRecordings ? "animate-spin" : ""}`} />
                 </Button>
               </div>
+              {recordings.length > 0 && (
+                <div className="relative mt-2 max-w-sm">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={recordingsSearch}
+                    onChange={(e) => setRecordingsSearch(e.target.value)}
+                    placeholder="Buscar encuestador..."
+                    className="pl-8 h-9"
+                  />
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {loadingRecordings && recordings.length === 0 ? (
@@ -728,56 +781,80 @@ export default function SurveyDetailsPage() {
                   <p>{recordingsError}</p>
                 </Alert>
               ) : recordings.length > 0 ? (
-                <div className="space-y-3">
-                  {recordings.map((rec) => {
-                    const outcome = outcomeLabel(rec.outcome)
-                    return (
-                      <div key={rec.id} className="flex flex-col gap-2 p-3 rounded-lg border bg-card sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-medium">{rec.surveyorName}</p>
-                            <Badge variant={outcome.variant} className="text-xs">{outcome.label}</Badge>
-                            {rec.incidenceType && (
-                              <span className="text-xs text-muted-foreground">({rec.incidenceType})</span>
-                            )}
+                recordingGroups.length > 0 ? (
+                  <Accordion type="multiple" className="w-full">
+                    {recordingGroups.map((group) => (
+                      <AccordionItem key={group.surveyorId} value={group.surveyorId}>
+                        <AccordionTrigger className="hover:no-underline">
+                          <div className="flex items-center gap-2 text-left">
+                            <span className="text-sm font-medium">{group.surveyorName}</span>
+                            <Badge variant="secondary" className="text-xs">
+                              {group.items.length} grabación{group.items.length !== 1 ? "es" : ""}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground hidden sm:inline">
+                              Última: {group.items[0]?.startedAt ? format(new Date(group.items[0].startedAt), "dd/MM/yyyy HH:mm") : "—"}
+                            </span>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {rec.startedAt ? format(new Date(rec.startedAt), "dd/MM/yyyy HH:mm") : "Fecha desconocida"}
-                            {" · "}Duración: {formatDuration(rec.durationSecs)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {rec.audioUrl ? (
-                            <>
-                              <audio controls preload="none" src={rec.audioUrl} className="h-9 max-w-[220px]" />
-                              <Button variant="outline" size="icon" asChild>
-                                <a href={rec.audioUrl} download={rec.fileName} title="Descargar audio">
-                                  <Download className="h-4 w-4" />
-                                </a>
-                              </Button>
-                            </>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Audio no disponible</span>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="text-destructive hover:text-destructive"
-                            disabled={deletingRecordingId === rec.id}
-                            onClick={() => handleDeleteRecording(rec.id)}
-                            title="Eliminar grabación"
-                          >
-                            {deletingRecordingId === rec.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-3">
+                            {group.items.map((rec) => {
+                              const outcome = outcomeLabel(rec.outcome)
+                              return (
+                                <div key={rec.id} className="flex flex-col gap-2 p-3 rounded-lg border bg-card sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <Badge variant={outcome.variant} className="text-xs">{outcome.label}</Badge>
+                                      {rec.incidenceType && (
+                                        <span className="text-xs text-muted-foreground">({rec.incidenceType})</span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {rec.startedAt ? format(new Date(rec.startedAt), "dd/MM/yyyy HH:mm") : "Fecha desconocida"}
+                                      {" · "}Duración: {formatDuration(rec.durationSecs)}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {rec.audioUrl ? (
+                                      <>
+                                        <audio controls preload="none" src={rec.audioUrl} className="h-9 max-w-[220px]" />
+                                        <Button variant="outline" size="icon" asChild>
+                                          <a href={rec.audioUrl} download={rec.fileName} title="Descargar audio">
+                                            <Download className="h-4 w-4" />
+                                          </a>
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">Audio no disponible</span>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="text-destructive hover:text-destructive"
+                                      disabled={deletingRecordingId === rec.id}
+                                      onClick={() => handleDeleteRecording(rec.id)}
+                                      title="Eliminar grabación"
+                                    >
+                                      {deletingRecordingId === rec.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[100px] text-muted-foreground">
+                    <p className="text-sm">Ningún encuestador coincide con "{recordingsSearch}"</p>
+                  </div>
+                )
               ) : (
                 <div className="flex flex-col items-center justify-center h-[150px] text-muted-foreground">
                   <Mic className="h-10 w-10 mb-2 opacity-50" />

@@ -2758,11 +2758,17 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                       abre la cámara nativa en móviles; en desktop cualquier
                       navegador lo ignora, por eso el botón visible ahora abre
                       el modal de cámara (CameraCaptureModal) en vez de este
-                      input directamente. */}
+                      input directamente. Bug reportado 2026-07-29 ("al darle
+                      click al botón no se activa"): este input usaba
+                      `display:none`, y algunos navegadores/WebView (incluido
+                      el de la APK) no disparan el selector de archivos vía
+                      `.click()` en un elemento con display:none — lo tratan
+                      como si no existiera. `sr-only` lo oculta visualmente
+                      sin quitarlo del flujo de accesibilidad/click. */}
                   <input
                     type="file"
                     id={`file-input-camera-fallback-${question.id}`}
-                    style={{ display: 'none' }}
+                    className="sr-only"
                     accept="image/*"
                     capture="environment"
                     onChange={(e) => handleFilesSelected(e.target.files, e.currentTarget)}
@@ -2775,10 +2781,31 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     <button
                       type="button"
                       onClick={() => {
-                        if (typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") {
-                          setCameraModalQuestionId(question.id)
+                        // Bug reportado 2026-07-29: si algo dentro de esta
+                        // comprobación lanzaba (p.ej. un WebView donde acceder
+                        // a `navigator.mediaDevices` tira en vez de devolver
+                        // undefined), el click no hacía absolutamente nada
+                        // visible — ni cámara ni selector de archivos ni
+                        // aviso. Ahora cualquier fallo cae al selector nativo
+                        // como último recurso, y si ni eso está disponible se
+                        // avisa con un toast en vez de quedar en silencio.
+                        try {
+                          if (typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") {
+                            setCameraModalQuestionId(question.id)
+                            return
+                          }
+                        } catch (err) {
+                          console.error("Error comprobando disponibilidad de cámara:", err)
+                        }
+                        const fallbackInput = document.getElementById(`file-input-camera-fallback-${question.id}`)
+                        if (fallbackInput) {
+                          fallbackInput.click()
                         } else {
-                          document.getElementById(`file-input-camera-fallback-${question.id}`)?.click()
+                          toast({
+                            title: "Cámara no disponible",
+                            description: "Este dispositivo no permite tomar fotos aquí. Usa 'Agregar archivos' en su lugar.",
+                            variant: "destructive",
+                          })
                         }
                       }}
                       className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"

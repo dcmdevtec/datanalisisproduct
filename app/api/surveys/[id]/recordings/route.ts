@@ -87,6 +87,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const ext = rec.storage_path ? rec.storage_path.split(".").pop() : "webm"
         return {
           id: rec.id,
+          // surveyorId (auditoría 2026-07-29, "hay que organizar mejor" las
+          // grabaciones): el frontend agrupa por este id, no por el nombre
+          // — dos encuestadores homónimos no deben mezclarse en un mismo
+          // grupo, y agrupar por id es estable aunque se edite el nombre.
+          surveyorId: rec.surveyor_id || null,
           surveyorName: surveyor?.name || surveyor?.email || "Encuestador desconocido",
           outcome: response?.outcome || null,
           incidenceType: response?.incidence_type || null,
