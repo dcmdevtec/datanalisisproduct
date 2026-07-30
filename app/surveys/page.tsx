@@ -5,8 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText, LayoutGrid, LayoutList, Download } from "lucide-react"
+import { Plus, Loader2, AlertCircle, Eye, Pencil, Trash2, Copy, FileText, LayoutGrid, LayoutList, Download, MoreHorizontal, BarChart3 } from "lucide-react"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase-browser"
@@ -631,59 +639,49 @@ function SurveysPageContent() {
                             {new Date(survey.created_at).toLocaleDateString()}
                           </div>
                         </TableCell>
-                        <TableCell className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => router.push(`/surveys/${survey.id}`)}
-                            title="Ver Encuesta"
-                          >
-                            <span className="sr-only">Ver Encuesta</span>
-                            <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() =>
-                              router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
-                            }
-                            title="Editar Encuesta"
-                          >
-                            <span className="sr-only">Editar Encuesta</span>
-                            <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-blue-500 hover:bg-blue-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => handleDuplicateSurvey(survey.id)}
-                            title="Duplicar Encuesta"
-                          >
-                            <span className="sr-only">Duplicar Encuesta</span>
-                            <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => handleDeleteClick(survey.id)}
-                            title="Eliminar Encuesta"
-                          >
-                            <span className="sr-only">Eliminar Encuesta</span>
-                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
-                            onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")}
-                            title="Descargar PDF"
-                          >
-                            <span className="sr-only">Descargar Encuesta (PDF)</span>
-                            <Download className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Button>
+                        <TableCell className="text-center px-2 sm:px-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"
+                              >
+                                <span className="sr-only">Abrir acciones</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => router.push(`/surveys/${survey.id}`)}>
+                                <Eye className="h-4 w-4 mr-2" /> Ver Encuesta
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)
+                                }
+                              >
+                                <Pencil className="h-4 w-4 mr-2" /> Editar Encuesta
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/reports?survey=${survey.id}`)}>
+                                <BarChart3 className="h-4 w-4 mr-2" /> Reporte
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
+                                <Copy className="h-4 w-4 mr-2" /> Duplicar Encuesta
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")}>
+                                <Download className="h-4 w-4 mr-2" /> Descargar PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteClick(survey.id)}
+                                className="text-red-500 focus:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" /> Eliminar Encuesta
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -762,54 +760,42 @@ function SurveysPageContent() {
                         </div>
                       </div>
                       
-                      {/* Botones de acción */}
-                      <div className="grid grid-cols-5 gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-1" 
-                          onClick={() => router.push(`/surveys/${survey.id}`)} 
-                          title="Ver Encuesta"
-                        >
-                          <Eye className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-1" 
-                          onClick={() => router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)} 
-                          title="Editar Encuesta"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-blue-500 hover:bg-blue-500/10 h-8 px-1" 
-                          onClick={() => handleDuplicateSurvey(survey.id)} 
-                          title="Duplicar Encuesta"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-red-500 hover:bg-red-500/10 h-8 px-1" 
-                          onClick={() => handleDeleteClick(survey.id)} 
-                          title="Eliminar Encuesta"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-1" 
-                          onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")} 
-                          title="Descargar PDF"
-                        >
-                          <Download className="h-3 w-3" />
-                        </Button>
-                      </div>
+                      {/* Menú de acciones */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="w-full gap-2 text-gray-700">
+                            <MoreHorizontal className="h-4 w-4" /> Acciones
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => router.push(`/surveys/${survey.id}`)}>
+                            <Eye className="h-4 w-4 mr-2" /> Ver Encuesta
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/projects/${survey.project_id}/create-survey?surveyId=${survey.id}`)}
+                          >
+                            <Pencil className="h-4 w-4 mr-2" /> Editar Encuesta
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/reports?survey=${survey.id}`)}>
+                            <BarChart3 className="h-4 w-4 mr-2" /> Reporte
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
+                            <Copy className="h-4 w-4 mr-2" /> Duplicar Encuesta
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")}>
+                            <Download className="h-4 w-4 mr-2" /> Descargar PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteClick(survey.id)}
+                            className="text-red-500 focus:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" /> Eliminar Encuesta
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ))}

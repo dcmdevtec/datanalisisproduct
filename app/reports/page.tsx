@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react"
 import dynamic from "next/dynamic"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
@@ -142,9 +142,10 @@ const chartTypeOptions: { value: ChartType; label: string; icon: typeof ChartPie
   { value: "trend", label: "Tendencia", icon: LineChartIcon },
 ]
 
-export default function ReportsPage() {
+function ReportsPageContent() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState<string | null>(null)
@@ -182,6 +183,16 @@ export default function ReportsPage() {
       router.push("/login")
     }
   }, [user, authLoading, router])
+
+  // Preseleccionar encuesta desde la URL (ej. ?survey=<id>) — usado por el
+  // botón "Reporte" en app/surveys/page.tsx para llevar directo al reporte
+  // de una encuesta puntual en vez de aterrizar en el filtro "Todas".
+  useEffect(() => {
+    const surveyParam = searchParams.get("survey")
+    if (surveyParam) {
+      setSelectedSurvey(surveyParam)
+    }
+  }, [searchParams])
 
   // Reset cascading filters when parent changes
   const handleCompanyChange = (v: string) => {
@@ -1381,5 +1392,13 @@ export default function ReportsPage() {
         </Tabs>
       </div>
     </DashboardLayout>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <ReportsPageContent />
+    </Suspense>
   )
 }
