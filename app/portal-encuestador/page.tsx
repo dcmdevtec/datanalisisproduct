@@ -26,6 +26,8 @@ interface SurveyItem {
   zoneName: string
   assignmentStatus: string
   deadline: string | null
+  isGeneral: boolean
+  zoneIds: string[]
 }
 
 interface DashboardKpis {
@@ -310,11 +312,11 @@ export default function PortalEncuestadorPage() {
             consola del navegador. A diferencia del micrófono esto no bloquea
             el trabajo, pero si no se avisa, nadie sabe por qué no aparece en
             el mapa de seguimiento. */}
-        {(recording.locationStatus === "denied" || recording.locationStatus === "error") && (
+        {(recording.locationStatus.status === "denied" || recording.locationStatus.status === "error") && (
           <div className="bg-amber-50 border-t border-amber-200 px-4 py-2">
             <p className="text-xs text-amber-700 flex items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-              {recording.locationStatus === "denied"
+              {recording.locationStatus.status === "denied"
                 ? "Sin permiso de ubicación — no aparecerás activo en el mapa de seguimiento. Actívalo en la configuración del navegador."
                 : "No se pudo reportar tu ubicación al servidor — puede que no aparezcas activo en el mapa de seguimiento."}
             </p>
@@ -388,28 +390,64 @@ export default function PortalEncuestadorPage() {
             </Card>
           ) : (
             <div className="space-y-2">
-              {surveys.map((s) => (
-                <Link
-                  key={s.surveyId}
-                  href={recording.status === "recording-shift" || recording.status === "recording-survey" ? `/portal-encuestador/encuesta/${s.surveyId}` : "#"}
-                  className={recording.status === "denied" ? "pointer-events-none" : ""}
-                >
-                  <Card className="hover:border-primary/40 transition-colors">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{s.title}</p>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {s.zoneName}</span>
-                          {s.deadline && (
-                            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {new Date(s.deadline).toLocaleDateString("es-CO")}</span>
-                          )}
+              {surveys.map((s) => {
+                // Fix 2026-07-29: bloqueo por zona, espejo de la APK
+                // (src/screens/SurveyListScreen.tsx::SurveyCard.handlePress
+                // en datapk). Una encuesta "general" (isGeneral) siempre se
+                // puede abrir. Si no lo es, el encuestador debe estar
+                // dentro de alguna de sus zonas asignadas (zoneIds) según
+                // la última ubicación reportada (currentZoneId) — si aún no
+                // se detecta ubicación, currentZoneId es null y también se
+                // bloquea, igual que la APK exige seleccionar zona primero.
+                const requiresZone = !s.isGeneral
+                const inRequiredZone =
+                  !requiresZone ||
+                  (!!recording.locationStatus.currentZoneId && s.zoneIds.includes(recording.locationStatus.currentZoneId))
+
+                const handleOpen = () => {
+                  if (recording.status !== "recording-shift" && recording.status !== "recording-survey") return
+                  if (!inRequiredZone) {
+                    window.alert(
+                      recording.locationStatus.currentZoneId
+                        ? `Debes estar dentro de «${s.zoneName}» para acceder a esta encuesta. Tu ubicación actual no corresponde a esa zona.`
+                        : `Debes estar dentro de «${s.zoneName}» para acceder a esta encuesta. Aún no se ha detectado tu ubicación — espera a que el mapa confirme tu posición.`
+                    )
+                    return
+                  }
+                  router.push(`/portal-encuestador/encuesta/${s.surveyId}`)
+                }
+
+                const disabled = recording.status === "denied"
+
+                return (
+                  <button
+                    key={s.surveyId}
+                    type="button"
+                    onClick={handleOpen}
+                    disabled={disabled}
+                    className={`w-full text-left ${disabled ? "pointer-events-none opacity-60" : ""}`}
+                  >
+                    <Card className={`hover:border-primary/40 transition-colors ${!inRequiredZone ? "opacity-70" : ""}`}>
+                      <CardContent className="p-4 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{s.title}</p>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MapPin className={`h-3 w-3 ${requiresZone && !inRequiredZone ? "text-amber-600" : ""}`} />
+                              {s.zoneName}
+                              {requiresZone && !inRequiredZone && " · Fuera de zona"}
+                            </span>
+                            {s.deadline && (
+                              <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {new Date(s.deadline).toLocaleDateString("es-CO")}</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                        <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      </CardContent>
+                    </Card>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>

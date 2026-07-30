@@ -40,6 +40,7 @@ export async function GET() {
     const bySurvey = new Map<string, {
       surveyId: string; title: string; description: string | null; logo: string | null
       assignmentStatus: string; deadline: string | null; zoneNames: string[]
+      isGeneral: boolean; zoneIds: string[]
     }>()
 
     for (const row of (rows as any[]) || []) {
@@ -51,6 +52,8 @@ export async function GET() {
 
       if (existing) {
         if (!existing.zoneNames.includes(zoneName)) existing.zoneNames.push(zoneName)
+        if (row.general_status) existing.isGeneral = true
+        if (row.zone_id && !existing.zoneIds.includes(row.zone_id)) existing.zoneIds.push(row.zone_id)
       } else {
         bySurvey.set(survey.id, {
           surveyId: survey.id,
@@ -60,6 +63,14 @@ export async function GET() {
           assignmentStatus: "assigned",
           deadline: row.zone_id ? null : (survey.deadline ?? null), // se completa abajo si aplica
           zoneNames: [zoneName],
+          // isGeneral/zoneIds (fix 2026-07-29): espejo del bloqueo por zona
+          // que ya existe en la APK (src/hooks/useZoneMonitoring.ts +
+          // src/screens/SurveyListScreen.tsx en datapk) — si el encuestador
+          // NO está asignado como "general" (general_status) para esta
+          // encuesta, el portal solo debe dejarlo entrar si su ubicación
+          // actual cae dentro de alguna de las zonas listadas aquí.
+          isGeneral: !!row.general_status,
+          zoneIds: row.zone_id ? [row.zone_id] : [],
         })
       }
       // deadline: preferir el de la encuesta si no hay uno específico por zona
@@ -80,6 +91,8 @@ export async function GET() {
       zoneName: s.zoneNames.join(", "),
       assignmentStatus: s.assignmentStatus,
       deadline: s.deadline,
+      isGeneral: s.isGeneral,
+      zoneIds: s.zoneIds,
     }))
 
     return NextResponse.json({ surveyorName: surveyor.name, items })

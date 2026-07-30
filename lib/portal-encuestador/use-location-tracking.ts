@@ -11,6 +11,22 @@ const LOCATION_UPDATE_INTERVAL_MS = 60 * 1000
 
 export type LocationTrackingStatus = "idle" | "active" | "denied" | "error"
 
+// Fix 2026-07-29: espejo del bloqueo por zona que ya existe en la APK
+// (src/hooks/useZoneMonitoring.ts + src/screens/SurveyListScreen.tsx en
+// datapk) — "si el encuestador no se encuentra en la zona no puede iniciar
+// la encuesta, se le bloquea hasta que esté en la zona, salvo que esté
+// asignado como encuestador general". La web no tenía ningún equivalente.
+// En vez de duplicar el cálculo geométrico en el navegador (como hace la
+// APK con turf.js), se reutiliza el que YA hace el servidor en cada POST a
+// /api/location (is_in_zone / zone, calculados por el trigger de Postgres)
+// — la respuesta de ese POST ya trae esta info, solo faltaba exponerla.
+export interface LocationTrackingResult {
+  status: LocationTrackingStatus
+  currentZoneId: string | null
+  currentZoneName: string | null
+  isInZone: boolean
+}
+
 // Pregunta del usuario (2026-07-29): "[el mapa de encuestadores activo/
 // inactivo] ya lo hace con la apk pero con el de la web no se si lo hace" —
 // confirmado por búsqueda en el código: no había NINGÚN lugar en el portal
@@ -41,8 +57,11 @@ export type LocationTrackingStatus = "idle" | "active" | "denied" | "error"
 // fuera de una encuesta (dashboard, caminando entre asignaciones) el
 // tracking de fondo sigue funcionando siempre, solo se pausa para la
 // encuesta específica que lo desactivó.
-export function useLocationTracking(status: RecordingStatus, activeSurveyId?: string | null, enabled: boolean = true) {
+export function useLocationTracking(status: RecordingStatus, activeSurveyId?: string | null, enabled: boolean = true): LocationTrackingResult {
   const [trackingStatus, setTrackingStatus] = useState<LocationTrackingStatus>("idle")
+  const [currentZoneId, setCurrentZoneId] = useState<string | null>(null)
+  const [currentZoneName, setCurrentZoneName] = useState<string | null>(null)
+  const [isInZone, setIsInZone] = useState<boolean>(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSurveyIdRef = useRef<string | null | undefined>(activeSurveyId)
   useEffect(() => {
@@ -57,6 +76,9 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
         timerRef.current = null
       }
       setTrackingStatus("idle")
+      setCurrentZoneId(null)
+      setCurrentZoneName(null)
+      setIsInZone(false)
       return
     }
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -86,6 +108,11 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
                 setTrackingStatus("error")
                 return
               }
+              const body = await res.json().catch(() => null)
+              const loc = body?.location
+              setCurrentZoneId(loc?.zone?.id ?? null)
+              setCurrentZoneName(loc?.zone?.name ?? null)
+              setIsInZone(!!loc?.is_in_zone)
               setTrackingStatus("active")
             })
             .catch((err) => {
@@ -111,5 +138,5 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
     }
   }, [status, enabled])
 
-  return trackingStatus
+  return { status: trackingStatus, currentZoneId, currentZoneName, isInZone }
 }
