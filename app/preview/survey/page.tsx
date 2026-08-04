@@ -47,6 +47,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ContactInfoQuestion } from "@/components/contact-info-question"
 import { LocationQuestion } from "@/components/location-question"
+import { CameraCaptureModal } from "@/components/camera-capture-modal"
 
 // Tipos para la lógica de secciones y preguntas
 interface Question {
@@ -195,6 +196,8 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   const submissionTokenRef = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
   )
+  // Estado para el modal de cámara (desktop) — null = cerrado, questionId = abierto para esa pregunta
+  const [cameraModalQuestionId, setCameraModalQuestionId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<{ [questionId: string]: string }>({})
   const [blockedQuestions, setBlockedQuestions] = useState<Set<string>>(new Set())
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
@@ -2715,19 +2718,26 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                 processFilesSequential(files)
               }
 
+              // Detección de dispositivo móvil (solo cliente — "use client").
+              // Móvil: capture="environment" abre la cámara nativa del OS directamente
+              // (sin permisos del browser, sin HTTPS extra).
+              // Desktop: CameraCaptureModal con getUserMedia abre la webcam del PC.
+              const isMobile = typeof navigator !== "undefined"
+                && /Mobi|Android|iPhone|iPad|iPod|IEMobile/i.test(navigator.userAgent)
+
               return (
                 <div className="space-y-2">
-                  {/*
-                    Dos inputs nativos separados — sin getUserMedia ni JavaScript:
-                    • "Adjuntar archivo" → accept sin capture → Android muestra selector
-                      de archivos (galería, Drive, etc.); en ningún caso abre cámara directo
-                    • "Tomar foto" → accept="image/*" capture="environment" → el SO abre
-                      la cámara DIRECTAMENTE, sin diálogos intermedios, sin HTTPS, sin
-                      permisos del navegador, en cualquier WebView (APK, Chrome, Safari).
-                    La conexión <label htmlFor> es manejada por el navegador de forma nativa,
-                    NO por .click() programático. Eso es la clave: .click() en inputs ocultos
-                    falla en muchos WebViews de Android; htmlFor nunca falla.
-                  */}
+                  {/* Modal de webcam — solo se activa en desktop vía setCameraModalQuestionId */}
+                  <CameraCaptureModal
+                    open={cameraModalQuestionId === question.id}
+                    onClose={() => setCameraModalQuestionId(null)}
+                    onCapture={(file) => {
+                      setCameraModalQuestionId(null)
+                      processFilesSequential([file])
+                    }}
+                  />
+
+                  {/* Input para "Adjuntar archivo" — selector de archivos normal */}
                   <input
                     type="file"
                     id={`file-input-${question.id}`}
@@ -2736,6 +2746,10 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     onChange={(e) => handleFilesSelected(e.target.files, e.currentTarget)}
                     accept=".jpg,.jpeg,.png,.pdf"
                   />
+                  {/* Input de cámara nativa — solo para móvil vía label htmlFor.
+                      capture="environment" abre la cámara trasera directamente en iOS/Android.
+                      En desktop este input existe pero el botón "Tomar foto" usa el modal
+                      en su lugar, así que este input nunca se activa en desktop. */}
                   <input
                     type="file"
                     id={`file-input-camera-${question.id}`}
@@ -2746,12 +2760,32 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   />
 
                   <div className="flex items-center flex-wrap gap-2">
-                    <label htmlFor={`file-input-${question.id}`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
-                      📎 Adjuntar archivo
+                    <label
+                      htmlFor={`file-input-${question.id}`}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700"
+                    >
+                      Adjuntar archivo
                     </label>
-                    <label htmlFor={`file-input-camera-${question.id}`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50">
-                      <Camera className="h-4 w-4" /> Tomar foto
-                    </label>
+
+                    {isMobile ? (
+                      /* Móvil: label → input con capture, abre cámara nativa del OS */
+                      <label
+                        htmlFor={`file-input-camera-${question.id}`}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
+                      >
+                        <Camera className="h-4 w-4" /> Tomar foto
+                      </label>
+                    ) : (
+                      /* Desktop: button → CameraCaptureModal con getUserMedia (webcam) */
+                      <button
+                        type="button"
+                        onClick={() => setCameraModalQuestionId(question.id)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
+                      >
+                        <Camera className="h-4 w-4" /> Tomar foto
+                      </button>
+                    )}
+
                     <div className="text-xs text-muted-foreground">Máx archivos: <b>{maxFilesAllowed}</b></div>
                   </div>
 
