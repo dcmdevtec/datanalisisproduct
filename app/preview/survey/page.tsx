@@ -47,7 +47,6 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ContactInfoQuestion } from "@/components/contact-info-question"
 import { LocationQuestion } from "@/components/location-question"
-import { CameraCaptureModal } from "@/components/camera-capture-modal"
 
 // Tipos para la lógica de secciones y preguntas
 interface Question {
@@ -196,11 +195,6 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   const submissionTokenRef = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
   )
-  // Modal de cámara para preguntas tipo archivo/foto (auditoría 2026-07-29):
-  // guarda el questionId de la pregunta para la que está abierto, o null si
-  // está cerrado. Un solo modal compartido entre todas las preguntas de
-  // archivo de la sección actual, en vez de uno por pregunta.
-  const [cameraModalQuestionId, setCameraModalQuestionId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<{ [questionId: string]: string }>({})
   const [blockedQuestions, setBlockedQuestions] = useState<Set<string>>(new Set())
   const [skipLogicHistory, setSkipLogicHistory] = useState<string[]>([])
@@ -2723,51 +2717,28 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
 
               return (
                 <div className="space-y-2">
-                  {/* Bug reportado 2026-07-29: "estoy tratando de cerrar la
-                      ventana de la camara y demora y no cierra" — antes este
-                      modal se montaba/desmontaba condicionalmente con `open`
-                      fijo en `true`, así que Radix Dialog nunca recibía una
-                      transición real true→false: al desmontar de golpe, la
-                      limpieza interna de Radix (bloqueo de scroll del body,
-                      pointer-events, trampa de foco) no se ejecutaba por su
-                      camino normal y la página quedaba semi-congelada aunque
-                      el modal ya no fuera visible. Ahora el componente queda
-                      siempre montado y `open` es una prop real que alterna,
-                      dándole a Radix la oportunidad de cerrar y limpiar
-                      correctamente. */}
-                  <CameraCaptureModal
-                    open={cameraModalQuestionId === question.id}
-                    onClose={() => setCameraModalQuestionId(null)}
-                    onCapture={(file) => {
-                      setCameraModalQuestionId(null)
-                      processFilesSequential([file])
-                    }}
-                  />
-
-                  {/* hidden file input to allow programmatic click for "Agregar archivos" */}
+                  {/*
+                    Dos inputs nativos separados — sin getUserMedia ni JavaScript:
+                    • "Adjuntar archivo" → accept sin capture → Android muestra selector
+                      de archivos (galería, Drive, etc.); en ningún caso abre cámara directo
+                    • "Tomar foto" → accept="image/*" capture="environment" → el SO abre
+                      la cámara DIRECTAMENTE, sin diálogos intermedios, sin HTTPS, sin
+                      permisos del navegador, en cualquier WebView (APK, Chrome, Safari).
+                    La conexión <label htmlFor> es manejada por el navegador de forma nativa,
+                    NO por .click() programático. Eso es la clave: .click() en inputs ocultos
+                    falla en muchos WebViews de Android; htmlFor nunca falla.
+                  */}
                   <input
                     type="file"
                     id={`file-input-${question.id}`}
-                    style={{ display: 'none' }}
+                    className="sr-only"
                     multiple={maxFilesAllowed > 1}
                     onChange={(e) => handleFilesSelected(e.target.files, e.currentTarget)}
                     accept=".jpg,.jpeg,.png,.pdf"
                   />
-                  {/* Respaldo silencioso si getUserMedia no está disponible en
-                      este navegador (muy poco común) — capture="environment"
-                      abre la cámara nativa en móviles; en desktop cualquier
-                      navegador lo ignora, por eso el botón visible ahora abre
-                      el modal de cámara (CameraCaptureModal) en vez de este
-                      input directamente. Bug reportado 2026-07-29 ("al darle
-                      click al botón no se activa"): este input usaba
-                      `display:none`, y algunos navegadores/WebView (incluido
-                      el de la APK) no disparan el selector de archivos vía
-                      `.click()` en un elemento con display:none — lo tratan
-                      como si no existiera. `sr-only` lo oculta visualmente
-                      sin quitarlo del flujo de accesibilidad/click. */}
                   <input
                     type="file"
-                    id={`file-input-camera-fallback-${question.id}`}
+                    id={`file-input-camera-${question.id}`}
                     className="sr-only"
                     accept="image/*"
                     capture="environment"
@@ -2775,43 +2746,12 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   />
 
                   <div className="flex items-center flex-wrap gap-2">
-                    <label htmlFor={`file-input-${question.id}`} className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
-                      Agregar archivos
+                    <label htmlFor={`file-input-${question.id}`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
+                      📎 Adjuntar archivo
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // Bug reportado 2026-07-29: si algo dentro de esta
-                        // comprobación lanzaba (p.ej. un WebView donde acceder
-                        // a `navigator.mediaDevices` tira en vez de devolver
-                        // undefined), el click no hacía absolutamente nada
-                        // visible — ni cámara ni selector de archivos ni
-                        // aviso. Ahora cualquier fallo cae al selector nativo
-                        // como último recurso, y si ni eso está disponible se
-                        // avisa con un toast en vez de quedar en silencio.
-                        try {
-                          if (typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") {
-                            setCameraModalQuestionId(question.id)
-                            return
-                          }
-                        } catch (err) {
-                          console.error("Error comprobando disponibilidad de cámara:", err)
-                        }
-                        const fallbackInput = document.getElementById(`file-input-camera-fallback-${question.id}`)
-                        if (fallbackInput) {
-                          fallbackInput.click()
-                        } else {
-                          toast({
-                            title: "Cámara no disponible",
-                            description: "Este dispositivo no permite tomar fotos aquí. Usa 'Agregar archivos' en su lugar.",
-                            variant: "destructive",
-                          })
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50"
-                    >
+                    <label htmlFor={`file-input-camera-${question.id}`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg cursor-pointer hover:bg-blue-50">
                       <Camera className="h-4 w-4" /> Tomar foto
-                    </button>
+                    </label>
                     <div className="text-xs text-muted-foreground">Máx archivos: <b>{maxFilesAllowed}</b></div>
                   </div>
 
