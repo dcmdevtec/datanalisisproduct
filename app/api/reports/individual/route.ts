@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 
 function mapListItem(r: any, surveyorByAssignmentId: Record<string, string> = {}) {
   const durationSecs = (r.completed_at && r.created_at)
-    ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)
+    ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
     : null
   return {
     id: r.id,

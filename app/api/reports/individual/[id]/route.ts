@@ -37,18 +37,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id: responseId } = await params
     const admin = createAdminSupabase()
 
+    // CORRECCIÓN: mismo bug que el list — el nested join
+    // assignments(surveyor_id, surveyors(name)) falla con .single() cuando
+    // la respuesta no tiene assignment_id (enviada desde APK sin asignación),
+    // retornando error y por lo tanto 404. Se separa el nombre del encuestador.
     const { data: response, error: responseError } = await admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title, description), assignments(surveyor_id, surveyors(name))"
+        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title, description)"
       )
       .eq("id", responseId)
       .single()
 
     if (responseError || !response) {
+      console.error("Error fetching response detail:", responseError)
       return NextResponse.json({ error: "Respuesta no encontrada" }, { status: 404 })
     }
     const r: any = response
+
+    // Lookup del nombre del encuestador por separado
+    let surveyorName: string | null = null
+    if (r.assignment_id) {
+      const { data: assignment } = await (admin as any)
+        .from("assignments")
+        .select("surveyors(name)")
+        .eq("id", r.assignment_id)
+        .maybeSingle()
+      surveyorName = (assignment as any)?.surveyors?.name ?? null
+    }
 
     const { data: answers } = await admin
       .from("answers")
@@ -137,7 +153,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     )).sort((a, b) => a.orderNum - b.orderNum)
 
     const durationSecs = (r.completed_at && r.created_at)
-      ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)
+      ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
       : null
 
     return NextResponse.json({
@@ -145,7 +161,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       surveyId: r.survey_id,
       surveyTitle: r.surveys?.title ?? "Sin título",
       surveyDescription: r.surveys?.description ?? null,
-      surveyorName: r.assignments?.surveyors?.name ?? null,
+      surveyorName,
       respondentName: r.respondent_name ?? null,
       respondentDocumentType: r.respondent_document_type ?? null,
       createdAt: r.created_at,
