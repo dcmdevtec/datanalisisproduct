@@ -3205,7 +3205,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
         </div>
       )
     },
-    [answers, handleAnswerChange, validationErrors, shouldShowQuestion],
+    [answers, handleAnswerChange, validationErrors, shouldShowQuestion, cameraModalQuestionId, setCameraModalQuestionId],
   )
 
   if (loading || !surveyData) {

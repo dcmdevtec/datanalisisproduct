@@ -23,25 +23,22 @@ interface CameraCaptureModalProps {
   onCapture: (file: File) => void
 }
 
-// Espera una confirmación real de que el <video> tiene frames (evento
-// loadedmetadata) — separado de startStream para poder envolverlo en un
-// timeout independiente del de getUserMedia.
-function waitForVideoReady(video: HTMLVideoElement): Promise<void> {
-  if (video.readyState >= 1) return Promise.resolve()
+// Espera el evento "playing" del video — garantiza que el primer frame
+// ya está renderizado antes de mostrar el botón Capturar.
+// Se usa DESPUÉS de llamar video.play(), no antes.
+// (loadedmetadata puede dispararse con readyState>=1 del stream anterior,
+// causando que la función retorne inmediato y el video quede en negro.)
+function waitForVideoPlaying(video: HTMLVideoElement): Promise<void> {
+  // Si ya está reproduciendo frames, resuelve de inmediato
+  if (video.readyState >= 3 && !video.paused) return Promise.resolve()
   return new Promise((resolve, reject) => {
     const cleanup = () => {
-      video.removeEventListener("loadedmetadata", onLoaded)
+      video.removeEventListener("playing", onPlaying)
       video.removeEventListener("error", onError)
     }
-    const onLoaded = () => {
-      cleanup()
-      resolve()
-    }
-    const onError = () => {
-      cleanup()
-      reject(new Error("No se pudo iniciar la vista previa de la cámara"))
-    }
-    video.addEventListener("loadedmetadata", onLoaded, { once: true })
+    const onPlaying = () => { cleanup(); resolve() }
+    const onError = () => { cleanup(); reject(new Error("No se pudo iniciar la vista previa de la cámara")) }
+    video.addEventListener("playing", onPlaying, { once: true })
     video.addEventListener("error", onError, { once: true })
   })
 }
@@ -86,6 +83,12 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+    // Limpiar srcObject para que readyState vuelva a 0 y el próximo
+    // startStream espere correctamente el nuevo stream en vez de resolver
+    // inmediato con el estado del stream anterior (causa pantalla negra).
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
   }, [])
 
   const startStream = useCallback(async (mode: "environment" | "user") => {
@@ -123,14 +126,22 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
       if (!video) {
         throw new Error("No se pudo inicializar la vista previa de la cámara")
       }
+      // Asignar el stream y llamar play() — el browser carga el stream
+      // automáticamente al asignar srcObject, y play() inicia la reproducción.
+      // Después esperamos "playing" (primer frame real) antes de mostrar
+      // "listo". Este orden evita la pantalla negra: si esperáramos
+      // loadedmetadata primero, readyState podría ya ser >=1 del stream
+      // anterior y la función resolvería de inmediato sin frames nuevos.
       video.srcObject = stream
-      // Bug reportado antes: la vista previa se veía en negro pero el botón
-      // "Capturar" estaba habilitado porque se ignoraba el resultado de
-      // play(). Ahora se espera una confirmación real de frames y un
-      // play() fallido se trata como error real.
-      await withTimeout(waitForVideoReady(video), 8000, "TIMEOUT_PREVIEW")
-      if (requestId !== requestIdRef.current) return
-      await video.play()
+      const playPromise = video.play()
+      await withTimeout(
+        Promise.all([
+          playPromise,
+          waitForVideoPlaying(video),
+        ]),
+        8000,
+        "TIMEOUT_PREVIEW"
+      )
       if (requestId !== requestIdRef.current) return
       setStatus("ready")
     } catch (err: any) {
