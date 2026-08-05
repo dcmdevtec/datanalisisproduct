@@ -168,6 +168,9 @@ function ReportsPageContent() {
   const [chartType, setChartType] = useState<ChartType>("barsV")
   const [showDataTable, setShowDataTable] = useState(true)
   const [showLabels, setShowLabels] = useState(true)
+  // Galería de archivos: se carga cuando la pregunta seleccionada es de tipo file/image_upload
+  const [fileGallery, setFileGallery] = useState<{ answerId: string; path: string; name: string; type: string; url: string }[]>([])
+  const [fileGalleryLoading, setFileGalleryLoading] = useState(false)
 
   // Filtro avanzado (slide 21): "filtrar las gráficas según lo que contestaron
   // en una pregunta en particular". Se aplica a todo el reporte vía filterParams.
@@ -328,6 +331,26 @@ function ReportsPageContent() {
 
   const questionBreakdowns = data?.responses?.questionBreakdowns ?? []
   const selectedQuestion = questionBreakdowns.find((q) => q.questionId === selectedQuestionId) ?? questionBreakdowns[0]
+
+  // Carga galería de archivos cuando la pregunta seleccionada es file/image_upload
+  useEffect(() => {
+    if (!selectedQuestion || !["file", "image_upload"].includes(selectedQuestion.type)) {
+      setFileGallery([])
+      return
+    }
+    let cancelled = false
+    setFileGalleryLoading(true)
+    setFileGallery([])
+    const params = new URLSearchParams({ questionId: selectedQuestion.questionId })
+    if (selectedSurvey !== "all") params.set("survey", selectedSurvey)
+    fetch(`/api/response-files/signed-urls?${params}`)
+      .then((r) => r.json())
+      .then((json) => { if (!cancelled) setFileGallery(json.files || []) })
+      .catch(() => { if (!cancelled) setFileGallery([]) })
+      .finally(() => { if (!cancelled) setFileGalleryLoading(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedQuestion?.questionId, selectedSurvey])
 
   const surveyorRows: SurveyorPerformanceRow[] = (data?.performance?.surveyorPerformance ?? []).map((s) => ({
     name: s.name,
@@ -1072,43 +1095,80 @@ function ReportsPageContent() {
                         <p className="text-sm text-muted-foreground">Promedio: <span className="font-semibold text-foreground">{selectedQuestion.average}</span></p>
                       )}
 
-                      <QuestionChart
-                        type={chartType}
-                        distribution={selectedQuestion.distribution ?? []}
-                        timeline={selectedQuestion.timeline ?? []}
-                        showLabels={showLabels}
-                      />
-
-                      {showDataTable && (selectedQuestion.distribution?.length ?? 0) > 0 && (
-                        <div className="rounded-md border overflow-hidden mt-4">
-                          <div className="grid grid-cols-3 p-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/50 border-b">
-                            <div>Opción</div>
-                            <div className="text-center">Respuestas</div>
-                            <div className="text-center">Porcentaje</div>
-                          </div>
-                          <div className="divide-y">
-                            {selectedQuestion.distribution!.map((d, i) => (
-                              <div key={i} className="grid grid-cols-3 p-2 text-sm items-center">
-                                <div className="truncate">{d.label}</div>
-                                <div className="text-center">{d.count}</div>
-                                <div className="text-center">{d.percentage}%</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedQuestion.sampleAnswers && selectedQuestion.sampleAnswers.length > 0 && (
-                        <div className="space-y-2">
-                          {selectedQuestion.sampleAnswers.map((ans, i) => (
-                            <div key={i} className="p-3 border rounded-md">
-                              <p className="text-sm text-muted-foreground">&ldquo;{ans}&rdquo;</p>
+                      {/* Galería de archivos para preguntas tipo archivo/foto */}
+                      {(selectedQuestion.type === "file" || selectedQuestion.type === "image_upload") ? (
+                        <div className="space-y-3">
+                          {fileGalleryLoading ? (
+                            <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground">
+                              <Loader2 className="h-5 w-5 animate-spin" /> Cargando archivos…
                             </div>
-                          ))}
-                          {selectedQuestion.totalAnswers > 5 && (
-                            <p className="text-xs text-muted-foreground">Mostrando 5 de {selectedQuestion.totalAnswers} respuestas</p>
+                          ) : fileGallery.length === 0 ? (
+                            <div className="py-10 text-center text-sm text-muted-foreground">
+                              No hay archivos subidos para esta pregunta
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-3">
+                              {fileGallery.map((f, idx) =>
+                                f.type?.startsWith("image/") ? (
+                                  <a key={idx} href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block group">
+                                    <img src={f.url} alt={f.name} className="h-24 w-24 object-cover rounded-lg border group-hover:opacity-90 transition-opacity" />
+                                    <p className="text-xs text-muted-foreground mt-1 w-24 truncate text-center">{f.name}</p>
+                                  </a>
+                                ) : (
+                                  <a key={idx} href={f.url} target="_blank" rel="noreferrer"
+                                    className="flex flex-col items-center gap-1.5 p-3 border rounded-lg bg-muted/30 hover:bg-muted transition-colors w-24 text-center">
+                                    <Download className="h-6 w-6 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground truncate w-full">{f.name}</span>
+                                  </a>
+                                )
+                              )}
+                            </div>
                           )}
+                          <p className="text-xs text-muted-foreground">
+                            {fileGallery.length} archivo{fileGallery.length !== 1 ? "s" : ""} · Las URLs expiran en 1 hora
+                          </p>
                         </div>
+                      ) : (
+                        <>
+                          <QuestionChart
+                            type={chartType}
+                            distribution={selectedQuestion.distribution ?? []}
+                            timeline={selectedQuestion.timeline ?? []}
+                            showLabels={showLabels}
+                          />
+
+                          {showDataTable && (selectedQuestion.distribution?.length ?? 0) > 0 && (
+                            <div className="rounded-md border overflow-hidden mt-4">
+                              <div className="grid grid-cols-3 p-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/50 border-b">
+                                <div>Opción</div>
+                                <div className="text-center">Respuestas</div>
+                                <div className="text-center">Porcentaje</div>
+                              </div>
+                              <div className="divide-y">
+                                {selectedQuestion.distribution!.map((d, i) => (
+                                  <div key={i} className="grid grid-cols-3 p-2 text-sm items-center">
+                                    <div className="truncate">{d.label}</div>
+                                    <div className="text-center">{d.count}</div>
+                                    <div className="text-center">{d.percentage}%</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {selectedQuestion.sampleAnswers && selectedQuestion.sampleAnswers.length > 0 && (
+                            <div className="space-y-2">
+                              {selectedQuestion.sampleAnswers.map((ans, i) => (
+                                <div key={i} className="p-3 border rounded-md">
+                                  <p className="text-sm text-muted-foreground">&ldquo;{ans}&rdquo;</p>
+                                </div>
+                              ))}
+                              {selectedQuestion.totalAnswers > 5 && (
+                                <p className="text-xs text-muted-foreground">Mostrando 5 de {selectedQuestion.totalAnswers} respuestas</p>
+                              )}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}

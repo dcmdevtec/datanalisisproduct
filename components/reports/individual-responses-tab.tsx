@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Loader2, User, Clock, ChevronLeft, ChevronRight, FileAudio, Download, AlertCircle } from "lucide-react"
+import { Loader2, User, Clock, ChevronLeft, ChevronRight, FileAudio, Download, AlertCircle, Trash2 } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 
 // Pestaña "Respuestas Individuales" (pptx slide 22): lista de encuestas
 // respondidas + vista de detalle con preguntas/respuestas y audio si existe.
@@ -31,9 +32,9 @@ interface DetailQuestion {
   type: string
   answer: string
   audioUrl: string | null
-  // Preguntas tipo archivo/foto (auditoría 2026-07-29): URLs firmadas de
-  // corta duración generadas por la API — ver app/api/reports/individual/[id]/route.ts.
-  fileUrls?: { name: string; url: string | null; type: string }[]
+  // Preguntas tipo archivo/foto: URLs firmadas + answerId+path para poder eliminar
+  fileUrls?: { name: string; url: string | null; type: string; path?: string }[]
+  answerId?: string
 }
 
 interface DetailResponse {
@@ -75,6 +76,8 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [deletingPath, setDeletingPath] = useState<string | null>(null)
+  const { toast } = useToast()
   const pageSize = 20
 
   const fetchList = useCallback(async () => {
@@ -100,6 +103,40 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
   useEffect(() => { fetchList() }, [fetchList])
   // Si cambian los filtros globales, vuelve a página 1
   useEffect(() => { setPage(1) }, [filterParams.toString()])
+
+  const handleDeleteFile = async (answerId: string, path: string) => {
+    if (!confirm("¿Eliminar este archivo? Esta acción no se puede deshacer.")) return
+    setDeletingPath(path)
+    try {
+      const res = await fetch("/api/response-files/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answerId, path }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast({ title: "Error al eliminar", description: body?.error || "No se pudo eliminar el archivo", variant: "destructive" })
+        return
+      }
+      // Quita el archivo del detalle local sin tener que recargar
+      setDetail((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          questions: prev.questions.map((q) =>
+            q.answerId === answerId
+              ? { ...q, fileUrls: (q.fileUrls || []).filter((f) => f.path !== path) }
+              : q
+          ),
+        }
+      })
+      toast({ title: "Archivo eliminado" })
+    } catch {
+      toast({ title: "Error de red", description: "No se pudo eliminar el archivo", variant: "destructive" })
+    } finally {
+      setDeletingPath(null)
+    }
+  }
 
   const openDetail = async (id: string) => {
     setSelectedId(id)
@@ -247,13 +284,43 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                           {q.fileUrls.map((f, idx) =>
                             f.url ? (
                               f.type?.startsWith("image/") ? (
-                                <a key={idx} href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block">
-                                  <img src={f.url} alt={f.name} className="h-20 w-20 object-cover rounded-md border" />
-                                </a>
+                                <div key={idx} className="relative group">
+                                  <a href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block">
+                                    <img src={f.url} alt={f.name} className="h-20 w-20 object-cover rounded-md border" />
+                                  </a>
+                                  {q.answerId && f.path && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteFile(q.answerId!, f.path!)}
+                                      disabled={deletingPath === f.path}
+                                      className="absolute top-1 right-1 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                      title="Eliminar archivo"
+                                    >
+                                      {deletingPath === f.path
+                                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                                        : <Trash2 className="h-3 w-3" />}
+                                    </button>
+                                  )}
+                                </div>
                               ) : (
-                                <a key={idx} href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs bg-muted/40 rounded-md px-2 py-1.5 border hover:bg-muted">
-                                  <Download className="h-3.5 w-3.5" /> {f.name}
-                                </a>
+                                <div key={idx} className="flex items-center gap-1 border rounded-md bg-muted/40 px-2 py-1.5">
+                                  <a href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs hover:underline">
+                                    <Download className="h-3.5 w-3.5" /> {f.name}
+                                  </a>
+                                  {q.answerId && f.path && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteFile(q.answerId!, f.path!)}
+                                      disabled={deletingPath === f.path}
+                                      className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
+                                      title="Eliminar archivo"
+                                    >
+                                      {deletingPath === f.path
+                                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                                        : <Trash2 className="h-3 w-3" />}
+                                    </button>
+                                  )}
+                                </div>
                               )
                             ) : (
                               <span key={idx} className="text-xs text-muted-foreground italic">{f.name} (URL no disponible)</span>

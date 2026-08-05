@@ -46,7 +46,22 @@ export default function PortalEncuestadorPage() {
 
   const [roleChecked, setRoleChecked] = useState(false)
   const [isSurveyor, setIsSurveyor] = useState(false)
-  const [consentGiven, setConsentGiven] = useState(false)
+  // El consentimiento se persiste en sessionStorage para que no reaparezca
+  // cada vez que el encuestador vuelve al dashboard desde una encuesta.
+  // sessionStorage dura lo que dura la pestaña del navegador — si el encuestador
+  // abre una pestaña nueva o cierra y reabre, vuelve a ver la pantalla (correcto:
+  // el navegador ya tiene el permiso de micrófono guardado, pero el encuestador
+  // debe reconocer que la grabación sigue activa en esa sesión).
+  const [consentGiven, setConsentGivenState] = useState(
+    () => typeof window !== "undefined" && sessionStorage.getItem("portal_audio_consent") === "1"
+  )
+  const setConsentGiven = (val: boolean) => {
+    if (typeof window !== "undefined") {
+      if (val) sessionStorage.setItem("portal_audio_consent", "1")
+      else sessionStorage.removeItem("portal_audio_consent")
+    }
+    setConsentGivenState(val)
+  }
 
   const [surveys, setSurveys] = useState<SurveyItem[]>([])
   const [surveysLoading, setSurveysLoading] = useState(true)
@@ -192,18 +207,28 @@ export default function PortalEncuestadorPage() {
   }, [])
 
   // Arranca el turno (y por lo tanto la grabación) apenas se confirma el
-  // consentimiento — que a su vez se pide apenas se confirma que es un
-  // encuestador válido, es decir, "apenas inician sesión".
+  // consentimiento. Si el contexto ya está grabando (el encuestador volvió al
+  // dashboard desde una encuesta y el RecordingProvider nunca se desmontó),
+  // no llama startShift() de nuevo — el turno sigue corriendo sin corte.
   useEffect(() => {
-    if (roleChecked && consentGiven && !shiftStartedRef.current) {
+    if (!roleChecked || !consentGiven) return
+    if (shiftStartedRef.current) return
+    // Si el contexto ya está grabando (vuelta al dashboard sin desmontar el layout)
+    // simplemente marcamos como iniciado para no llamar startShift() de nuevo.
+    if (recording.status === "recording-shift" || recording.status === "recording-survey") {
       shiftStartedRef.current = true
-      recording.startShift()
+      return
     }
+    shiftStartedRef.current = true
+    recording.startShift()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleChecked, consentGiven])
+  }, [roleChecked, consentGiven, recording.status])
 
-  // Cierra el turno de grabación al cerrar sesión.
+  // Cierra el turno de grabación al cerrar sesión y limpia el consentimiento
+  // para que la próxima sesión vea la pantalla de nuevo (con el micrófono ya
+  // autorizado por el navegador, es solo una confirmación visual).
   const handleSignOut = async () => {
+    setConsentGiven(false)
     await recording.endShift()
     await signOut()
   }

@@ -87,19 +87,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           // panel — el bucket 'response-media' es privado, igual que las
           // grabaciones de audio (mismo patrón que
           // app/api/surveys/[id]/recordings/route.ts).
-          let fileUrls: { name: string; url: string | null; type: string }[] = []
-          if ((q.type === "file" || q.type === "image_upload") && Array.isArray(a.value)) {
-            const withPath = a.value.filter((f: any) => f && typeof f === "object" && typeof f.path === "string")
+          let fileUrls: { name: string; url: string | null; type: string; path?: string }[] = []
+          if (q.type === "file" || q.type === "image_upload") {
+            // Normaliza el valor al formato [{path, name, type}]. Soporta 3 formatos:
+            // 1. JSON array de objetos: [{status:'uploaded', path, name, type}] — formato web actual
+            // 2. String CSV del APK: "nombre.jpg, survey-responses/..., size, image/jpeg, uploaded"
+            // 3. String CSV sin path (APK local antes de subir): "file:///..., nombre.jpg, size, type"
+            const normalizeToFileList = (val: any): { path: string; name: string; type: string }[] => {
+              if (Array.isArray(val)) {
+                return val
+                  .filter((f: any) => f && typeof f === "object" && typeof f.path === "string" && f.path.startsWith("survey-responses/"))
+                  .map((f: any) => ({ path: f.path, name: f.name || f.path.split("/").pop() || "", type: f.type || "image/jpeg" }))
+              }
+              if (typeof val === "string" && val.trim()) {
+                // APK format: "filename, survey-responses/..., size, mimetype, status"
+                const parts = val.split(",").map((s) => s.trim())
+                const pathPart = parts.find((p) => p.startsWith("survey-responses/"))
+                if (pathPart) {
+                  const name = parts[0] || pathPart.split("/").pop() || ""
+                  const type = parts.find((p) => p.startsWith("image/") || p === "application/pdf") || "image/jpeg"
+                  return [{ path: pathPart, name, type }]
+                }
+                // Local APK path (file:///...) — no se puede resolver, skip
+              }
+              return []
+            }
+
+            const fileList = normalizeToFileList(a.value)
             fileUrls = await Promise.all(
-              withPath.map(async (f: any) => {
+              fileList.map(async (f) => {
                 const { data: signed } = await admin.storage.from("response-media").createSignedUrl(f.path, 3600)
-                return { name: f.name || f.path.split("/").pop(), url: signed?.signedUrl ?? null, type: f.type || "" }
+                return { name: f.name, url: signed?.signedUrl ?? null, type: f.type, path: f.path }
               })
             )
           }
 
           return {
             questionId: q.id,
+            answerId: a.id,
             text: q.text || "Sin texto",
             type: q.type,
             orderNum: q.order_num ?? 0,

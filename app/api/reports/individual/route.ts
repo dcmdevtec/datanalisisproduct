@@ -70,10 +70,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // CORRECCIÓN: el nested join assignments(surveyor_id, surveyors(name)) con
+    // count:"exact" puede fallar silenciosamente en Supabase/PostgREST cuando
+    // hay respuestas con assignment_id=null (enviadas desde APK sin asignación),
+    // retornando 0 resultados aunque existan registros. Se separa el lookup de
+    // nombres de encuestadores en un paso post-proceso para evitar ese problema.
     let query = admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title), assignments(surveyor_id, surveyors(name))",
+        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title)",
         { count: "exact" }
       )
     if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
@@ -85,30 +90,48 @@ export async function GET(request: NextRequest) {
 
     // Cuando hay filtro de tipo, no podemos paginar en SQL puro porque el outcome
     // puede depender del fallback (status). Traemos una ventana generosa, filtramos
-    // en memoria y recortamos a la página pedida. Para datasets muy grandes esto es
-    // un costo aceptado hasta que 'outcome' esté poblado consistentemente por la APK
-    // (momento en el que se puede filtrar 100% en SQL con .eq('outcome', tipoFilter)).
+    // en memoria y recortamos a la página pedida.
+    let rawData: any[]
+    let totalCount: number
+
     if (tipoFilter !== "all") {
-      const { data: allMatching } = await query.limit(5000)
+      const { data: allMatching, error: listErr } = await (query as any).limit(5000)
+      if (listErr) {
+        console.error("Error en reports/individual list (tipo filter):", listErr)
+        return NextResponse.json({ items: [], total: 0, page, pageSize })
+      }
       const filtered = ((allMatching as any[]) || []).filter((r: any) => resolveOutcome(r) === tipoFilter)
-      const total = filtered.length
+      totalCount = filtered.length
       const start = (page - 1) * pageSize
-      const pageItems = filtered.slice(start, start + pageSize)
-      return NextResponse.json({
-        items: pageItems.map((r: any) => mapListItem(r)),
-        total,
-        page,
-        pageSize,
-      })
+      rawData = filtered.slice(start, start + pageSize)
+    } else {
+      const from = (page - 1) * pageSize
+      const to = from + pageSize - 1
+      const { data, count, error: listErr } = await (query as any).range(from, to)
+      if (listErr) {
+        console.error("Error en reports/individual list:", listErr)
+        return NextResponse.json({ items: [], total: 0, page, pageSize })
+      }
+      rawData = (data as any[]) || []
+      totalCount = count ?? 0
     }
 
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
-    const { data, count } = await query.range(from, to)
+    // Lookup de nombres de encuestadores en batch (evita N+1 y el nested join problemático)
+    const assignmentIds = [...new Set(rawData.map((r: any) => r.assignment_id).filter(Boolean))]
+    const surveyorByAssignmentId: Record<string, string> = {}
+    if (assignmentIds.length > 0) {
+      const { data: assignmentRows } = await admin
+        .from("assignments")
+        .select("id, surveyors(name)")
+        .in("id", assignmentIds)
+      for (const a of (assignmentRows as any[]) || []) {
+        if (a.surveyors?.name) surveyorByAssignmentId[a.id] = a.surveyors.name
+      }
+    }
 
     return NextResponse.json({
-      items: ((data as any[]) || []).map((r: any) => mapListItem(r)),
-      total: count ?? 0,
+      items: rawData.map((r: any) => mapListItem(r, surveyorByAssignmentId)),
+      total: totalCount,
       page,
       pageSize,
     })
@@ -118,7 +141,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function mapListItem(r: any) {
+function mapListItem(r: any, surveyorByAssignmentId: Record<string, string> = {}) {
   const durationSecs = (r.completed_at && r.created_at)
     ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)
     : null
@@ -126,7 +149,7 @@ function mapListItem(r: any) {
     id: r.id,
     surveyId: r.survey_id,
     surveyTitle: r.surveys?.title ?? "Sin título",
-    surveyorName: r.assignments?.surveyors?.name ?? null,
+    surveyorName: (r.assignment_id ? surveyorByAssignmentId[r.assignment_id] : null) ?? null,
     respondentName: r.respondent_name ?? null,
     createdAt: r.created_at,
     completedAt: r.completed_at,
