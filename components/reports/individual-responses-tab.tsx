@@ -1,15 +1,27 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Loader2, User, Clock, ChevronLeft, ChevronRight, FileAudio, Download, AlertCircle, Trash2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
+  Loader2, User, Clock, ChevronLeft, ChevronRight, FileAudio, Download,
+  AlertCircle, Trash2, Search, MapPin, CheckCircle2, Circle, FileImage,
+  FileText, X, ClipboardList, Paperclip
+} from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
-// Pestaña "Respuestas Individuales" (pptx slide 22): lista de encuestas
-// respondidas + vista de detalle con preguntas/respuestas y audio si existe.
+// ─── Pestaña "Respuestas Individuales" — Rediseño Char UX ───────────────────
+// Lista paginada con encuesta visible + detalle como Sheet lateral full-height.
+// Maneja encuestas con muchas preguntas sin perder contexto del encabezado.
+// ────────────────────────────────────────────────────────────────────────────
 
 interface ListItem {
   id: string
@@ -32,7 +44,6 @@ interface DetailQuestion {
   type: string
   answer: string
   audioUrl: string | null
-  // Preguntas tipo archivo/foto: URLs firmadas + answerId+path para poder eliminar
   fileUrls?: { name: string; url: string | null; type: string; path?: string }[]
   answerId?: string
 }
@@ -47,15 +58,18 @@ interface DetailResponse {
   durationSecs: number | null
   outcome: "efectiva" | "incidencia" | "abandonada"
   incidenceType: string | null
+  location?: any
   questions: DetailQuestion[]
 }
 
+// ── Estilos de outcome ────────────────────────────────────────────────────────
 const outcomeBadge: Record<string, { label: string; className: string }> = {
-  efectiva: { label: "Efectiva", className: "bg-[#18b0a4]/10 text-[#18b0a4] border-[#18b0a4]/30" },
-  incidencia: { label: "Incidencia", className: "bg-red-50 text-red-600 border-red-200" },
-  abandonada: { label: "Abandonada", className: "bg-amber-50 text-amber-600 border-amber-200" },
+  efectiva:   { label: "Efectiva",   className: "bg-emerald-50   text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800" },
+  incidencia: { label: "Incidencia", className: "bg-red-50       text-red-600     border-red-200     dark:bg-red-900/20     dark:text-red-400     dark:border-red-800"     },
+  abandonada: { label: "Abandonada", className: "bg-amber-50     text-amber-600   border-amber-200   dark:bg-amber-900/20   dark:text-amber-400   dark:border-amber-800"  },
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDuration(secs: number | null): string {
   if (secs === null) return "—"
   const m = Math.floor(secs / 60)
@@ -63,28 +77,81 @@ function formatDuration(secs: number | null): string {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
+function formatDate(iso: string, withTime = false): string {
+  return new Date(iso).toLocaleDateString("es-CO", {
+    day: "2-digit", month: "short", year: "numeric",
+    ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+  })
+}
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100]
+
+// ── Skeleton de fila de tabla ─────────────────────────────────────────────────
+function RowSkeleton() {
+  return (
+    <div className="grid grid-cols-12 px-3 py-3 items-center animate-pulse">
+      <div className="col-span-2 h-3 bg-muted rounded w-3/4" />
+      <div className="col-span-2 h-3 bg-muted rounded w-4/5" />
+      <div className="col-span-3 h-3 bg-muted rounded w-2/3" />
+      <div className="col-span-2 h-3 bg-muted rounded w-1/2" />
+      <div className="col-span-1 h-3 bg-muted rounded w-4/5" />
+      <div className="col-span-2 h-5 bg-muted rounded-full w-20 mx-auto" />
+    </div>
+  )
+}
+
+// ── Chip de stat para el header del sheet ─────────────────────────────────────
+function StatChip({ icon: Icon, value, label, color = "default" }: {
+  icon: React.ElementType; value: number; label: string; color?: "green" | "blue" | "amber" | "default"
+}) {
+  const colorMap = {
+    green:   "text-emerald-600 bg-emerald-50   dark:text-emerald-400 dark:bg-emerald-900/20",
+    blue:    "text-blue-600    bg-blue-50      dark:text-blue-400    dark:bg-blue-900/20",
+    amber:   "text-amber-600   bg-amber-50     dark:text-amber-400   dark:bg-amber-900/20",
+    default: "text-muted-foreground bg-muted/50",
+  }
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${colorMap[color]}`}>
+      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+      <span className="tabular-nums font-semibold">{value}</span>
+      <span className="opacity-75">{label}</span>
+    </div>
+  )
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 interface IndividualResponsesTabProps {
-  // Query string ya armado con los filtros globales (empresa/proyecto/encuesta/encuestador/tipo/fechas)
   filterParams: URLSearchParams
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
 export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabProps) {
-  const [items, setItems] = useState<ListItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  // ── List state ──────────────────────────────────────────────────────────────
+  const [items,   setItems]   = useState<ListItem[]>([])
+  const [total,   setTotal]   = useState(0)
+  const [page,    setPage]    = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [loading, setLoading] = useState(true)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<DetailResponse | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [deletingPath, setDeletingPath] = useState<string | null>(null)
-  const { toast } = useToast()
-  const pageSize = 20
 
+  // ── Detail / Sheet state ────────────────────────────────────────────────────
+  const [selectedId,    setSelectedId]    = useState<string | null>(null)
+  const [detail,        setDetail]        = useState<DetailResponse | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [deletingPath,  setDeletingPath]  = useState<string | null>(null)
+
+  // ── Search within sheet questions ───────────────────────────────────────────
+  const [qSearch,        setQSearch]        = useState("")
+  const [showOnlyAnswered, setShowOnlyAnswered] = useState(false)
+
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const { toast } = useToast()
+
+  // ── Fetch list ───────────────────────────────────────────────────────────────
   const fetchList = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams(filterParams)
-      params.set("page", String(page))
+      params.set("page",     String(page))
       params.set("pageSize", String(pageSize))
       const res = await fetch(`/api/reports/individual?${params}`)
       if (!res.ok) throw new Error("fetch failed")
@@ -98,12 +165,12 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterParams.toString(), page])
+  }, [filterParams.toString(), page, pageSize])
 
   useEffect(() => { fetchList() }, [fetchList])
-  // Si cambian los filtros globales, vuelve a página 1
-  useEffect(() => { setPage(1) }, [filterParams.toString()])
+  useEffect(() => { setPage(1)  }, [filterParams.toString(), pageSize])
 
+  // ── Delete file ──────────────────────────────────────────────────────────────
   const handleDeleteFile = async (answerId: string, path: string) => {
     if (!confirm("¿Eliminar este archivo? Esta acción no se puede deshacer.")) return
     setDeletingPath(path)
@@ -118,7 +185,6 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
         toast({ title: "Error al eliminar", description: body?.error || "No se pudo eliminar el archivo", variant: "destructive" })
         return
       }
-      // Quita el archivo del detalle local sin tener que recargar
       setDetail((prev) => {
         if (!prev) return prev
         return {
@@ -138,10 +204,13 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
     }
   }
 
+  // ── Open detail ───────────────────────────────────────────────────────────────
   const openDetail = async (id: string) => {
     setSelectedId(id)
     setDetail(null)
     setDetailLoading(true)
+    setQSearch("")
+    setShowOnlyAnswered(false)
     try {
       const res = await fetch(`/api/reports/individual/${id}`)
       if (!res.ok) throw new Error("fetch failed")
@@ -154,75 +223,152 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
     }
   }
 
+  // ── Computed ──────────────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
+  const stats = detail
+    ? {
+        total:     detail.questions.length,
+        answered:  detail.questions.filter((q) => q.answer?.trim()).length,
+        withFiles: detail.questions.filter((q) => q.fileUrls && q.fileUrls.length > 0).length,
+        withAudio: detail.questions.filter((q) => q.audioUrl).length,
+      }
+    : null
+
+  const filteredQuestions = detail?.questions.filter((q) => {
+    const matchSearch = !qSearch ||
+      q.text.toLowerCase().includes(qSearch.toLowerCase()) ||
+      q.answer.toLowerCase().includes(qSearch.toLowerCase())
+    const matchAnswered = !showOnlyAnswered || q.answer?.trim()
+    return matchSearch && matchAnswered
+  }) ?? []
+
+  const scrollToQuestion = (qId: string) => {
+    const el = scrollAreaRef.current?.querySelector(`[data-qid="${qId}"]`)
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   return (
     <div className="space-y-4">
+      {/* ── Lista principal ─────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Respuestas Individuales</CardTitle>
-          <CardDescription>Detalle de encuesta por encuesta ({total.toLocaleString()} en total)</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Respuestas Individuales</CardTitle>
+              <CardDescription className="mt-1">
+                Detalle encuesta por encuesta · {total.toLocaleString()} en total
+              </CardDescription>
+            </div>
+            {/* Selector de page size */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-xs text-muted-foreground">Mostrar</span>
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <Button
+                  key={n}
+                  variant={pageSize === n ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setPageSize(n)}
+                >
+                  {n}
+                </Button>
+              ))}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div>
+              {/* Header de columnas skeleton */}
+              <div className="grid grid-cols-12 px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y">
+                <div className="col-span-2">Encuestador</div>
+                <div className="col-span-2">Encuestado</div>
+                <div className="col-span-3">Encuesta</div>
+                <div className="col-span-2">Fecha</div>
+                <div className="col-span-1 text-center">Duración</div>
+                <div className="col-span-2 text-center">Tipo</div>
+              </div>
+              <div className="divide-y">
+                {Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}
+              </div>
             </div>
           ) : items.length === 0 ? (
-            <div className="py-16 text-center">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-muted-foreground">No hay respuestas para los filtros seleccionados</p>
+            <div className="py-20 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-40" />
+              <p className="text-muted-foreground text-sm">No hay respuestas para los filtros seleccionados</p>
             </div>
           ) : (
             <>
-              <div className="rounded-md border overflow-hidden">
-                <div className="grid grid-cols-12 p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
-                  <div className="col-span-3">Encuestador</div>
-                  <div className="col-span-3">Encuestado</div>
-                  <div className="col-span-2">Fecha</div>
-                  <div className="col-span-2 text-center">Duración</div>
-                  <div className="col-span-2 text-center">Tipo</div>
-                </div>
-                <div className="divide-y">
-                  {items.map((item) => {
-                    const badge = outcomeBadge[item.outcome]
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => openDetail(item.id)}
-                        className="w-full grid grid-cols-12 px-3 py-3 items-center text-left hover:bg-muted/30 transition-colors"
-                      >
-                        <div className="col-span-3 flex items-center gap-2 min-w-0">
-                          <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="text-sm font-medium truncate">{item.surveyorName || "Sin asignar"}</span>
-                        </div>
-                        <div className="col-span-3 text-sm truncate pr-2">{item.respondentName || "Anónimo"}</div>
-                        <div className="col-span-2 text-xs text-muted-foreground">
-                          {new Date(item.createdAt).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
-                        </div>
-                        <div className="col-span-2 text-center text-xs text-muted-foreground font-mono flex items-center justify-center gap-1">
-                          <Clock className="h-3 w-3" /> {formatDuration(item.durationSecs)}
-                        </div>
-                        <div className="col-span-2 flex justify-center">
-                          <Badge variant="outline" className={badge.className}>{badge.label}</Badge>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+              {/* Header de columnas */}
+              <div className="grid grid-cols-12 px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y">
+                <div className="col-span-2">Encuestador</div>
+                <div className="col-span-2">Encuestado</div>
+                <div className="col-span-3">Encuesta</div>
+                <div className="col-span-2">Fecha</div>
+                <div className="col-span-1 text-center">Duración</div>
+                <div className="col-span-2 text-center">Tipo</div>
+              </div>
+
+              {/* Filas */}
+              <div className="divide-y">
+                {items.map((item) => {
+                  const badge = outcomeBadge[item.outcome]
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => openDetail(item.id)}
+                      className="w-full grid grid-cols-12 px-3 py-3 items-center text-left hover:bg-muted/30 transition-colors group"
+                    >
+                      {/* Encuestador */}
+                      <div className="col-span-2 flex items-center gap-1.5 min-w-0 pr-2">
+                        <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                        <span className="text-sm truncate">{item.surveyorName || <span className="text-muted-foreground italic">Sin asignar</span>}</span>
+                      </div>
+
+                      {/* Encuestado */}
+                      <div className="col-span-2 text-sm truncate pr-2 text-foreground">
+                        {item.respondentName || <span className="text-muted-foreground italic">Anónimo</span>}
+                      </div>
+
+                      {/* Encuesta */}
+                      <div className="col-span-3 text-xs text-muted-foreground truncate pr-2" title={item.surveyTitle}>
+                        {item.surveyTitle}
+                      </div>
+
+                      {/* Fecha */}
+                      <div className="col-span-2 text-xs text-muted-foreground">
+                        {formatDate(item.createdAt)}
+                      </div>
+
+                      {/* Duración */}
+                      <div className="col-span-1 text-center text-xs text-muted-foreground font-mono">
+                        {formatDuration(item.durationSecs)}
+                      </div>
+
+                      {/* Tipo */}
+                      <div className="col-span-2 flex justify-center">
+                        <Badge variant="outline" className={`text-xs ${badge.className}`}>
+                          {badge.label}
+                        </Badge>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
 
               {/* Paginación */}
-              <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/20">
                 <p className="text-xs text-muted-foreground">
-                  Página {page} de {totalPages} — {total.toLocaleString()} respuestas
+                  Página {page} de {totalPages} · {total.toLocaleString()} respuestas
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                    <ChevronLeft className="h-4 w-4" /> Anterior
+                    <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
                   </Button>
                   <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                    Siguiente <ChevronRight className="h-4 w-4" />
+                    Siguiente <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 </div>
               </div>
@@ -231,113 +377,313 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
         </CardContent>
       </Card>
 
-      {/* Modal de detalle */}
-      <Dialog open={selectedId !== null} onOpenChange={(open) => { if (!open) { setSelectedId(null); setDetail(null) } }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      {/* ── Sheet de detalle (panel lateral full-height) ─────────────────────── */}
+      <Sheet open={selectedId !== null} onOpenChange={(open) => { if (!open) { setSelectedId(null); setDetail(null) } }}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-[820px] p-0 flex flex-col gap-0 overflow-hidden"
+        >
           {detailLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            // ── Skeleton de carga ──────────────────────────────────────────────
+            <div className="flex flex-col gap-4 p-6">
+              <div className="h-5 bg-muted rounded w-2/3 animate-pulse" />
+              <div className="h-3 bg-muted rounded w-1/2 animate-pulse" />
+              <div className="flex gap-2 mt-2">
+                {[80, 100, 70, 90].map((w, i) => (
+                  <div key={i} className={`h-7 bg-muted rounded-lg animate-pulse`} style={{ width: w }} />
+                ))}
+              </div>
+              <div className="mt-4 space-y-6">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="space-y-2 animate-pulse">
+                    <div className="h-3 bg-muted rounded w-4/5" />
+                    <div className="h-3 bg-muted/60 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : detail ? (
+          ) : !detail ? (
+            // ── Error ──────────────────────────────────────────────────────────
+            <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center p-10">
+              <AlertCircle className="h-12 w-12 text-destructive/50" />
+              <p className="text-sm text-muted-foreground">No se pudo cargar el detalle de esta respuesta</p>
+              <Button variant="outline" size="sm" onClick={() => selectedId && openDetail(selectedId)}>
+                Reintentar
+              </Button>
+            </div>
+          ) : (
             <>
-              <DialogHeader>
-                <DialogTitle>{detail.surveyTitle}</DialogTitle>
-                <DialogDescription>
-                  {detail.respondentName || "Anónimo"} · {detail.surveyorName || "Sin encuestador asignado"} ·{" "}
-                  {new Date(detail.createdAt).toLocaleString("es-CO")}
-                </DialogDescription>
-              </DialogHeader>
+              {/* ── Header fijo ─────────────────────────────────────────────── */}
+              <div className="flex-shrink-0 border-b bg-background">
+                <SheetHeader className="px-6 pt-6 pb-4">
+                  <SheetTitle className="text-base font-semibold leading-tight pr-6">
+                    {detail.surveyTitle}
+                  </SheetTitle>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
+                    {detail.respondentName && (
+                      <span className="flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {detail.respondentName}
+                      </span>
+                    )}
+                    {detail.surveyorName && (
+                      <span className="flex items-center gap-1">
+                        <ClipboardList className="h-3 w-3" />
+                        {detail.surveyorName}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {formatDate(detail.createdAt, true)}
+                    </span>
+                    {detail.durationSecs !== null && (
+                      <span className="font-mono">{formatDuration(detail.durationSecs)} min</span>
+                    )}
+                    {detail.location && (
+                      <span className="flex items-center gap-1 text-blue-500">
+                        <MapPin className="h-3 w-3" /> Con ubicación
+                      </span>
+                    )}
+                  </div>
+                </SheetHeader>
 
-              <div className="flex items-center gap-2 mb-4">
-                <Badge variant="outline" className={outcomeBadge[detail.outcome].className}>
-                  {outcomeBadge[detail.outcome].label}
-                </Badge>
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> {formatDuration(detail.durationSecs)}
-                </span>
-                {detail.incidenceType && (
-                  <span className="text-xs text-muted-foreground">· Motivo: {detail.incidenceType}</span>
+                {/* Outcome + incidence */}
+                <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+                  <Badge variant="outline" className={outcomeBadge[detail.outcome].className}>
+                    {outcomeBadge[detail.outcome].label}
+                  </Badge>
+                  {detail.incidenceType && (
+                    <span className="text-xs text-muted-foreground">· Motivo: {detail.incidenceType}</span>
+                  )}
+                </div>
+
+                {/* Stats chips */}
+                {stats && (
+                  <div className="flex flex-wrap gap-2 px-6 pb-5">
+                    <StatChip icon={ClipboardList} value={stats.total}     label="preguntas"  color="default" />
+                    <StatChip icon={CheckCircle2}  value={stats.answered}  label="respondidas" color="green"   />
+                    {stats.withFiles > 0 && (
+                      <StatChip icon={Paperclip}   value={stats.withFiles} label="con archivo" color="blue"    />
+                    )}
+                    {stats.withAudio > 0 && (
+                      <StatChip icon={FileAudio}   value={stats.withAudio} label="con audio"   color="amber"   />
+                    )}
+                  </div>
                 )}
+
+                {/* Barra de progreso de respuestas */}
+                {stats && stats.total > 0 && (
+                  <div className="px-6 pb-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] text-muted-foreground">Completitud</span>
+                      <span className="text-[11px] font-semibold text-muted-foreground tabular-nums">
+                        {Math.round((stats.answered / stats.total) * 100)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{ width: `${(stats.answered / stats.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Búsqueda + filtro */}
+                <div className="flex items-center gap-2 px-6 pb-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar pregunta o respuesta…"
+                      value={qSearch}
+                      onChange={(e) => setQSearch(e.target.value)}
+                      className="h-8 pl-8 pr-8 text-xs"
+                    />
+                    {qSearch && (
+                      <button
+                        onClick={() => setQSearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <Button
+                    variant={showOnlyAnswered ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 text-xs flex-shrink-0"
+                    onClick={() => setShowOnlyAnswered((v) => !v)}
+                  >
+                    Solo respondidas
+                  </Button>
+                </div>
               </div>
 
-              <div className="space-y-5">
-                {detail.questions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-8 text-center">Sin respuestas registradas para esta encuesta</p>
+              {/* ── Cuerpo scrollable — preguntas ────────────────────────────── */}
+              <div
+                ref={scrollAreaRef}
+                className="flex-1 overflow-y-auto"
+              >
+                {filteredQuestions.length === 0 ? (
+                  <div className="py-20 text-center">
+                    <Search className="h-8 w-8 mx-auto mb-3 text-muted-foreground opacity-40" />
+                    <p className="text-sm text-muted-foreground">
+                      {qSearch ? "Sin resultados para esa búsqueda" : "Sin preguntas respondidas"}
+                    </p>
+                  </div>
                 ) : (
-                  detail.questions.map((q) => (
-                    <div key={q.questionId} className="border-b pb-4 last:border-0">
-                      <p className="text-sm font-medium mb-1.5">{q.text}</p>
-                      <p className="text-sm text-muted-foreground">{q.answer || <span className="italic">Sin respuesta</span>}</p>
-                      {q.audioUrl && (
-                        <div className="mt-2 flex items-center gap-2 bg-muted/40 rounded-md p-2">
-                          <FileAudio className="h-4 w-4 text-[#18b0a4] flex-shrink-0" />
-                          <audio controls src={q.audioUrl} className="h-8 flex-1 min-w-0" />
-                          <a href={q.audioUrl} download className="flex-shrink-0">
-                            <Button variant="ghost" size="sm" className="h-8 px-2">
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                          </a>
-                        </div>
-                      )}
-                      {q.fileUrls && q.fileUrls.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {q.fileUrls.map((f, idx) =>
-                            f.url ? (
-                              f.type?.startsWith("image/") ? (
-                                <div key={idx} className="relative group">
-                                  <a href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block">
-                                    <img src={f.url} alt={f.name} className="h-20 w-20 object-cover rounded-md border" />
-                                  </a>
-                                  {q.answerId && f.path && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteFile(q.answerId!, f.path!)}
-                                      disabled={deletingPath === f.path}
-                                      className="absolute top-1 right-1 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                                      title="Eliminar archivo"
-                                    >
-                                      {deletingPath === f.path
-                                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                                        : <Trash2 className="h-3 w-3" />}
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <div key={idx} className="flex items-center gap-1 border rounded-md bg-muted/40 px-2 py-1.5">
-                                  <a href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs hover:underline">
-                                    <Download className="h-3.5 w-3.5" /> {f.name}
-                                  </a>
-                                  {q.answerId && f.path && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteFile(q.answerId!, f.path!)}
-                                      disabled={deletingPath === f.path}
-                                      className="ml-1 text-muted-foreground hover:text-red-600 transition-colors"
-                                      title="Eliminar archivo"
-                                    >
-                                      {deletingPath === f.path
-                                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                                        : <Trash2 className="h-3 w-3" />}
-                                    </button>
-                                  )}
-                                </div>
-                              )
+                  <div className="divide-y">
+                    {filteredQuestions.map((q, idx) => {
+                      const hasAnswer = q.answer?.trim()
+                      const globalIdx = detail.questions.findIndex((dq) => dq.questionId === q.questionId)
+                      return (
+                        <div
+                          key={q.questionId}
+                          data-qid={q.questionId}
+                          className="px-6 py-5 scroll-mt-4"
+                        >
+                          {/* Número + texto de pregunta */}
+                          <div className="flex items-start gap-3 mb-3">
+                            <span className={`
+                              flex-shrink-0 inline-flex items-center justify-center
+                              w-6 h-6 rounded-full text-[11px] font-bold tabular-nums
+                              ${hasAnswer
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                                : "bg-muted text-muted-foreground"
+                              }
+                            `}>
+                              {globalIdx + 1}
+                            </span>
+                            <p className="text-sm font-medium leading-snug text-foreground pt-0.5">
+                              {q.text}
+                            </p>
+                          </div>
+
+                          {/* Respuesta */}
+                          <div className="ml-9">
+                            {hasAnswer ? (
+                              <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                                {q.answer}
+                              </p>
                             ) : (
-                              <span key={idx} className="text-xs text-muted-foreground italic">{f.name} (URL no disponible)</span>
-                            )
-                          )}
+                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-full italic">
+                                <Circle className="h-3 w-3" /> Sin respuesta
+                              </span>
+                            )}
+
+                            {/* Audio */}
+                            {q.audioUrl && (
+                              <div className="mt-3 flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+                                <FileAudio className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                                <audio controls src={q.audioUrl} className="h-8 flex-1 min-w-0" />
+                                <a href={q.audioUrl} download>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <Download className="h-3.5 w-3.5" />
+                                  </Button>
+                                </a>
+                              </div>
+                            )}
+
+                            {/* Archivos / imágenes */}
+                            {q.fileUrls && q.fileUrls.length > 0 && (
+                              <div className="mt-3">
+                                <p className="text-[11px] text-muted-foreground mb-2 uppercase tracking-wide font-medium">
+                                  {q.fileUrls.length === 1 ? "1 archivo adjunto" : `${q.fileUrls.length} archivos adjuntos`}
+                                </p>
+                                <div className="flex flex-wrap gap-3">
+                                  {q.fileUrls.map((f, fi) =>
+                                    f.url ? (
+                                      f.type?.startsWith("image/") ? (
+                                        // Imagen: miniatura grande con hover delete
+                                        <div key={fi} className="relative group rounded-xl overflow-hidden border bg-muted/30">
+                                          <a href={f.url} target="_blank" rel="noreferrer" title={f.name}>
+                                            <img
+                                              src={f.url}
+                                              alt={f.name}
+                                              className="h-36 w-36 object-cover"
+                                            />
+                                          </a>
+                                          {/* Overlay con nombre en hover */}
+                                          <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {f.name}
+                                          </div>
+                                          {/* Botón eliminar */}
+                                          {q.answerId && f.path && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteFile(q.answerId!, f.path!)}
+                                              disabled={deletingPath === f.path}
+                                              className="absolute top-1.5 right-1.5 bg-black/60 hover:bg-red-600 text-white rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              title="Eliminar"
+                                            >
+                                              {deletingPath === f.path
+                                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                : <Trash2 className="h-3 w-3" />
+                                              }
+                                            </button>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        // PDF / otro archivo
+                                        <div key={fi} className="flex items-center gap-2 bg-muted/40 border rounded-xl px-3 py-2.5 text-xs">
+                                          <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                                          <a
+                                            href={f.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="hover:underline max-w-[140px] truncate"
+                                            title={f.name}
+                                          >
+                                            {f.name}
+                                          </a>
+                                          <a href={f.url} download>
+                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                              <Download className="h-3 w-3" />
+                                            </Button>
+                                          </a>
+                                          {q.answerId && f.path && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteFile(q.answerId!, f.path!)}
+                                              disabled={deletingPath === f.path}
+                                              className="text-muted-foreground hover:text-destructive transition-colors"
+                                              title="Eliminar"
+                                            >
+                                              {deletingPath === f.path
+                                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                : <Trash2 className="h-3 w-3" />
+                                              }
+                                            </button>
+                                          )}
+                                        </div>
+                                      )
+                                    ) : (
+                                      <span key={fi} className="text-xs text-muted-foreground italic">
+                                        {f.name} (URL no disponible)
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ))
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Resultado de búsqueda */}
+                {qSearch && filteredQuestions.length > 0 && (
+                  <div className="px-6 py-3 text-xs text-muted-foreground border-t bg-muted/20 text-center">
+                    {filteredQuestions.length} de {detail.questions.length} preguntas
+                  </div>
                 )}
               </div>
             </>
-          ) : (
-            <p className="text-sm text-muted-foreground py-8 text-center">No se pudo cargar el detalle</p>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
