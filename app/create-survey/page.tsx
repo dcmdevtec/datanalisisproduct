@@ -63,7 +63,7 @@ export default function CreateSurveyPage() {
   ])
   const [settings, setSettings] = useState({
     collectLocation: true,
-    allowAudio: false,
+    allowAudio: true,
     offlineMode: true,
     distributionMethods: ["app"],
   })

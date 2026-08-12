@@ -54,12 +54,47 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .order("started_at", { ascending: false })
 
     if (recordingsError) {
+      // Si la tabla no existe (código 42P01 = undefined_table) informar con
+      // un mensaje claro en vez de un genérico 500.
+      const tableNotFound = recordingsError.code === "42P01" || recordingsError.message?.includes("does not exist")
       console.error("Error obteniendo grabaciones:", recordingsError)
-      return NextResponse.json({ error: "No se pudieron obtener las grabaciones", details: recordingsError.message }, { status: 500 })
+      return NextResponse.json({
+        error: "No se pudieron obtener las grabaciones",
+        details: recordingsError.message,
+        diagnostic: tableNotFound
+          ? "La tabla surveyor_recordings no existe en la base de datos. Ejecuta la migración SQL para crearla."
+          : "Error de base de datos al consultar grabaciones.",
+        tableExists: !tableNotFound,
+      }, { status: 500 })
     }
 
     if (!recordings || recordings.length === 0) {
-      return NextResponse.json({ recordings: [] })
+      // Diagnóstico extra: ¿hay grabaciones en otros estados (failed/pending)?
+      const { data: allRecs, error: allRecsError } = await admin
+        .from("surveyor_recordings")
+        .select("id, upload_status, response_id, scope")
+        .in("response_id", responseIds)
+        .eq("scope", "survey")
+
+      const failedCount = (allRecs || []).filter((r: any) => r.upload_status === "failed").length
+      const pendingCount = (allRecs || []).filter((r: any) => r.upload_status === "pending").length
+      const noResponseId = (allRecs || []).filter((r: any) => !r.response_id).length
+
+      return NextResponse.json({
+        recordings: [],
+        diagnostic: {
+          responseCount: responseIds.length,
+          uploadedRecordingsCount: 0,
+          failedRecordingsCount: failedCount,
+          pendingRecordingsCount: pendingCount,
+          recordingsWithNoResponseId: noResponseId,
+          hint: failedCount > 0
+            ? `Hay ${failedCount} grabacion(es) con upload_status='failed'. El audio no pudo subirse al storage.`
+            : pendingCount > 0
+              ? `Hay ${pendingCount} grabacion(es) con upload_status='pending'. Están en proceso de subida.`
+              : "No hay grabaciones de audio ligadas a las respuestas de esta encuesta. Verifica que: (1) la encuesta fue tomada desde el portal encuestador /portal-encuestador/encuesta/[id], no desde la vista previa web; (2) el turno (shift) fue iniciado correctamente; (3) allowAudio está habilitado en la configuración de la encuesta.",
+        },
+      })
     }
 
     const surveyorIds = Array.from(new Set(recordings.map((r: any) => r.surveyor_id).filter(Boolean)))

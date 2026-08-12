@@ -60,7 +60,7 @@ export default function EditSurveyPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [settings, setSettings] = useState<Settings>({
     collectLocation: true,
-    allowAudio: false,
+    allowAudio: true,
     offlineMode: true,
     distributionMethods: ["app"],
   })

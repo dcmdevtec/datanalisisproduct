@@ -1173,7 +1173,7 @@ export function CreateSurveyForProjectPageContent() {
           deadline: deadline || null,
           settings: settings || {
             collectLocation: true,
-            allowAudio: false,
+            allowAudio: true,
             offlineMode: true,
             distributionMethods: ["app"],
           },
@@ -1356,7 +1356,7 @@ export function CreateSurveyForProjectPageContent() {
 
   const [settings, setSettings] = useState<SurveySettings>({
     collectLocation: true,
-    allowAudio: false,
+    allowAudio: true,
     offlineMode: true,
     distributionMethods: ["app"],
     theme: {

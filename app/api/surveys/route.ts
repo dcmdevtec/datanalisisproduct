@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       description,
       settings: settings || {
         collectLocation: true,
-        allowAudio: false,
+        allowAudio: true,
         offlineMode: true,
         distributionMethods: ["app"],
       },

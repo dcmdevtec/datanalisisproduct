@@ -116,21 +116,46 @@ export async function GET(request: NextRequest) {
       totalCount = count ?? 0
     }
 
-    // Lookup de nombres de encuestadores en batch (evita N+1 y el nested join problemático)
+    // Lookup de nombres de encuestadores en batch (evita N+1 y el nested join problemático).
+    // CORRECCIÓN (2026-08-12): el portal encuestador guarda en responses.assignment_id el id
+    // de survey_surveyor_zones, NO de la tabla legacy `assignments` (que nunca se llena —
+    // ver sql/2026_07_fix_assignment_source_table.sql y el comentario en
+    // app/api/portal-encuestador/assignments/[id]/route.ts). El lookup anterior contra
+    // `assignments` siempre retornaba vacío, causando que todos los encuestadores del portal
+    // aparecieran como "Sin asignar" en Reportes.
     const assignmentIds = [...new Set(rawData.map((r: any) => r.assignment_id).filter(Boolean))]
-    const surveyorByAssignmentId: Record<string, string> = {}
+    // surveyor_info_map: id de assignment → { name, email } del encuestador
+    const surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {}
     if (assignmentIds.length > 0) {
-      const { data: assignmentRows } = await admin
-        .from("assignments")
-        .select("id, surveyors(name)")
+      // 1️⃣ survey_surveyor_zones (flujo real del portal encuestador)
+      const { data: sszRows } = await (admin as any)
+        .from("survey_surveyor_zones")
+        .select("id, surveyor_id, surveyors(id, name, email)")
         .in("id", assignmentIds)
-      for (const a of (assignmentRows as any[]) || []) {
-        if (a.surveyors?.name) surveyorByAssignmentId[a.id] = a.surveyors.name
+      for (const a of (sszRows as any[]) || []) {
+        surveyorInfoByAssignmentId[a.id] = {
+          name: a.surveyors?.name ?? null,
+          email: a.surveyors?.email ?? null,
+        }
+      }
+      // 2️⃣ Fallback: assignments legacy (por si migración parcial)
+      const missing = assignmentIds.filter((id) => !surveyorInfoByAssignmentId[id])
+      if (missing.length > 0) {
+        const { data: assignmentRows } = await (admin as any)
+          .from("assignments")
+          .select("id, surveyors(name, email)")
+          .in("id", missing)
+        for (const a of (assignmentRows as any[]) || []) {
+          surveyorInfoByAssignmentId[a.id] = {
+            name: a.surveyors?.name ?? null,
+            email: a.surveyors?.email ?? null,
+          }
+        }
       }
     }
 
     return NextResponse.json({
-      items: rawData.map((r: any) => mapListItem(r, surveyorByAssignmentId)),
+      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId)),
       total: totalCount,
       page,
       pageSize,
@@ -141,15 +166,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function mapListItem(r: any, surveyorByAssignmentId: Record<string, string> = {}) {
+function mapListItem(
+  r: any,
+  surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {}
+) {
   const durationSecs = (r.completed_at && r.created_at)
     ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
     : null
+  const surveyorInfo = r.assignment_id ? (surveyorInfoByAssignmentId[r.assignment_id] ?? null) : null
   return {
     id: r.id,
     surveyId: r.survey_id,
     surveyTitle: r.surveys?.title ?? "Sin título",
-    surveyorName: (r.assignment_id ? surveyorByAssignmentId[r.assignment_id] : null) ?? null,
+    surveyorName: surveyorInfo?.name ?? null,
+    surveyorEmail: surveyorInfo?.email ?? null,
     respondentName: r.respondent_name ?? null,
     createdAt: r.created_at,
     completedAt: r.completed_at,

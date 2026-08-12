@@ -104,6 +104,7 @@ export default function SurveyDetailsPage() {
   const [recordings, setRecordings] = useState<any[]>([])
   const [loadingRecordings, setLoadingRecordings] = useState(false)
   const [recordingsError, setRecordingsError] = useState<string | null>(null)
+  const [recordingsDiagnostic, setRecordingsDiagnostic] = useState<any>(null)
   const [deletingRecordingId, setDeletingRecordingId] = useState<string | null>(null)
   // Búsqueda por nombre de encuestador dentro de la sección de grabaciones
   // (feedback 2026-07-29: "van a haber muchos encuestadores... eso se debe
@@ -249,8 +250,9 @@ export default function SurveyDetailsPage() {
     try {
       const response = await fetch(`/api/surveys/${surveyId}/recordings`)
       const data = await response.json()
-      if (!response.ok) throw new Error(data?.details || data?.error || "No se pudieron cargar las grabaciones")
+      if (!response.ok) throw new Error(data?.diagnostic || data?.details || data?.error || "No se pudieron cargar las grabaciones")
       setRecordings(data.recordings || [])
+      setRecordingsDiagnostic(data.diagnostic || null)
     } catch (err: any) {
       console.error("Error fetching recordings:", err)
       setRecordingsError(err.message || "No se pudieron cargar las grabaciones")
@@ -868,9 +870,30 @@ export default function SurveyDetailsPage() {
                   </div>
                 )
               ) : (
-                <div className="flex flex-col items-center justify-center h-[150px] text-muted-foreground">
-                  <Mic className="h-10 w-10 mb-2 opacity-50" />
-                  <p className="text-sm">No hay grabaciones para esta encuesta todavía</p>
+                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
+                  <Mic className="h-10 w-10 opacity-40" />
+                  <p className="text-sm font-medium">No hay grabaciones para esta encuesta</p>
+                  {recordingsDiagnostic && (
+                    <div className="max-w-md text-center space-y-1">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {recordingsDiagnostic.hint || recordingsDiagnostic}
+                      </p>
+                      {(recordingsDiagnostic.failedRecordingsCount > 0 || recordingsDiagnostic.pendingRecordingsCount > 0) && (
+                        <div className="flex gap-3 justify-center mt-2 text-xs">
+                          {recordingsDiagnostic.failedRecordingsCount > 0 && (
+                            <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-0.5 rounded-full">
+                              {recordingsDiagnostic.failedRecordingsCount} fallidas
+                            </span>
+                          )}
+                          {recordingsDiagnostic.pendingRecordingsCount > 0 && (
+                            <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                              {recordingsDiagnostic.pendingRecordingsCount} pendientes
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

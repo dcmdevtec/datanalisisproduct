@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
 import { requireRole } from "@/lib/api-auth"
+import { createAdminSupabase } from "@/lib/supabase-server"
 
 /**
  * Calcula el estado del encuestador basado en minutos transcurridos
@@ -89,26 +88,10 @@ export async function GET(request: Request) {
   const auth = await requireRole(["admin", "supervisor"])
   if (!auth.ok) return auth.response
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
-  }
-
-  let supabase
-  try {
-    const cookieStore = cookies()
-    supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get: (name: string) => cookieStore.get(name)?.value,
-        },
-      }
-    )
-  } catch (error) {
-    console.error("❌ Error creating Supabase client:", error)
-    return NextResponse.json({ error: "Database connection failed" }, { status: 500 })
-  }
+  // Fix 2026-08-12: cookies() sin await (bug Next.js 15) → cliente anon sin
+  // sesión → lecturas de vistas/tablas con RLS podían fallar. Admin client:
+  // auth ya verificada por requireRole() arriba.
+  const supabase = createAdminSupabase()
 
   try {
     const { searchParams } = new URL(request.url)
@@ -292,26 +275,8 @@ export async function POST(request: Request) {
   const auth = await requireRole(["admin", "supervisor"])
   if (!auth.ok) return auth.response
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
-  }
-
-  let supabase
-  try {
-    const cookieStore = cookies()
-    supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get: (name: string) => cookieStore.get(name)?.value,
-        },
-      }
-    )
-  } catch (error) {
-    console.error("❌ Error creating Supabase client:", error)
-    return NextResponse.json({ error: "Database connection failed" }, { status: 500 })
-  }
+  // Fix 2026-08-12: mismo bug de cookies() sin await que el GET handler.
+  const supabase = createAdminSupabase()
 
   try {
     const body = await request.json()

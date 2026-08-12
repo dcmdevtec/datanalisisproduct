@@ -55,15 +55,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     const r: any = response
 
-    // Lookup del nombre del encuestador por separado
+    // Lookup del encuestador — mismo fix que el list API (2026-08-12):
+    // responses.assignment_id apunta a survey_surveyor_zones.id, no a assignments.id.
     let surveyorName: string | null = null
+    let surveyorEmail: string | null = null
     if (r.assignment_id) {
-      const { data: assignment } = await (admin as any)
-        .from("assignments")
-        .select("surveyors(name)")
+      // 1️⃣ survey_surveyor_zones (flujo real del portal encuestador)
+      const { data: sszRow } = await (admin as any)
+        .from("survey_surveyor_zones")
+        .select("id, surveyors(id, name, email)")
         .eq("id", r.assignment_id)
         .maybeSingle()
-      surveyorName = (assignment as any)?.surveyors?.name ?? null
+      if (sszRow?.surveyors) {
+        surveyorName = (sszRow as any).surveyors?.name ?? null
+        surveyorEmail = (sszRow as any).surveyors?.email ?? null
+      } else {
+        // 2️⃣ Fallback: assignments legacy
+        const { data: assignment } = await (admin as any)
+          .from("assignments")
+          .select("surveyors(name, email)")
+          .eq("id", r.assignment_id)
+          .maybeSingle()
+        surveyorName = (assignment as any)?.surveyors?.name ?? null
+        surveyorEmail = (assignment as any)?.surveyors?.email ?? null
+      }
     }
 
     const { data: answers } = await admin
@@ -156,13 +171,65 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
       : null
 
+    // Extraer nombre del encuestado desde pregunta contact_info si respondent_name es null.
+    // El APK solo popula respondent_name cuando hay docType + docNum (ver /api/responses/route.ts).
+    // Si solo hay nombre sin documento, lo rescatamos aquí directamente de la respuesta.
+    let respondentName: string | null = r.respondent_name ?? null
+    let respondentContact: { email?: string; phone?: string; documentType?: string; documentNumber?: string } | null = null
+    if (!respondentName) {
+      const contactAnswer = questions.find((q) => q.type === "contact_info")
+      if (contactAnswer?.rawAnswer && typeof contactAnswer.rawAnswer === "object") {
+        const val = contactAnswer.rawAnswer as any
+        const fullName = val.fullName || [val.firstName, val.lastName].filter(Boolean).join(" ").trim() || null
+        if (fullName) respondentName = fullName
+        respondentContact = {
+          email: val.email || undefined,
+          phone: val.phone || undefined,
+          documentType: val.documentType || undefined,
+          documentNumber: val.documentNumber || undefined,
+        }
+      }
+    }
+
+    // Grabación del portal encuestador para esta respuesta específica.
+    // surveyor_recordings.response_id es el vínculo. Puede no existir si:
+    // (a) la encuesta fue tomada desde la vista previa web (no el portal),
+    // (b) la tabla surveyor_recordings no existe todavía en la DB,
+    // (c) allowAudio=false, o (d) el upload falló.
+    let surveyorRecording: { audioUrl: string | null; durationSecs: number | null; startedAt: string | null } | null = null
+    try {
+      const { data: recRow } = await (admin as any)
+        .from("surveyor_recordings")
+        .select("id, storage_path, duration_secs, started_at, upload_status")
+        .eq("response_id", responseId)
+        .eq("scope", "survey")
+        .eq("upload_status", "uploaded")
+        .limit(1)
+        .maybeSingle() as { data: { storage_path: string; duration_secs: number | null; started_at: string | null } | null }
+
+      if (recRow?.storage_path) {
+        const { data: signed } = await admin.storage
+          .from("response-media")
+          .createSignedUrl(recRow.storage_path, 3600)
+        surveyorRecording = {
+          audioUrl: signed?.signedUrl ?? null,
+          durationSecs: recRow.duration_secs ?? null,
+          startedAt: recRow.started_at ?? null,
+        }
+      }
+    } catch {
+      // Silencioso: surveyor_recordings podría no existir todavía
+    }
+
     return NextResponse.json({
       id: r.id,
       surveyId: r.survey_id,
       surveyTitle: r.surveys?.title ?? "Sin título",
       surveyDescription: r.surveys?.description ?? null,
       surveyorName,
-      respondentName: r.respondent_name ?? null,
+      surveyorEmail,
+      respondentName,
+      respondentContact,
       respondentDocumentType: r.respondent_document_type ?? null,
       createdAt: r.created_at,
       completedAt: r.completed_at,
@@ -171,6 +238,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       outcome: resolveOutcome(r),
       incidenceType: r.incidence_type ?? null,
       location: r.location ?? null,
+      surveyorRecording,
       questions,
     })
   } catch (error) {

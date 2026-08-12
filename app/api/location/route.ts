@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
 import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
 import { requireRole } from "@/lib/api-auth"
+import { createAdminSupabase } from "@/lib/supabase-server"
 
 /**
  * POST /api/location
@@ -44,29 +43,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 })
   }
 
-  // Validar configuración
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    console.error("❌ Missing Supabase configuration")
-    return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
-  }
-
-  // Crear cliente Supabase
-  let supabase
-  try {
-    const cookieStore = cookies()
-    supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get: (name: string) => cookieStore.get(name)?.value,
-        },
-      }
-    )
-  } catch (error) {
-    console.error("❌ Error creating Supabase client:", error)
-    return NextResponse.json({ error: "Database connection failed" }, { status: 500 })
-  }
+  // Usar admin client: auth ya verificada por resolveCurrentSurveyor() arriba.
+  // Fix 2026-08-12: el cliente anon anterior usaba cookies() sin await
+  // (bug Next.js 15 — devuelve Promise en vez de ReadonlyRequestCookies),
+  // por lo que el cliente no tenía sesión y los INSERTs fallaban con RLS.
+  const supabase = createAdminSupabase()
 
   try {
     // Parsear el body
@@ -254,25 +235,9 @@ export async function GET(request: Request) {
     }
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
-  }
-
-  let supabase
-  try {
-    const cookieStore = cookies()
-    supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get: (name: string) => cookieStore.get(name)?.value,
-        },
-      }
-    )
-  } catch (error) {
-    return NextResponse.json({ error: "Database connection failed" }, { status: 500 })
-  }
+  // Fix 2026-08-12: mismo bug de cookies() sin await. Admin client: auth ya
+  // verificada por requireRole() arriba.
+  const supabase = createAdminSupabase()
 
   try {
     const { searchParams } = new URL(request.url)

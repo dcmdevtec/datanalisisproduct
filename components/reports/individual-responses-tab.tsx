@@ -6,15 +6,15 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Loader2, User, Clock, ChevronLeft, ChevronRight, FileAudio, Download,
   AlertCircle, Trash2, Search, MapPin, CheckCircle2, Circle, FileImage,
-  FileText, X, ClipboardList, Paperclip
+  FileText, X, ClipboardList, Paperclip, Mail
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -28,6 +28,7 @@ interface ListItem {
   surveyId: string
   surveyTitle: string
   surveyorName: string | null
+  surveyorEmail: string | null
   respondentName: string | null
   createdAt: string
   completedAt: string | null
@@ -43,6 +44,7 @@ interface DetailQuestion {
   text: string
   type: string
   answer: string
+  rawAnswer?: any
   audioUrl: string | null
   fileUrls?: { name: string; url: string | null; type: string; path?: string }[]
   answerId?: string
@@ -52,13 +54,16 @@ interface DetailResponse {
   id: string
   surveyTitle: string
   surveyorName: string | null
+  surveyorEmail: string | null
   respondentName: string | null
+  respondentContact?: { email?: string; phone?: string; documentType?: string; documentNumber?: string } | null
   createdAt: string
   completedAt: string | null
   durationSecs: number | null
   outcome: "efectiva" | "incidencia" | "abandonada"
   incidenceType: string | null
   location?: any
+  surveyorRecording?: { audioUrl: string | null; durationSecs: number | null; startedAt: string | null } | null
   questions: DetailQuestion[]
 }
 
@@ -324,12 +329,25 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       {/* Encuestador */}
                       <div className="col-span-2 flex items-center gap-1.5 min-w-0 pr-2">
                         <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                        <span className="text-sm truncate">{item.surveyorName || <span className="text-muted-foreground italic">Sin asignar</span>}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm truncate leading-tight">
+                            {item.surveyorName || (item.surveyorEmail
+                              ? <span className="text-xs text-muted-foreground">{item.surveyorEmail}</span>
+                              : <span className="text-muted-foreground italic text-xs">Sin asignar</span>
+                            )}
+                          </p>
+                          {item.surveyorName && item.surveyorEmail && (
+                            <p className="text-[11px] text-muted-foreground truncate">{item.surveyorEmail}</p>
+                          )}
+                        </div>
                       </div>
 
                       {/* Encuestado */}
                       <div className="col-span-2 text-sm truncate pr-2 text-foreground">
-                        {item.respondentName || <span className="text-muted-foreground italic">Anónimo</span>}
+                        {item.respondentName
+                          ? item.respondentName
+                          : <span className="text-muted-foreground font-mono text-xs">#{item.id.slice(0, 8)}</span>
+                        }
                       </div>
 
                       {/* Encuesta */}
@@ -377,11 +395,10 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
         </CardContent>
       </Card>
 
-      {/* ── Sheet de detalle (panel lateral full-height) ─────────────────────── */}
-      <Sheet open={selectedId !== null} onOpenChange={(open) => { if (!open) { setSelectedId(null); setDetail(null) } }}>
-        <SheetContent
-          side="right"
-          className="w-full sm:max-w-[820px] p-0 flex flex-col gap-0 overflow-hidden"
+      {/* ── Dialog de detalle (modal centrado) ──────────────────────────────── */}
+      <Dialog open={selectedId !== null} onOpenChange={(open) => { if (!open) { setSelectedId(null); setDetail(null) } }}>
+        <DialogContent
+          className="max-w-3xl w-full p-0 flex flex-col gap-0 overflow-hidden max-h-[90vh]"
         >
           {detailLoading ? (
             // ── Skeleton de carga ──────────────────────────────────────────────
@@ -415,21 +432,76 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
             <>
               {/* ── Header fijo ─────────────────────────────────────────────── */}
               <div className="flex-shrink-0 border-b bg-background">
-                <SheetHeader className="px-6 pt-6 pb-4">
-                  <SheetTitle className="text-base font-semibold leading-tight pr-6">
-                    {detail.surveyTitle}
-                  </SheetTitle>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
-                    {detail.respondentName && (
-                      <span className="flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        {detail.respondentName}
-                      </span>
+
+                {/* ── Encuestado — identidad grande centrada ──────────────────── */}
+                <div className="flex flex-col items-center text-center px-6 pt-8 pb-5 border-b border-dashed">
+                  {/* Avatar / inicial */}
+                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                    {detail.respondentName
+                      ? <span className="text-2xl font-bold text-primary">{detail.respondentName.charAt(0).toUpperCase()}</span>
+                      : <User className="h-8 w-8 text-muted-foreground" />
+                    }
+                  </div>
+                  {/* Nombre o referencia */}
+                  <h2 className="text-xl font-bold leading-tight">
+                    {detail.respondentName || (
+                      <span className="font-mono text-muted-foreground text-base">#{detail.id.slice(0, 8)}</span>
                     )}
-                    {detail.surveyorName && (
+                  </h2>
+                  {/* Datos de contacto si existen */}
+                  {detail.respondentContact && (
+                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
+                      {detail.respondentContact.documentType && detail.respondentContact.documentNumber && (
+                        <span>{detail.respondentContact.documentType}: {detail.respondentContact.documentNumber}</span>
+                      )}
+                      {detail.respondentContact.email && <span>{detail.respondentContact.email}</span>}
+                      {detail.respondentContact.phone && <span>{detail.respondentContact.phone}</span>}
+                    </div>
+                  )}
+                  {/* Outcome badge */}
+                  <div className="flex items-center gap-2 mt-3">
+                    <Badge variant="outline" className={outcomeBadge[detail.outcome].className}>
+                      {outcomeBadge[detail.outcome].label}
+                    </Badge>
+                    {detail.incidenceType && (
+                      <span className="text-xs text-muted-foreground">· {detail.incidenceType}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Grabación de audio del encuestador ─────────────────────── */}
+                {detail.surveyorRecording?.audioUrl && (
+                  <div className="px-6 py-3 border-b bg-amber-50/50 dark:bg-amber-900/10">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <FileAudio className="h-3.5 w-3.5 text-amber-600" />
+                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                        Grabación del encuestador
+                        {detail.surveyorRecording.durationSecs
+                          ? ` · ${formatDuration(detail.surveyorRecording.durationSecs)} min`
+                          : ""}
+                      </span>
+                    </div>
+                    <audio
+                      src={detail.surveyorRecording.audioUrl}
+                      controls
+                      className="w-full h-9"
+                      style={{ accentColor: "#d97706" }}
+                    />
+                  </div>
+                )}
+
+                <DialogHeader className="px-6 pt-4 pb-2">
+                  <DialogTitle className="text-sm font-semibold leading-tight text-muted-foreground">
+                    {detail.surveyTitle}
+                  </DialogTitle>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
+                    {(detail.surveyorName || detail.surveyorEmail) && (
                       <span className="flex items-center gap-1">
                         <ClipboardList className="h-3 w-3" />
-                        {detail.surveyorName}
+                        {detail.surveyorName || detail.surveyorEmail}
+                        {detail.surveyorName && detail.surveyorEmail && (
+                          <span className="text-[11px] opacity-70">· {detail.surveyorEmail}</span>
+                        )}
                       </span>
                     )}
                     <span className="flex items-center gap-1">
@@ -445,21 +517,11 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       </span>
                     )}
                   </div>
-                </SheetHeader>
-
-                {/* Outcome + incidence */}
-                <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
-                  <Badge variant="outline" className={outcomeBadge[detail.outcome].className}>
-                    {outcomeBadge[detail.outcome].label}
-                  </Badge>
-                  {detail.incidenceType && (
-                    <span className="text-xs text-muted-foreground">· Motivo: {detail.incidenceType}</span>
-                  )}
-                </div>
+                </DialogHeader>
 
                 {/* Stats chips */}
                 {stats && (
-                  <div className="flex flex-wrap gap-2 px-6 pb-5">
+                  <div className="flex flex-wrap gap-2 px-6 pb-4 pt-1">
                     <StatChip icon={ClipboardList} value={stats.total}     label="preguntas"  color="default" />
                     <StatChip icon={CheckCircle2}  value={stats.answered}  label="respondidas" color="green"   />
                     {stats.withFiles > 0 && (
@@ -682,8 +744,8 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
               </div>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

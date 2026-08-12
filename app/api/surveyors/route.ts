@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server" // Import both clients
-import { cookies } from "next/headers"
+import { createAdminSupabase } from "@/lib/supabase-server"
 import type { Database } from "@/types/supabase"
 import { requireRole } from "@/lib/api-auth"
 
@@ -11,25 +10,32 @@ type SurveyorInsert = Database["public"]["Tables"]["surveyors"]["Insert"]
 // encuestador (toma de control de cuenta) — quedaba abierto a cualquiera
 // que conociera la URL. GET/lectura: admin + supervisor. Mutaciones
 // (crear/editar/borrar encuestadores, incl. contraseña): solo admin.
+//
+// CORRECCIÓN (2026-08-12): el GET original usaba createClient(cookies())
+// con la cookie leída sincrónicamente — en Next.js 15 cookies() es async,
+// por lo que el cliente resultaba sin sesión y, con RLS activo, retornaba
+// array vacío. Se migra a createAdminSupabase() en todas las operaciones
+// (el rol ya fue verificado por requireRole antes de hacer cualquier query).
+
 export async function GET(request: Request) {
   const auth = await requireRole(["admin", "supervisor"])
   if (!auth.ok) return auth.response
 
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore) // Use regular client for GET
+  // Admin client bypasses RLS — safe porque requireRole ya verificó rol.
+  const admin = createAdminSupabase()
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id")
 
   if (id) {
-    const { data, error } = await supabase.from("surveyors").select("*").eq("id", id).single()
+    const { data, error } = await admin.from("surveyors").select("*").eq("id", id).single()
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     return NextResponse.json(data)
   }
 
-  const { data, error } = await supabase.from("surveyors").select("*").order("created_at", { ascending: false })
+  const { data, error } = await admin.from("surveyors").select("*").order("created_at", { ascending: false })
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -40,7 +46,7 @@ export async function POST(request: Request) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  const supabaseAdmin = createAdminClient() // Use admin client for POST
+  const supabaseAdmin = createAdminSupabase()
   const { name, email, phone_number, password } = (await request.json()) as SurveyorInsert & { password?: string }
 
   if (!name || !email || !password) {
@@ -60,25 +66,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: authError.message }, { status: 400 })
     }
 
-    const userId = authData.user?.id // This is the ID from Supabase Auth
+    const userId = authData.user?.id
 
     if (!userId) {
       throw new Error("Failed to get user ID after creation.")
     }
 
-    // Insert surveyor into public.surveyors table using admin client
-    // This overrides the gen_random_uuid() default, which is a common pattern for user profiles.
+    // Insert surveyor into public.surveyors table
     // user_id (además de id) liga esta fila al login del portal de encuestador
     // — ver lib/portal-encuestador/auth.ts resolveCurrentSurveyor().
     const { data: surveyorData, error: surveyorError } = await supabaseAdmin
       .from("surveyors")
       .insert({
-        id: userId, // Link surveyor to auth user ID
+        id: userId,
         user_id: userId,
         name,
         email,
         phone_number,
-        status: "active", // Default status
+        status: "active",
       } as any)
       .select()
       .single()
@@ -122,9 +127,9 @@ export async function PUT(request: Request) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  const supabaseAdmin = createAdminClient() // Use admin client for PUT
+  const supabaseAdmin = createAdminSupabase()
   const { searchParams } = new URL(request.url)
-  const id = searchParams.get("id") // This is the surveyor's ID (which is also the auth user ID)
+  const id = searchParams.get("id")
   const { name, email, phone_number, password } = await request.json()
 
   if (!id) {
@@ -144,7 +149,7 @@ export async function PUT(request: Request) {
       }
     }
 
-    // Update surveyor in public.surveyors table using admin client
+    // Update surveyor in public.surveyors table
     const { data, error } = await supabaseAdmin
       .from("surveyors")
       .update({ name, email, phone_number })
@@ -166,30 +171,29 @@ export async function DELETE(request: Request) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  const supabaseAdmin = createAdminClient() // Use admin client for DELETE
+  const supabaseAdmin = createAdminSupabase()
   const { searchParams } = new URL(request.url)
-  const id = searchParams.get("id") // This is the surveyor's ID (which is also the auth user ID)
+  const id = searchParams.get("id")
 
   if (!id) {
     return NextResponse.json({ error: "Surveyor ID is required." }, { status: 400 })
   }
 
   try {
-    // Delete from public.surveyors table first using admin client
+    // Delete from public.surveyors table first
     const { error: dbError } = await supabaseAdmin.from("surveyors").delete().eq("id", id)
 
     if (dbError) {
       return NextResponse.json({ error: dbError.message }, { status: 500 })
     }
 
-    // Limpiar también su fila en public.users (creada desde esta misma ruta
-    // al dar de alta al encuestador) para no dejar perfiles huérfanos.
+    // Limpiar también su fila en public.users para no dejar perfiles huérfanos.
     const { error: userDeleteError } = await supabaseAdmin.from("users").delete().eq("id", id)
     if (userDeleteError) {
       console.warn("No se pudo eliminar la fila de public.users del encuestador:", userDeleteError.message)
     }
 
-    // Then delete from Supabase Auth using admin client
+    // Then delete from Supabase Auth
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
 
     if (authError) {

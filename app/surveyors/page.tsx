@@ -141,15 +141,22 @@ export default function SurveyorsPage() {
     setLoading(true)
     try {
       const response = await fetch("/api/surveyors")
+      if (response.status === 401) {
+        throw new Error("Sesión expirada o cuenta sin perfil en el sistema. Cierra sesión y vuelve a ingresar.")
+      }
+      if (response.status === 403) {
+        throw new Error("No tienes permisos suficientes para ver los encuestadores.")
+      }
       if (!response.ok) {
-        throw new Error("Error fetching surveyors")
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body?.error || "Error cargando encuestadores.")
       }
       const data: Surveyor[] = await response.json()
       setSurveyors(data)
     } catch (error: any) {
       console.error("Error fetching surveyors:", error)
       toast({
-        title: "Error",
+        title: "Error al cargar encuestadores",
         description: error.message || "No se pudieron cargar los encuestadores.",
         variant: "destructive",
       })
@@ -372,6 +379,12 @@ export default function SurveyorsPage() {
         console.error("Could not parse response as JSON on surveyor save", e)
       }
 
+      if (response.status === 401) {
+        throw new Error("Tu sesión expiró o tu cuenta no tiene perfil configurado. Cierra sesión, vuelve a ingresar e intenta de nuevo.")
+      }
+      if (response.status === 403) {
+        throw new Error("Solo los administradores pueden crear o editar encuestadores. Tu cuenta no tiene ese permiso.")
+      }
       if (!response.ok) {
         throw new Error(result?.error || "Error al guardar encuestador.")
       }
