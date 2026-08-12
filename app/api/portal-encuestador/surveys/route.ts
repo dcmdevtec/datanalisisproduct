@@ -24,7 +24,7 @@ export async function GET() {
 
     const { data: rows, error } = await admin
       .from("survey_surveyor_zones")
-      .select("id, survey_id, zone_id, general_status, created_at, zones(id, name), surveys(id, title, description, status, deadline, logo)")
+      .select("id, survey_id, zone_id, general_status, created_at, zones(id, name), surveys(id, title, description, status, deadline, logo, start_date)")
       .eq("surveyor_id", surveyor.surveyorId)
       .order("created_at", { ascending: false })
 
@@ -46,6 +46,11 @@ export async function GET() {
     for (const row of (rows as any[]) || []) {
       const survey = row.surveys
       if (!survey || survey.status !== "active") continue // solo encuestas activas en campo
+
+      // CORRECCIÓN (2026-08-12): encuestas con fecha de inicio futura no deben
+      // aparecer en el portal aunque su status sea "active". La plataforma admin
+      // puede activar una encuesta antes de que empiece; el portal debe respetarlo.
+      if (survey.start_date && new Date(survey.start_date) > new Date()) continue
 
       const existing = bySurvey.get(survey.id)
       const zoneName = row.general_status ? "Todas las zonas" : (row.zones?.name ?? "Sin zona asignada")

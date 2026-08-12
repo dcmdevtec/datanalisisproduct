@@ -1150,7 +1150,11 @@ export function CreateSurveyForProjectPageContent() {
     // Usar ref (no state) para el guard — el state es async y no bloquea en for-loops
     if (isSavingSectionRef.current) return
     isSavingSectionRef.current = true
-    setIsSavingSection(true)
+    // CORRECCIÓN (2026-08-12): solo actualizar el estado visible (spinner, botones
+    // deshabilitados) cuando el guardado es manual. En auto-save silencioso
+    // (silent: true) setIsSavingSection provocaba un "destello" visible en la UI
+    // cada vez que el debounce disparaba — exactamente el síntoma reportado.
+    if (!options?.silent) setIsSavingSection(true)
     try {
       // overrideSurveyId permite llamar desde handleSave sin depender del state async
       let workingSurveyId = overrideSurveyId || currentSurveyId
@@ -1312,7 +1316,8 @@ export function CreateSurveyForProjectPageContent() {
       return false
     } finally {
       isSavingSectionRef.current = false
-      setIsSavingSection(false)
+      // Solo restablecer el estado visual si se mostró (no silent)
+      if (!options?.silent) setIsSavingSection(false)
     }
   }
 

@@ -628,28 +628,61 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     return undefined
   }, [answers, surveyData])
 
-  /** Evalúa una condición individual de display logic */
+  /** Evalúa una condición individual de display logic.
+   *
+   * CORRECCIÓN (2026-08-12): condition.value puede ser una cadena con múltiples
+   * valores separados por coma ("opcion1,opcion2") cuando el editor permite
+   * seleccionar 2+ respuestas para la misma condición. El evaluador anterior
+   * comparaba literalmente ese string, haciendo que nunca se cumpliera la
+   * condición cuando había más de una opción seleccionada.
+   * Ahora se parsea el CSV y se aplica OR implícito: la condición se cumple si
+   * la respuesta del usuario coincide con AL MENOS UNO de los valores.
+   */
   const evaluateCondition = useCallback((condition: any): boolean => {
     const answer = resolveQuestionAnswer(condition.questionId, condition.questionText)
     if (answer === undefined || answer === null || answer === "") return false
 
+    // Parsear el valor de la condición: puede ser "a,b,c" (selección múltiple)
+    const rawValue = String(condition.value ?? "")
+    const condValues = rawValue.includes(",")
+      ? rawValue.split(",").map((v) => v.trim()).filter(Boolean)
+      : [rawValue]
+
+    // Helper: ¿el answer cumple con UN valor de condición?
+    const matchesSingleValue = (cv: string): boolean => {
+      switch (condition.operator) {
+        case "equals":
+          return Array.isArray(answer) ? answer.includes(cv) : String(answer) === cv
+        case "not_equals":
+          // Para not_equals con múltiples valores: NO debe estar en ninguno
+          // (se evalúa luego con every)
+          return Array.isArray(answer) ? !answer.includes(cv) : String(answer) !== cv
+        case "contains":
+          return Array.isArray(answer) ? answer.includes(cv) : String(answer).includes(cv)
+        case "not_contains":
+          return Array.isArray(answer) ? !answer.includes(cv) : !String(answer).includes(cv)
+        default:
+          return false
+      }
+    }
+
     switch (condition.operator) {
       case "equals":
-        return Array.isArray(answer) ? answer.includes(condition.value) : String(answer) === String(condition.value)
-      case "not_equals":
-        return Array.isArray(answer) ? !answer.includes(condition.value) : String(answer) !== String(condition.value)
       case "contains":
-        return Array.isArray(answer) ? answer.includes(condition.value) : String(answer).includes(String(condition.value))
+        // OR: cumple si la respuesta coincide con AL MENOS UNO de los valores
+        return condValues.some(matchesSingleValue)
+      case "not_equals":
       case "not_contains":
-        return Array.isArray(answer) ? !answer.includes(condition.value) : !String(answer).includes(String(condition.value))
+        // AND negativo: solo cumple si la respuesta NO coincide con NINGUNO de los valores
+        return condValues.every(matchesSingleValue)
       case "greater_than":
-        return Number(answer) > Number(condition.value)
+        return Number(answer) > Number(rawValue)
       case "less_than":
-        return Number(answer) < Number(condition.value)
+        return Number(answer) < Number(rawValue)
       case "greater_than_or_equal":
-        return Number(answer) >= Number(condition.value)
+        return Number(answer) >= Number(rawValue)
       case "less_than_or_equal":
-        return Number(answer) <= Number(condition.value)
+        return Number(answer) <= Number(rawValue)
       case "is_empty":
         return !answer || (Array.isArray(answer) ? answer.length === 0 : String(answer).trim() === "")
       case "is_not_empty":
@@ -799,6 +832,9 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       if (!shouldShowQuestion(question)) {
         return;
       }
+
+      // displayOnly: pregunta multimedia de solo visualización, sin respuesta requerida
+      if (question.config?.displayOnly) return;
 
       if (question.required) {
         if (question.type === 'matrix') {
@@ -1231,7 +1267,8 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
 
             const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === skipLogic.targetSectionId)
             if (foundSectionIndex !== -1) {
-              // Aplicar el salto inmediatamente
+              // Registrar en historial para que "Atrás" pueda volver aquí
+              setSkipLogicHistory((prev) => [...prev, currentSectionIndex])
               setCurrentSectionIndex(foundSectionIndex)
               return // Salir después de aplicar el salto de sección
             } else {
@@ -1249,7 +1286,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
         try {
           // Verificar si es una acción de finalizar encuesta
           if (target_section_id === "END_SURVEY") {
-            // Finalizar encuesta inmediatamente
+            // Finalizar encuesta inmediatamente (no registrar historial — es fin)
             setSubmissionStatus("idle")
             const ok = await submitResponses()
             if (ok) {
@@ -1264,7 +1301,8 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
           // Si hay una sección objetivo, calcular el índice
           const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === target_section_id)
           if (foundSectionIndex !== -1) {
-            // Aplicar el salto inmediatamente
+            // Registrar en historial para que "Atrás" pueda volver aquí
+            setSkipLogicHistory((prev) => [...prev, currentSectionIndex])
             setCurrentSectionIndex(foundSectionIndex)
             return // Salir después de aplicar el salto de sección
           }
@@ -1294,37 +1332,36 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             try {
               let conditionMet = false
 
-              // Evaluar condición de manera más robusta
+              // CORRECCIÓN (2026-08-12): rule.value puede ser "a,b,c" (CSV) cuando el
+              // usuario seleccionó 2+ respuestas para la misma condición de salto.
+              // Se parsea el CSV y se aplica OR implícito para equals/contains,
+              // AND negativo para not_equals/not_contains.
+              const rawRuleValue = String(rule.value ?? "")
+              const ruleValues = rawRuleValue.includes(",")
+                ? rawRuleValue.split(",").map((v: string) => v.trim()).filter(Boolean)
+                : [rawRuleValue]
+
+              const matchOne = (rv: string): boolean => {
+                if (Array.isArray(answer)) return answer.includes(rv)
+                return String(answer) === rv
+              }
+              const containsOne = (rv: string): boolean => {
+                if (Array.isArray(answer)) return answer.includes(rv)
+                return String(answer).includes(rv)
+              }
+
               if (rule.operator === "equals") {
-                if (Array.isArray(answer)) {
-                  // Para checkbox, verificar si el valor está en el array
-                  conditionMet = answer.includes(rule.value)
-                } else {
-                  conditionMet = String(answer) === String(rule.value)
-                }
+                conditionMet = ruleValues.some(matchOne)
               } else if (rule.operator === "not_equals") {
-                if (Array.isArray(answer)) {
-                  conditionMet = !answer.includes(rule.value)
-                } else {
-                  conditionMet = String(answer) !== String(rule.value)
-                }
+                conditionMet = ruleValues.every((rv: string) => Array.isArray(answer) ? !answer.includes(rv) : String(answer) !== rv)
               } else if (rule.operator === "contains") {
-                if (Array.isArray(answer)) {
-                  // Para checkbox, verificar si el valor está en el array
-                  conditionMet = answer.includes(rule.value)
-                } else {
-                  conditionMet = String(answer).includes(String(rule.value))
-                }
+                conditionMet = ruleValues.some(containsOne)
               } else if (rule.operator === "not_contains") {
-                if (Array.isArray(answer)) {
-                  conditionMet = !answer.includes(rule.value)
-                } else {
-                  conditionMet = !String(answer).includes(String(rule.value))
-                }
+                conditionMet = ruleValues.every((rv: string) => Array.isArray(answer) ? !answer.includes(rv) : !String(answer).includes(rv))
               } else if (rule.operator === "greater_than") {
-                conditionMet = Number(answer) > Number(rule.value)
+                conditionMet = Number(answer) > Number(rawRuleValue)
               } else if (rule.operator === "less_than") {
-                conditionMet = Number(answer) < Number(rule.value)
+                conditionMet = Number(answer) < Number(rawRuleValue)
               } else if (rule.operator === "is_empty") {
                 conditionMet = !answer || (Array.isArray(answer) ? answer.length === 0 : String(answer).trim() === "")
               } else if (rule.operator === "is_not_empty") {
@@ -1350,7 +1387,8 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                 if (rule.targetSectionId) {
                   const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === rule.targetSectionId)
                   if (foundSectionIndex !== -1) {
-                    // Aplicar el salto inmediatamente
+                    // Registrar en historial para que "Atrás" pueda volver aquí
+                    setSkipLogicHistory((prev) => [...prev, currentSectionIndex])
                     setCurrentSectionIndex(foundSectionIndex)
 
                     // Si hay una pregunta específica, hacer scroll a ella después de un breve delay
@@ -1394,11 +1432,23 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     }
   }, [currentSection, answers, currentSectionIndex, totalSections, surveyData, submitResponses, validateCurrentSection])
 
+  // CORRECCIÓN (2026-08-12): el botón "Atrás" antes siempre restaba 1 al índice
+  // de sección (currentSectionIndex - 1), ignorando los saltos de lógica. Si
+  // el encuestador saltó de la sección 1 a la 4, "Atrás" lo llevaba a la 3
+  // (una sección que nunca vio) en vez de volver a la 1.
+  // Ahora usamos skipLogicHistory (stack): cada vez que se ejecuta un salto de
+  // lógica se guarda el índice actual. Al retroceder, si hay historial se
+  // restaura desde allí; si no (navegación secuencial normal), se decrementa.
   const handlePreviousSection = useCallback(() => {
-    if (currentSectionIndex > 0) {
+    if (skipLogicHistory.length > 0) {
+      // Hay saltos en el historial — volver al origen del último salto
+      const lastIdx = skipLogicHistory[skipLogicHistory.length - 1]
+      setSkipLogicHistory((prev) => prev.slice(0, -1))
+      setCurrentSectionIndex(lastIdx)
+    } else if (currentSectionIndex > 0) {
       setCurrentSectionIndex((prev) => prev - 1)
     }
-  }, [currentSectionIndex])
+  }, [currentSectionIndex, skipLogicHistory])
 
   const clearAndResetSurvey = useCallback(() => {
     // Clear in-memory answers
@@ -2647,6 +2697,25 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
           case "file":
           case "image_upload":
             {
+              // displayOnly: solo muestra la imagen/media configurada, sin input de subida
+              if (question.config?.displayOnly) {
+                return (
+                  <div className="space-y-2">
+                    {question.image && (
+                      <img
+                        src={question.image}
+                        alt={question.title || "Imagen"}
+                        className="max-w-full rounded-lg border border-gray-200 mx-auto block"
+                        style={{ maxHeight: 400, objectFit: "contain" }}
+                      />
+                    )}
+                    {!question.image && (
+                      <p className="text-sm text-gray-500 italic">Sin contenido multimedia configurado.</p>
+                    )}
+                  </div>
+                )
+              }
+
               const fileCfg = question.config?.fileUploadConfig || { maxFiles: 1 }
               const maxFilesAllowed = typeof fileCfg.maxFiles === 'number' ? fileCfg.maxFiles : Number(fileCfg.maxFiles) || 1
               // Auditoría 2026-07-29: el valor de esta pregunta ahora es un

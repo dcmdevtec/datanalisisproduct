@@ -611,6 +611,8 @@ export function AdvancedQuestionConfig({
       },
       // Configuración de cargas de archivo (solo para preguntas tipo file)
       fileUploadConfig: baseConfig.fileUploadConfig || { maxFiles: 1 },
+      // displayOnly: mostrar imagen sin input de subida (solo file/image_upload)
+      displayOnly: !!baseConfig.displayOnly,
       // Ensure likertScale always present with defaults
       likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
     }
@@ -715,9 +717,10 @@ export function AdvancedQuestionConfig({
           autoAdvance: false,
         },
         fileUploadConfig: baseConfig.fileUploadConfig || { maxFiles: 1 },
+        displayOnly: !!baseConfig.displayOnly,
         likertScale: baseConfig.likertScale || { min: 1, max: 5, step: 1, labels: {}, showZero: false, zeroLabel: 'No Sabe / No Responde', startPosition: 'left' },
       }
-      
+
       console.log("🔄 Configuración actualizada en useEffect:", updatedConfig)
       setConfig(updatedConfig)
       
@@ -965,8 +968,10 @@ export function AdvancedQuestionConfig({
 
     const finalConfig = {
       ...validatedConfig,
-      likertScale: normalizedLikert
-      ,fileUploadConfig: normalizedFileUploadConfig
+      likertScale: normalizedLikert,
+      fileUploadConfig: normalizedFileUploadConfig,
+      // displayOnly: solo para tipos file/image_upload; se preserva si está presente
+      ...(config.displayOnly !== undefined ? { displayOnly: !!config.displayOnly } : {}),
     }
 
     console.log("✅ Configuración validada a guardar:", finalConfig)
@@ -1084,6 +1089,21 @@ export function AdvancedQuestionConfig({
                     className="bg-white"
                   />
                   <p className="text-xs text-muted-foreground">Establece cuántos archivos puede adjuntar el encuestado. Valor mínimo 1.</p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <Switch
+                      checked={!!config.displayOnly}
+                      onCheckedChange={(checked) => setConfig((prev) => ({
+                        ...prev,
+                        displayOnly: checked,
+                      }))}
+                    />
+                    <div>
+                      <Label className="text-sm font-medium cursor-pointer">Solo mostrar (sin respuesta)</Label>
+                      <p className="text-xs text-muted-foreground">El encuestado verá la imagen configurada pero no podrá subir archivos. Útil para mostrar instrucciones o materiales visuales.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>

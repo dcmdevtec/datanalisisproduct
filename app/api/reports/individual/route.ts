@@ -59,12 +59,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items: [], total: 0, page, pageSize })
     }
 
+    // CORRECCIÓN (2026-08-12): el filtro por encuestador consultaba la tabla
+    // `assignments` que nunca se llena en producción (ver comentario en
+    // app/api/portal-encuestador/assignments/[id]/route.ts). El portal guarda
+    // responses.assignment_id = survey_surveyor_zones.id. Se corrige el filtro
+    // para buscar en survey_surveyor_zones primero y en assignments como fallback.
     let filteredAssignmentIds: string[] | null = null
     if (surveyorFilter !== "all") {
+      // 1️⃣ survey_surveyor_zones (flujo real del portal encuestador)
+      let sszQuery = (admin as any)
+        .from("survey_surveyor_zones")
+        .select("id")
+        .eq("surveyor_id", surveyorFilter)
+      if (filteredSurveyIds !== null) sszQuery = sszQuery.in("survey_id", filteredSurveyIds)
+      const { data: sszMatching } = await sszQuery
+      filteredAssignmentIds = ((sszMatching as any[]) || []).map((a) => a.id)
+
+      // 2️⃣ Fallback: assignments legacy
       let aq = admin.from("assignments").select("id").eq("surveyor_id", surveyorFilter)
       if (filteredSurveyIds !== null) aq = aq.in("survey_id", filteredSurveyIds)
       const { data: matching } = await aq
-      filteredAssignmentIds = (matching || []).map((a: any) => a.id)
+      const legacyIds = ((matching as any[]) || []).map((a: any) => a.id)
+      for (const id of legacyIds) {
+        if (!filteredAssignmentIds.includes(id)) filteredAssignmentIds.push(id)
+      }
+
       if (filteredAssignmentIds.length === 0) {
         return NextResponse.json({ items: [], total: 0, page, pageSize })
       }

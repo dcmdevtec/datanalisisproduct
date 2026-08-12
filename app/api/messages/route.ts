@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
+import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveAuthedUser, resolveAllowedMessageReceivers } from "@/lib/api-auth"
 
+// CORRECCIÓN (2026-08-12): el helper getSupabase() original llamaba cookies()
+// sin await — en Next.js 15, cookies() es una Promise. El cliente resultante
+// quedaba sin sesión, RLS bloqueaba TODAS las queries (inbox vacío, envío falla
+// con error 500). Mismo patrón corregido en /api/location y /api/tracking.
+// Auth ya está verificado por resolveAuthedUser() (que sí awaita cookies),
+// así que es seguro usar createAdminSupabase() para las operaciones de datos.
 function getSupabase() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cs) => {
-          try {
-            cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          } catch {}
-        },
-      },
-    }
-  )
+  return createAdminSupabase()
 }
 
 /**
