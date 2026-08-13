@@ -3,16 +3,24 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server
 import type { Database } from "@/types/supabase"
 import { requireRole } from "@/lib/api-auth"
 
-type SurveyorUpdate = Database["public"]["Tables"]["surveyors"]["Update"]
+// Separate interface for PUT request body — includes `password` which goes to
+// auth.users (via admin.updateUserById), NOT to public.surveyors table.
+interface SurveyorUpdateRequest {
+  name?: string
+  email?: string
+  phone_number?: string | null
+  password?: string
+  status?: "active" | "inactive"
+}
 
 // SEGURIDAD (auditoría 2026-07-29): PUT puede resetear la contraseña de
 // cualquier encuestador — no tenía ningún check de sesión/rol. Mismo
 // criterio que /api/surveyors: lectura admin+supervisor, mutaciones solo admin.
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireRole(["admin", "supervisor"])
   if (!auth.ok) return auth.response
 
-  const { id } = params
+  const { id } = await params
   const supabase = await createServerSupabase()
   const { data: surveyor, error } = await supabase.from("surveyors").select("*").eq("id", id).single()
 
@@ -28,12 +36,12 @@ export async function GET(request: Request, { params }: { params: { id: string }
   return NextResponse.json(surveyor)
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  const { id } = params
-  const { name, email, phone_number, password, status } = (await request.json()) as SurveyorUpdate
+  const { id } = await params
+  const { name, email, phone_number, password, status } = (await request.json()) as SurveyorUpdateRequest
   const adminSupabase = createAdminSupabase()
 
   if (!name || !email) {
@@ -72,11 +80,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   return NextResponse.json(surveyor)
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  const { id } = params
+  const { id } = await params
   const adminSupabase = createAdminSupabase()
 
   // Delete user from Supabase Auth using the admin client

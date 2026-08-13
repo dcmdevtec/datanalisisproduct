@@ -178,7 +178,7 @@ function GeoJSONPolygon({ geometry, color = "#3388ff", name }: { geometry: any; 
 
     return (
       <Polygon
-        positions={coordinates}
+        positions={coordinates as any}
         pathOptions={{
           color: color,
           fillColor: color,

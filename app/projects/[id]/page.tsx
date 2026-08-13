@@ -78,11 +78,11 @@ export default function ProjectDetailPage() {
         const { data: projectData, error: projectError } = await supabase
           .from("projects")
           .select("*, companies(name, logo)")
-          .eq("id", params.id)
+          .eq("id", String(params.id))
           .single()
 
         if (projectError) throw projectError
-        setProject(projectData)
+        setProject(projectData as any)
 
         // Fetch surveys for this project
         const { data: surveysData, error: surveysError } = await supabase
@@ -90,7 +90,7 @@ export default function ProjectDetailPage() {
           .select(
             "id, title, description, status, deadline, project_id, projects(id, name, company_id, companies(id, name))",
           )
-          .eq("project_id", params.id)
+          .eq("project_id", String(params.id))
           .order("created_at", { ascending: false })
 
         if (surveysError) throw surveysError

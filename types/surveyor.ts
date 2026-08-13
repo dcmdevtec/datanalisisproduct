@@ -2,7 +2,7 @@ export interface Surveyor {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role?: string;
   status?: string;
   phone_number?: string | null;
   created_at?: string;

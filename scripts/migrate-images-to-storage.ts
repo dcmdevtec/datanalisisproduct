@@ -25,7 +25,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 // Helper para detectar si es base64
 function isBase64(str: string): boolean {
-    return str && (str.startsWith('data:image/') || str.length > 1000) // Heurística simple
+    return !!(str && (str.startsWith('data:image/') || str.length > 1000)) // Heurística simple
 }
 
 // Helper para obtener extensión

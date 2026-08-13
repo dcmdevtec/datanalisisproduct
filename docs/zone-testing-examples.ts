@@ -126,7 +126,7 @@ const getAllZones = async () => {
   
   console.log("📊 Total zones:", zones.length)
   
-  zones.forEach(zone => {
+  zones.forEach((zone: any) => {
     console.log(`
       🗺️ Zone: ${zone.name}
       - ID: ${zone.id}

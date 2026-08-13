@@ -20,7 +20,7 @@ function RegisterPageContent() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [role, setRole] = useState("surveyor")
   const [formError, setFormError] = useState("")
-  const { register, loading, error } = useAuth()
+  const { register, loading, error } = useAuth() as any
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

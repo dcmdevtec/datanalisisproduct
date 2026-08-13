@@ -39,7 +39,7 @@ export default function SupabaseConnectionTest() {
 
         // Probar inserción de datos
         const testId = `test-${crypto.randomUUID()}`
-        const { error: insertError } = await supabase.from("sync_records").insert({
+        const { error: insertError } = await (supabase as any).from("sync_records").insert({
           id: testId,
           user_id: session.user.id,
           type: "test",
@@ -60,7 +60,7 @@ export default function SupabaseConnectionTest() {
       }
     } catch (err) {
       console.error("Error testing connection:", err)
-      setError(err.message || "Error desconocido")
+      setError((err as any)?.message || "Error desconocido")
       setIsConnected(false)
     } finally {
       setIsLoading(false)

@@ -77,7 +77,7 @@ function styleTableHeader(ws: ExcelJS.Worksheet, rowNum: number, colCount: numbe
 async function addChartImages(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, images: Buffer[], startRow: number) {
   let currentRow = startRow
   for (let i = 0; i < images.length; i++) {
-    const imageId = wb.addImage({ buffer: images[i], extension: "png" })
+    const imageId = wb.addImage({ buffer: images[i] as any, extension: "png" })
     ws.addImage(imageId, {
       tl: { col: 0, row: currentRow },
       ext: { width: 750, height: 400 },

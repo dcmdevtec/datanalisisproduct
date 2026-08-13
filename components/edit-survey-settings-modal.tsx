@@ -539,7 +539,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, prev
                     <div className="space-y-3 pl-6">
                       <Label className="text-sm font-medium text-red-800">Método de verificación</Label>
                       <Select
-                        value={editedSettings.security?.preventionMethod || "cookie"}
+                        value={(editedSettings.security as any)?.preventionMethod || "cookie"}
                         onValueChange={(value) => handleSecurityChange("preventionMethod", value)}
                       >
                         <SelectTrigger className="bg-white border-red-300 focus:border-red-500">

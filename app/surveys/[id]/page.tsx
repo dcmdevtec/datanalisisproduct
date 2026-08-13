@@ -117,7 +117,7 @@ export default function SurveyDetailsPage() {
       setLoading(true)
       setError(null)
       try {
-        const { data: surveyData, error: surveyError } = await supabase
+        const { data: surveyData, error: surveyError } = await (supabase as any)
           .from("surveys")
           .select(
             `
@@ -156,7 +156,7 @@ export default function SurveyDetailsPage() {
           }
         }
 
-        setSurvey({ ...surveyData, assigned_zones: parsedAssignedZones })
+        setSurvey({ ...(surveyData as any), assigned_zones: parsedAssignedZones })
 
         const { data: surveyorsData, error: surveyorsError } = await supabase
           .from("surveyors")
@@ -166,14 +166,14 @@ export default function SurveyDetailsPage() {
 
         const { data: zonesData, error: zonesError } = await supabase.from("zones").select("id, name, geometry")
         if (zonesError) console.error("Error fetching zones:", zonesError)
-        if (zonesData) setAllZones(zonesData)
+        if (zonesData) setAllZones(zonesData as any)
 
         if (parsedAssignedZones.length > 0 && zonesData) {
           const firstZoneId = parsedAssignedZones[0]
           setDisplayedZoneId(firstZoneId)
           const zone = zonesData.find((z) => z.id === firstZoneId)
           if (zone && zone.geometry) {
-            setSelectedZoneGeometry(zone.geometry)
+            setSelectedZoneGeometry(zone.geometry as any)
             setMapKey(`zone-${firstZoneId}-${crypto.randomUUID()}`)
           }
         }
@@ -352,7 +352,7 @@ export default function SurveyDetailsPage() {
 
   const assignedSurveyors =
     survey.assigned_surveyors?.map((id) => allSurveyors.find((s) => s.id === id)).filter(Boolean) || []
-  const assignedZones = survey.assigned_zones ? allZones.filter((z) => survey.assigned_zones.includes(z.id)) : []
+  const assignedZones = survey.assigned_zones ? allZones.filter((z) => (survey.assigned_zones as any[]).includes(z.id)) : []
   const displayedZone = displayedZoneId ? allZones.find((z) => z.id === displayedZoneId) : null
 
   const formatDuration = (secs: number | null) => {
@@ -522,7 +522,7 @@ export default function SurveyDetailsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {assignedSurveyors.length > 0 ? (
-                  assignedSurveyors.map((surveyor) => (
+                  assignedSurveyors.map((surveyor: any) => (
                     <div key={surveyor.id} className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
                         <AvatarFallback>

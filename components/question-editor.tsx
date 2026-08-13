@@ -778,6 +778,7 @@ export function QuestionEditor({
               <SelectItem value="demographic">👤 Demográfica</SelectItem>
               <SelectItem value="contact_info">📧 Información de contacto</SelectItem>
               <SelectItem value="multiple_textboxes">📝 Múltiples cajas de texto</SelectItem>
+              <SelectItem value="video">🎬 Video</SelectItem>
             </SelectContent>
           </Select>
 
@@ -798,15 +799,17 @@ export function QuestionEditor({
 
           <div className="flex-1" />
 
-          {/* Obligatoria switch */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs text-muted-foreground hidden sm:inline">Obligatoria</span>
-            <Switch
-              checked={question.required}
-              onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
-              id={`required-switch-${question.id}`}
-            />
-          </div>
+          {/* Obligatoria switch — oculto para tipo video (no tiene respuesta) */}
+          {question.type !== "video" && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs text-muted-foreground hidden sm:inline">Obligatoria</span>
+              <Switch
+                checked={question.required}
+                onCheckedChange={(checked) => onUpdateQuestion(sectionId, question.id, "required", checked)}
+                id={`required-switch-${question.id}`}
+              />
+            </div>
+          )}
 
           {/* Acciones */}
           {/* Imagen o video de la pregunta — ícono compacto en vez de un bloque
@@ -2255,6 +2258,27 @@ export function QuestionEditor({
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {question.type === "video" && (
+          <div className="p-4 border rounded-lg bg-muted/20 space-y-3">
+            <Label className="font-medium">Vista previa</Label>
+            {question.image ? (
+              <video
+                src={question.image}
+                controls
+                className="w-full rounded-lg max-h-64 bg-black"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 py-8 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+                <span className="text-3xl">🎬</span>
+                <p className="text-sm text-muted-foreground text-center">
+                  Usa el ícono <strong>🎬</strong> en la barra superior para adjuntar un video.<br />
+                  El encuestado podrá verlo pero no necesita responder nada.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

@@ -200,7 +200,7 @@ export default function CreateSurveyPage() {
     )
   }
 
-  const updateSettings = (field, value) => {
+  const updateSettings = (field: string, value: any) => {
     setSettings({ ...settings, [field]: value })
   }
 
@@ -318,10 +318,10 @@ export default function CreateSurveyPage() {
       router.push("/surveys")
     } catch (err) {
       console.error("Error al guardar encuesta:", err)
-      setError(err.message || "Error al guardar la encuesta")
+      setError((err as any)?.message || "Error al guardar la encuesta")
       toast({
         title: "Error",
-        description: err.message || "Error al guardar la encuesta",
+        description: (err as any)?.message || "Error al guardar la encuesta",
         variant: "destructive",
       })
     } finally {

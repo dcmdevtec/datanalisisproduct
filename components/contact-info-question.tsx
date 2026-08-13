@@ -386,57 +386,56 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
               )}
             </div>
           )
+          if (fieldKey === 'document' && includeDocument) return (
+            <div key="document" className="space-y-4 md:col-span-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="document-type">Tipo de Documento</Label>
+                  <Select value={documentType} onValueChange={setDocumentType} disabled={isBlocked}>
+                    <SelectTrigger id="document-type">
+                      <SelectValue placeholder="Seleccione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
+                      <SelectItem value="CE">Cédula de Extranjería</SelectItem>
+                      <SelectItem value="TI">Tarjeta de Identidad</SelectItem>
+                      <SelectItem value="PA">Pasaporte</SelectItem>
+                      <SelectItem value="NIT">NIT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="document-number">Número de Documento</Label>
+                  <div className="relative">
+                    <Input
+                      id="document-number"
+                      type="number"
+                      value={documentNumber}
+                      onChange={e => setDocumentNumber(e.target.value)}
+                      placeholder="Ingrese el número de documento"
+                      className="pr-8"
+                      disabled={isBlocked}
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                      {statusIndicator}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* Mensaje de estado */}
+              {!isBlocked && message && (
+                <div className="text-sm flex items-center gap-2">
+                  {statusIndicator}
+                  <span className={status === "error" ? "text-red-600" : "text-muted-foreground"}>
+                    {message}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
           return null
         })}
       </div>
-
-      {includeDocument && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="document-type">Tipo de Documento</Label>
-              <Select value={documentType} onValueChange={setDocumentType} disabled={isBlocked}>
-                <SelectTrigger id="document-type">
-                  <SelectValue placeholder="Seleccione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
-                  <SelectItem value="CE">Cédula de Extranjería</SelectItem>
-                  <SelectItem value="TI">Tarjeta de Identidad</SelectItem>
-                  <SelectItem value="PA">Pasaporte</SelectItem>
-                  <SelectItem value="NIT">NIT</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="document-number">Número de Documento</Label>
-              <div className="relative">
-                <Input
-                  id="document-number"
-                  type="number"
-                  value={documentNumber}
-                  onChange={e => setDocumentNumber(e.target.value)}
-                  placeholder="Ingrese el número de documento"
-                  className="pr-8"
-                />
-                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                  {statusIndicator}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Mensaje de estado (solo cuando no está bloqueado) */}
-          {!isBlocked && message && (
-            <div className="text-sm flex items-center gap-2">
-              {statusIndicator}
-              <span className={status === "error" ? "text-red-600" : "text-muted-foreground"}>
-                {message}
-              </span>
-            </div>
-          )}
-        </>
-      )}
     </div>
   )
 }

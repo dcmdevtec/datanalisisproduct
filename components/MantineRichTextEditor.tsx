@@ -43,8 +43,8 @@ export default function MyEditor({ value, onChange, placeholder = '', immediatel
     editorProps: {
       attributes: {
         placeholder,
-        autofocus: autoFocus ? 'autofocus' : undefined,
-      },
+        ...(autoFocus ? { autofocus: 'autofocus' } : {}),
+      } as Record<string, string>,
     },
     immediatelyRender,
   });
@@ -52,7 +52,7 @@ export default function MyEditor({ value, onChange, placeholder = '', immediatel
   // Sync editor content if value changes from outside
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value || '', false);
+      editor.commands.setContent(value || '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);

@@ -116,10 +116,10 @@ export default function CollectDataPage() {
         window.addEventListener("offline", () => setIsOffline(true))
       } catch (error) {
         console.error("Error fetching survey:", error)
-        setError(error.message || "No se pudo cargar la encuesta")
+        setError((error as any)?.message || "No se pudo cargar la encuesta")
         toast({
           title: "Error",
-          description: error.message || "No se pudo cargar la encuesta",
+          description: (error as any)?.message || "No se pudo cargar la encuesta",
           variant: "destructive",
         })
       } finally {

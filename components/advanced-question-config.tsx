@@ -135,7 +135,7 @@ function ValueSelector({
 
   // For multiple choice, checkbox questions, and matrix with checkbox cells, show option selector
   if (((sourceQuestion.type === "multiple_choice" || sourceQuestion.type === "checkbox") && sourceQuestion.options?.length > 0) ||
-      (sourceQuestion.type === "matrix" && sourceQuestion.config?.matrixCellType === "checkbox" && sourceQuestion.matrixCols?.length > 0)) {
+      (sourceQuestion.type === "matrix" && sourceQuestion.config?.matrixCellType === "checkbox" && (sourceQuestion.matrixCols?.length ?? 0) > 0)) {
     // Checkbox + contains/not_contains -> multi-select checkboxes
     if ((sourceQuestion.type === "checkbox" || 
         (sourceQuestion.type === "matrix" && sourceQuestion.config?.matrixCellType === "checkbox")) && 

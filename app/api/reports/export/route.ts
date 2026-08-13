@@ -76,7 +76,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Cascading filter resolution
-    const { data: allProjects } = await admin.from("projects").select("id, name, company_id, companies(name)").order("name")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: allProjects } = await (admin as any).from("projects").select("id, name, company_id, companies(name)").order("name")
     const { data: allSurveys } = await admin.from("surveys").select("id, title, project_id").order("created_at", { ascending: false })
 
     let filteredSurveyIds: string[] | null = null

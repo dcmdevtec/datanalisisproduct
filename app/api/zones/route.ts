@@ -170,11 +170,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "NEXT_PUBLIC_SUPABASE_ANON_KEY not configured" }, { status: 500 })
   }
 
-  let cookieStore
-  let supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cookieStore: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let supabase: any
 
   try {
-    cookieStore = cookies()
+    cookieStore = await cookies()
     supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
       cookies: {
         get: (name: string) => {
@@ -240,11 +242,11 @@ export async function GET(request: Request) {
       if (!surveysError && surveys) {
         console.log("🔵 Found", surveys.length, "surveys with assigned zones")
 
-        safeZones = safeZones.map((zone) => {
-          const relatedSurveys = surveys.filter((survey) => {
+        safeZones = safeZones.map((zone: any) => {
+          const relatedSurveys = surveys.filter((survey: any) => {
             const assignedZones =
               typeof survey.assigned_zones === "string"
-                ? survey.assigned_zones.split(",").map((z) => z.trim())
+                ? survey.assigned_zones.split(",").map((z: any) => z.trim())
                 : survey.assigned_zones || []
 
             return (
@@ -255,16 +257,16 @@ export async function GET(request: Request) {
             )
           })
 
-          const allSurveyors = relatedSurveys.reduce((acc, survey) => {
+          const allSurveyors = relatedSurveys.reduce((acc: any[], survey: any) => {
             const surveyors = survey.assigned_surveyors || []
             return [...acc, ...surveyors]
-          }, [])
+          }, [] as any[])
 
           const uniqueSurveyors = [...new Set(allSurveyors)]
 
           return {
             ...zone,
-            surveys: relatedSurveys.map((s) => ({
+            surveys: relatedSurveys.map((s: any) => ({
               id: s.id,
               title: s.title,
               status: s.status,
@@ -273,7 +275,7 @@ export async function GET(request: Request) {
           }
         })
       } else {
-        safeZones = safeZones.map((zone) => ({
+        safeZones = safeZones.map((zone: any) => ({
           ...zone,
           surveys: [],
           surveyors: [],
@@ -300,11 +302,13 @@ export async function POST(request: Request) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  let cookieStore
-  let supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cookieStore: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let supabase: any
 
   try {
-    cookieStore = cookies()
+    cookieStore = await cookies()
     supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
       cookies: {
         get: (name: string) => cookieStore.get(name)?.value,
@@ -447,11 +451,13 @@ export async function PUT(request: Request) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  let cookieStore
-  let supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cookieStore: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let supabase: any
 
   try {
-    cookieStore = cookies()
+    cookieStore = await cookies()
     supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
       cookies: {
         get: (name: string) => cookieStore.get(name)?.value,
@@ -598,11 +604,13 @@ export async function DELETE(request: Request) {
   const auth = await requireRole(["admin"])
   if (!auth.ok) return auth.response
 
-  let cookieStore
-  let supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cookieStore: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let supabase: any
 
   try {
-    cookieStore = cookies()
+    cookieStore = await cookies()
     supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
       cookies: {
         get: (name: string) => cookieStore.get(name)?.value,

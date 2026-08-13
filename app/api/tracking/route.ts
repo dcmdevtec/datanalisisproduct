@@ -126,7 +126,7 @@ export async function GET(request: Request) {
 
     // Si hay filtro por encuesta, obtener los encuestadores asignados
     if (survey_id) {
-      const { data: surveyData, error: surveyError } = await supabase
+      const { data: surveyData, error: surveyError } = await (supabase as any)
         .from("surveys")
         .select("assigned_surveyors")
         .eq("id", survey_id)
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
         const assignedIds = Array.isArray(surveyData.assigned_surveyors)
           ? surveyData.assigned_surveyors
           : [surveyData.assigned_surveyors]
-        
+
         query = query.in("surveyor_id", assignedIds)
       }
     }
@@ -307,7 +307,7 @@ export async function POST(request: Request) {
 
     // Si hay filtro por encuesta, obtener los encuestadores asignados
     if (survey_id && survey_id !== "all") {
-      const { data: surveyData, error: surveyError } = await supabase
+      const { data: surveyData, error: surveyError } = await (supabase as any)
         .from("surveys")
         .select("assigned_surveyors")
         .eq("id", survey_id)
@@ -317,7 +317,7 @@ export async function POST(request: Request) {
         const assignedIds = Array.isArray(surveyData.assigned_surveyors)
           ? surveyData.assigned_surveyors
           : [surveyData.assigned_surveyors]
-        
+
         query = query.in("surveyor_id", assignedIds)
       }
     }

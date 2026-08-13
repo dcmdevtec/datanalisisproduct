@@ -1109,6 +1109,11 @@ export function CreateSurveyForProjectPageContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  // Stable ref so toast never lands in useCallback/useEffect dep arrays
+  // (useToast returns a new reference each render, causing fetchSurveyForEdit
+  // to recreate → the main useEffect re-fires → setInitialLoading(true) → "espabila")
+  const toastRef = useRef(toast)
+  useEffect(() => { toastRef.current = toast }, [toast])
 
   const projectId = params.id as string
   const surveyIdParam = searchParams.get("surveyId")
@@ -1185,7 +1190,7 @@ export function CreateSurveyForProjectPageContent() {
 
         debugLog("📝 Intentando crear encuesta con datos:", JSON.stringify(surveyData, null, 2))
 
-        const { data: newSurvey, error: surveyError } = await supabase
+        const { data: newSurvey, error: surveyError } = await (supabase as any)
           .from("surveys")
           .insert([surveyData])
           .select()
@@ -1783,7 +1788,7 @@ export function CreateSurveyForProjectPageContent() {
               settings: settings || {},
             }
 
-            const { data: newSurvey, error: newSurveyError } = await supabase
+            const { data: newSurvey, error: newSurveyError } = await (supabase as any)
               .from('surveys')
               .insert([surveyDataForCreate])
               .select()
@@ -1870,7 +1875,7 @@ export function CreateSurveyForProjectPageContent() {
 
       let surveyResult;
       if (isEditMode && currentSurveyId) {
-        const { data, error: surveyError } = await supabase
+        const { data, error: surveyError } = await (supabase as any)
           .from("surveys")
           .update(surveyData)
           .eq("id", currentSurveyId)
@@ -1881,7 +1886,7 @@ export function CreateSurveyForProjectPageContent() {
         }
         surveyResult = data[0];
       } else {
-        const { data, error: surveyError } = await supabase
+        const { data, error: surveyError } = await (supabase as any)
           .from("surveys")
           .insert([surveyData])
           .select();
@@ -1998,7 +2003,7 @@ export function CreateSurveyForProjectPageContent() {
     setError(null)
 
     try {
-      const { data: surveyData, error: surveyError } = await supabase
+      const { data: surveyData, error: surveyError } = await (supabase as any)
         .from("surveys")
         .select(
           `
@@ -2085,7 +2090,7 @@ export function CreateSurveyForProjectPageContent() {
       setProjectData(surveyData.projects)
 
       // Fetch surveyor-zone assignments
-      const { data: surveyorZoneData, error: surveyorZoneError } = await supabase
+      const { data: surveyorZoneData, error: surveyorZoneError } = await (supabase as any)
         .from("survey_surveyor_zones")
         .select("surveyor_id, zone_id, general_status")
         .eq("survey_id", currentSurveyId)
@@ -2097,7 +2102,7 @@ export function CreateSurveyForProjectPageContent() {
       const newAssignedZoneSurveyors: { [zoneId: string]: string[] } = {}
       const newAssignedGeneralSurveyors: string[] = []
 
-      surveyorZoneData.forEach((assignment) => {
+      surveyorZoneData.forEach((assignment: any) => {
         if (assignment.general_status === true && assignment.zone_id === null) {
           // Asignación general
           newAssignedGeneralSurveyors.push(assignment.surveyor_id)
@@ -2137,7 +2142,7 @@ export function CreateSurveyForProjectPageContent() {
       // Fetch sections and their questions
       debugLog("🔍 Buscando secciones para survey_id:", currentSurveyId)
 
-      const { data: sectionsData, error: sectionsError } = await supabase
+      const { data: sectionsData, error: sectionsError } = await (supabase as any)
         .from("survey_sections")
         .select(
           `
@@ -2184,13 +2189,13 @@ export function CreateSurveyForProjectPageContent() {
       debugLog("📋 Número de secciones:", sectionsData?.length || 0)
 
       // Verificar si hay secciones pero sin preguntas
-      if (sectionsData && sectionsData.length > 0) {
-        sectionsData.forEach((section, index) => {
+      if (sectionsData && (sectionsData as any[]).length > 0) {
+        (sectionsData as any[]).forEach((section, index) => {
           debugLog(`📋 Sección ${index + 1}: "${section.title}"`)
           debugLog(`📋 ID de sección: ${section.id}`)
           debugLog(`📋 Preguntas en sección: ${section.questions?.length || 0}`)
           if (section.questions && section.questions.length > 0) {
-            section.questions.forEach((q, qIndex) => {
+            section.questions.forEach((q: any, qIndex: any) => {
               debugLog(`  ❓ Pregunta ${qIndex + 1}: "${q.text}" (tipo: ${q.type})`)
             })
           } else {
@@ -2201,7 +2206,7 @@ export function CreateSurveyForProjectPageContent() {
         debugLog("⚠️ No se encontraron secciones para este survey")
       }
 
-      const formattedSections: SurveySection[] = sectionsData.map((s) => {
+      const formattedSections: SurveySection[] = (sectionsData as any[]).map((s) => {
         debugLog(`📋 Procesando sección: "${s.title}" con ${s.questions?.length || 0} preguntas`)
         return {
           id: s.id,
@@ -2212,8 +2217,8 @@ export function CreateSurveyForProjectPageContent() {
           skipLogic: s.skip_logic ? s.skip_logic : undefined,
           questions:
             s.questions
-              ?.sort((a, b) => a.order_num - b.order_num)
-              .map((q) => {
+              ?.sort((a: any, b: any) => a.order_num - b.order_num)
+              .map((q: any) => {
                 // Construir la configuración completa de la pregunta
                 const questionConfig = {
                   ...q.settings,
@@ -2261,7 +2266,7 @@ export function CreateSurveyForProjectPageContent() {
     } catch (err: any) {
       console.error("Error fetching survey for edit:", err)
       setError(err.message || "No se pudo cargar la encuesta para editar.")
-      toast({
+      toastRef.current({
         title: "Error",
         description: err.message || "No se pudo cargar la encuesta para editar",
         variant: "destructive",
@@ -2269,7 +2274,8 @@ export function CreateSurveyForProjectPageContent() {
     } finally {
       setInitialLoading(false)
     }
-  }, [currentSurveyId, toast])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSurveyId])
 
   // fetchProject y fetchSurveyorsAndZones consolidados en los useEffects de abajo (F0.3)
 
@@ -2376,7 +2382,7 @@ export function CreateSurveyForProjectPageContent() {
 
                   // Validar que el ID de la pregunta sea un UUID válido antes de actualizar
                   if (uuidRegex.test(question.id)) {
-                    const { error: updateError } = await supabase
+                    const { error: updateError } = await (supabase as any)
                       .from("questions")
                       .update({
                         question_config: {
@@ -2536,7 +2542,7 @@ export function CreateSurveyForProjectPageContent() {
       } catch (err: any) {
         console.error("Error fetching project data:", err)
         setError(err.message || "No se pudo cargar la información del proyecto.")
-        toast({
+        toastRef.current({
           title: "Error",
           description: err.message || "No se pudo cargar la información del proyecto",
           variant: "destructive",
@@ -2547,7 +2553,8 @@ export function CreateSurveyForProjectPageContent() {
     }
 
     fetchProjectData()
-  }, [user, projectId, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, projectId])
 
   // Load surveyors data
   useEffect(() => {
@@ -2569,7 +2576,7 @@ export function CreateSurveyForProjectPageContent() {
         setAllSurveyors(surveyorsData || [])
       } catch (err: any) {
         console.error("Error fetching surveyors:", err)
-        toast({
+        toastRef.current({
           title: "Error",
           description: "No se pudieron cargar los encuestadores",
           variant: "destructive",
@@ -2580,7 +2587,8 @@ export function CreateSurveyForProjectPageContent() {
     }
 
     fetchSurveyors()
-  }, [user, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   // Load zones data
   useEffect(() => {
@@ -2599,10 +2607,10 @@ export function CreateSurveyForProjectPageContent() {
           throw zonesError
         }
 
-        setAllZones(zonesData || [])
+        setAllZones((zonesData || []) as any)
       } catch (err: any) {
         console.error("Error fetching zones:", err)
-        toast({
+        toastRef.current({
           title: "Error",
           description: "No se pudieron cargar las zonas",
           variant: "destructive",
@@ -2613,7 +2621,8 @@ export function CreateSurveyForProjectPageContent() {
     }
 
     fetchZones()
-  }, [user, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   // Complete initialization when creating new survey (no surveyId)
   useEffect(() => {

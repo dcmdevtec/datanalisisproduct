@@ -35,7 +35,7 @@ export default function DiagnosticoPage() {
         "messages",
       ]
 
-      const results = {}
+      const results: Record<string, any> = {}
 
       for (const table of tables) {
         const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true })
@@ -50,7 +50,7 @@ export default function DiagnosticoPage() {
       setResults(results)
     } catch (err) {
       console.error("Error checking tables:", err)
-      setError(err.message || "Error desconocido")
+      setError((err as any)?.message || "Error desconocido")
     } finally {
       setIsLoading(false)
     }
@@ -70,7 +70,7 @@ export default function DiagnosticoPage() {
     } catch (err) {
       console.error("Error checking policies:", err)
       setError(
-        err.message || "Error desconocido al verificar políticas. Es posible que necesites permisos de administrador.",
+        (err as any)?.message || "Error desconocido al verificar políticas. Es posible que necesites permisos de administrador.",
       )
     } finally {
       setIsLoading(false)
@@ -127,7 +127,7 @@ export default function DiagnosticoPage() {
                       <div>Registros</div>
                     </div>
                     <div className="divide-y">
-                      {Object.entries(results).map(([table, info]) => (
+                      {Object.entries(results).map(([table, info]: [string, any]) => (
                         <div key={table} className="grid grid-cols-3 p-3 items-center">
                           <div className="font-medium">{table}</div>
                           <div>
@@ -188,7 +188,7 @@ export default function DiagnosticoPage() {
                       <div>Roles</div>
                     </div>
                     <div className="divide-y">
-                      {results.map((policy, index) => (
+                      {results.map((policy: any, index: any) => (
                         <div key={index} className="grid grid-cols-4 p-3 items-center">
                           <div>{policy.table}</div>
                           <div>{policy.name}</div>

@@ -2,15 +2,18 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 
 export interface Database {
   public: {
+    Views: Record<string, { Row: Record<string, unknown>; Relationships: never[] }>
+    Functions: Record<string, { Args: Record<string, unknown>; Returns: unknown }>
     Tables: {
       users: {
         Row: {
           id: string
           email: string
           name: string
-          role: "admin" | "supervisor" | "surveyor" | "client"
+          role: "admin" | "supervisor" | "surveyor" | "client" | "coordinator"
           status: "active" | "inactive"
           metadata: Json
+          coordinator_id: string | null
           created_at: string
           updated_at: string
         }
@@ -18,9 +21,10 @@ export interface Database {
           id: string
           email: string
           name: string
-          role: "admin" | "supervisor" | "surveyor" | "client"
+          role: "admin" | "supervisor" | "surveyor" | "client" | "coordinator"
           status?: "active" | "inactive"
           metadata?: Json
+          coordinator_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -28,12 +32,110 @@ export interface Database {
           id?: string
           email?: string
           name?: string
-          role?: "admin" | "supervisor" | "surveyor" | "client"
+          role?: "admin" | "supervisor" | "surveyor" | "client" | "coordinator"
           status?: "active" | "inactive"
           metadata?: Json
+          coordinator_id?: string | null
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
+      }
+      companies: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          status: "active" | "inactive"
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          status?: "active" | "inactive"
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          status?: "active" | "inactive"
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          company_id: string | null
+          status: "active" | "inactive" | "archived"
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          company_id?: string | null
+          status?: "active" | "inactive" | "archived"
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          company_id?: string | null
+          status?: "active" | "inactive" | "archived"
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      surveyors: {
+        Row: {
+          id: string
+          user_id: string | null
+          name: string
+          email: string
+          phone_number: string | null
+          status: "active" | "inactive"
+          supervisor_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          name: string
+          email: string
+          phone_number?: string | null
+          status?: "active" | "inactive"
+          supervisor_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          name?: string
+          email?: string
+          phone_number?: string | null
+          status?: "active" | "inactive"
+          supervisor_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       surveys: {
         Row: {
@@ -42,7 +144,10 @@ export interface Database {
           description: string | null
           status: "draft" | "active" | "completed" | "archived"
           deadline: string | null
+          start_date: string | null
           settings: Json
+          logo: string | null
+          project_id: string | null
           created_by: string | null
           created_at: string
           updated_at: string
@@ -53,7 +158,10 @@ export interface Database {
           description?: string | null
           status?: "draft" | "active" | "completed" | "archived"
           deadline?: string | null
+          start_date?: string | null
           settings?: Json
+          logo?: string | null
+          project_id?: string | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -64,21 +172,61 @@ export interface Database {
           description?: string | null
           status?: "draft" | "active" | "completed" | "archived"
           deadline?: string | null
+          start_date?: string | null
           settings?: Json
+          logo?: string | null
+          project_id?: string | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
+      }
+      sections: {
+        Row: {
+          id: string
+          survey_id: string
+          title: string
+          description: string | null
+          order_num: number
+          skip_logic: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          survey_id: string
+          title: string
+          description?: string | null
+          order_num: number
+          skip_logic?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          survey_id?: string
+          title?: string
+          description?: string | null
+          order_num?: number
+          skip_logic?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       questions: {
         Row: {
           id: string
           survey_id: string
-          type: "text" | "multiple_choice" | "checkbox" | "scale" | "date" | "time"
+          section_id: string | null
+          type: string
           text: string
+          file_url: string | null
           options: Json
           required: boolean
           order_num: number
+          config: Json | null
           settings: Json
           created_at: string
           updated_at: string
@@ -86,11 +234,14 @@ export interface Database {
         Insert: {
           id?: string
           survey_id: string
-          type: "text" | "multiple_choice" | "checkbox" | "scale" | "date" | "time"
+          section_id?: string | null
+          type: string
           text: string
+          file_url?: string | null
           options?: Json
           required?: boolean
           order_num: number
+          config?: Json | null
           settings?: Json
           created_at?: string
           updated_at?: string
@@ -98,15 +249,19 @@ export interface Database {
         Update: {
           id?: string
           survey_id?: string
-          type?: "text" | "multiple_choice" | "checkbox" | "scale" | "date" | "time"
+          section_id?: string | null
+          type?: string
           text?: string
+          file_url?: string | null
           options?: Json
           required?: boolean
           order_num?: number
+          config?: Json | null
           settings?: Json
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       zones: {
         Row: {
@@ -139,6 +294,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       assignments: {
         Row: {
@@ -174,6 +330,37 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
+      }
+      survey_surveyor_zones: {
+        Row: {
+          id: string
+          survey_id: string
+          surveyor_id: string
+          zone_id: string | null
+          status: "active" | "inactive" | "completed"
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          survey_id: string
+          surveyor_id: string
+          zone_id?: string | null
+          status?: "active" | "inactive" | "completed"
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          survey_id?: string
+          surveyor_id?: string
+          zone_id?: string | null
+          status?: "active" | "inactive" | "completed"
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       responses: {
         Row: {
@@ -183,7 +370,13 @@ export interface Database {
           assignment_id: string | null
           location: Json | null
           metadata: Json
-          completed_at: string
+          status: string | null
+          outcome: "efectiva" | "incidencia" | "abandonada" | null
+          incidence_type: string | null
+          respondent_name: string | null
+          respondent_document_type: string | null
+          respondent_document_number: string | null
+          completed_at: string | null
           created_at: string
           updated_at: string
         }
@@ -194,7 +387,13 @@ export interface Database {
           assignment_id?: string | null
           location?: Json | null
           metadata?: Json
-          completed_at: string
+          status?: string | null
+          outcome?: "efectiva" | "incidencia" | "abandonada" | null
+          incidence_type?: string | null
+          respondent_name?: string | null
+          respondent_document_type?: string | null
+          respondent_document_number?: string | null
+          completed_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -205,10 +404,17 @@ export interface Database {
           assignment_id?: string | null
           location?: Json | null
           metadata?: Json
-          completed_at?: string
+          status?: string | null
+          outcome?: "efectiva" | "incidencia" | "abandonada" | null
+          incidence_type?: string | null
+          respondent_name?: string | null
+          respondent_document_type?: string | null
+          respondent_document_number?: string | null
+          completed_at?: string | null
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       answers: {
         Row: {
@@ -235,6 +441,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       media_files: {
         Row: {
@@ -267,6 +474,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       sync_records: {
         Row: {
@@ -296,14 +504,15 @@ export interface Database {
           details?: Json
           created_at?: string
         }
+        Relationships: []
       }
       messages: {
         Row: {
           id: string
           sender_id: string
           receiver_id: string | null
-          is_broadcast: boolean
           content: string
+          message_type: "direct" | "broadcast"
           read: boolean
           created_at: string
         }
@@ -311,8 +520,8 @@ export interface Database {
           id?: string
           sender_id: string
           receiver_id?: string | null
-          is_broadcast?: boolean
           content: string
+          message_type?: "direct" | "broadcast"
           read?: boolean
           created_at?: string
         }
@@ -320,11 +529,138 @@ export interface Database {
           id?: string
           sender_id?: string
           receiver_id?: string | null
-          is_broadcast?: boolean
           content?: string
+          message_type?: "direct" | "broadcast"
           read?: boolean
           created_at?: string
         }
+        Relationships: []
+      }
+      surveyor_locations: {
+        Row: {
+          id: string
+          surveyor_id: string
+          latitude: number
+          longitude: number
+          accuracy: number | null
+          battery_level: number | null
+          is_charging: boolean | null
+          app_version: string | null
+          device_info: Json | null
+          active_survey_id: string | null
+          is_foreground: boolean | null
+          status: string | null
+          is_in_zone: boolean | null
+          current_zone_id: string | null
+          recorded_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          surveyor_id: string
+          latitude: number
+          longitude: number
+          accuracy?: number | null
+          battery_level?: number | null
+          is_charging?: boolean | null
+          app_version?: string | null
+          device_info?: Json | null
+          active_survey_id?: string | null
+          is_foreground?: boolean | null
+          status?: string | null
+          is_in_zone?: boolean | null
+          current_zone_id?: string | null
+          recorded_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          surveyor_id?: string
+          latitude?: number
+          longitude?: number
+          accuracy?: number | null
+          battery_level?: number | null
+          is_charging?: boolean | null
+          app_version?: string | null
+          device_info?: Json | null
+          active_survey_id?: string | null
+          is_foreground?: boolean | null
+          status?: string | null
+          is_in_zone?: boolean | null
+          current_zone_id?: string | null
+          recorded_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      public_respondents: {
+        Row: {
+          id: string
+          survey_id: string
+          document_type: string
+          document_number: string
+          full_name: string | null
+          email: string | null
+          phone: string | null
+          address: string | null
+          company: string | null
+          updated_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          survey_id: string
+          document_type: string
+          document_number: string
+          full_name?: string | null
+          email?: string | null
+          phone?: string | null
+          address?: string | null
+          company?: string | null
+          updated_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          survey_id?: string
+          document_type?: string
+          document_number?: string
+          full_name?: string | null
+          email?: string | null
+          phone?: string | null
+          address?: string | null
+          company?: string | null
+          updated_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      assigned_surveyors: {
+        Row: {
+          id: string
+          zone_id: string
+          surveyor_id: string
+          status: "active" | "inactive"
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          zone_id: string
+          surveyor_id: string
+          status?: "active" | "inactive"
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          zone_id?: string
+          surveyor_id?: string
+          status?: "active" | "inactive"
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
   }

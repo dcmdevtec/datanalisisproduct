@@ -11,7 +11,7 @@ import { supabase } from "@/lib/supabase-browser"
 import DashboardLayout from "@/components/dashboard-layout"
 
 export default function AuthDebugPage() {
-  const { user, session, loading, error } = useAuth()
+  const { user, session, loading, error } = useAuth() as any
   const [authStatus, setAuthStatus] = useState<any>(null)
   const [checkingAuth, setCheckingAuth] = useState(false)
   const [sessionDetails, setSessionDetails] = useState<any>(null)
@@ -57,7 +57,7 @@ export default function AuthDebugPage() {
       console.error("Error verificando autenticación:", error)
       setAuthStatus({
         success: false,
-        message: `Error: ${error.message}`,
+        message: `Error: ${(error as any)?.message}`,
       })
     } finally {
       setCheckingAuth(false)
@@ -103,7 +103,7 @@ export default function AuthDebugPage() {
     } catch (error) {
       console.error("Error probando permisos:", error)
       setPermissionsTest({
-        error: error.message,
+        error: (error as any)?.message,
       })
     } finally {
       setTestingPermissions(false)
@@ -119,7 +119,7 @@ export default function AuthDebugPage() {
       window.location.reload()
     } catch (error) {
       console.error("Error al actualizar sesión:", error)
-      alert(`Error al actualizar sesión: ${error.message}`)
+      alert(`Error al actualizar sesión: ${(error as any)?.message}`)
     }
   }
 

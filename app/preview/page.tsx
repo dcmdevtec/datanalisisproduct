@@ -191,6 +191,9 @@ export default function PreviewPage() {
                             showNumbers: true,
                             showLabels: true,
                             orientation: 'horizontal',
+                            startPosition: 'left',
+                            showZero: false,
+                            zeroLabel: '',
                             validation: {
                               requireAnswer: true,
                               allowZero: false,
@@ -228,6 +231,9 @@ export default function PreviewPage() {
                             showNumbers: true,
                             showLabels: true,
                             orientation: 'horizontal',
+                            startPosition: 'left',
+                            showZero: false,
+                            zeroLabel: '',
                             validation: {
                               requireAnswer: true,
                               allowZero: false,
@@ -257,6 +263,9 @@ export default function PreviewPage() {
                             min: 1,
                             max: 100,
                             step: 1,
+                            startPosition: 'left',
+                            showZero: false,
+                            zeroLabel: '',
                             labels: {
                               left: 'muy satisfecho',
                               right: 'muy satisfecho'

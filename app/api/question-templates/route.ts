@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-function getSupabase() {
-  const cookieStore = cookies()
+async function getSupabase() {
+  const cookieStore = await cookies()
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (cs) => {
-          try { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) } catch {}
+        setAll: (cs: { name: string; value: string; options?: Record<string, unknown> }[]) => {
+          try { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options as any)) } catch {}
         },
       },
     }
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data: [], error: null })
     }
 
-    const supabase = getSupabase()
+    const supabase = await getSupabase()
 
     // Búsqueda por similitud de texto con pg_trgm + filtro por tags (contains)
     // Usamos ilike para compatibilidad sin requerir configuración extra de FTS
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     const { id } = await req.json()
     if (!id) return NextResponse.json({ ok: false, error: "id requerido" }, { status: 400 })
 
-    const supabase = getSupabase()
+    const supabase = await getSupabase()
 
     // Incremento atómico con rpc o update
     const { error } = await supabase.rpc("increment_question_template_use_count", { template_id: id })

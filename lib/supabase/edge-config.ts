@@ -6,7 +6,7 @@ export const edgeConfig = {
 
 // Función para verificar si estamos en Edge Runtime
 export const isEdgeRuntime = () => {
-  return typeof EdgeRuntime !== 'undefined'
+  return typeof (globalThis as any).EdgeRuntime !== 'undefined'
 }
 
 // Función para obtener headers compatibles con Edge Runtime

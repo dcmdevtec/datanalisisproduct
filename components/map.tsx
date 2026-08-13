@@ -52,14 +52,14 @@ export default function ZonesPage() {
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login")
-    } else if (!authLoading && user && !["admin", "supervisor"].includes(user.role)) {
+    } else if (!authLoading && user && !["admin", "supervisor"].includes(user.role ?? "")) {
       router.push("/dashboard")
       toast({
         title: "Acceso restringido",
         description: "No tienes permisos para acceder a esta página",
         variant: "destructive",
       })
-    } else if (user && ["admin", "supervisor"].includes(user.role)) {
+    } else if (user && ["admin", "supervisor"].includes(user.role ?? "")) {
       fetchZones()
     }
   }, [user, authLoading, router, toast])
@@ -116,7 +116,7 @@ export default function ZonesPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  if (!["admin", "supervisor"].includes(user.role)) {
+  if (!["admin", "supervisor"].includes(user.role ?? "")) {
     return null
   }
 
@@ -185,9 +185,9 @@ export default function ZonesPage() {
                           <MapWithChoropleth
                             initialGeometry={zone.geometry}
                             onGeometryChange={() => {}}
-                            readOnly={true}
                             zoneColor={zone.zone_color || "#3388ff"}
                             selectedNeighborhoods={zone.selected_neighborhoods || []}
+                            onNeighborhoodSelect={() => {}}
                           />
                         </div>
                       )

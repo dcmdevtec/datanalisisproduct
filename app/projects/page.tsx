@@ -57,8 +57,18 @@ function ProjectsPageContent() {
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const pageSize = 10
-  // Vista cards/tabla
-  const [viewType, setViewType] = useState<'table' | 'cards'>('table')
+  // Vista cards/tabla — persiste en localStorage
+  const [viewType, setViewType] = useState<'table' | 'cards'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('projects_viewType')
+      if (saved === 'table' || saved === 'cards') return saved
+    }
+    return 'table'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('projects_viewType', viewType)
+  }, [viewType])
 
   useEffect(() => {
     if (!authLoading && !user) {

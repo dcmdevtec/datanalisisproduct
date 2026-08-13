@@ -59,7 +59,7 @@ export default function DebugPage() {
         "messages",
       ]
 
-      const results = {}
+      const results: Record<string, any> = {}
 
       for (const table of tables) {
         const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true })
@@ -74,7 +74,7 @@ export default function DebugPage() {
       setResults(results)
     } catch (err) {
       console.error("Error checking tables:", err)
-      setError(err.message || "Error desconocido")
+      setError((err as any)?.message || "Error desconocido")
     } finally {
       setIsLoading(false)
     }
@@ -94,7 +94,7 @@ export default function DebugPage() {
     } catch (err) {
       console.error("Error checking policies:", err)
       setError(
-        err.message || "Error desconocido al verificar políticas. Es posible que necesites permisos de administrador.",
+        (err as any)?.message || "Error desconocido al verificar políticas. Es posible que necesites permisos de administrador.",
       )
     } finally {
       setIsLoading(false)
@@ -205,7 +205,7 @@ export default function DebugPage() {
                         <div>Registros</div>
                       </div>
                       <div className="divide-y">
-                        {Object.entries(results).map(([table, info]) => (
+                        {Object.entries(results).map(([table, info]: [string, any]) => (
                           <div key={table} className="grid grid-cols-3 p-3 items-center">
                             <div className="font-medium">{table}</div>
                             <div>

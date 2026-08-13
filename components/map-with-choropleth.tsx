@@ -57,7 +57,7 @@ const MapWithChoropleth = forwardRef<any, MapWithChoroplethProps>(
 
           for (let i = 1; i < selectedFeatures.length; i++) {
             const nextPolygon = turf.polygon(selectedFeatures[i].geometry.coordinates)
-            combined = turf.union(combined, nextPolygon) as any
+            combined = turf.union(combined as any, nextPolygon as any) as any
           }
 
           console.log("✅ Combined neighborhoods geometry (union):", combined.geometry)

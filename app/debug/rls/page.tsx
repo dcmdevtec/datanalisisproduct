@@ -15,12 +15,12 @@ const checkRLSPolicies = async () => {
     const { data, error } = await supabase.from("surveys").select("id").limit(1)
     
     if (error) {
-      return { success: false, message: `Error al acceder a surveys: ${error.message}` }
+      return { success: false, message: `Error al acceder a surveys: ${(error as any)?.message}` }
     }
     
     return { success: true, data: [{ table_name: "surveys", policy_name: "RLS habilitado", operation: "SELECT", definition: "Acceso permitido" }] }
   } catch (error) {
-    return { success: false, message: `Error al verificar políticas: ${error.message}` }
+    return { success: false, message: `Error al verificar políticas: ${(error as any)?.message}` }
   }
 }
 
@@ -65,7 +65,7 @@ const checkUserPermissions = async () => {
       },
     }
   } catch (error) {
-    return { success: false, message: `Error al verificar permisos: ${error.message}` }
+    return { success: false, message: `Error al verificar permisos: ${(error as any)?.message}` }
   }
 }
 
@@ -75,17 +75,17 @@ const applyRLSPolicies = async () => {
     // La aplicación real de políticas debe hacerse desde el servidor
     return { success: true, message: "Las políticas RLS ya están configuradas correctamente" }
   } catch (error) {
-    return { success: false, message: `Error al aplicar políticas: ${error.message}` }
+    return { success: false, message: `Error al aplicar políticas: ${(error as any)?.message}` }
   }
 }
 
 export default function RLSDebugPage() {
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
-  const [policies, setPolicies] = useState(null)
-  const [permissions, setPermissions] = useState(null)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
+  const [policies, setPolicies] = useState<any>(null)
+  const [permissions, setPermissions] = useState<any>(null)
+  const [error, setError] = useState<any>(null)
+  const [success, setSuccess] = useState<any>(null)
 
   const checkPolicies = async () => {
     setLoading(true)
@@ -101,7 +101,7 @@ export default function RLSDebugPage() {
       const permissionsResult = await checkUserPermissions()
       setPermissions(permissionsResult)
     } catch (err) {
-      setError("Error al verificar políticas: " + err.message)
+      setError("Error al verificar políticas: " + (err as any)?.message)
     } finally {
       setLoading(false)
     }
@@ -122,7 +122,7 @@ export default function RLSDebugPage() {
         setError(result.message)
       }
     } catch (err) {
-      setError("Error al aplicar políticas: " + err.message)
+      setError("Error al aplicar políticas: " + (err as any)?.message)
     } finally {
       setApplying(false)
     }
@@ -178,8 +178,8 @@ export default function RLSDebugPage() {
                     {policies?.success ? (
                       <ul className="space-y-2">
                         {policies.data
-                          .filter((p) => p.table_name === "surveys")
-                          .map((policy, index) => (
+                          .filter((p: any) => p.table_name === "surveys")
+                          .map((policy: any, index: any) => (
                             <li key={index} className="text-sm">
                               <div className="flex items-center">
                                 <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
@@ -190,7 +190,7 @@ export default function RLSDebugPage() {
                               </div>
                             </li>
                           ))}
-                        {policies.data.filter((p) => p.table_name === "surveys").length === 0 && (
+                        {policies.data.filter((p: any) => p.table_name === "surveys").length === 0 && (
                           <li className="text-sm text-amber-600">No se encontraron políticas para esta tabla</li>
                         )}
                       </ul>

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
 export function UserDebug() {
-  const { user, session } = useAuth()
+  const { user, session } = useAuth() as any
 
   if (process.env.NODE_ENV !== 'development') {
     return null

@@ -54,12 +54,18 @@ interface Question {
   id: string
   type: string
   text: string
+  text_html?: string
+  title?: string
   options: string[]
   required: boolean
   image?: string | null
   matrixRows?: string[]
   matrixCols?: string[]
+  matrixColOptions?: any[]
+  matrixCellType?: string
+  matrixRatingScale?: any
   ratingScale?: number
+  settings?: any
   config?: {
     dropdownMulti?: boolean
     matrixCellType?: string
@@ -72,23 +78,27 @@ interface Question {
     ratingEmojis?: boolean
     displayLogic?: {
       enabled: boolean
+      logicalOperator?: string
       conditions: Array<{
         questionId: string
-        questionText?: string // Agregar campo para reconciliación automática
+        questionText?: string
         operator: string
         value: string
+        logicalOperator?: string
       }>
     }
     skipLogic?: {
       enabled: boolean
       rules: Array<{
         condition: string
+        action?: string
         targetSectionId: string
         targetQuestionId?: string
         targetQuestionText?: string
         enabled: boolean
         operator: string
         value: string
+        [key: string]: any
       }>
     }
     validation?: {
@@ -105,6 +115,7 @@ interface Question {
 interface SurveySection {
   id: string
   title: string
+  title_html?: string
   description?: string
   order_num: number
   questions: Question[]
@@ -113,6 +124,9 @@ interface SurveySection {
     target_type: string
     target_section_id?: string
     target_question_id?: string
+    action?: string
+    targetSectionId?: string
+    [key: string]: any
   }
 }
 
@@ -833,6 +847,9 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
         return;
       }
 
+      // video: tipo de pregunta solo de visualización, sin respuesta
+      if (question.type === 'video') return;
+
       // displayOnly: pregunta multimedia de solo visualización, sin respuesta requerida
       if (question.config?.displayOnly) return;
 
@@ -851,7 +868,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
           if (matrixRows.length > 0) {
             const unansweredRows: string[] = [];
             
-            const allRowsOk = matrixRows.every((row, i) => {
+            const allRowsOk = matrixRows.every((row: any, i: any) => {
               // Checkbox: answers are stored per-row as arrays under `${question.id}_${i}`
               if (cellType === 'checkbox') {
                 const rowKey = `${question.id}_${i}`;
@@ -1268,7 +1285,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === skipLogic.targetSectionId)
             if (foundSectionIndex !== -1) {
               // Registrar en historial para que "Atrás" pueda volver aquí
-              setSkipLogicHistory((prev) => [...prev, currentSectionIndex])
+              setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
               setCurrentSectionIndex(foundSectionIndex)
               return // Salir después de aplicar el salto de sección
             } else {
@@ -1302,7 +1319,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
           const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === target_section_id)
           if (foundSectionIndex !== -1) {
             // Registrar en historial para que "Atrás" pueda volver aquí
-            setSkipLogicHistory((prev) => [...prev, currentSectionIndex])
+            setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
             setCurrentSectionIndex(foundSectionIndex)
             return // Salir después de aplicar el salto de sección
           }
@@ -1388,7 +1405,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === rule.targetSectionId)
                   if (foundSectionIndex !== -1) {
                     // Registrar en historial para que "Atrás" pueda volver aquí
-                    setSkipLogicHistory((prev) => [...prev, currentSectionIndex])
+                    setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
                     setCurrentSectionIndex(foundSectionIndex)
 
                     // Si hay una pregunta específica, hacer scroll a ella después de un breve delay
@@ -1444,7 +1461,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       // Hay saltos en el historial — volver al origen del último salto
       const lastIdx = skipLogicHistory[skipLogicHistory.length - 1]
       setSkipLogicHistory((prev) => prev.slice(0, -1))
-      setCurrentSectionIndex(lastIdx)
+      setCurrentSectionIndex(lastIdx as any)
     } else if (currentSectionIndex > 0) {
       setCurrentSectionIndex((prev) => prev - 1)
     }
@@ -2325,10 +2342,10 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             const scaleLabels = question.config?.scaleLabels || [];
             const minLabel = Array.isArray(scaleLabels)
               ? (scaleLabels[0] || "")
-              : (scaleLabels.min || "");
+              : ((scaleLabels as any).min || "");
             const maxLabel = Array.isArray(scaleLabels)
               ? (scaleLabels[1] || "")
-              : (scaleLabels.max || "");
+              : ((scaleLabels as any).max || "");
 
             // Generate array of scale values
             const scaleValues = Array.from(
@@ -2961,6 +2978,25 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                 initialData={answers[question.id]}
               />
             )
+          case "video":
+            // Tipo Video: solo muestra el video adjunto, sin campo de respuesta.
+            // El enunciado (question.title) actúa como texto introductorio/instrucción.
+            return (
+              <div className="space-y-2">
+                {question.image ? (
+                  <video
+                    src={question.image}
+                    controls
+                    className="w-full rounded-lg bg-black"
+                    style={{ maxHeight: 420 }}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center py-10 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                    <p className="text-sm text-gray-400">Sin video adjunto</p>
+                  </div>
+                )}
+              </div>
+            )
           case "location":
             // Pregunta tipo Ubicación (slide 17): geolocalización automática del
             // navegador + reverse geocoding, campos editables. Solo web.
@@ -3092,13 +3128,13 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               <div className="space-y-3">
                 {/* ── MÓVIL: tarjetas apiladas por fila ── */}
                 <div className="sm:hidden space-y-3">
-                  {matrixRows.map((row, rowIdx) => (
+                  {matrixRows.map((row: any, rowIdx: any) => (
                     <div key={rowIdx} className="border border-gray-200 rounded-xl overflow-hidden">
                       <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200">
                         <p className="text-sm font-semibold text-gray-800 leading-snug">{row}</p>
                       </div>
                       <div className="divide-y divide-gray-100">
-                        {matrixCols.map((col, colIdx) => (
+                        {matrixCols.map((col: any, colIdx: any) => (
                           <label key={colIdx} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer active:bg-gray-50" style={{ touchAction: 'manipulation' }}>
                             <span className="text-sm text-gray-700 leading-snug flex-1">{col}</span>
                             <div className="shrink-0">
@@ -3118,7 +3154,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 w-2/5">Preguntas</th>
-                          {matrixCols.map((col, idx) => (
+                          {matrixCols.map((col: any, idx: any) => (
                             <th key={idx} className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-normal min-w-[80px]">
                               {col}
                             </th>
@@ -3126,10 +3162,10 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
-                        {matrixRows.map((row, rowIdx) => (
+                        {matrixRows.map((row: any, rowIdx: any) => (
                           <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
                             <td className="px-4 py-4 align-middle font-medium text-sm text-gray-800 leading-snug">{row}</td>
-                            {matrixCols.map((col, colIdx) => (
+                            {matrixCols.map((col: any, colIdx: any) => (
                               <td key={colIdx} className="px-3 py-4 align-middle text-center">
                                 <div className="flex items-center justify-center">
                                   {renderMatrixCell(rowIdx, colIdx, col)}
@@ -3154,7 +3190,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               const labels = question.config?.textboxLabels || question.options || [];
               return (
                 <div className="space-y-4">
-                  {labels.map((label, idx) => (
+                  {labels.map((label: any, idx: any) => (
                     <div key={idx} className="space-y-2">
                       <Label>{label}</Label>
                       <Input

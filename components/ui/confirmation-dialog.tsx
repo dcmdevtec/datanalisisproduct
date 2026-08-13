@@ -41,7 +41,7 @@ export function ConfirmationDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onClose}>{cancelText}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} variant={confirmVariant}>
+          <AlertDialogAction onClick={onConfirm} {...({ variant: confirmVariant } as any)}>
             {confirmText}
           </AlertDialogAction>
         </AlertDialogFooter>

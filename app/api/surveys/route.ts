@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
-import type { Database } from "@/types/supabase" // Asegúrate de definir este tipo si usas TS
+import type { Database } from "@/types/supabase"
 import { createServerClient } from "@supabase/ssr"
+import { type SupabaseClient } from "@supabase/supabase-js"
 
-// Cliente de Supabase autenticado por SSR
-function getSupabaseClient() {
-  const cookieStore = cookies()
+// NOTE: @supabase/ssr@0.6.1 vs supabase-js@2.101.1 version mismatch causes Schema=never.
+// Cast to SupabaseClient<Database> fixes type resolution. See lib/supabase-server.ts.
+async function getSupabaseClient(): Promise<SupabaseClient<Database>> {
+  const cookieStore = await cookies()
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -15,22 +17,21 @@ function getSupabaseClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, options as any)
             })
           } catch {
             // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing user sessions.
           }
         },
       },
     }
-  )
+  ) as unknown as SupabaseClient<Database>
 }
 export async function GET(request: Request) {
-  const supabase = getSupabaseClient()
+  const supabase = await getSupabaseClient()
 
   const {
     data: { user },
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = getSupabaseClient()
+  const supabase = await getSupabaseClient()
   const body = await request.json()
   const { title, description, questions, settings, deadline } = body
 
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const supabase = getSupabaseClient()
+  const supabase = await getSupabaseClient()
   const body = await request.json()
   const { id, title, description, questions, settings, deadline, status } = body
 

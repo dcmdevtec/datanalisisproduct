@@ -15,7 +15,7 @@ export function useRedirectDebug() {
     router.push = function(...args: any[]) {
       console.log('🚀 Redirección interceptada:', args)
       console.trace('Stack trace de redirección')
-      return originalPush.apply(router, args)
+      return (originalPush as any).apply(router, args)
     }
 
     return () => {

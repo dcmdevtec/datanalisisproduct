@@ -1,11 +1,11 @@
 import { cookies } from 'next/headers'
-import { createServerSupabaseClient } from '@/lib/supabase/client'
+import { createClient as createServerSupabaseClient } from '@/lib/supabase/server'
 import { SupabaseLogger } from '@/lib/supabase/logging'
 
 // Componente que se ejecuta en el servidor para inicializar Supabase (2025)
 export async function SupabaseSSRInit() {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = await createServerSupabaseClient(cookieStore)
 
     // Verificar la sesión en el servidor usando getUser() (más seguro)

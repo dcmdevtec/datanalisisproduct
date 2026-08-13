@@ -45,7 +45,7 @@ export default function DebugSupabase() {
 
       // Intentar crear un registro de prueba
       const testId = crypto.randomUUID() // ✅ UUID real en lugar de timestamp
-      const { data: insertData, error: insertError } = await supabase
+      const { data: insertData, error: insertError } = await (supabase as any)
         .from("sync_records")
         .insert({
           id: testId,
@@ -75,7 +75,7 @@ export default function DebugSupabase() {
       })
     } catch (err) {
       console.error("Error testing Supabase:", err)
-      setError(err.message || "Error desconocido")
+      setError((err as any)?.message || "Error desconocido")
       setResult({
         connection: "ERROR",
         message: "No se pudo conectar a Supabase o realizar operaciones",

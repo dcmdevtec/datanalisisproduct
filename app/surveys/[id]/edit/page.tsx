@@ -240,7 +240,7 @@ export default function EditSurveyPage() {
           deadline,
           settings,
         })
-        .eq("id", params.id)
+        .eq("id", String(params.id))
       if (surveyError) throw surveyError
       // BUGFIX: el patrón DELETE+INSERT sin transacción es destructivo.
       // Si el INSERT falla (sesión expirada, red, timeout), las preguntas quedaban
@@ -263,7 +263,7 @@ export default function EditSurveyPage() {
         parent_id: null,
       }))
       if (questionsToUpsert.length > 0) {
-        const { error: questionsError } = await supabase
+        const { error: questionsError } = await (supabase as any)
           .from("questions")
           .upsert(questionsToUpsert, { onConflict: 'id' })
         if (questionsError) throw questionsError
@@ -274,7 +274,7 @@ export default function EditSurveyPage() {
         await supabase
           .from("questions")
           .delete()
-          .eq("survey_id", params.id)
+          .eq("survey_id", String(params.id))
           .not("id", "in", `(${currentIds.join(",")})`)
       }
       toast({

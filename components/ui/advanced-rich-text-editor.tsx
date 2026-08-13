@@ -72,7 +72,7 @@ interface Props {
   onBlur?: () => void;
 }
 
-export function AdvancedRichTextEditor({ value, onChange, placeholder = 'Escribe aquí...', immediatelyRender = false, debounceMs = 200 }: Props) {
+export function AdvancedRichTextEditor({ value, onChange, onBlur, placeholder = 'Escribe aquí...', immediatelyRender = false, debounceMs = 200 }: Props) {
   const editor = useEditor({
     extensions: [
       StarterKit,

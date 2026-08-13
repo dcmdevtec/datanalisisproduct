@@ -95,8 +95,18 @@ function SurveysPageContent() {
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const pageSize = 10
-  // Vista cards/tabla
-  const [viewType, setViewType] = useState<'table' | 'cards'>('table')
+  // Vista cards/tabla — persiste en localStorage
+  const [viewType, setViewType] = useState<'table' | 'cards'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('surveys_viewType')
+      if (saved === 'table' || saved === 'cards') return saved
+    }
+    return 'table'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('surveys_viewType', viewType)
+  }, [viewType])
 
   // Sin permisos - todos los usuarios pueden hacer todo
   // const isAdmin = user?.role === "admin"
@@ -167,7 +177,7 @@ function SurveysPageContent() {
       setLoading(false)
       return
     }
-    setProjects(projectsData || [])
+    setProjects((projectsData || []) as any)
 
     // --- Survey Fetching Logic ---
     let surveyQuery = supabase
@@ -330,7 +340,7 @@ function SurveysPageContent() {
       for (const section of (sectionsData ?? [])) {
         const newSectionId = crypto.randomUUID()
 
-        const { error: sectionInsertError } = await supabase
+        const { error: sectionInsertError } = await (supabase as any)
           .from("survey_sections")
           .insert({
             id: newSectionId,

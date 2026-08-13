@@ -15,7 +15,7 @@ export default function CreateProjectPage() {
   const [companyId, setCompanyId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [companies, setCompanies] = useState([]);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export default function CreateProjectPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await supabase.from("projects").insert([
+    const { error } = await (supabase as any).from("projects").insert([
       {
         name,
         description,
