@@ -623,7 +623,37 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
 
                           {/* Respuesta */}
                           <div className="ml-9">
-                            {hasAnswer ? (
+                            {/* Renderer especial: tipo location (GPS) */}
+                            {q.type === "location" && q.rawAnswer && typeof q.rawAnswer === "object" && !Array.isArray(q.rawAnswer) && q.rawAnswer.lat != null ? (
+                              <div className="rounded-xl border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20 p-3 space-y-2">
+                                <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-1.5 uppercase tracking-wide">
+                                  <MapPin className="h-3.5 w-3.5" /> Ubicación GPS
+                                </p>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                  {[
+                                    { label: "Ciudad",       val: q.rawAnswer.ciudad },
+                                    { label: "Barrio",       val: q.rawAnswer.barrio },
+                                    { label: "Localidad",    val: q.rawAnswer.localidad },
+                                    { label: "Departamento", val: q.rawAnswer.departamento },
+                                    { label: "País",         val: q.rawAnswer.pais },
+                                  ].filter(f => f.val).map(f => (
+                                    <div key={f.label}>
+                                      <span className="text-[11px] text-muted-foreground">{f.label}: </span>
+                                      <span className="font-medium text-foreground">{f.val}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <a
+                                  href={`https://www.google.com/maps?q=${q.rawAnswer.lat},${q.rawAnswer.lng}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+                                >
+                                  <MapPin className="h-3 w-3" />
+                                  {Number(q.rawAnswer.lat).toFixed(5)}, {Number(q.rawAnswer.lng).toFixed(5)} — Ver en mapa
+                                </a>
+                              </div>
+                            ) : hasAnswer ? (
                               <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
                                 {q.answer}
                               </p>

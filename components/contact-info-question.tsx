@@ -62,26 +62,28 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
   const [company, setCompany] = useState("")
   const [address, setAddress] = useState("")
   // Campos estructurados de dirección colombiana
-  const [addrTipoVia, setAddrTipoVia] = useState("") // Calle, Carrera, Diagonal, Transversal
+  // Formato: [Tipo de Vía] [Número principal] # [Cruce] - [Distancia] [Complemento]
+  // Ejemplo:  Calle 23 # 45 - 12 Apto 301
+  const [addrTipoVia, setAddrTipoVia] = useState("")       // Calle, Carrera, Diagonal...
   const [addrNumPrincipal, setAddrNumPrincipal] = useState("") // ej: 23
-  const [addrNumSecundario, setAddrNumSecundario] = useState("") // ej: 45
+  const [addrNumCruce, setAddrNumCruce] = useState("")         // ej: 45
+  const [addrNumDistancia, setAddrNumDistancia] = useState("") // ej: 12
   const [addrComplemento, setAddrComplemento] = useState("") // Apartamento, interior, etc.
   const debouncedDocumentNumber = useDebounce(documentNumber, 500)
   const [status, setStatus] = useState<VerificationStatus>("idle")
   const [message, setMessage] = useState("")
 
   // Combinar campos estructurados de dirección en el string address
+  // Formato colombiano: Calle 23 # 45 - 12 Apto 301
   useEffect(() => {
     if (addrTipoVia || addrNumPrincipal) {
-      const built = [
-        addrTipoVia,
-        addrNumPrincipal,
-        addrNumSecundario ? `# ${addrNumSecundario}` : "",
-        addrComplemento,
-      ].filter(Boolean).join(" ").trim()
-      setAddress(built)
+      let built = [addrTipoVia, addrNumPrincipal].filter(Boolean).join(" ")
+      if (addrNumCruce) built += ` # ${addrNumCruce}`
+      if (addrNumDistancia) built += ` - ${addrNumDistancia}`
+      if (addrComplemento) built += ` ${addrComplemento}`
+      setAddress(built.trim())
     }
-  }, [addrTipoVia, addrNumPrincipal, addrNumSecundario, addrComplemento])
+  }, [addrTipoVia, addrNumPrincipal, addrNumCruce, addrNumDistancia, addrComplemento])
 
   // Efecto para cargar datos iniciales si cambian (auto-relleno)
   useEffect(() => {
@@ -352,12 +354,13 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
           if (fieldKey === 'address' && includeAddress) return (
             <div key="address" className="space-y-2 md:col-span-2">
               <Label>Dirección</Label>
-              {/* Formato dirección colombiana */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="space-y-1">
+              {/* Formato dirección colombiana: Calle 23 # 45 - 12 Apto 301 */}
+              <div className="flex flex-wrap items-end gap-1.5">
+                {/* Tipo de Vía */}
+                <div className="space-y-1 min-w-[120px] flex-shrink-0">
                   <Label htmlFor="addr-tipo" className="text-xs text-muted-foreground">Tipo de Vía</Label>
                   <Select value={addrTipoVia} onValueChange={setAddrTipoVia} disabled={isBlocked}>
-                    <SelectTrigger id="addr-tipo" className="h-9 text-sm"><SelectValue placeholder="Tipo..." /></SelectTrigger>
+                    <SelectTrigger id="addr-tipo" className="h-9 text-sm w-full"><SelectValue placeholder="Tipo..." /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Calle">Calle</SelectItem>
                       <SelectItem value="Carrera">Carrera</SelectItem>
@@ -368,15 +371,33 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
+
+                {/* Número principal */}
+                <div className="space-y-1 w-16 flex-shrink-0">
                   <Label htmlFor="addr-num-principal" className="text-xs text-muted-foreground">Número</Label>
                   <Input id="addr-num-principal" value={addrNumPrincipal} onChange={e => setAddrNumPrincipal(e.target.value)} placeholder="23" disabled={isBlocked} className="h-9 text-sm" />
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="addr-num-sec" className="text-xs text-muted-foreground"># Secundario</Label>
-                  <Input id="addr-num-sec" value={addrNumSecundario} onChange={e => setAddrNumSecundario(e.target.value)} placeholder="45 - 12" disabled={isBlocked} className="h-9 text-sm" />
+
+                {/* Separador # */}
+                <span className="mb-1.5 text-sm font-bold text-muted-foreground select-none">#</span>
+
+                {/* Número de cruce */}
+                <div className="space-y-1 w-16 flex-shrink-0">
+                  <Label htmlFor="addr-num-cruce" className="text-xs text-muted-foreground">Cruce</Label>
+                  <Input id="addr-num-cruce" value={addrNumCruce} onChange={e => setAddrNumCruce(e.target.value)} placeholder="45" disabled={isBlocked} className="h-9 text-sm" />
                 </div>
-                <div className="space-y-1">
+
+                {/* Separador - */}
+                <span className="mb-1.5 text-sm font-bold text-muted-foreground select-none">-</span>
+
+                {/* Número de distancia */}
+                <div className="space-y-1 w-16 flex-shrink-0">
+                  <Label htmlFor="addr-num-distancia" className="text-xs text-muted-foreground">Distancia</Label>
+                  <Input id="addr-num-distancia" value={addrNumDistancia} onChange={e => setAddrNumDistancia(e.target.value)} placeholder="12" disabled={isBlocked} className="h-9 text-sm" />
+                </div>
+
+                {/* Información adicional */}
+                <div className="space-y-1 flex-1 min-w-[140px]">
                   <Label htmlFor="addr-complemento" className="text-xs text-muted-foreground">Información adicional</Label>
                   <Input id="addr-complemento" value={addrComplemento} onChange={e => setAddrComplemento(e.target.value)} placeholder="Apto 301, Bloque B..." disabled={isBlocked} className="h-9 text-sm" />
                 </div>

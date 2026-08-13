@@ -917,6 +917,7 @@ export function AdvancedQuestionConfig({
       ...config,
       displayLogic: {
         enabled: config.displayLogic?.enabled || false,
+        logicalOperator: config.displayLogic?.logicalOperator || 'AND',
         conditions: (config.displayLogic?.conditions || []).map(condition => {
           const sourceQuestion = allQuestions.find((q: Question) => q.id === condition.questionId)
           if (!sourceQuestion) {
@@ -1280,6 +1281,37 @@ export function AdvancedQuestionConfig({
                       )}
                     </div>
                     
+                    {/* Selector AND/OR — visible cuando hay 2+ condiciones */}
+                    {(config.displayLogic?.conditions?.length || 0) > 1 && (
+                      <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <span className="text-sm font-medium text-green-700">Mostrar pregunta cuando se cumpla:</span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateDisplayLogic('logicalOperator', 'AND')}
+                            className={`px-3 py-1.5 text-sm font-semibold rounded-md border transition-colors ${
+                              (config.displayLogic?.logicalOperator || 'AND') !== 'OR'
+                                ? 'bg-green-600 text-white border-green-600'
+                                : 'bg-white text-green-700 border-green-300 hover:bg-green-50'
+                            }`}
+                          >
+                            Todas las condiciones (Y)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateDisplayLogic('logicalOperator', 'OR')}
+                            className={`px-3 py-1.5 text-sm font-semibold rounded-md border transition-colors ${
+                              config.displayLogic?.logicalOperator === 'OR'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50'
+                            }`}
+                          >
+                            Cualquier condición (O)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {config.displayLogic?.conditions?.map((condition, index) => {
                       console.log(`🔍 Buscando pregunta con ID: ${condition.questionId}`)
                       console.log(`📋 Todas las preguntas:`, allQuestions?.map((q: Question) => ({ id: q.id, text: q.text.substring(0, 30) + '...' })))
@@ -1291,7 +1323,20 @@ export function AdvancedQuestionConfig({
                       // Use centralized map for per-condition saving state
                       const saving = Boolean(conditionSavingMap[index])
                       return (
-                        <Card key={index} className="bg-gradient-to-br from-white via-green-50/30 to-emerald-100/30 border-2 border-green-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                        <div key={index} className="contents">
+                        {/* Conector AND/OR entre condiciones */}
+                        {index > 0 && (
+                          <div className="flex justify-center -my-1">
+                            <span className={`px-3 py-1 text-xs font-bold rounded-full border ${
+                              config.displayLogic?.logicalOperator === 'OR'
+                                ? 'bg-blue-100 text-blue-700 border-blue-300'
+                                : 'bg-green-100 text-green-700 border-green-300'
+                            }`}>
+                              {config.displayLogic?.logicalOperator === 'OR' ? 'O' : 'Y'}
+                            </span>
+                          </div>
+                        )}
+                        <Card className="bg-gradient-to-br from-white via-green-50/30 to-emerald-100/30 border-2 border-green-200 shadow-lg hover:shadow-xl transition-all duration-300">
                           <CardContent className="pt-6">
                             <div className="space-y-6">
                               {/* Header de la condición */}
@@ -1476,6 +1521,7 @@ export function AdvancedQuestionConfig({
                             </div>
                           </CardContent>
                         </Card>
+                        </div>
                       )
                     })}
                   </div>

@@ -6,18 +6,26 @@ import { requireRole } from "@/lib/api-auth"
 // de esa encuesta en particular, más audio si existe (tabla media_files,
 // type='audio', enlazado por answer_id). No requiere ningún cambio de schema:
 // media_files ya existe en la base de datos actual.
-function extractValue(val: any): string {
+function extractValue(val: any, questionType?: string): string {
   if (val === null || val === undefined) return ""
   if (typeof val === "string") return val
   if (typeof val === "number" || typeof val === "boolean") return String(val)
-  if (Array.isArray(val)) return val.map(extractValue).join(", ")
+  if (Array.isArray(val)) return val.map(v => extractValue(v)).join(", ")
   if (typeof val === "object") {
+    // Pregunta de ubicación GPS — mostrar solo los campos geográficos, no lat/lng crudos
+    if (questionType === "location" || (val.lat !== undefined && val.lng !== undefined && (val.ciudad !== undefined || val.pais !== undefined))) {
+      const parts = [val.ciudad, val.barrio, val.localidad, val.departamento, val.pais]
+        .filter((s) => s && String(s).trim())
+        .map((s) => String(s).trim())
+      const coords = `(${Number(val.lat).toFixed(5)}, ${Number(val.lng).toFixed(5)})`
+      return parts.length > 0 ? `${parts.join(", ")} ${coords}` : coords
+    }
     if (val.value !== undefined) return extractValue(val.value)
     if (val.label !== undefined) return extractValue(val.label)
     if (val.text !== undefined) return extractValue(val.text)
     if (val.option !== undefined) return extractValue(val.option)
     const vals = Object.values(val).filter((v) => v !== null && v !== undefined && v !== "")
-    if (vals.length > 0) return vals.map(extractValue).join(", ")
+    if (vals.length > 0) return vals.map(v => extractValue(v)).join(", ")
     return ""
   }
   return String(val)
@@ -159,7 +167,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             text: q.text || "Sin texto",
             type: q.type,
             orderNum: q.order_num ?? 0,
-            answer: extractValue(a.value),
+            answer: extractValue(a.value, q.type),
             rawAnswer: a.value,
             audioUrl: audio?.remoteUrl ?? null,
             fileUrls,

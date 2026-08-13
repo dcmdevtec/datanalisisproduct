@@ -3276,8 +3276,9 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
           {/* Imagen o video adjunto a la pregunta (question.image / questions.file_url).
               Se muestra arriba de la respuesta sin importar el tipo de pregunta —
               permite encuestas "a partir de un video": se adjunta el video acá y
-              se responde con el tipo de pregunta normal (opción múltiple, texto, etc). */}
-          {question.image && (
+              se responde con el tipo de pregunta normal (opción múltiple, texto, etc).
+              Excluir tipo "video": ya renderiza su propio player dentro del switch. */}
+          {question.image && question.type !== 'video' && (
             <div className="ml-0 sm:ml-14 mb-4 sm:mb-6">
               {/\.(mp4|webm|mov|ogg)(\?|$)/i.test(question.image) ? (
                 <video
