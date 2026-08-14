@@ -48,8 +48,18 @@ type Project = {
 }
 
 export default function CompaniesPage() {
-  // Estado para alternar entre vista de tabla y cards
-  const [viewMode, setViewMode] = useState<'table' | 'card'>('table')
+  // Vista tabla/cards — persiste en localStorage igual que surveys y projects
+  const [viewMode, setViewMode] = useState<'table' | 'card'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('companies_viewMode')
+      if (saved === 'table' || saved === 'card') return saved
+    }
+    return 'card'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('companies_viewMode', viewMode)
+  }, [viewMode])
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
