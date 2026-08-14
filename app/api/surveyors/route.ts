@@ -72,7 +72,27 @@ export async function POST(request: Request) {
       throw new Error("Failed to get user ID after creation.")
     }
 
-    // Insert surveyor into public.surveyors table
+    // ORDEN CRÍTICO: public.users PRIMERO, luego surveyors.
+    // surveyors.user_id → FK → public.users(id). Si insertamos surveyors
+    // antes de que exista la fila en public.users, Postgres lanza:
+    // "violates foreign key constraint surveyors_user_id_fkey".
+    const { error: userInsertError } = await supabaseAdmin
+      .from("users")
+      .insert({ id: userId, email, name, role: "surveyor", status: "active", metadata: {} } as any)
+
+    if (userInsertError) {
+      // Si la fila ya existe (email reutilizado de registro previo) es OK — upsert implícito.
+      // Cualquier otro error se registra pero no abortamos: el insert de surveyors puede
+      // aún funcionar si la fila existía de antes.
+      console.error("Advertencia: no se pudo crear la fila en public.users para el encuestador:", userInsertError.message)
+      // Si NO es un error de unicidad, limpiar el usuario auth y abortar.
+      if (!userInsertError.message.includes("duplicate") && !userInsertError.message.includes("unique") && userInsertError.code !== "23505") {
+        await supabaseAdmin.auth.admin.deleteUser(userId)
+        return NextResponse.json({ error: `No se pudo crear el perfil del encuestador: ${userInsertError.message}` }, { status: 500 })
+      }
+    }
+
+    // Ahora sí: public.users existe → el FK de surveyors.user_id se satisface.
     // user_id (además de id) liga esta fila al login del portal de encuestador
     // — ver lib/portal-encuestador/auth.ts resolveCurrentSurveyor().
     const { data: surveyorData, error: surveyorError } = await supabaseAdmin
@@ -89,31 +109,11 @@ export async function POST(request: Request) {
       .single()
 
     if (surveyorError) {
-      // If surveyor insertion fails, delete the auth user to prevent orphaned users
+      // Si falla el insert de surveyors, revertir auth user y la fila de users.
+      await supabaseAdmin.from("users").delete().eq("id", userId)
       await supabaseAdmin.auth.admin.deleteUser(userId)
       console.error("Supabase DB Error (Surveyor):", surveyorError.message)
       return NextResponse.json({ error: surveyorError.message }, { status: 500 })
-    }
-
-    // CORRECCIÓN CRÍTICA (bug reportado en producción): este endpoint nunca
-    // creaba la fila correspondiente en `public.users`, que es la tabla que
-    // login/page.tsx, middleware.ts y DashboardLayout consultan para decidir
-    // a dónde redirigir y qué mostrar. Sin esta fila, `role` queda
-    // indefinido y TODA la lógica de "si no es surveyor, mándalo al
-    // dashboard admin" trataba a los encuestadores creados aquí como si
-    // fueran administradores — exactamente el síntoma reportado ("le sale
-    // todo lo de super admin"). Mismo patrón que POST /api/users.
-    const { error: userInsertError } = await supabaseAdmin
-      .from("users")
-      .insert({ id: userId, email, name, role: "surveyor", status: "active", metadata: {} } as any)
-
-    if (userInsertError) {
-      // Si la fila de users ya existe (ej. el email se reutilizó desde un
-      // registro previo), no es fatal — pero si falla por otra razón, se
-      // registra para diagnóstico. No se revierte la creación del
-      // encuestador por esto: preferimos un encuestador sin rol correcto
-      // (visible y corregible desde /users) a perder el registro completo.
-      console.error("Advertencia: no se pudo crear la fila en public.users para el encuestador:", userInsertError.message)
     }
 
     return NextResponse.json(surveyorData, { status: 201 })
