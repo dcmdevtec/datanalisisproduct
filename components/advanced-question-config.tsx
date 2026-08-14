@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -688,13 +688,34 @@ export function AdvancedQuestionConfig({
   // Estado para mostrar cuando se está ejecutando la reconciliación
   const [isReconciling, setIsReconciling] = useState(false)
 
+  // Evita que este efecto vuelva a "hidratar" (y por lo tanto pisar) el estado
+  // local mientras el usuario está editando. `question.config` y `allQuestions`
+  // llegan como props recreadas en cada render del padre (nuevas referencias
+  // aunque el contenido no cambie), así que sin esta guarda el efecto se
+  // disparaba en cada render y sobreescribía selecciones que el usuario
+  // acababa de marcar (ej: al elegir 2 opciones en "Lógica de visualización",
+  // solo quedaba guardada la primera porque el efecto reiniciaba el config
+  // local con lo que ya estaba persistido antes de que el usuario terminara).
+  const hydratedForQuestionRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (isOpen && question.config) {
+    if (!isOpen) {
+      // Al cerrar, permitir que la próxima apertura vuelva a hidratar desde la BD
+      hydratedForQuestionRef.current = null
+      return
+    }
+    if (hydratedForQuestionRef.current === question.id) {
+      // Ya se hidrató para esta pregunta en esta sesión de edición: no pisar
+      // los cambios que el usuario está haciendo en el modal.
+      return
+    }
+    if (question.config) {
+      hydratedForQuestionRef.current = question.id
       console.log("🔍 Modal abierto, configuración de pregunta recibida:", question.config)
-      
+
       // Actualizar la configuración cuando se abre el modal
       const baseConfig = question.config || {}
-      
+
       const updatedConfig = {
         ...baseConfig,
         displayLogic: baseConfig.displayLogic || { enabled: false, conditions: [] },
@@ -729,7 +750,7 @@ export function AdvancedQuestionConfig({
         reconcileObsoleteIds()
       }, 100)
     }
-  }, [isOpen, question.config, question.required, reconcileObsoleteIds])
+  }, [isOpen, question.id, question.config, question.required, reconcileObsoleteIds])
 
   // Ejecutar reconciliación automática cuando cambien las preguntas disponibles
   useEffect(() => {
