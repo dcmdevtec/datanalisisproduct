@@ -1328,42 +1328,6 @@ export function CreateSurveyForProjectPageContent() {
     }
   }
 
-  // Efecto de autosave: se re-arma en cada cambio de `sections` (nueva
-  // referencia en cada edición) o `sectionSaveStates`, y espera 2.5s de
-  // inactividad antes de disparar. Si el usuario sigue escribiendo, el
-  // cleanup cancela el timer anterior — así no se autoguarda a cada tecla,
-  // solo cuando hay una pausa real.
-  useEffect(() => {
-    const hasPending = sections.some((s) => sectionSaveStates[s.id] !== "saved")
-    if (!hasPending) return
-    // Sin título todavía no se puede crear/actualizar nada en el backend
-    // (handleSaveSection lo exige para crear la encuesta la primera vez).
-    // Se espera en silencio a que la persona escriba un título en vez de
-    // mostrarle un error de autoguardado por algo que aún no ha llenado.
-    if (!surveyTitle.trim()) return
-
-    const timer = setTimeout(async () => {
-      // No pisar un guardado manual (botón "Guardar sección" / "Guardar
-      // todas" / "Actualizar Encuesta") que ya esté en curso.
-      if (isSavingSectionRef.current || isSaving) return
-      const pending = sections.filter((s) => sectionSaveStates[s.id] !== "saved")
-      if (pending.length === 0) return
-
-      setAutoSaveStatus("saving")
-      let hadError = false
-      for (const section of pending) {
-        isSavingSectionRef.current = false
-        const ok = await handleSaveSection(section.id, currentSurveyId || undefined, { silent: true })
-        if (!ok) hadError = true
-      }
-      setAutoSaveStatus(hadError ? "error" : "saved")
-    }, 2500)
-
-    autoSaveTimerRef.current = timer
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sections, sectionSaveStates, surveyTitle, isSaving, currentSurveyId])
-
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
   const [settings, setSettings] = useState<SurveySettings>({
@@ -1407,13 +1371,56 @@ export function CreateSurveyForProjectPageContent() {
   const [assignedGeneralSurveyors, setAssignedGeneralSurveyors] = useState<string[]>([])
 
   const [showSectionOrganizer, setShowSectionOrganizer] = useState(false)
+  const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
 
+  // useSensors/useSensor después de todos los useState — sin interleaving
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor)
   )
 
-  const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
+  // ─── useEffect de autosave de secciones ─────────────────────────────────────
+  // ⚠️ POSICIÓN CRÍTICA: debe estar DESPUÉS de todos los useState del componente
+  //    para que React tenga siempre el mismo número de hooks en el mismo orden
+  //    entre renders (error #310 "Rendered more hooks than during previous render").
+  //    Variables utilizadas: sections, sectionSaveStates, surveyTitle, isSaving,
+  //    currentSurveyId, isSavingSectionRef, autoSaveTimerRef, handleSaveSection,
+  //    setAutoSaveStatus — todas declaradas antes de esta línea.
+  // Efecto de autosave: se re-arma en cada cambio de `sections` (nueva
+  // referencia en cada edición) o `sectionSaveStates`, y espera 2.5s de
+  // inactividad antes de disparar. Si el usuario sigue escribiendo, el
+  // cleanup cancela el timer anterior — así no se autoguarda a cada tecla,
+  // solo cuando hay una pausa real.
+  useEffect(() => {
+    const hasPending = sections.some((s) => sectionSaveStates[s.id] !== "saved")
+    if (!hasPending) return
+    // Sin título todavía no se puede crear/actualizar nada en el backend
+    // (handleSaveSection lo exige para crear la encuesta la primera vez).
+    // Se espera en silencio a que la persona escriba un título en vez de
+    // mostrarle un error de autoguardado por algo que aún no ha llenado.
+    if (!surveyTitle.trim()) return
+
+    const timer = setTimeout(async () => {
+      // No pisar un guardado manual (botón "Guardar sección" / "Guardar
+      // todas" / "Actualizar Encuesta") que ya esté en curso.
+      if (isSavingSectionRef.current || isSaving) return
+      const pending = sections.filter((s) => sectionSaveStates[s.id] !== "saved")
+      if (pending.length === 0) return
+
+      setAutoSaveStatus("saving")
+      let hadError = false
+      for (const section of pending) {
+        isSavingSectionRef.current = false
+        const ok = await handleSaveSection(section.id, currentSurveyId || undefined, { silent: true })
+        if (!ok) hadError = true
+      }
+      setAutoSaveStatus(hadError ? "error" : "saved")
+    }, 2500)
+
+    autoSaveTimerRef.current = timer
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, sectionSaveStates, surveyTitle, isSaving, currentSurveyId])
 
   // Auto-guarda título/descripción en background 1.5s después de que el usuario
   // deja de escribir. Si la encuesta todavía no existe (currentSurveyId === null),
