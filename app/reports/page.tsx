@@ -1286,70 +1286,175 @@ function ReportsPageContent() {
                   </CardContent>
                 </Card>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card data-export-chart>
-                    <CardHeader>
-                      <CardTitle>Respuestas por Zona</CardTitle>
-                      <CardDescription>Distribución de asignaciones por zona geográfica</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {(data?.geographic?.zoneBreakdown?.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de zonas disponibles</p>
-                      ) : (
-                        <div className="space-y-4">
-                          {data!.geographic.zoneBreakdown.map((z, i) => (
-                            <div key={i} className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium">{z.zone}</span>
-                                <span className="text-sm text-muted-foreground">{z.responseCount} asignaciones</span>
+                {/* ── Actividad de encuestadores (siempre visible si hay puntos GPS) ── */}
+                {(() => {
+                  const hasZones = (data?.geographic?.zoneBreakdown?.length ?? 0) > 0
+                  const points   = data?.geographic?.responsePoints ?? []
+
+                  // Resumir actividad por encuestador a partir de los puntos de ubicación
+                  const byName: Record<string, { pings: number; last: string; isSurveyor: boolean }> = {}
+                  for (const p of points) {
+                    const name = p.surveyorName || "Sin nombre"
+                    if (!byName[name]) byName[name] = { pings: 0, last: p.createdAt, isSurveyor: p.source === "surveyor" }
+                    byName[name].pings++
+                    if (new Date(p.createdAt) > new Date(byName[name].last)) byName[name].last = p.createdAt
+                  }
+                  const surveyorActivity = Object.entries(byName)
+                    .map(([name, v]) => ({ name, ...v }))
+                    .sort((a, b) => b.pings - a.pings)
+                    .slice(0, 20)
+
+                  const formatAgo = (iso: string) => {
+                    const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+                    if (mins < 1)   return "hace menos de 1 min"
+                    if (mins < 60)  return `hace ${mins} min`
+                    const h = Math.floor(mins / 60)
+                    if (h < 24)    return `hace ${h}h`
+                    return `hace ${Math.floor(h / 24)}d`
+                  }
+
+                  const statusDot = (iso: string) => {
+                    const mins = (Date.now() - new Date(iso).getTime()) / 60000
+                    if (mins <= 5)  return "bg-green-500"
+                    if (mins <= 30) return "bg-yellow-500"
+                    return "bg-gray-400"
+                  }
+
+                  if (hasZones) {
+                    // Con zonas configuradas: mostrar las dos tarjetas originales
+                    return (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card data-export-chart>
+                          <CardHeader>
+                            <CardTitle>Respuestas por Zona</CardTitle>
+                            <CardDescription>Distribución de asignaciones por zona geográfica</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-4">
+                              {data!.geographic.zoneBreakdown.map((z, i) => (
+                                <div key={i} className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium">{z.zone}</span>
+                                    <span className="text-sm text-muted-foreground">{z.responseCount} asignaciones</span>
+                                  </div>
+                                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.max((z.responseCount / maxZoneResponses) * 100, 2)}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card data-export-chart>
+                          <CardHeader>
+                            <CardTitle>Comparativa por Zona</CardTitle>
+                            <CardDescription>Tasa de finalización por zona</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="rounded-md border">
+                              <div className="grid grid-cols-4 p-3 font-medium border-b text-sm">
+                                <div>Zona</div>
+                                <div className="text-center">Asignaciones</div>
+                                <div className="text-center">Completadas</div>
+                                <div className="text-center">Tasa</div>
                               </div>
-                              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-primary rounded-full"
-                                  style={{ width: `${Math.max((z.responseCount / maxZoneResponses) * 100, 2)}%` }}
-                                />
+                              <div className="divide-y">
+                                {data!.geographic.zoneBreakdown.map((z, i) => (
+                                  <div key={i} className="grid grid-cols-4 p-3 items-center text-sm">
+                                    <div>{z.zone}</div>
+                                    <div className="text-center">{z.responseCount}</div>
+                                    <div className="text-center">{z.completedCount}</div>
+                                    <div className="text-center">
+                                      <span className={z.completionRate >= 80 ? "text-green-600 font-medium" : z.completionRate >= 50 ? "text-orange-500 font-medium" : "text-red-500 font-medium"}>
+                                        {z.completionRate}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                  <Card data-export-chart>
-                    <CardHeader>
-                      <CardTitle>Comparativa por Zona</CardTitle>
-                      <CardDescription>Tasa de finalización por zona</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {(data?.geographic?.zoneBreakdown?.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de zonas</p>
-                      ) : (
-                        <div className="rounded-md border">
-                          <div className="grid grid-cols-4 p-3 font-medium border-b">
-                            <div>Zona</div>
-                            <div className="text-center">Asignaciones</div>
-                            <div className="text-center">Completadas</div>
-                            <div className="text-center">Tasa</div>
-                          </div>
-                          <div className="divide-y">
-                            {data!.geographic.zoneBreakdown.map((z, i) => (
-                              <div key={i} className="grid grid-cols-4 p-3 items-center">
-                                <div>{z.zone}</div>
-                                <div className="text-center">{z.responseCount}</div>
-                                <div className="text-center">{z.completedCount}</div>
-                                <div className="text-center">
-                                  <span className={z.completionRate >= 80 ? "text-green-600" : z.completionRate >= 50 ? "text-orange-500" : "text-red-500"}>
-                                    {z.completionRate}%
-                                  </span>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )
+                  }
+
+                  // Sin zonas configuradas: mostrar actividad de encuestadores en su lugar
+                  if (surveyorActivity.length === 0) return null
+
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Tarjeta 1: Encuestadores activos */}
+                      <Card data-export-chart>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            Encuestadores en Campo
+                            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                              {surveyorActivity.length} encuestadores
+                            </span>
+                          </CardTitle>
+                          <CardDescription>Última ubicación GPS recibida por encuestador</CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <div className="divide-y max-h-72 overflow-y-auto">
+                            {surveyorActivity.map((s, i) => (
+                              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(s.last)}`} />
+                                <span className="flex-1 text-sm font-medium truncate">{s.name}</span>
+                                <div className="text-right flex-shrink-0">
+                                  <div className="text-xs font-semibold tabular-nums">{s.pings} pings</div>
+                                  <div className="text-[10px] text-muted-foreground">{formatAgo(s.last)}</div>
                                 </div>
                               </div>
                             ))}
                           </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+                          <div className="px-4 py-2 border-t text-[10px] text-muted-foreground">
+                            <span className="inline-flex items-center gap-1 mr-3"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"/>≤5 min — activo</span>
+                            <span className="inline-flex items-center gap-1 mr-3"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"/>≤30 min — reciente</span>
+                            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400 inline-block"/>&gt;30 min — inactivo</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Tarjeta 2: Distribución de pings por hora */}
+                      <Card data-export-chart>
+                        <CardHeader>
+                          <CardTitle>Actividad por Hora del Día</CardTitle>
+                          <CardDescription>Número de ubicaciones GPS registradas según la hora</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {(() => {
+                            const byHour: number[] = Array(24).fill(0)
+                            for (const p of points) {
+                              const h = new Date(p.createdAt).getHours()
+                              byHour[h]++
+                            }
+                            const max = Math.max(...byHour, 1)
+                            const workHours = byHour.map((v, h) => ({ h, v })).filter(({ h }) => h >= 6 && h <= 21)
+                            return (
+                              <div className="space-y-1">
+                                {workHours.map(({ h, v }) => (
+                                  <div key={h} className="flex items-center gap-2 text-xs">
+                                    <span className="w-8 text-right text-muted-foreground tabular-nums">{String(h).padStart(2, "0")}h</span>
+                                    <div className="flex-1 h-4 bg-muted rounded overflow-hidden">
+                                      {v > 0 && (
+                                        <div
+                                          className="h-full rounded"
+                                          style={{ width: `${(v / max) * 100}%`, background: "hsl(var(--primary))" }}
+                                        />
+                                      )}
+                                    </div>
+                                    <span className="w-8 tabular-nums text-muted-foreground">{v > 0 ? v : ""}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })()}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </TabsContent>

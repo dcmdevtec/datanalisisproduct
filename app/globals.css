@@ -2,6 +2,17 @@
 @import 'leaflet/dist/leaflet.css';
 @import '../styles/logo.css';
 
+/* Prevenir que dark-mode / dark-reader inviertan los tiles del mapa Leaflet */
+.leaflet-tile,
+.leaflet-tile-container img {
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+/* Fondo claro para el contenedor del mapa */
+.leaflet-container {
+  background: #e8e8e8 !important;
+}
+
 /* Responsive Modal and Popover Fixes */
 [data-radix-popper-content-wrapper] {
   z-index: 100 !important;
