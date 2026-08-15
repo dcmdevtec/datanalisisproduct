@@ -66,6 +66,8 @@ export async function GET(
   const surveyId: string = (share as any).survey_id
   const filters = config.filters || {}
   const sections = config.sections || { resumen: true, analisis: true, rendimiento: false, geografico: false }
+  // null = todas las preguntas, array = filtrar solo esas
+  const allowedQuestionIds: string[] | null = config.questionIds ?? null
 
   // 2. Metadata de la encuesta
   const { data: survey } = await admin
@@ -167,6 +169,8 @@ export async function GET(
   for (const a of answers) {
     const q = a.questions
     if (!q) continue
+    // Filtrar por preguntas seleccionadas si se especificaron
+    if (allowedQuestionIds !== null && !allowedQuestionIds.includes(q.id)) continue
     if (!questionMap[q.id]) {
       questionMap[q.id] = { text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [] }
     }

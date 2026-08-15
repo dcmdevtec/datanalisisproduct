@@ -344,22 +344,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- Assignments (for performance + geo tabs) ---
-    let assignmentsQuery = admin
-      .from("assignments")
+    // --- survey_surveyor_zones (fuente real — responses.assignment_id apunta aquí, no a `assignments` legacy) ---
+    let sszQuery = admin
+      .from("survey_surveyor_zones")
       .select("id, survey_id, surveyor_id, zone_id, status, created_at, zones(name), surveyors(id, name, supervisor_id)")
     if (filteredSurveyIds !== null) {
-      assignmentsQuery = assignmentsQuery.in("survey_id", filteredSurveyIds)
+      sszQuery = sszQuery.in("survey_id", filteredSurveyIds)
     }
     if (surveyorFilter !== "all") {
-      assignmentsQuery = assignmentsQuery.eq("surveyor_id", surveyorFilter)
+      sszQuery = sszQuery.eq("surveyor_id", surveyorFilter)
     } else if (hierarchySurveyorIds !== null) {
-      assignmentsQuery = assignmentsQuery.in("surveyor_id", hierarchySurveyorIds.length > 0 ? hierarchySurveyorIds : ["__none__"])
+      sszQuery = sszQuery.in("surveyor_id", hierarchySurveyorIds.length > 0 ? hierarchySurveyorIds : ["__none__"])
     }
-    const { data: rawAssignments } = await assignmentsQuery
-    const assignments: any[] = (rawAssignments as any[]) || []
+    const { data: rawSSZ } = await sszQuery
+    // `assignments` alias para código existente (geo tab, zone breakdown) que lo itera
+    const assignments: any[] = (rawSSZ as any[]) || []
 
-    // Mapa assignment_id -> assignment (para resolver encuestador por respuesta)
+    // Mapa id -> ssz (para resolver encuestador por response.assignment_id)
     const assignmentById: Record<string, any> = {}
     for (const a of assignments) assignmentById[a.id] = a
 
@@ -530,40 +531,88 @@ export async function GET(request: NextRequest) {
     })
 
     // === PERFORMANCE TAB ===
-    const surveyorMap: Record<string, { name: string; total: number; completed: number; efectivas: number; incidencias: number; abandonadas: number; supervisorId: string | null }> = {}
-    for (const a of assignments || []) {
+    // Construir mapa supervisor_id -> nombre (de allSupervisors ya cargado arriba)
+    const supervisorNameById: Record<string, string> = {}
+    for (const sup of (allSupervisors || [])) supervisorNameById[sup.id] = sup.name
+
+    // surveyorMap: clave = surveyor_id
+    const surveyorMap: Record<string, {
+      name: string
+      supervisorId: string | null
+      supervisorName: string | null
+      efectivas: number
+      incidencias: number
+      abandonadas: number
+      timeDiffs: number[]
+    }> = {}
+
+    // Inicializar desde SSZ (incluye encuestadores asignados aunque no tengan respuestas aún)
+    for (const a of assignments) {
       const sid = a.surveyor_id as string
+      if (!sid || surveyorMap[sid]) continue
       const name = (a.surveyors as any)?.name || sid
       const supervisorId = (a.surveyors as any)?.supervisor_id ?? null
-      if (!surveyorMap[sid]) surveyorMap[sid] = { name, total: 0, completed: 0, efectivas: 0, incidencias: 0, abandonadas: 0, supervisorId }
-      surveyorMap[sid].total++
-      if (a.status === "completed") surveyorMap[sid].completed++
+      surveyorMap[sid] = {
+        name, supervisorId,
+        supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
+        efectivas: 0, incidencias: 0, abandonadas: 0, timeDiffs: [],
+      }
     }
-    // Cruza responses -> assignment -> surveyor para contar efectivas/incidencias/abandonadas por encuestador
+
+    // Contar outcomes y tiempo promedio desde responses
     for (const r of responses) {
-      const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
-      const sid = assignment?.surveyor_id as string | undefined
-      if (!sid || !surveyorMap[sid]) continue
+      const ssz = r.assignment_id ? assignmentById[r.assignment_id] : null
+      const sid = ssz?.surveyor_id as string | undefined
+      if (!sid) continue
+      // Inicializar si no existía (respuestas sin SSZ en el filtro actual)
+      if (!surveyorMap[sid]) {
+        const name = (ssz.surveyors as any)?.name || sid
+        const supervisorId = (ssz.surveyors as any)?.supervisor_id ?? null
+        surveyorMap[sid] = {
+          name, supervisorId,
+          supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
+          efectivas: 0, incidencias: 0, abandonadas: 0, timeDiffs: [],
+        }
+      }
       const outcome = resolveOutcome(r)
-      if (outcome === "efectiva") surveyorMap[sid].efectivas++
-      else if (outcome === "incidencia") surveyorMap[sid].incidencias++
-      else surveyorMap[sid].abandonadas++
+      if (outcome === "efectiva") {
+        surveyorMap[sid].efectivas++
+        if (r.completed_at && r.created_at) {
+          const diff = (new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000
+          if (diff > 0 && diff < 7200) surveyorMap[sid].timeDiffs.push(diff)
+        }
+      } else if (outcome === "incidencia") {
+        surveyorMap[sid].incidencias++
+      } else {
+        surveyorMap[sid].abandonadas++
+      }
     }
+
     const surveyorPerformance = Object.values(surveyorMap)
-      .map((s) => ({
-        name: s.name,
-        supervisorId: s.supervisorId,
-        totalAssignments: s.total,
-        completedAssignments: s.completed,
-        completionRate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0,
-        efectivas: s.efectivas,
-        incidencias: s.incidencias,
-        abandonadas: s.abandonadas,
-        totalRegistros: s.efectivas + s.incidencias + s.abandonadas,
-        tasaRespuestas: (s.efectivas + s.incidencias + s.abandonadas) > 0
-          ? Math.round((s.efectivas / (s.efectivas + s.incidencias + s.abandonadas)) * 100) : 0,
-      }))
-      .sort((a, b) => b.completedAssignments - a.completedAssignments)
+      .map((s) => {
+        const totalRegistros = s.efectivas + s.incidencias + s.abandonadas
+        const avgSecs = s.timeDiffs.length > 0
+          ? Math.round(s.timeDiffs.reduce((a, b) => a + b, 0) / s.timeDiffs.length) : 0
+        const m = Math.floor(avgSecs / 60)
+        const sec = avgSecs % 60
+        return {
+          name: s.name,
+          supervisorId: s.supervisorId,
+          supervisorName: s.supervisorName,
+          totalRegistros,
+          efectivas: s.efectivas,
+          incidencias: s.incidencias,
+          abandonadas: s.abandonadas,
+          tasaRespuestas: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 100) : 0,
+          avgTime: avgSecs > 0 ? `${m}:${String(sec).padStart(2, "0")}` : "—",
+          // Alias para backward compat
+          totalAssignments: totalRegistros,
+          completedAssignments: s.efectivas,
+          completionRate: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 100) : 0,
+        }
+      })
+      .filter((s) => s.totalRegistros > 0)
+      .sort((a, b) => b.efectivas - a.efectivas)
 
     const responsesByDayOfWeek: Record<string, number> = {}
     const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]

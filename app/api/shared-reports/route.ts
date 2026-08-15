@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     if (!auth.ok) return auth.response
 
     const admin = createAdminSupabase()
-    const { data, error } = await admin
+    const { data, error } = await (admin as any)
       .from("shared_reports")
       .select("id, token, survey_id, config, created_at, expires_at")
       .eq("created_by", auth.user.id)

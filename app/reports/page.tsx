@@ -14,11 +14,13 @@ import { Label } from "@/components/ui/label"
 import {
   BarChart3, Download, Loader2, PieChart as PieChartIcon, TrendingUp, TrendingDown, AlertCircle,
   Clock, Calendar, Zap, Target, BookOpen, ArrowUpRight, ArrowDownRight, Minus,
-  CheckCircle2, AlertTriangle, XCircle, Users2, ChartPie, ChartNoAxesColumn, ChartBarBig, LineChart as LineChartIcon, Table2, Tags, Grid3x3,
+  CheckCircle2, AlertTriangle, XCircle, Users2, Table2, Tags, Grid3x3,
+  ChevronDown, ChevronUp, Eye, Filter, Share2,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
 import { QuestionChart, type ChartType } from "@/components/reports/question-chart"
+import { QuestionCard } from "@/components/reports/question-card"
 import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
 import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
 import { ShareReportModal } from "@/components/reports/share-report-modal"
@@ -84,6 +86,7 @@ interface ReportData {
     surveyorPerformance: {
       name: string
       supervisorId: string | null
+      supervisorName: string | null
       totalAssignments: number
       completedAssignments: number
       completionRate: number
@@ -92,6 +95,7 @@ interface ReportData {
       abandonadas: number
       totalRegistros: number
       tasaRespuestas: number
+      avgTime: string
     }[]
     dailyDistribution: { day: string; count: number }[]
     surveyPerformance: {
@@ -139,13 +143,6 @@ function formatGrowth(value: number): string {
   return `${sign}${value}% vs período anterior`
 }
 
-const chartTypeOptions: { value: ChartType; label: string; icon: typeof ChartPie }[] = [
-  { value: "pie", label: "Torta", icon: ChartPie },
-  { value: "donut", label: "Anillo", icon: PieChartIcon },
-  { value: "barsV", label: "Barras verticales", icon: ChartBarBig },
-  { value: "barsH", label: "Barras horizontales", icon: ChartNoAxesColumn },
-  { value: "trend", label: "Tendencia", icon: LineChartIcon },
-]
 
 function ReportsPageContent() {
   const { user, loading: authLoading } = useAuth()
@@ -168,14 +165,12 @@ function ReportsPageContent() {
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
 
-  // Estado del selector de gráficos en "Análisis de resultados" (slide 21)
-  const [selectedQuestionId, setSelectedQuestionId] = useState<string>("")
-  const [chartType, setChartType] = useState<ChartType>("barsV")
-  const [showDataTable, setShowDataTable] = useState(true)
-  const [showLabels, setShowLabels] = useState(true)
-  // Galería de archivos: se carga cuando la pregunta seleccionada es de tipo file/image_upload
-  const [fileGallery, setFileGallery] = useState<{ answerId: string; path: string; name: string; type: string; url: string }[]>([])
-  const [fileGalleryLoading, setFileGalleryLoading] = useState(false)
+  // Constructor de informes: configuración por pregunta (tipo gráfica, etiquetas, tabla)
+  const [questionSettings, setQuestionSettings] = useState<Record<string, { chartType: ChartType; showLabels: boolean; showTable: boolean }>>({})
+  // Preguntas ocultas del informe actual
+  const [hiddenQuestions, setHiddenQuestions] = useState<Set<string>>(new Set())
+  // Panel de herramientas avanzadas (filtro + tabla cruzada) — colapsable
+  const [showAdvancedPanel, setShowAdvancedPanel] = useState(false)
 
   // Filtro avanzado (slide 21): "filtrar las gráficas según lo que contestaron
   // en una pregunta en particular". Se aplica a todo el reporte vía filterParams.
@@ -308,33 +303,25 @@ function ReportsPageContent() {
     fetchData()
   }, [fetchData])
 
-  // ⚠️ POSICIÓN CRÍTICA: estas constantes y el useEffect de galería DEBEN estar
-  // ANTES del early return de authLoading. Si el useEffect queda después del
-  // early return, React ve N hooks en el primer render (authLoading=true) y N+1
-  // en el segundo (auth cargado) → error #310 "Rendered more hooks than during
-  // the previous render". Regla: todos los hooks antes de cualquier return.
+  // ⚠️ POSICIÓN CRÍTICA: estas constantes DEBEN estar ANTES del early return de
+  // authLoading. Regla: todos los hooks antes de cualquier return.
   const questionBreakdowns = data?.responses?.questionBreakdowns ?? []
-  const selectedQuestion = questionBreakdowns.find((q) => q.questionId === selectedQuestionId) ?? questionBreakdowns[0]
 
-  // Carga galería de archivos cuando la pregunta seleccionada es file/image_upload
-  useEffect(() => {
-    if (!selectedQuestion || !["file", "image_upload"].includes(selectedQuestion.type)) {
-      setFileGallery([])
-      return
+  // Función para obtener/inicializar la config de una pregunta concreta
+  const getQSettings = (q: { questionId: string; type: string }) => {
+    return questionSettings[q.questionId] ?? {
+      chartType: (["rating", "nps", "likert", "scale"].includes(q.type) ? "barsV" : "barsH") as ChartType,
+      showLabels: true,
+      showTable: false,
     }
-    let cancelled = false
-    setFileGalleryLoading(true)
-    setFileGallery([])
-    const params = new URLSearchParams({ questionId: selectedQuestion.questionId })
-    if (selectedSurvey !== "all") params.set("survey", selectedSurvey)
-    fetch(`/api/response-files/signed-urls?${params}`)
-      .then((r) => r.json())
-      .then((json) => { if (!cancelled) setFileGallery(json.files || []) })
-      .catch(() => { if (!cancelled) setFileGallery([]) })
-      .finally(() => { if (!cancelled) setFileGalleryLoading(false) })
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedQuestion?.questionId, selectedSurvey])
+  }
+
+  const updateQSettings = (questionId: string, patch: Partial<{ chartType: ChartType; showLabels: boolean; showTable: boolean }>) => {
+    setQuestionSettings((prev) => ({
+      ...prev,
+      [questionId]: { ...getQSettings({ questionId, type: "" }), ...prev[questionId], ...patch },
+    }))
+  }
 
   // Early return DESPUÉS de todos los hooks — nunca antes
   if (authLoading || !user) {
@@ -355,12 +342,14 @@ function ReportsPageContent() {
 
   const surveyorRows: SurveyorPerformanceRow[] = (data?.performance?.surveyorPerformance ?? []).map((s) => ({
     name: s.name,
-    supervisorId: s.supervisorId,
+    supervisorId: s.supervisorId ?? null,
+    supervisorName: s.supervisorName ?? null,
     totalRegistros: s.totalRegistros,
     incidencias: s.incidencias,
     abandonadas: s.abandonadas,
     efectivas: s.efectivas,
     tasaRespuestas: s.tasaRespuestas,
+    avgTime: s.avgTime ?? "—",
     completionRate: s.completionRate,
   }))
 
@@ -918,296 +907,177 @@ function ReportsPageContent() {
                 </CardContent>
               </Card>
             ) : (
-              <Card id="export-responses" data-export-chart>
-                <CardHeader>
-                  <CardTitle>Análisis de Resultados</CardTitle>
-                  <CardDescription>Selecciona una pregunta y el tipo de gráfico para visualizarla ({questionBreakdowns.length} preguntas con respuestas)</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Selector de pregunta + tipo de gráfico + toggles (slide 21) */}
-                  <div className="flex flex-col lg:flex-row gap-3 lg:items-end pb-4 border-b">
-                    <div className="flex-1 min-w-0">
-                      <Label className="text-xs text-muted-foreground mb-1 block">Pregunta a graficar</Label>
-                      <Select value={selectedQuestion?.questionId ?? ""} onValueChange={setSelectedQuestionId}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Selecciona una pregunta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {questionBreakdowns.map((q) => (
-                            <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex gap-1 flex-wrap">
-                      {chartTypeOptions.map((opt) => {
-                        const Icon = opt.icon
-                        return (
-                          <button
-                            key={opt.value}
-                            onClick={() => setChartType(opt.value)}
-                            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium border transition-all ${chartType === opt.value ? "bg-[#18b0a4] text-white border-[#18b0a4]" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
-                            title={opt.label}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">{opt.label}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4 text-sm">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} className="rounded" />
-                      Mostrar etiquetas
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={showDataTable} onChange={(e) => setShowDataTable(e.target.checked)} className="rounded" />
-                      <Table2 className="h-3.5 w-3.5" /> Mostrar tabla de datos
-                    </label>
-                  </div>
-
-                  {/* Filtro avanzado (slide 21): filtra TODO el reporte (no solo esta
-                      pestaña) según lo que se contestó en otra pregunta puntual. */}
-                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                    <div className="flex items-center gap-1.5 text-sm font-medium">
-                      <Tags className="h-3.5 w-3.5" /> Filtro avanzado
-                      <span className="text-xs font-normal text-muted-foreground">— muestra solo respuestas que contestaron algo específico en otra pregunta</span>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Select
-                        value={advancedFilterQuestionId || "none"}
-                        onValueChange={(v) => { setAdvancedFilterQuestionId(v === "none" ? "" : v); setAdvancedFilterValue("") }}
-                      >
-                        <SelectTrigger className="sm:w-64">
-                          <SelectValue placeholder="Pregunta condición" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sin filtro</SelectItem>
-                          {(data?.responses?.filterableQuestions ?? []).map((q) => (
-                            <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={advancedFilterValue || "none"}
-                        onValueChange={(v) => setAdvancedFilterValue(v === "none" ? "" : v)}
-                        disabled={!advancedFilterQuestionId}
-                      >
-                        <SelectTrigger className="sm:w-64">
-                          <SelectValue placeholder="Valor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Selecciona un valor</SelectItem>
-                          {(data?.responses?.filterableQuestions ?? [])
-                            .find((q) => q.questionId === advancedFilterQuestionId)
-                            ?.values.map((v) => (
-                              <SelectItem key={v} value={v}>{v}</SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      {advancedFilterQuestionId && advancedFilterValue && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setAdvancedFilterQuestionId(""); setAdvancedFilterValue("") }}
-                        >
-                          Limpiar filtro
-                        </Button>
+              <div id="export-responses" className="space-y-4">
+                {/* ── Herramientas avanzadas: filtro + tabla cruzada ── */}
+                <div className="border rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setShowAdvancedPanel((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-muted-foreground" />
+                      Filtros avanzados y tabla cruzada
+                      {(advancedFilterQuestionId || crossRowQuestionId) && (
+                        <span className="text-xs bg-[#18b0a4]/10 text-[#18b0a4] px-2 py-0.5 rounded-full font-medium">Activo</span>
                       )}
-                    </div>
-                  </div>
+                    </span>
+                    {showAdvancedPanel ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
 
-                  {/* Tablas cruzadas (slide 21): cruza las respuestas de dos preguntas
-                      y muestra cuántas respuestas cayeron en cada combinación. */}
-                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                    <div className="flex items-center gap-1.5 text-sm font-medium">
-                      <Grid3x3 className="h-3.5 w-3.5" /> Tabla cruzada
-                      <span className="text-xs font-normal text-muted-foreground">— cruza las respuestas de dos preguntas</span>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Select
-                        value={crossRowQuestionId || "none"}
-                        onValueChange={(v) => setCrossRowQuestionId(v === "none" ? "" : v)}
-                      >
-                        <SelectTrigger className="sm:w-64">
-                          <SelectValue placeholder="Pregunta (filas)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Selecciona pregunta</SelectItem>
-                          {(data?.responses?.filterableQuestions ?? [])
-                            .filter((q) => q.questionId !== crossColQuestionId)
-                            .map((q) => (
-                              <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={crossColQuestionId || "none"}
-                        onValueChange={(v) => setCrossColQuestionId(v === "none" ? "" : v)}
-                      >
-                        <SelectTrigger className="sm:w-64">
-                          <SelectValue placeholder="Pregunta (columnas)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Selecciona pregunta</SelectItem>
-                          {(data?.responses?.filterableQuestions ?? [])
-                            .filter((q) => q.questionId !== crossRowQuestionId)
-                            .map((q) => (
-                              <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      {(crossRowQuestionId || crossColQuestionId) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setCrossRowQuestionId(""); setCrossColQuestionId("") }}
-                        >
-                          Limpiar
-                        </Button>
-                      )}
-                    </div>
-
-                    {data?.responses?.crosstab && (
-                      <div className="overflow-x-auto pt-2">
-                        <table className="text-sm border-collapse w-full">
-                          <thead>
-                            <tr>
-                              <th className="border p-2 bg-muted/50 text-left align-bottom">
-                                <div className="text-xs text-muted-foreground font-normal">{data.responses.crosstab.rowQuestion}</div>
-                                <div className="text-xs text-muted-foreground font-normal">↓ / {data.responses.crosstab.colQuestion} →</div>
-                              </th>
-                              {data.responses.crosstab.cols.map((c) => (
-                                <th key={c} className="border p-2 bg-muted/50 text-center font-medium whitespace-nowrap">{c}</th>
-                              ))}
-                              <th className="border p-2 bg-muted/50 text-center font-semibold">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {data.responses.crosstab.rows.map((r, ri) => (
-                              <tr key={r}>
-                                <td className="border p-2 font-medium whitespace-nowrap">{r}</td>
-                                {data.responses.crosstab!.matrix[ri].map((v, ci) => (
-                                  <td key={ci} className="border p-2 text-center">{v}</td>
-                                ))}
-                                <td className="border p-2 text-center font-semibold bg-muted/20">{data.responses.crosstab!.rowTotals[ri]}</td>
-                              </tr>
-                            ))}
-                            <tr>
-                              <td className="border p-2 font-semibold bg-muted/20">Total</td>
-                              {data.responses.crosstab.colTotals.map((v, ci) => (
-                                <td key={ci} className="border p-2 text-center font-semibold bg-muted/20">{v}</td>
-                              ))}
-                              <td className="border p-2 text-center font-bold bg-muted/30">{data.responses.crosstab.total}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                    {data?.responses?.crosstab && data.responses.crosstab.total === 0 && (
-                      <p className="text-xs text-amber-600 pt-1">
-                        Ninguna respuesta contestó ambas preguntas a la vez (todas las celdas dan 0). Esto suele pasar
-                        cuando las dos preguntas pertenecen a encuestas distintas, o cuando el &quot;Filtro avanzado&quot;
-                        de arriba ya redujo las respuestas a un subconjunto que no tocó estas preguntas. Prueba
-                        seleccionando una &quot;Encuesta&quot; específica en los filtros de arriba, o limpiando el filtro avanzado.
-                      </p>
-                    )}
-                    {crossRowQuestionId && crossColQuestionId && !data?.responses?.crosstab && (
-                      <p className="text-xs text-muted-foreground pt-1">No hay respuestas suficientes para cruzar estas dos preguntas.</p>
-                    )}
-                  </div>
-
-                  {selectedQuestion && (
-                    <div className="space-y-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <h3 className="text-lg font-medium">{selectedQuestion.text}</h3>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">{selectedQuestion.totalAnswers} respuestas</span>
-                      </div>
-                      {selectedQuestion.average && (
-                        <p className="text-sm text-muted-foreground">Promedio: <span className="font-semibold text-foreground">{selectedQuestion.average}</span></p>
-                      )}
-
-                      {/* Galería de archivos para preguntas tipo archivo/foto */}
-                      {(selectedQuestion.type === "file" || selectedQuestion.type === "image_upload") ? (
-                        <div className="space-y-3">
-                          {fileGalleryLoading ? (
-                            <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground">
-                              <Loader2 className="h-5 w-5 animate-spin" /> Cargando archivos…
-                            </div>
-                          ) : fileGallery.length === 0 ? (
-                            <div className="py-10 text-center text-sm text-muted-foreground">
-                              No hay archivos subidos para esta pregunta
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-3">
-                              {fileGallery.map((f, idx) =>
-                                f.type?.startsWith("image/") ? (
-                                  <a key={idx} href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block group">
-                                    <img src={f.url} alt={f.name} className="h-24 w-24 object-cover rounded-lg border group-hover:opacity-90 transition-opacity" />
-                                    <p className="text-xs text-muted-foreground mt-1 w-24 truncate text-center">{f.name}</p>
-                                  </a>
-                                ) : (
-                                  <a key={idx} href={f.url} target="_blank" rel="noreferrer"
-                                    className="flex flex-col items-center gap-1.5 p-3 border rounded-lg bg-muted/30 hover:bg-muted transition-colors w-24 text-center">
-                                    <Download className="h-6 w-6 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground truncate w-full">{f.name}</span>
-                                  </a>
-                                )
-                              )}
-                            </div>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {fileGallery.length} archivo{fileGallery.length !== 1 ? "s" : ""} · Las URLs expiran en 1 hora
-                          </p>
+                  {showAdvancedPanel && (
+                    <div className="px-4 py-4 space-y-4 border-t">
+                      {/* Filtro avanzado */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-sm font-medium">
+                          <Tags className="h-3.5 w-3.5" /> Filtro avanzado
+                          <span className="text-xs font-normal text-muted-foreground">— filtra todo el reporte según lo contestado en una pregunta</span>
                         </div>
-                      ) : (
-                        <>
-                          <QuestionChart
-                            type={chartType}
-                            distribution={selectedQuestion.distribution ?? []}
-                            timeline={selectedQuestion.timeline ?? []}
-                            showLabels={showLabels}
-                          />
-
-                          {showDataTable && (selectedQuestion.distribution?.length ?? 0) > 0 && (
-                            <div className="rounded-md border overflow-hidden mt-4">
-                              <div className="grid grid-cols-3 p-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/50 border-b">
-                                <div>Opción</div>
-                                <div className="text-center">Respuestas</div>
-                                <div className="text-center">Porcentaje</div>
-                              </div>
-                              <div className="divide-y">
-                                {selectedQuestion.distribution!.map((d, i) => (
-                                  <div key={i} className="grid grid-cols-3 p-2 text-sm items-center">
-                                    <div className="truncate">{d.label}</div>
-                                    <div className="text-center">{d.count}</div>
-                                    <div className="text-center">{d.percentage}%</div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {selectedQuestion.sampleAnswers && selectedQuestion.sampleAnswers.length > 0 && (
-                            <div className="space-y-2">
-                              {selectedQuestion.sampleAnswers.map((ans, i) => (
-                                <div key={i} className="p-3 border rounded-md">
-                                  <p className="text-sm text-muted-foreground">&ldquo;{ans}&rdquo;</p>
-                                </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Select
+                            value={advancedFilterQuestionId || "none"}
+                            onValueChange={(v) => { setAdvancedFilterQuestionId(v === "none" ? "" : v); setAdvancedFilterValue("") }}
+                          >
+                            <SelectTrigger className="sm:w-64">
+                              <SelectValue placeholder="Pregunta condición" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Sin filtro</SelectItem>
+                              {(data?.responses?.filterableQuestions ?? []).map((q) => (
+                                <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
                               ))}
-                              {selectedQuestion.totalAnswers > 5 && (
-                                <p className="text-xs text-muted-foreground">Mostrando 5 de {selectedQuestion.totalAnswers} respuestas</p>
-                              )}
-                            </div>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={advancedFilterValue || "none"}
+                            onValueChange={(v) => setAdvancedFilterValue(v === "none" ? "" : v)}
+                            disabled={!advancedFilterQuestionId}
+                          >
+                            <SelectTrigger className="sm:w-64">
+                              <SelectValue placeholder="Valor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Selecciona un valor</SelectItem>
+                              {(data?.responses?.filterableQuestions ?? [])
+                                .find((q) => q.questionId === advancedFilterQuestionId)
+                                ?.values.map((v) => (
+                                  <SelectItem key={v} value={v}>{v}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          {advancedFilterQuestionId && advancedFilterValue && (
+                            <Button variant="ghost" size="sm" onClick={() => { setAdvancedFilterQuestionId(""); setAdvancedFilterValue("") }}>
+                              Limpiar
+                            </Button>
                           )}
-                        </>
-                      )}
+                        </div>
+                      </div>
+
+                      {/* Tabla cruzada */}
+                      <div className="space-y-2 pt-2 border-t">
+                        <div className="flex items-center gap-1.5 text-sm font-medium">
+                          <Grid3x3 className="h-3.5 w-3.5" /> Tabla cruzada
+                          <span className="text-xs font-normal text-muted-foreground">— cruza respuestas de dos preguntas</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Select value={crossRowQuestionId || "none"} onValueChange={(v) => setCrossRowQuestionId(v === "none" ? "" : v)}>
+                            <SelectTrigger className="sm:w-64"><SelectValue placeholder="Pregunta (filas)" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Selecciona pregunta</SelectItem>
+                              {(data?.responses?.filterableQuestions ?? []).filter((q) => q.questionId !== crossColQuestionId).map((q) => (
+                                <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={crossColQuestionId || "none"} onValueChange={(v) => setCrossColQuestionId(v === "none" ? "" : v)}>
+                            <SelectTrigger className="sm:w-64"><SelectValue placeholder="Pregunta (columnas)" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Selecciona pregunta</SelectItem>
+                              {(data?.responses?.filterableQuestions ?? []).filter((q) => q.questionId !== crossRowQuestionId).map((q) => (
+                                <SelectItem key={q.questionId} value={q.questionId}>{q.text}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {(crossRowQuestionId || crossColQuestionId) && (
+                            <Button variant="ghost" size="sm" onClick={() => { setCrossRowQuestionId(""); setCrossColQuestionId("") }}>Limpiar</Button>
+                          )}
+                        </div>
+                        {data?.responses?.crosstab && (
+                          <div className="overflow-x-auto pt-2">
+                            <table className="text-sm border-collapse w-full">
+                              <thead>
+                                <tr>
+                                  <th className="border p-2 bg-muted/50 text-left align-bottom">
+                                    <div className="text-xs text-muted-foreground font-normal">{data.responses.crosstab.rowQuestion}</div>
+                                    <div className="text-xs text-muted-foreground font-normal">↓ / {data.responses.crosstab.colQuestion} →</div>
+                                  </th>
+                                  {data.responses.crosstab.cols.map((c) => (
+                                    <th key={c} className="border p-2 bg-muted/50 text-center font-medium whitespace-nowrap">{c}</th>
+                                  ))}
+                                  <th className="border p-2 bg-muted/50 text-center font-semibold">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.responses.crosstab.rows.map((r, ri) => (
+                                  <tr key={r}>
+                                    <td className="border p-2 font-medium whitespace-nowrap">{r}</td>
+                                    {data.responses.crosstab!.matrix[ri].map((v, ci) => (
+                                      <td key={ci} className="border p-2 text-center">{v}</td>
+                                    ))}
+                                    <td className="border p-2 text-center font-semibold bg-muted/20">{data.responses.crosstab!.rowTotals[ri]}</td>
+                                  </tr>
+                                ))}
+                                <tr>
+                                  <td className="border p-2 font-semibold bg-muted/20">Total</td>
+                                  {data.responses.crosstab.colTotals.map((v, ci) => (
+                                    <td key={ci} className="border p-2 text-center font-semibold bg-muted/20">{v}</td>
+                                  ))}
+                                  <td className="border p-2 text-center font-bold bg-muted/30">{data.responses.crosstab.total}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* ── Preguntas visibles / header del informe ── */}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {questionBreakdowns.length - hiddenQuestions.size} de {questionBreakdowns.length} pregunta{questionBreakdowns.length !== 1 ? "s" : ""} en el informe
+                  </p>
+                  {hiddenQuestions.size > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs gap-1"
+                      onClick={() => setHiddenQuestions(new Set())}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Mostrar todas ({hiddenQuestions.size} oculta{hiddenQuestions.size !== 1 ? "s" : ""})
+                    </Button>
+                  )}
+                </div>
+
+                {/* ── Lista de tarjetas de preguntas ── */}
+                <div className="space-y-4">
+                  {questionBreakdowns
+                    .filter((q) => !hiddenQuestions.has(q.questionId))
+                    .map((q, idx) => (
+                      <QuestionCard
+                        key={q.questionId}
+                        question={q}
+                        index={idx}
+                        settings={getQSettings(q)}
+                        onSettingsChange={(patch) => updateQSettings(q.questionId, patch)}
+                        onHide={() => setHiddenQuestions((prev) => new Set([...prev, q.questionId]))}
+                        surveyId={selectedSurvey !== "all" ? selectedSurvey : undefined}
+                      />
+                    ))
+                  }
+                </div>
+              </div>
             )}
           </TabsContent>
 

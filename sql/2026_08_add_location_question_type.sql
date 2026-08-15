@@ -1,4 +1,4 @@
--- Migración: agregar tipo de pregunta 'location' (GPS) al constraint de la tabla questions
+-- Migración: agregar tipos de pregunta 'location' (GPS) y 'video' al constraint de la tabla questions
 -- Contexto: el constraint questions_type_check no incluía 'location', por lo que intentar
 -- guardar una pregunta GPS desde la plataforma fallaba con un error de constraint violation.
 -- Se elimina el constraint existente y se recrea incluyendo 'location'.
@@ -37,7 +37,8 @@ ALTER TABLE questions
       'contact_info'::text,
       'single_textbox'::text,
       'multiple_textboxes'::text,
-      'location'::text
+      'location'::text,
+      'video'::text
     ])
   );
 
