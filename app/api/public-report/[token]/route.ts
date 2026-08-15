@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { createHash } from "crypto"
+
+function hashPassword(pw: string): string {
+  return createHash("sha256").update(pw).digest("hex")
+}
 
 // ─── Helpers (idénticos a reports/route.ts para consistencia) ────────────────
 function extractValue(val: any): string | string[] {
@@ -63,6 +68,17 @@ export async function GET(
   }
 
   const config: any = (share as any).config || {}
+
+  // Verificar contraseña si el link está protegido
+  if (config.passwordHash) {
+    const providedPassword = _req.nextUrl.searchParams.get("password") || ""
+    if (!providedPassword || hashPassword(providedPassword) !== config.passwordHash) {
+      return NextResponse.json(
+        { error: "password_required", message: "Este reporte está protegido con contraseña." },
+        { status: 401 }
+      )
+    }
+  }
   const surveyId: string = (share as any).survey_id
   const filters = config.filters || {}
   const sections = config.sections || { resumen: true, analisis: true, rendimiento: false, geografico: false }
@@ -105,7 +121,7 @@ export async function GET(
       const batch = responseIds.slice(i, i + batchSize)
       const { data: batchAnswers } = await admin
         .from("answers")
-        .select("id, response_id, question_id, value, questions(id, text, type, options, section_id)")
+        .select("id, response_id, question_id, value, questions(id, text, type, options, section_id, matrix_rows, matrix_cols, settings)")
         .in("response_id", batch)
         .limit(5000)
       if (batchAnswers) {
@@ -165,14 +181,17 @@ export async function GET(
     .map(([date, count]) => ({ date, count }))
 
   // 6. Question breakdowns (Análisis de resultados)
-  const questionMap: Record<string, { text: string; type: string; options: any[]; answers: any[]; days: string[] }> = {}
+  const questionMap: Record<string, { text: string; type: string; options: any[]; answers: any[]; days: string[]; matrixRows: string[]; matrixCols: string[]; cellType: string }> = {}
   for (const a of answers) {
     const q = a.questions
     if (!q) continue
     // Filtrar por preguntas seleccionadas si se especificaron
     if (allowedQuestionIds !== null && !allowedQuestionIds.includes(q.id)) continue
     if (!questionMap[q.id]) {
-      questionMap[q.id] = { text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [] }
+      const mRows: string[] = q.matrix_rows || q.settings?.matrixRows || []
+      const mCols: string[] = q.matrix_cols || q.settings?.matrixCols || []
+      const cType: string = q.settings?.matrixCellType || "radio"
+      questionMap[q.id] = { text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [], matrixRows: mRows, matrixCols: mCols, cellType: cType }
     }
     questionMap[q.id].answers.push(a.value)
     const parentResponse = responseById[a.response_id]
@@ -181,10 +200,64 @@ export async function GET(
     }
   }
 
-  // Build breakdowns (simplified — same logic as reports/route.ts)
+  // Build breakdowns (same logic as reports/route.ts)
   const questionBreakdowns = Object.entries(questionMap).map(([qId, qData]) => {
-    const { text, type, options, answers: qAnswers } = qData
+    const { text, type, options, answers: qAnswers, matrixRows, matrixCols, cellType } = qData
     const totalAnswered = qAnswers.length
+
+    // ── Matriz ─────────────────────────────────────────────────────────────────
+    if (type === "matrix" && matrixRows.length > 0) {
+      if (cellType === "number" || cellType === "text") {
+        const sums: Record<string, number> = {}
+        const cnts: Record<string, number> = {}
+        const samples: Record<string, string[]> = {}
+        for (const val of qAnswers) {
+          if (!val || typeof val !== "object" || Array.isArray(val)) continue
+          for (const [key, v] of Object.entries(val as Record<string, any>)) {
+            const str = String(v ?? "").trim()
+            if (!str) continue
+            if (cellType === "number") {
+              const n = parseFloat(str.replace(",", "."))
+              if (!isNaN(n)) { sums[key] = (sums[key] || 0) + n; cnts[key] = (cnts[key] || 0) + 1 }
+            } else {
+              if (!samples[key]) samples[key] = []
+              if (samples[key].length < 3) samples[key].push(str)
+            }
+          }
+        }
+        const tableData: Record<string, Record<string, { avg?: number; count: number; samples?: string[] }>> = {}
+        for (const row of matrixRows) {
+          tableData[row] = {}
+          for (const col of matrixCols) {
+            const key = `${row}_${col}`
+            if (cellType === "number") {
+              const c = cnts[key] || 0
+              tableData[row][col] = { avg: c > 0 ? Math.round((sums[key] / c) * 10) / 10 : undefined, count: c }
+            } else {
+              tableData[row][col] = { count: (samples[key] || []).length, samples: samples[key] || [] }
+            }
+          }
+        }
+        return { questionId: qId, text, type, totalAnswered, matrixBreakdown: { matrixRows, matrixCols, cellType, tableData } }
+      }
+      if (cellType === "radio" || cellType === "checkbox") {
+        const rowDist: Record<string, Record<string, number>> = {}
+        for (const row of matrixRows) rowDist[row] = {}
+        for (const val of qAnswers) {
+          if (!val || typeof val !== "object" || Array.isArray(val)) continue
+          for (const row of matrixRows) {
+            const sel = (val as any)[row]
+            const selected: string[] = Array.isArray(sel) ? sel : sel ? [String(sel)] : []
+            for (const s of selected) {
+              if (s) rowDist[row][s] = (rowDist[row][s] || 0) + 1
+            }
+          }
+        }
+        return { questionId: qId, text, type, totalAnswered, matrixBreakdown: { matrixRows, matrixCols, cellType, rowDistribution: rowDist } }
+      }
+      return { questionId: qId, text, type, totalAnswered, matrixBreakdown: { matrixRows, matrixCols, cellType } }
+    }
+    // ───────────────────────────────────────────────────────────────────────────
 
     if (["multiple_choice", "single_choice", "dropdown", "radio", "checkbox"].includes(type)) {
       const counts: Record<string, number> = {}

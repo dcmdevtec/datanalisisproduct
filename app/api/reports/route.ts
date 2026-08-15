@@ -224,7 +224,177 @@ export async function GET(request: NextRequest) {
       return resolveOutcome(r) === tipoFilter
     })
 
-    if (responses.length === 0 && (rawResponses?.length ?? 0) === 0) return emptyResponse()
+    // --- survey_surveyor_zones — se computa ANTES del early-return para que el
+    //     mapa geográfico muestre ubicaciones aunque no haya respuestas aún. ---
+    let sszQueryEarly = admin
+      .from("survey_surveyor_zones")
+      .select("id, survey_id, surveyor_id, zone_id, status, created_at, zones(name), surveyors(id, name, supervisor_id)")
+    if (filteredSurveyIds !== null) {
+      sszQueryEarly = sszQueryEarly.in("survey_id", filteredSurveyIds)
+    }
+    if (surveyorFilter !== "all") {
+      sszQueryEarly = sszQueryEarly.eq("surveyor_id", surveyorFilter)
+    } else if (hierarchySurveyorIds !== null) {
+      sszQueryEarly = sszQueryEarly.in("surveyor_id", hierarchySurveyorIds.length > 0 ? hierarchySurveyorIds : ["__none__"])
+    }
+    const { data: rawSSZEarly } = await sszQueryEarly
+    const assignments: any[] = (rawSSZEarly as any[]) || []
+    const assignmentById: Record<string, any> = {}
+    for (const a of assignments) assignmentById[a.id] = a
+
+    // === GEOGRAPHIC DATA (siempre, independiente de si hay respuestas) ===
+    const zoneResponseMapEarly: Record<string, { name: string; responseCount: number; completedCount: number }> = {}
+    for (const a of assignments) {
+      if (!a.zone_id) continue
+      const zoneName = (a.zones as any)?.name || String(a.zone_id)
+      if (!zoneResponseMapEarly[a.zone_id as string]) {
+        zoneResponseMapEarly[a.zone_id as string] = { name: zoneName, responseCount: 0, completedCount: 0 }
+      }
+      zoneResponseMapEarly[a.zone_id as string].responseCount++
+      if (a.status === "completed") zoneResponseMapEarly[a.zone_id as string].completedCount++
+    }
+    const totalZoneResponsesEarly = Object.values(zoneResponseMapEarly).reduce((s, z) => s + z.responseCount, 0) || 1
+    const zoneBreakdown = Object.values(zoneResponseMapEarly)
+      .map((z) => ({
+        zone: z.name,
+        responseCount: z.responseCount,
+        completedCount: z.completedCount,
+        percentage: Math.round((z.responseCount / totalZoneResponsesEarly) * 100),
+        completionRate: z.responseCount > 0 ? Math.round((z.completedCount / z.responseCount) * 100) : 0,
+      }))
+      .sort((a, b) => b.responseCount - a.responseCount)
+
+    const zoneIdsEarly = [...new Set(assignments.map((a: any) => a.zone_id).filter(Boolean))]
+    let zonePolygons: { id: string; name: string; geometry: any; zoneColor: string; responseCount: number; completedCount: number; completionRate: number }[] = []
+    if (zoneIdsEarly.length > 0) {
+      const { data: zonesGeoEarly } = await admin
+        .from("zones")
+        .select("id, name, geometry, zone_color")
+        .in("id", zoneIdsEarly)
+      if (zonesGeoEarly) {
+        zonePolygons = zonesGeoEarly
+          .filter((z: any) => z.geometry)
+          .map((z: any) => {
+            const stats = zoneResponseMapEarly[z.id]
+            const rc = stats?.responseCount || 0
+            const cc = stats?.completedCount || 0
+            return {
+              id: z.id,
+              name: z.name,
+              geometry: z.geometry,
+              zoneColor: z.zone_color || "#3b82f6",
+              responseCount: rc,
+              completedCount: cc,
+              completionRate: rc > 0 ? Math.round((cc / rc) * 100) : 0,
+            }
+          })
+      }
+    }
+
+    // Puntos de respuesta con GPS (de la tabla responses)
+    const responsePointsFromResponses = responses
+      .filter((r: any) => r.location && typeof r.location === "object" &&
+        typeof (r.location.lat ?? r.location.latitude) === "number" &&
+        typeof (r.location.lng ?? r.location.longitude) === "number")
+      .map((r: any) => {
+        const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
+        const surveyorName = (assignment?.surveyors as any)?.name ?? null
+        const durationSecs = (r.completed_at && r.created_at)
+          ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)
+          : null
+        return {
+          id: r.id,
+          lat: r.location.lat ?? r.location.latitude,
+          lng: r.location.lng ?? r.location.longitude,
+          status: r.status,
+          outcome: resolveOutcome(r),
+          createdAt: r.created_at,
+          surveyorName,
+          respondentName: r.respondent_name ?? null,
+          durationSecs,
+          source: "response" as const,
+        }
+      })
+
+    // Rastro GPS de encuestadores (surveyor_locations)
+    let surveyorLocationPoints: { id: string; lat: number; lng: number; status: string; outcome: string | null; createdAt: string; surveyorName: string | null; respondentName: string | null; durationSecs: number | null; source: "surveyor" }[] = []
+    try {
+      let locQuery = admin
+        .from("surveyor_locations")
+        .select("id, latitude, longitude, recorded_at, active_survey_id, surveyor_id, surveyors(name)")
+        .not("latitude", "is", null)
+        .not("longitude", "is", null)
+        .order("recorded_at", { ascending: false })
+        .limit(4000)
+
+      if (dateFrom) locQuery = locQuery.gte("recorded_at", dateFrom.toISOString())
+      if (dateTo)   locQuery = locQuery.lte("recorded_at", dateTo.toISOString())
+
+      if (filteredSurveyIds !== null && filteredSurveyIds.length > 0) {
+        locQuery = locQuery.in("active_survey_id", filteredSurveyIds)
+      } else {
+        const surveyorIds = [...new Set(assignments.map((a: any) => a.surveyor_id).filter(Boolean))]
+        if (surveyorIds.length > 0) {
+          locQuery = locQuery.in("surveyor_id", surveyorIds)
+        }
+        // Si no hay assignments → sin filtro de surveyor_id → devuelve TODOS los
+        // puntos de la tabla (útil para ver encuestadores activos aunque no tengan
+        // asignaciones formales aún).
+      }
+      if (surveyorFilter !== "all") {
+        locQuery = locQuery.eq("surveyor_id", surveyorFilter)
+      }
+
+      const { data: locData } = await locQuery
+      if (locData && locData.length > 0) {
+        const step = Math.max(1, Math.floor(locData.length / 2000))
+        surveyorLocationPoints = locData
+          .filter((_: any, i: number) => i % step === 0)
+          .map((l: any) => ({
+            id: l.id,
+            lat: Number(l.latitude),
+            lng: Number(l.longitude),
+            status: "completed",
+            outcome: null,
+            createdAt: l.recorded_at,
+            surveyorName: (l.surveyors as any)?.name ?? null,
+            respondentName: null,
+            durationSecs: null,
+            source: "surveyor" as const,
+          }))
+      }
+    } catch (geoErr) {
+      console.error("Error fetching surveyor_locations for map:", geoErr)
+    }
+
+    const responsePoints = [
+      ...responsePointsFromResponses,
+      ...surveyorLocationPoints,
+    ].slice(0, 2000)
+    // === FIN GEOGRAPHIC DATA ===
+
+    if (responses.length === 0 && (rawResponses?.length ?? 0) === 0) {
+      // No hay respuestas, pero devolvemos datos geográficos (ubicaciones de
+      // encuestadores y polígonos de zonas) para que el mapa funcione igual.
+      return NextResponse.json({
+        companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
+        projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
+        surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id })),
+        surveyors: (allSurveyors || []).map((s: any) => ({ id: s.id, name: s.name, supervisorId: s.supervisor_id })),
+        supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
+        coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
+        summary: {
+          totalResponses: 0, completionRate: 0, avgTime: "0:00", nps: null, responseGrowth: 0,
+          responsesTimeline: [], responsesByHour: [], peakHour: 0, activeDays: 0, avgPerDay: 0,
+          surveysWithData: 0, trendPct: 0, peakDay: null,
+          efectivas: 0, incidencias: 0, abandonadas: 0, tasaRespuestasEfectivas: 0,
+        },
+        responses: { questionBreakdowns: [], filterableQuestions: [], crosstab: null },
+        performance: { surveyorPerformance: [], dailyDistribution: [], surveyPerformance: [] },
+        geographic: { zoneBreakdown, zonePolygons, responsePoints },
+        individual: { total: 0 },
+      })
+    }
 
     // --- Answers: filter by response IDs from our filtered responses ---
     const responseIds = responses.map((r: any) => r.id)
@@ -238,7 +408,7 @@ export async function GET(request: NextRequest) {
         const batch = responseIds.slice(i, i + batchSize)
         const { data: batchAnswers } = await admin
           .from("answers")
-          .select("id, response_id, question_id, value, questions(id, text, type, options, survey_id, section_id)")
+          .select("id, response_id, question_id, value, questions(id, text, type, options, survey_id, section_id, matrix_rows, matrix_cols, settings)")
           .in("response_id", batch)
           .limit(5000)
         if (batchAnswers) {
@@ -344,25 +514,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- survey_surveyor_zones (fuente real — responses.assignment_id apunta aquí, no a `assignments` legacy) ---
-    let sszQuery = admin
-      .from("survey_surveyor_zones")
-      .select("id, survey_id, surveyor_id, zone_id, status, created_at, zones(name), surveyors(id, name, supervisor_id)")
-    if (filteredSurveyIds !== null) {
-      sszQuery = sszQuery.in("survey_id", filteredSurveyIds)
-    }
-    if (surveyorFilter !== "all") {
-      sszQuery = sszQuery.eq("surveyor_id", surveyorFilter)
-    } else if (hierarchySurveyorIds !== null) {
-      sszQuery = sszQuery.in("surveyor_id", hierarchySurveyorIds.length > 0 ? hierarchySurveyorIds : ["__none__"])
-    }
-    const { data: rawSSZ } = await sszQuery
-    // `assignments` alias para código existente (geo tab, zone breakdown) que lo itera
-    const assignments: any[] = (rawSSZ as any[]) || []
-
-    // Mapa id -> ssz (para resolver encuestador por response.assignment_id)
-    const assignmentById: Record<string, any> = {}
-    for (const a of assignments) assignmentById[a.id] = a
+    // assignments y assignmentById ya se calcularon arriba (antes del early-return)
 
     // === SUMMARY TAB ===
     const totalResponses = responses.length
@@ -470,12 +622,15 @@ export async function GET(request: NextRequest) {
     // === ANÁLISIS DE RESULTADOS TAB (antes "Respuestas") ===
     // Guarda también el día de cada respuesta por pregunta para poder graficar
     // "Tendencia" por pregunta (slide 21) sin volver a golpear la base de datos.
-    const questionMap: Record<string, { text: string; type: string; options: any[]; answers: any[]; days: string[] }> = {}
+    const questionMap: Record<string, { text: string; type: string; options: any[]; answers: any[]; days: string[]; matrixRows: string[]; matrixCols: string[]; cellType: string }> = {}
     for (const a of answers) {
       const q = a.questions
       if (!q) continue
       if (!questionMap[q.id]) {
-        questionMap[q.id] = { text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [] }
+        const mRows: string[] = q.matrix_rows || q.settings?.matrixRows || []
+        const mCols: string[] = q.matrix_cols || q.settings?.matrixCols || []
+        const cType: string = q.settings?.matrixCellType || "radio"
+        questionMap[q.id] = { text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [], matrixRows: mRows, matrixCols: mCols, cellType: cType }
       }
       questionMap[q.id].answers.push(a.value)
       const parentResponse = responseById[a.response_id]
@@ -485,7 +640,7 @@ export async function GET(request: NextRequest) {
     }
 
     const questionBreakdowns = Object.entries(questionMap).map(([qId, qData]) => {
-      const { text, type, options, answers: qAnswers, days } = qData
+      const { text, type, options, answers: qAnswers, days, matrixRows, matrixCols, cellType } = qData
 
       // Timeline por pregunta: cuántas respuestas de ESTA pregunta llegaron cada día.
       const dayCounts: Record<string, number> = {}
@@ -493,6 +648,87 @@ export async function GET(request: NextRequest) {
       const timeline = Object.entries(dayCounts)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, count]) => ({ date, count }))
+
+      // ── Matriz ───────────────────────────────────────────────────────────────
+      if (type === "matrix" && matrixRows.length > 0) {
+        if (cellType === "number" || cellType === "text") {
+          // Formato: { "row_col": value, ... }
+          const sums: Record<string, number> = {}
+          const cnts: Record<string, number> = {}
+          const samples: Record<string, string[]> = {}
+          for (const val of qAnswers) {
+            if (!val || typeof val !== "object" || Array.isArray(val)) continue
+            for (const [key, v] of Object.entries(val as Record<string, any>)) {
+              const str = String(v ?? "").trim()
+              if (!str) continue
+              if (cellType === "number") {
+                const n = parseFloat(str.replace(",", "."))
+                if (!isNaN(n)) { sums[key] = (sums[key] || 0) + n; cnts[key] = (cnts[key] || 0) + 1 }
+              } else {
+                if (!samples[key]) samples[key] = []
+                if (samples[key].length < 3) samples[key].push(str)
+              }
+            }
+          }
+          // Build per-row per-col table
+          const tableData: Record<string, Record<string, { avg?: number; count: number; samples?: string[] }>> = {}
+          for (const row of matrixRows) {
+            tableData[row] = {}
+            for (const col of matrixCols) {
+              const key = `${row}_${col}`
+              if (cellType === "number") {
+                const c = cnts[key] || 0
+                tableData[row][col] = { avg: c > 0 ? Math.round((sums[key] / c) * 10) / 10 : undefined, count: c }
+              } else {
+                tableData[row][col] = { count: (samples[key] || []).length, samples: samples[key] || [] }
+              }
+            }
+          }
+          return { questionId: qId, text, type, totalAnswers: qAnswers.length, timeline,
+            matrixBreakdown: { matrixRows, matrixCols, cellType, tableData } }
+        }
+
+        if (cellType === "radio" || cellType === "checkbox") {
+          // Formato radio: { rowLabel: colLabel }  checkbox: { rowLabel: [colLabel,...] }
+          const rowDist: Record<string, Record<string, number>> = {}
+          for (const row of matrixRows) rowDist[row] = {}
+          for (const val of qAnswers) {
+            if (!val || typeof val !== "object" || Array.isArray(val)) continue
+            for (const row of matrixRows) {
+              const sel = (val as any)[row]
+              const selected: string[] = Array.isArray(sel) ? sel : sel ? [String(sel)] : []
+              for (const s of selected) {
+                if (s) rowDist[row][s] = (rowDist[row][s] || 0) + 1
+              }
+            }
+          }
+          return { questionId: qId, text, type, totalAnswers: qAnswers.length, timeline,
+            matrixBreakdown: { matrixRows, matrixCols, cellType, rowDistribution: rowDist } }
+        }
+
+        // rating per cell: { "row_col": numericValue }
+        const sums: Record<string, number> = {}
+        const cnts: Record<string, number> = {}
+        for (const val of qAnswers) {
+          if (!val || typeof val !== "object" || Array.isArray(val)) continue
+          for (const [key, v] of Object.entries(val as Record<string, any>)) {
+            const n = parseFloat(String(v ?? ""))
+            if (!isNaN(n)) { sums[key] = (sums[key] || 0) + n; cnts[key] = (cnts[key] || 0) + 1 }
+          }
+        }
+        const tableData: Record<string, Record<string, { avg?: number; count: number }>> = {}
+        for (const row of matrixRows) {
+          tableData[row] = {}
+          for (const col of matrixCols) {
+            const key = `${row}_${col}`
+            const c = cnts[key] || 0
+            tableData[row][col] = { avg: c > 0 ? Math.round((sums[key] / c) * 10) / 10 : undefined, count: c }
+          }
+        }
+        return { questionId: qId, text, type, totalAnswers: qAnswers.length, timeline,
+          matrixBreakdown: { matrixRows, matrixCols, cellType, tableData } }
+      }
+      // ─────────────────────────────────────────────────────────────────────────
 
       if (["multiple_choice", "single_choice", "dropdown", "radio", "checkbox"].includes(type)) {
         const counts: Record<string, number> = {}
@@ -653,139 +889,8 @@ export async function GET(request: NextRequest) {
       })
       .sort((a, b) => b.totalResponses - a.totalResponses)
 
-    // === GEOGRAPHIC TAB ===
-    const zoneResponseMap: Record<string, { name: string; responseCount: number; completedCount: number }> = {}
-    for (const a of assignments || []) {
-      if (!a.zone_id) continue
-      const zoneName = (a.zones as any)?.name || String(a.zone_id)
-      if (!zoneResponseMap[a.zone_id as string]) {
-        zoneResponseMap[a.zone_id as string] = { name: zoneName, responseCount: 0, completedCount: 0 }
-      }
-      zoneResponseMap[a.zone_id as string].responseCount++
-      if (a.status === "completed") zoneResponseMap[a.zone_id as string].completedCount++
-    }
-    const totalZoneResponses = Object.values(zoneResponseMap).reduce((s, z) => s + z.responseCount, 0) || 1
-    const zoneBreakdown = Object.values(zoneResponseMap)
-      .map((z) => ({
-        zone: z.name,
-        responseCount: z.responseCount,
-        completedCount: z.completedCount,
-        percentage: Math.round((z.responseCount / totalZoneResponses) * 100),
-        completionRate: z.responseCount > 0 ? Math.round((z.completedCount / z.responseCount) * 100) : 0,
-      }))
-      .sort((a, b) => b.responseCount - a.responseCount)
-
-    // Fetch zone geometries for map rendering
-    const zoneIds = [...new Set((assignments || []).map((a: any) => a.zone_id).filter(Boolean))]
-    let zonePolygons: { id: string; name: string; geometry: any; zoneColor: string; responseCount: number; completedCount: number; completionRate: number }[] = []
-    if (zoneIds.length > 0) {
-      const { data: zonesGeo } = await admin
-        .from("zones")
-        .select("id, name, geometry, zone_color")
-        .in("id", zoneIds)
-      if (zonesGeo) {
-        zonePolygons = zonesGeo
-          .filter((z: any) => z.geometry)
-          .map((z: any) => {
-            const stats = zoneResponseMap[z.id]
-            const rc = stats?.responseCount || 0
-            const cc = stats?.completedCount || 0
-            return {
-              id: z.id,
-              name: z.name,
-              geometry: z.geometry,
-              zoneColor: z.zone_color || "#3b82f6",
-              responseCount: rc,
-              completedCount: cc,
-              completionRate: rc > 0 ? Math.round((cc / rc) * 100) : 0,
-            }
-          })
-      }
-    }
-
-    // Extract INDIVIDUAL response location points (slide 24: "los puntos geolocalizados
-    // deben ser individuales e independientes" — ya NO se agrupan por grid).
-    // Cada punto trae encuestador, encuestado, duración y tipo para el popup.
-    const responsePointsFromResponses = responses
-      .filter((r: any) => r.location && typeof r.location === "object" &&
-        typeof (r.location.lat ?? r.location.latitude) === "number" &&
-        typeof (r.location.lng ?? r.location.longitude) === "number")
-      .map((r: any) => {
-        const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
-        const surveyorName = (assignment?.surveyors as any)?.name ?? null
-        const durationSecs = (r.completed_at && r.created_at)
-          ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)
-          : null
-        return {
-          id: r.id,
-          lat: r.location.lat ?? r.location.latitude,
-          lng: r.location.lng ?? r.location.longitude,
-          status: r.status,
-          outcome: resolveOutcome(r),
-          createdAt: r.created_at,
-          surveyorName,
-          respondentName: r.respondent_name ?? null,
-          durationSecs,
-          source: "response" as const,
-        }
-      })
-
-    // Also pull from surveyor_locations: where encuestadores actually were during active surveys
-    // (rastro de ubicación, no respuestas puntuales — se mantiene aparte del listado individual)
-    let surveyorLocationPoints: { id: string; lat: number; lng: number; status: string; outcome: string | null; createdAt: string; surveyorName: string | null; respondentName: string | null; durationSecs: number | null; source: "surveyor" }[] = []
-    try {
-      let locQuery = admin
-        .from("surveyor_locations")
-        .select("id, latitude, longitude, recorded_at, active_survey_id, surveyor_id, surveyors(name)")
-        .not("latitude", "is", null)
-        .not("longitude", "is", null)
-        .order("recorded_at", { ascending: false })
-        .limit(4000)
-
-      if (dateFrom) locQuery = locQuery.gte("recorded_at", dateFrom.toISOString())
-      if (dateTo) locQuery = locQuery.lte("recorded_at", dateTo.toISOString())
-
-      if (filteredSurveyIds !== null && filteredSurveyIds.length > 0) {
-        locQuery = locQuery.in("active_survey_id", filteredSurveyIds)
-      } else {
-        const surveyorIds = [...new Set((assignments || []).map((a: any) => a.surveyor_id).filter(Boolean))]
-        if (surveyorIds.length > 0) {
-          locQuery = locQuery.in("surveyor_id", surveyorIds)
-        }
-      }
-      if (surveyorFilter !== "all") {
-        locQuery = locQuery.eq("surveyor_id", surveyorFilter)
-      }
-
-      const { data: locData } = await locQuery
-      if (locData && locData.length > 0) {
-        // Sample evenly to stay under 2000 points for frontend performance
-        const step = Math.max(1, Math.floor(locData.length / 2000))
-        surveyorLocationPoints = locData
-          .filter((_: any, i: number) => i % step === 0)
-          .map((l: any) => ({
-            id: l.id,
-            lat: Number(l.latitude),
-            lng: Number(l.longitude),
-            status: "completed",
-            outcome: null, // no aplica clasificación efectiva/incidencia/abandonada a rastros de ubicación
-            createdAt: l.recorded_at,
-            surveyorName: (l.surveyors as any)?.name ?? null,
-            respondentName: null,
-            durationSecs: null,
-            source: "surveyor" as const,
-          }))
-      }
-    } catch (geoErr) {
-      console.error("Error fetching surveyor_locations for map:", geoErr)
-    }
-
-    // Merge both sources, response locations take priority, cap at 2000.
-    // Ya NO se agrupan por grid — cada punto es individual (slide 24).
-    const responsePoints = [
-      ...responsePointsFromResponses,
-      ...surveyorLocationPoints,
-    ].slice(0, 2000)
+    // zoneBreakdown, zonePolygons, responsePoints ya se calcularon arriba
+    // (antes del early-return) para que el mapa funcione aunque no haya respuestas.
 
     return NextResponse.json({
       companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),

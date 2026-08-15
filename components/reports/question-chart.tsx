@@ -28,12 +28,19 @@ interface QuestionChartProps {
   distribution: DistributionItem[]
   timeline?: TimelinePoint[]
   showLabels: boolean
+  baseColor?: string
 }
 
-const PALETTE = [
+const DEFAULT_PALETTE = [
   "#18b0a4", "#2563eb", "#f59e0b", "#ef4444", "#8b5cf6",
   "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#06b6d4",
 ]
+
+function buildPalette(baseColor?: string): string[] {
+  if (!baseColor) return DEFAULT_PALETTE
+  // Use the base color as the first entry and build analogous shades for the rest
+  return [baseColor, ...DEFAULT_PALETTE.filter((c) => c !== baseColor)]
+}
 
 // Tooltip reutilizable con estilos CSS-var para que funcione en dark mode
 const tooltipStyle = {
@@ -48,10 +55,12 @@ function PieOrDonut({
   distribution,
   donut,
   showLabels,
+  palette,
 }: {
   distribution: DistributionItem[]
   donut: boolean
   showLabels: boolean
+  palette: string[]
 }) {
   const total = distribution.reduce((s, d) => s + d.count, 0) || 1
 
@@ -109,7 +118,7 @@ function PieOrDonut({
               label={<CustomLabel />}
             >
               {distribution.map((_, i) => (
-                <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                <Cell key={i} fill={palette[i % palette.length]} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
@@ -127,7 +136,7 @@ function PieOrDonut({
         <div className={`grid ${distribution.length > 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-x-6 gap-y-1.5 w-full max-w-md`}>
           {distribution.map((d, i) => (
             <div key={i} className="flex items-center gap-2 text-sm min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: palette[i % palette.length] }} />
               <span className="flex-1 text-muted-foreground truncate" title={d.label}>{d.label}</span>
               <span className="font-medium whitespace-nowrap flex-shrink-0">{d.count} ({d.percentage}%)</span>
             </div>
@@ -138,7 +147,7 @@ function PieOrDonut({
   )
 }
 
-function BarsVertical({ distribution, showLabels }: { distribution: DistributionItem[]; showLabels: boolean }) {
+function BarsVertical({ distribution, showLabels, palette }: { distribution: DistributionItem[]; showLabels: boolean; palette: string[] }) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     const item = distribution.find((d) => d.label === label)
@@ -168,7 +177,7 @@ function BarsVertical({ distribution, showLabels }: { distribution: Distribution
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
         <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? { position: "top", fontSize: 10, fill: "hsl(var(--muted-foreground))" } : false}>
           {distribution.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+            <Cell key={i} fill={palette[i % palette.length]} />
           ))}
         </Bar>
       </BarChart>
@@ -176,7 +185,7 @@ function BarsVertical({ distribution, showLabels }: { distribution: Distribution
   )
 }
 
-function BarsHorizontal({ distribution, showLabels }: { distribution: DistributionItem[]; showLabels: boolean }) {
+function BarsHorizontal({ distribution, showLabels, palette }: { distribution: DistributionItem[]; showLabels: boolean; palette: string[] }) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     const item = distribution.find((d) => d.label === label)
@@ -205,7 +214,7 @@ function BarsHorizontal({ distribution, showLabels }: { distribution: Distributi
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
         <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? { position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" } : false}>
           {distribution.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+            <Cell key={i} fill={palette[i % palette.length]} />
           ))}
         </Bar>
       </BarChart>
@@ -267,7 +276,8 @@ function Trend({ timeline, showLabels }: { timeline: TimelinePoint[]; showLabels
   )
 }
 
-export function QuestionChart({ type, distribution, timeline, showLabels }: QuestionChartProps) {
+export function QuestionChart({ type, distribution, timeline, showLabels, baseColor }: QuestionChartProps) {
+  const palette = buildPalette(baseColor)
   if (type === "trend") return <Trend timeline={timeline || []} showLabels={showLabels} />
   if (distribution.length === 0) {
     return (
@@ -277,10 +287,10 @@ export function QuestionChart({ type, distribution, timeline, showLabels }: Ques
     )
   }
   switch (type) {
-    case "pie":   return <PieOrDonut distribution={distribution} donut={false} showLabels={showLabels} />
-    case "donut": return <PieOrDonut distribution={distribution} donut={true}  showLabels={showLabels} />
-    case "barsV": return <BarsVertical   distribution={distribution} showLabels={showLabels} />
-    case "barsH": return <BarsHorizontal distribution={distribution} showLabels={showLabels} />
+    case "pie":   return <PieOrDonut distribution={distribution} donut={false} showLabels={showLabels} palette={palette} />
+    case "donut": return <PieOrDonut distribution={distribution} donut={true}  showLabels={showLabels} palette={palette} />
+    case "barsV": return <BarsVertical   distribution={distribution} showLabels={showLabels} palette={palette} />
+    case "barsH": return <BarsHorizontal distribution={distribution} showLabels={showLabels} palette={palette} />
     default:      return null
   }
 }

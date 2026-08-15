@@ -12,6 +12,16 @@ import {
 } from "lucide-react"
 import { QuestionChart, type ChartType, type DistributionItem, type TimelinePoint } from "./question-chart"
 
+export interface MatrixBreakdown {
+  matrixRows: string[]
+  matrixCols: string[]
+  cellType: string
+  /** number / text / rating cell types */
+  tableData?: Record<string, Record<string, { avg?: number; count: number; samples?: string[] }>>
+  /** radio / checkbox cell types */
+  rowDistribution?: Record<string, Record<string, number>>
+}
+
 export interface QuestionBreakdown {
   questionId: string
   text: string
@@ -21,13 +31,21 @@ export interface QuestionBreakdown {
   distribution?: DistributionItem[]
   timeline?: TimelinePoint[]
   sampleAnswers?: string[]
+  matrixBreakdown?: MatrixBreakdown
 }
 
 export interface CardSettings {
   chartType: ChartType
   showLabels: boolean
   showTable: boolean
+  baseColor?: string
 }
+
+// Paleta de colores para personalización rápida
+const COLOR_PALETTE = [
+  "#18b0a4", "#3b82f6", "#8b5cf6", "#f59e0b",
+  "#ef4444", "#10b981", "#f97316", "#ec4899",
+]
 
 interface QuestionCardProps {
   question: QuestionBreakdown
@@ -37,6 +55,116 @@ interface QuestionCardProps {
   onHide: () => void
   surveyId?: string
 }
+
+// ─── MatrixTable ──────────────────────────────────────────────────────────────
+function MatrixTable({ mb }: { mb: MatrixBreakdown }) {
+  const { matrixRows, matrixCols, cellType, tableData, rowDistribution } = mb
+  const isNumeric = cellType === "number" || cellType === "rating"
+  const isChoice  = cellType === "radio" || cellType === "checkbox"
+
+  if (isChoice && rowDistribution) {
+    // Mostrar distribución por fila: qué columna eligió cada respondente
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-muted/40">
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground border border-border rounded-tl-md">Fila</th>
+              {matrixCols.map((col) => (
+                <th key={col} className="text-center px-3 py-2 font-medium text-muted-foreground border border-border">{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrixRows.map((row, ri) => {
+              const dist = rowDistribution[row] || {}
+              const rowTotal = Object.values(dist).reduce((s, n) => s + n, 0) || 1
+              return (
+                <tr key={row} className={ri % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                  <td className="px-3 py-2 font-medium border border-border">{row}</td>
+                  {matrixCols.map((col) => {
+                    const cnt = dist[col] || 0
+                    const pct = Math.round((cnt / rowTotal) * 100)
+                    return (
+                      <td key={col} className="px-3 py-2 text-center border border-border">
+                        {cnt > 0 ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-semibold">{cnt}</span>
+                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                              <div className="h-1.5 rounded-full bg-[#18b0a4]" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs text-muted-foreground">{pct}%</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  if (tableData) {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-muted/40">
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground border border-border">
+                {isNumeric ? "Fila / Columna" : "Fila"}
+              </th>
+              {matrixCols.map((col) => (
+                <th key={col} className="text-center px-3 py-2 font-medium text-muted-foreground border border-border">{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrixRows.map((row, ri) => (
+              <tr key={row} className={ri % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                <td className="px-3 py-2 font-medium border border-border">{row}</td>
+                {matrixCols.map((col) => {
+                  const cell = tableData[row]?.[col]
+                  return (
+                    <td key={col} className="px-3 py-2 text-center border border-border tabular-nums">
+                      {cell?.count ? (
+                        isNumeric ? (
+                          <div className="flex flex-col items-center">
+                            <span className="font-semibold text-base">{cell.avg ?? "—"}</span>
+                            <span className="text-xs text-muted-foreground">{cell.count} resp.</span>
+                          </div>
+                        ) : (
+                          <div className="text-left space-y-0.5">
+                            {(cell.samples || []).map((s, i) => (
+                              <p key={i} className="text-xs text-muted-foreground italic truncate max-w-[160px]">"{s}"</p>
+                            ))}
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {isNumeric && (
+          <p className="text-xs text-muted-foreground mt-2">Valores = promedio de todas las respuestas para cada celda</p>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const CHART_OPTIONS: { value: ChartType; label: string; icon: React.ElementType }[] = [
   { value: "pie",    label: "Torta",             icon: ChartPie },
@@ -59,6 +187,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
   const [fileLoading, setFileLoading] = useState(false)
 
   const isFileQuestion = ["file", "image_upload"].includes(question.type)
+  const isMatrixQuestion = question.type === "matrix" && !!question.matrixBreakdown
   const hasDistribution = (question.distribution?.length ?? 0) > 0
   const hasAnswers = question.totalAnswers > 0
 
@@ -108,8 +237,8 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
 
       {!collapsed && (
         <div className="px-4 py-4 space-y-4">
-          {/* Controls */}
-          {!isFileQuestion && hasDistribution && (
+          {/* Controls — ocultar para matrices y archivos */}
+          {!isFileQuestion && !isMatrixQuestion && hasDistribution && (
             <div className="flex flex-wrap gap-2 items-center pb-3 border-b">
               {/* Chart type buttons */}
               <div className="flex gap-1 flex-wrap">
@@ -127,6 +256,23 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
                     <Icon className="h-3 w-3" />
                     <span className="hidden sm:inline">{label}</span>
                   </button>
+                ))}
+              </div>
+
+              <div className="h-4 w-px bg-border hidden sm:block" />
+
+              {/* Color palette */}
+              <div className="flex gap-1 items-center" title="Color base de la gráfica">
+                {COLOR_PALETTE.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => onSettingsChange({ baseColor: color })}
+                    style={{ backgroundColor: color }}
+                    className={`w-4 h-4 rounded-full transition-all border-2 ${
+                      settings.baseColor === color ? "border-foreground scale-110" : "border-transparent"
+                    }`}
+                    title={color}
+                  />
                 ))}
               </div>
 
@@ -165,6 +311,9 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
           {/* Content */}
           {!hasAnswers ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Sin respuestas para este filtro</p>
+          ) : isMatrixQuestion ? (
+            /* Matriz */
+            <MatrixTable mb={question.matrixBreakdown!} />
           ) : isFileQuestion ? (
             /* File/image gallery */
             <div className="space-y-3">
@@ -202,6 +351,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
                 distribution={question.distribution ?? []}
                 timeline={question.timeline ?? []}
                 showLabels={settings.showLabels}
+                baseColor={settings.baseColor}
               />
 
               {settings.showTable && hasDistribution && (

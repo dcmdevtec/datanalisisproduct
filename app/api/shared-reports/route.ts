@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { createHash } from "crypto"
+
+function hashPassword(pw: string): string {
+  return createHash("sha256").update(pw).digest("hex")
+}
 
 // POST /api/shared-reports — crea un link compartible (requiere auth admin/supervisor)
 export async function POST(request: NextRequest) {
@@ -9,7 +14,7 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
 
     const body = await request.json()
-    const { surveyId, config } = body
+    const { surveyId, config, customTitle, password } = body
 
     if (!surveyId || surveyId === "all") {
       return NextResponse.json(
@@ -37,6 +42,8 @@ export async function POST(request: NextRequest) {
       ...config,
       surveyTitle: survey?.title ?? "Encuesta",
       surveyDescription: survey?.description ?? "",
+      customTitle: customTitle?.trim() || null,
+      passwordHash: password?.trim() ? hashPassword(password.trim()) : null,
     }
 
     const { data, error } = await (admin as any)

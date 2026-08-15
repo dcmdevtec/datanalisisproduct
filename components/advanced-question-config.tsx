@@ -39,6 +39,7 @@ interface DisplayCondition {
 interface DisplayLogic {
   enabled: boolean
   conditions: DisplayCondition[]
+  logicalOperator?: "AND" | "OR"
 }
 
 interface SkipLogic {

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Loader2, Copy, Check, ExternalLink, AlertCircle,
-  Globe, BarChart3, Users, ListChecks, Clock,
+  Globe, BarChart3, Users, ListChecks, Clock, Lock, Tag,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -55,7 +55,10 @@ export function ShareReportModal({
     analisis:    true,
     rendimiento: false,
   })
-  const [expiry, setExpiry] = useState("never")
+  const [expiry, setExpiry]         = useState("never")
+  const [customTitle, setCustomTitle] = useState("")
+  const [password, setPassword]     = useState("")
+  const [showPassword, setShowPassword] = useState(false)
 
   // null = todas las preguntas seleccionadas
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null)
@@ -110,6 +113,8 @@ export function ShareReportModal({
           surveyId: selectedSurvey,
           config: { filters: currentFilters, sections, questionIds },
           expiryDays: expiry === "never" ? null : parseInt(expiry),
+          customTitle: customTitle.trim() || null,
+          password: password.trim() || null,
         }),
       })
       const data = await res.json()
@@ -276,6 +281,42 @@ export function ShareReportModal({
               checked={sections.rendimiento}
               onChange={(v) => setSections((p) => ({ ...p, rendimiento: v }))}
             />
+          </div>
+
+          {/* ── Título personalizado ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5" /> Título del reporte (opcional)
+            </p>
+            <Input
+              value={customTitle}
+              onChange={(e) => setCustomTitle(e.target.value)}
+              placeholder="Ej: Resultados Q3 2026 — Equipo Norte"
+              className="text-sm"
+            />
+          </div>
+
+          {/* ── Contraseña ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Lock className="h-3.5 w-3.5" /> Contraseña (opcional)
+            </p>
+            <div className="flex gap-2">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Dejar vacío para acceso libre"
+                className="text-sm flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="px-3 rounded-lg border text-xs text-muted-foreground hover:bg-muted transition-colors"
+              >
+                {showPassword ? "Ocultar" : "Ver"}
+              </button>
+            </div>
           </div>
 
           {/* ── Expiración ── */}

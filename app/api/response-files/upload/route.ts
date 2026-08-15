@@ -18,8 +18,9 @@ import { createAdminSupabase } from "@/lib/supabase-server"
 // permanente) — las URLs firmadas de corta duración se generan al momento
 // de ver la respuesta (ver app/api/reports/individual/[id]/route.ts para el
 // mismo patrón ya en uso con audio).
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "application/pdf"]
-const MAX_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB — igual al límite mostrado en la UI
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "application/pdf", "video/mp4", "video/quicktime", "video/webm"]
+const MAX_SIZE_BYTES = 20 * 1024 * 1024  // 20 MB para imágenes y PDFs
+const MAX_VIDEO_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB para videos
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120)
@@ -39,10 +40,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "survey_id y question_id son requeridos" }, { status: 400 })
     }
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      return NextResponse.json({ error: "Solo se permiten archivos JPG, PNG o PDF" }, { status: 400 })
+      return NextResponse.json({ error: "Solo se permiten archivos JPG, PNG, PDF o video (MP4, MOV, WebM)" }, { status: 400 })
     }
-    if (file.size > MAX_SIZE_BYTES) {
-      return NextResponse.json({ error: "El archivo no debe superar los 20 MB" }, { status: 400 })
+    const isVideo = file.type.startsWith("video/")
+    const sizeLimit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_SIZE_BYTES
+    if (file.size > sizeLimit) {
+      return NextResponse.json({
+        error: isVideo
+          ? `El video no debe superar los 5 MB (tamaño actual: ${(file.size / 1048576).toFixed(1)} MB)`
+          : "El archivo no debe superar los 20 MB",
+      }, { status: 413 })
     }
 
     const admin = createAdminSupabase() as any
@@ -61,11 +68,15 @@ export async function POST(request: NextRequest) {
     if (questionError || !question) {
       return NextResponse.json({ error: "Pregunta no encontrada para esta encuesta" }, { status: 404 })
     }
-    if (!["file", "image_upload"].includes((question as any).type)) {
+    if (!["file", "image_upload", "video"].includes((question as any).type)) {
       return NextResponse.json({ error: "Esta pregunta no acepta archivos" }, { status: 400 })
     }
 
-    const ext = file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : "jpg"
+    const extMap: Record<string, string> = {
+      "application/pdf": "pdf", "image/png": "png",
+      "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm",
+    }
+    const ext = extMap[file.type] || "jpg"
     const uniqueId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const path = `survey-responses/${surveyId}/${questionId}/${uniqueId}-${sanitizeFilename(file.name || `archivo.${ext}`)}`
 

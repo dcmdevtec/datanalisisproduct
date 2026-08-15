@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Loader2, Send, Search } from "lucide-react"
+import { Loader2, Send, Search, PenSquare } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -44,6 +44,10 @@ export default function MessagesPage() {
   const [newMessage, setNewMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // "Nuevo Chat Directo" — buscar encuestador y abrir conversación
+  const [newChatOpen, setNewChatOpen] = useState(false)
+  const [newChatSearch, setNewChatSearch] = useState("")
+
   // "Nuevo Anuncio" (broadcast) — antes el botón no tenía onClick, era inerte.
   const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false)
   const [broadcastContent, setBroadcastContent] = useState("")
@@ -332,10 +336,21 @@ export default function MessagesPage() {
           <div className="border-b px-6 py-3">
             <div className="flex items-center justify-between mb-3">
               <h1 className="text-2xl font-bold">Mensajes</h1>
-              <TabsList className="mt-14">
-                <TabsTrigger value="direct">Directos</TabsTrigger>
-                <TabsTrigger value="broadcast">Anuncios</TabsTrigger>
-              </TabsList>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => { setNewChatOpen(true); setNewChatSearch("") }}
+                >
+                  <PenSquare className="h-4 w-4" />
+                  Nuevo chat
+                </Button>
+                <TabsList className="mt-14">
+                  <TabsTrigger value="direct">Directos</TabsTrigger>
+                  <TabsTrigger value="broadcast">Anuncios</TabsTrigger>
+                </TabsList>
+              </div>
             </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -516,6 +531,51 @@ export default function MessagesPage() {
           </div>
         </Tabs>
       </div>
+
+      {/* ── Nuevo Chat Directo ───────────────────────────────────────────── */}
+      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nuevo mensaje directo</DialogTitle>
+            <DialogDescription>Selecciona un encuestador para iniciar una conversación.</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Buscar por nombre..."
+            value={newChatSearch}
+            onChange={(e) => setNewChatSearch(e.target.value)}
+            className="mb-2"
+          />
+          <div className="max-h-64 overflow-y-auto divide-y rounded-md border">
+            {users
+              .filter((u) => u.id !== user?.id)
+              .filter((u) =>
+                newChatSearch === "" ||
+                u.name?.toLowerCase().includes(newChatSearch.toLowerCase())
+              )
+              .map((u) => (
+                <button
+                  key={u.id}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 text-left transition-colors"
+                  onClick={() => {
+                    setSelectedUser(u.id)
+                    setNewChatOpen(false)
+                  }}
+                >
+                  <Avatar className="h-8 w-8 shrink-0">
+                    <AvatarFallback className="text-xs">{getUserInitials(u.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{u.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{u.role}</p>
+                  </div>
+                </button>
+              ))}
+            {users.filter((u) => u.id !== user?.id && (newChatSearch === "" || u.name?.toLowerCase().includes(newChatSearch.toLowerCase()))).length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">Sin resultados</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={broadcastDialogOpen} onOpenChange={setBroadcastDialogOpen}>
         <DialogContent>
