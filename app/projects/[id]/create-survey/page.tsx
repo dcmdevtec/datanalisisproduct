@@ -1364,55 +1364,6 @@ export function CreateSurveyForProjectPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections, sectionSaveStates, surveyTitle, isSaving, currentSurveyId])
 
-  // Auto-guarda título/descripción en background 1.5s después de que el usuario
-  // deja de escribir. Si la encuesta todavía no existe (currentSurveyId === null),
-  // la crea; si ya existe, actualiza solo los metadatos básicos.
-  // Esto evita que navegar entre tabs o cerrar la pestaña pierda el título.
-  useEffect(() => {
-    if (!surveyTitle.trim() || !user?.id || !projectId) return
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
-    titleSaveTimerRef.current = setTimeout(async () => {
-      // No interferir con un guardado de sección en curso
-      if (isSavingSectionRef.current || isSaving) return
-      const payload = {
-        title: surveyTitle,
-        description: surveyDescription,
-        project_id: projectId,
-        created_by: user.id,
-        status: surveyStatus || "draft",
-        start_date: startDate || null,
-        deadline: deadline || null,
-        settings: settings || {},
-      }
-      try {
-        if (!currentSurveyId) {
-          const { data, error } = await (supabase as any).from("surveys").insert([payload]).select()
-          if (!error && data?.[0]) {
-            setCurrentSurveyId(data[0].id)
-            setIsEditMode(true)
-            debugLog("✅ Encuesta creada automáticamente con ID:", data[0].id)
-          }
-        } else {
-          await (supabase as any)
-            .from("surveys")
-            .update({
-              title: surveyTitle,
-              description: surveyDescription,
-              start_date: startDate || null,
-              deadline: deadline || null,
-              status: surveyStatus,
-            })
-            .eq("id", currentSurveyId)
-          debugLog("✅ Título/descripción actualizados en background")
-        }
-      } catch (e) {
-        debugWarn("Error en auto-save de título:", e)
-      }
-    }, 1500)
-    return () => { if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surveyTitle, surveyDescription, startDate, deadline, surveyStatus])
-
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
   const [settings, setSettings] = useState<SurveySettings>({
@@ -1463,6 +1414,56 @@ export function CreateSurveyForProjectPageContent() {
   )
 
   const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
+
+  // Auto-guarda título/descripción en background 1.5s después de que el usuario
+  // deja de escribir. Si la encuesta todavía no existe (currentSurveyId === null),
+  // la crea; si ya existe, actualiza solo los metadatos básicos.
+  // ⚠️ DEBE estar DESPUÉS de todos los useState — en particular surveyStatus (l.1443)
+  //    y settings — para evitar Temporal Dead Zone en producción minificado.
+  useEffect(() => {
+    if (!surveyTitle.trim() || !user?.id || !projectId) return
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    titleSaveTimerRef.current = setTimeout(async () => {
+      // No interferir con un guardado de sección en curso
+      if (isSavingSectionRef.current || isSaving) return
+      const payload = {
+        title: surveyTitle,
+        description: surveyDescription,
+        project_id: projectId,
+        created_by: user.id,
+        status: surveyStatus || "draft",
+        start_date: startDate || null,
+        deadline: deadline || null,
+        settings: settings || {},
+      }
+      try {
+        if (!currentSurveyId) {
+          const { data, error } = await (supabase as any).from("surveys").insert([payload]).select()
+          if (!error && data?.[0]) {
+            setCurrentSurveyId(data[0].id)
+            setIsEditMode(true)
+            debugLog("✅ Encuesta creada automáticamente con ID:", data[0].id)
+          }
+        } else {
+          await (supabase as any)
+            .from("surveys")
+            .update({
+              title: surveyTitle,
+              description: surveyDescription,
+              start_date: startDate || null,
+              deadline: deadline || null,
+              status: surveyStatus,
+            })
+            .eq("id", currentSurveyId)
+          debugLog("✅ Título/descripción actualizados en background")
+        }
+      } catch (e) {
+        debugWarn("Error en auto-save de título:", e)
+      }
+    }, 1500)
+    return () => { if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyTitle, surveyDescription, startDate, deadline, surveyStatus])
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event
