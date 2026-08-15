@@ -1361,6 +1361,12 @@ function ReportsPageContent() {
         open={shareModalOpen}
         onOpenChange={setShareModalOpen}
         selectedSurvey={selectedSurvey}
+        questions={(data?.responses?.questionBreakdowns ?? []).map((q) => ({
+          questionId: q.questionId,
+          text: q.text,
+          type: q.type,
+          totalAnswers: q.totalAnswers,
+        }))}
         currentFilters={{
           surveyorId: selectedSurveyor !== "all" ? selectedSurveyor : undefined,
           supervisorId: selectedSupervisor !== "all" ? selectedSupervisor : undefined,

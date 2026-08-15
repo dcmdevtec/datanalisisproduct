@@ -1,27 +1,29 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { Loader2, Copy, Check, ExternalLink, AlertCircle, Globe, ChevronDown, ChevronUp } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Loader2, Copy, Check, ExternalLink, AlertCircle,
+  Globe, BarChart3, Users, ListChecks, Clock,
+} from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
-interface SurveyQuestion {
-  id: string
+export interface ShareQuestion {
+  questionId: string
   text: string
   type: string
-  section_id: string | null
+  totalAnswers: number
 }
 
 interface ShareReportModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedSurvey: string
+  questions: ShareQuestion[]
   currentFilters: {
     surveyorId?: string
     supervisorId?: string
@@ -33,90 +35,80 @@ interface ShareReportModalProps {
 }
 
 const EXPIRY_OPTIONS = [
-  { value: "never", label: "Nunca (permanente)" },
-  { value: "7", label: "7 días" },
-  { value: "30", label: "30 días" },
-  { value: "365", label: "1 año" },
+  { value: "never", label: "Sin expiración" },
+  { value: "7",     label: "7 días" },
+  { value: "30",    label: "30 días" },
+  { value: "365",   label: "1 año" },
 ]
 
-export function ShareReportModal({ open, onOpenChange, selectedSurvey, currentFilters }: ShareReportModalProps) {
+export function ShareReportModal({
+  open, onOpenChange, selectedSurvey, questions, currentFilters,
+}: ShareReportModalProps) {
   const { toast } = useToast()
 
-  // UI state
   const [generating, setGenerating] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied]         = useState(false)
   const [generatedLink, setGeneratedLink] = useState<string | null>(null)
-  const [loadingQuestions, setLoadingQuestions] = useState(false)
-  const [questions, setQuestions] = useState<SurveyQuestion[]>([])
-  const [showQuestionPicker, setShowQuestionPicker] = useState(false)
 
-  // Config state
-  const [sections, setSections] = useState({ resumen: true, analisis: true, rendimiento: false })
+  const [sections, setSections] = useState({
+    resumen:     true,
+    analisis:    true,
+    rendimiento: false,
+  })
   const [expiry, setExpiry] = useState("never")
-  // null = todas las preguntas, array = selección específica
-  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[] | null>(null)
+
+  // null = todas las preguntas seleccionadas
+  const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null)
 
   const noSurveySelected = !selectedSurvey || selectedSurvey === "all"
-  const nothingSelected = !sections.resumen && !sections.analisis && !sections.rendimiento
 
-  // Fetch questions when survey changes and modal is open
-  useEffect(() => {
-    if (!open || noSurveySelected || !sections.analisis) {
-      setQuestions([])
-      setSelectedQuestionIds(null)
-      return
-    }
-    setLoadingQuestions(true)
-    fetch(`/api/survey-questions?surveyId=${selectedSurvey}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const qs: SurveyQuestion[] = data.questions || []
-        setQuestions(qs)
-        // Por defecto todas seleccionadas (null = todas)
-        setSelectedQuestionIds(null)
-      })
-      .catch(() => setQuestions([]))
-      .finally(() => setLoadingQuestions(false))
-  }, [open, selectedSurvey, sections.analisis, noSurveySelected])
+  const isSelected = (id: string) => selectedIds === null || selectedIds.has(id)
 
-  const handleToggleQuestion = (id: string) => {
-    if (selectedQuestionIds === null) {
-      // estaban todas → deseleccionar esta
-      setSelectedQuestionIds(questions.map((q) => q.id).filter((qid) => qid !== id))
-    } else if (selectedQuestionIds.includes(id)) {
-      const next = selectedQuestionIds.filter((qid) => qid !== id)
-      setSelectedQuestionIds(next.length === questions.length ? null : next)
+  const toggleQuestion = (id: string) => {
+    if (selectedIds === null) {
+      // todas → desmarcar esta
+      const next = new Set(questions.map((q) => q.questionId))
+      next.delete(id)
+      setSelectedIds(next)
     } else {
-      const next = [...selectedQuestionIds, id]
-      setSelectedQuestionIds(next.length === questions.length ? null : next)
+      const next = new Set(selectedIds)
+      if (next.has(id)) {
+        next.delete(id)
+        setSelectedIds(next)
+      } else {
+        next.add(id)
+        if (next.size === questions.length) setSelectedIds(null) // volvemos a "todas"
+        else setSelectedIds(next)
+      }
     }
   }
 
-  const isQuestionSelected = (id: string) =>
-    selectedQuestionIds === null || selectedQuestionIds.includes(id)
+  const selectAll  = () => setSelectedIds(null)
+  const selectNone = () => setSelectedIds(new Set())
 
-  const selectedCount = selectedQuestionIds === null ? questions.length : selectedQuestionIds.length
+  const selectedCount = selectedIds === null ? questions.length : selectedIds.size
 
-  const handleSelectAll = () => setSelectedQuestionIds(null)
-  const handleSelectNone = () => setSelectedQuestionIds([])
+  const nothingSelected =
+    !sections.resumen && !sections.analisis && !sections.rendimiento
 
   const handleGenerate = async () => {
     if (noSurveySelected) return
     setGenerating(true)
     setGeneratedLink(null)
     try {
-      const config = {
-        filters: currentFilters,
-        sections,
-        // Si null → la API incluye todas; si array → solo las seleccionadas
-        questionIds: selectedQuestionIds,
-      }
+      const questionIds =
+        sections.analisis
+          ? selectedIds === null
+            ? null
+            : [...selectedIds]
+          : null
+
       const res = await fetch("/api/shared-reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           surveyId: selectedSurvey,
-          config,
+          config: { filters: currentFilters, sections, questionIds },
           expiryDays: expiry === "never" ? null : parseInt(expiry),
         }),
       })
@@ -128,7 +120,7 @@ export function ShareReportModal({ open, onOpenChange, selectedSurvey, currentFi
       const origin = typeof window !== "undefined" ? window.location.origin : ""
       setGeneratedLink(`${origin}/results/${data.token}`)
     } catch {
-      toast({ title: "Error", description: "Error de conexión.", variant: "destructive" })
+      toast({ title: "Error de conexión", description: "Intenta de nuevo.", variant: "destructive" })
     } finally {
       setGenerating(false)
     }
@@ -140,200 +132,286 @@ export function ShareReportModal({ open, onOpenChange, selectedSurvey, currentFi
       await navigator.clipboard.writeText(generatedLink)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-      toast({ title: "¡Copiado!", description: "El link fue copiado al portapapeles." })
+      toast({ title: "Copiado", description: "Link copiado al portapapeles." })
     } catch {
       toast({ title: "No se pudo copiar", description: "Copia el link manualmente.", variant: "destructive" })
     }
   }
 
   const handleClose = (v: boolean) => {
-    if (!v) { setGeneratedLink(null); setCopied(false); setShowQuestionPicker(false) }
+    if (!v) { setGeneratedLink(null); setCopied(false) }
     onOpenChange(v)
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+
+        {/* ── Header ── */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-lg">
             <Globe className="h-5 w-5 text-[#18b0a4]" />
             Compartir reporte
           </DialogTitle>
-          <p className="text-sm text-gray-500 mt-1">
-            Genera un link público que cualquier persona puede abrir sin iniciar sesión.
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Genera un link público. Quien lo abra ve el reporte sin iniciar sesión.
           </p>
         </DialogHeader>
 
-        <div className="space-y-5 py-1">
+        {/* ── Body (scrollable) ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* Warning: no survey */}
+          {/* Aviso encuesta no seleccionada */}
           {noSurveySelected && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-sm text-amber-800">
+            <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              Selecciona una encuesta específica en el filtro de Reportes antes de compartir.
+              <span>Selecciona una <strong>encuesta específica</strong> en el filtro de Reportes antes de compartir.</span>
             </div>
           )}
 
-          {/* Sections */}
-          <div>
-            <Label className="text-sm font-semibold text-gray-800 mb-3 block">¿Qué secciones incluir?</Label>
-            <div className="space-y-3">
+          {/* ── Secciones ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">¿Qué incluir?</p>
 
-              {/* Resumen */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-800">Resumen general</p>
-                  <p className="text-xs text-gray-400">Totales, KPIs, efectivas, tendencia diaria</p>
-                </div>
-                <Switch
-                  checked={sections.resumen}
-                  onCheckedChange={(v) => setSections((p) => ({ ...p, resumen: v }))}
-                />
-              </div>
+            {/* Resumen */}
+            <SectionRow
+              icon={<BarChart3 className="h-4 w-4" />}
+              title="Resumen general"
+              description="KPIs, efectivas, tendencia diaria"
+              checked={sections.resumen}
+              onChange={(v) => setSections((p) => ({ ...p, resumen: v }))}
+            />
 
-              {/* Análisis */}
-              <div className="border rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2.5">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">Análisis de resultados</p>
-                    <p className="text-xs text-gray-400">
-                      {sections.analisis
-                        ? loadingQuestions
-                          ? "Cargando preguntas..."
-                          : `Gráficas de ${selectedCount} de ${questions.length} preguntas`
-                        : "Gráficas por pregunta"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {sections.analisis && questions.length > 0 && (
+            {/* Análisis */}
+            <SectionRow
+              icon={<ListChecks className="h-4 w-4" />}
+              title="Análisis de resultados"
+              description={
+                sections.analisis && questions.length > 0
+                  ? `${selectedCount} de ${questions.length} pregunta${questions.length !== 1 ? "s" : ""} seleccionada${selectedCount !== 1 ? "s" : ""}`
+                  : "Gráficas por pregunta"
+              }
+              checked={sections.analisis}
+              onChange={(v) => setSections((p) => ({ ...p, analisis: v }))}
+            >
+              {sections.analisis && questions.length > 0 && (
+                <div className="mt-3 rounded-xl border bg-muted/30 overflow-hidden">
+                  {/* Barra de control */}
+                  <div className="flex items-center justify-between px-3 py-2 border-b bg-background/60">
+                    <span className="text-xs text-muted-foreground">
+                      {selectedCount === questions.length ? "Todas seleccionadas" : `${selectedCount} seleccionadas`}
+                    </span>
+                    <div className="flex gap-3">
                       <button
-                        onClick={() => setShowQuestionPicker((v) => !v)}
-                        className="text-xs text-[#18b0a4] hover:underline flex items-center gap-0.5"
+                        onClick={selectAll}
+                        className="text-xs text-[#18b0a4] hover:underline font-medium"
                       >
-                        Elegir
-                        {showQuestionPicker ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        Seleccionar todas
                       </button>
-                    )}
-                    <Switch
-                      checked={sections.analisis}
-                      onCheckedChange={(v) => {
-                        setSections((p) => ({ ...p, analisis: v }))
-                        if (!v) setShowQuestionPicker(false)
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Question picker */}
-                {sections.analisis && showQuestionPicker && (
-                  <div className="border-t bg-gray-50 px-3 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-gray-600">
-                        {selectedCount} de {questions.length} seleccionadas
-                      </span>
-                      <div className="flex gap-2">
-                        <button onClick={handleSelectAll} className="text-xs text-[#18b0a4] hover:underline">Todas</button>
-                        <span className="text-gray-300">·</span>
-                        <button onClick={handleSelectNone} className="text-xs text-gray-400 hover:underline">Ninguna</button>
-                      </div>
+                      <span className="text-muted-foreground/40">·</span>
+                      <button
+                        onClick={selectNone}
+                        className="text-xs text-muted-foreground hover:underline"
+                      >
+                        Ninguna
+                      </button>
                     </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {loadingQuestions ? (
-                        <div className="flex items-center gap-2 py-2 text-sm text-gray-400">
-                          <Loader2 className="h-3 w-3 animate-spin" /> Cargando...
-                        </div>
-                      ) : questions.length === 0 ? (
-                        <p className="text-xs text-gray-400 py-2">No hay preguntas con respuestas.</p>
-                      ) : (
-                        questions.map((q) => (
-                          <label
-                            key={q.id}
-                            className="flex items-start gap-2.5 cursor-pointer group"
+                  </div>
+
+                  {/* Lista de preguntas */}
+                  <div className="divide-y max-h-52 overflow-y-auto">
+                    {questions.map((q) => {
+                      const checked = isSelected(q.questionId)
+                      return (
+                        <label
+                          key={q.questionId}
+                          className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                            checked
+                              ? "bg-[#18b0a4]/5 hover:bg-[#18b0a4]/10"
+                              : "hover:bg-muted/40"
+                          }`}
+                        >
+                          {/* Checkbox visual */}
+                          <div
+                            className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                              checked
+                                ? "bg-[#18b0a4] border-[#18b0a4]"
+                                : "border-border bg-background"
+                            }`}
+                            onClick={() => toggleQuestion(q.questionId)}
                           >
-                            <Checkbox
-                              checked={isQuestionSelected(q.id)}
-                              onCheckedChange={() => handleToggleQuestion(q.id)}
-                              className="mt-0.5 flex-shrink-0"
-                            />
-                            <span className="text-xs text-gray-700 group-hover:text-gray-900 leading-snug line-clamp-2">
+                            {checked && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
+                                <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0" onClick={() => toggleQuestion(q.questionId)}>
+                            <p className={`text-sm leading-snug line-clamp-2 ${checked ? "text-foreground" : "text-muted-foreground"}`}>
                               {q.text || "Sin texto"}
-                            </span>
-                          </label>
-                        ))
-                      )}
-                    </div>
+                            </p>
+                            <p className="text-xs text-muted-foreground/60 mt-0.5">
+                              {q.totalAnswers} respuesta{q.totalAnswers !== 1 ? "s" : ""}
+                            </p>
+                          </div>
+                        </label>
+                      )
+                    })}
                   </div>
-                )}
-              </div>
-
-              {/* Rendimiento */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-800">Rendimiento por encuestador</p>
-                  <p className="text-xs text-gray-400">Tabla con efectivas, incidencias, tasas</p>
                 </div>
-                <Switch
-                  checked={sections.rendimiento}
-                  onCheckedChange={(v) => setSections((p) => ({ ...p, rendimiento: v }))}
-                />
-              </div>
+              )}
+
+              {sections.analisis && questions.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-2 px-1">
+                  No hay preguntas con respuestas para esta encuesta con los filtros actuales.
+                </p>
+              )}
+            </SectionRow>
+
+            {/* Rendimiento */}
+            <SectionRow
+              icon={<Users className="h-4 w-4" />}
+              title="Rendimiento por encuestador"
+              description="Tabla con efectivas, incidencias y tasas"
+              checked={sections.rendimiento}
+              onChange={(v) => setSections((p) => ({ ...p, rendimiento: v }))}
+            />
+          </div>
+
+          {/* ── Expiración ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" /> Expiración del link
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {EXPIRY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setExpiry(opt.value)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                    expiry === opt.value
+                      ? "bg-[#18b0a4] text-white border-[#18b0a4]"
+                      : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Expiry */}
-          <div>
-            <Label className="text-sm font-semibold text-gray-800 mb-1.5 block">Expiración del link</Label>
-            <Select value={expiry} onValueChange={setExpiry}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPIRY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Generated link */}
+          {/* ── Link generado ── */}
           {generatedLink && (
-            <div className="bg-[#18b0a4]/5 border border-[#18b0a4]/20 rounded-xl p-3">
-              <p className="text-xs font-medium text-[#18b0a4] mb-2">✓ Link generado</p>
+            <div className="rounded-xl border border-[#18b0a4]/30 bg-[#18b0a4]/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#18b0a4] animate-pulse" />
+                <p className="text-sm font-semibold text-[#18b0a4]">Link listo</p>
+                <span className="text-xs text-muted-foreground">
+                  · {selectedCount} pregunta{selectedCount !== 1 ? "s" : ""}
+                  {expiry !== "never" ? ` · expira en ${EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}` : " · sin expiración"}
+                </span>
+              </div>
               <div className="flex gap-2">
                 <Input
                   value={generatedLink}
                   readOnly
-                  className="text-xs font-mono bg-white flex-1"
+                  className="text-xs font-mono bg-white dark:bg-black/30 flex-1 h-9"
                 />
-                <Button size="icon" variant="outline" onClick={handleCopy} title="Copiar">
-                  {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-9 w-9 shrink-0"
+                  onClick={handleCopy}
+                  title="Copiar"
+                >
+                  {copied
+                    ? <Check className="h-4 w-4 text-emerald-500" />
+                    : <Copy className="h-4 w-4" />
+                  }
                 </Button>
-                <Button size="icon" variant="outline" onClick={() => window.open(generatedLink, "_blank")} title="Abrir">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-9 w-9 shrink-0"
+                  onClick={() => window.open(generatedLink, "_blank")}
+                  title="Abrir"
+                >
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Accesible sin login · incluye {selectedCount} pregunta{selectedCount !== 1 ? "s" : ""}
-                {expiry !== "never" && ` · expira en ${EXPIRY_OPTIONS.find(o => o.value === expiry)?.label}`}
-              </p>
             </div>
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => handleClose(false)}>Cerrar</Button>
+        {/* ── Footer ── */}
+        <div className="px-6 py-4 border-t bg-muted/20 flex items-center justify-between shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => handleClose(false)}>
+            Cerrar
+          </Button>
           <Button
             onClick={handleGenerate}
-            disabled={noSurveySelected || nothingSelected || generating || (sections.analisis && selectedCount === 0)}
-            className="bg-[#18b0a4] hover:bg-[#14918a] text-white"
-          >
-            {generating
-              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generando...</>
-              : <><Globe className="h-4 w-4 mr-2" /> {generatedLink ? "Nuevo link" : "Generar link"}</>
+            disabled={
+              noSurveySelected ||
+              nothingSelected ||
+              generating ||
+              (sections.analisis && questions.length > 0 && selectedCount === 0)
             }
+            className="bg-[#18b0a4] hover:bg-[#14918a] text-white gap-2"
+          >
+            {generating ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Generando…</>
+            ) : (
+              <><Globe className="h-4 w-4" /> {generatedLink ? "Nuevo link" : "Generar link"}</>
+            )}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/* ── Subcomponente SectionRow ── */
+interface SectionRowProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  children?: React.ReactNode
+}
+
+function SectionRow({ icon, title, description, checked, onChange, children }: SectionRowProps) {
+  return (
+    <div
+      className={`rounded-xl border transition-all ${
+        checked
+          ? "border-[#18b0a4]/30 bg-[#18b0a4]/5"
+          : "border-border bg-background"
+      }`}
+    >
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div
+          className={`p-1.5 rounded-lg flex-shrink-0 ${
+            checked
+              ? "bg-[#18b0a4]/10 text-[#18b0a4]"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium ${checked ? "text-foreground" : "text-muted-foreground"}`}>
+            {title}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">{description}</p>
+        </div>
+        <Switch
+          checked={checked}
+          onCheckedChange={onChange}
+          className="shrink-0"
+        />
+      </div>
+      {children && <div className="px-4 pb-4">{children}</div>}
+    </div>
   )
 }
