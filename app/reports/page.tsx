@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react"
+import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from "react"
 import dynamic from "next/dynamic"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
@@ -21,6 +21,7 @@ import { exportSummary, exportResponses, exportPerformance, exportGeographic } f
 import { QuestionChart, type ChartType } from "@/components/reports/question-chart"
 import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
 import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
+import { ShareReportModal } from "@/components/reports/share-report-modal"
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as ReTooltip, ResponsiveContainer, Cell,
@@ -296,21 +297,11 @@ function ReportsPageContent() {
     }
   }
 
-  // Compartir link público de resultados (slide 21: "compartir un link para que la
-  // persona que lo tenga pueda verlo en línea"). El link apunta a la vista pública
-  // de resultados de la encuesta seleccionada.
-  const handleShareLink = async () => {
-    if (selectedSurvey === "all") {
-      toast({ title: "Selecciona una encuesta", description: "Para compartir resultados primero elige una encuesta específica en los filtros", variant: "destructive" })
-      return
-    }
-    const url = `${window.location.origin}/reports/public/${selectedSurvey}`
-    try {
-      await navigator.clipboard.writeText(url)
-      toast({ title: "Link copiado", description: "El enlace de resultados públicos se copió al portapapeles" })
-    } catch {
-      toast({ title: "Link de resultados", description: url })
-    }
+  // Modal de compartir reporte (tipo SurveyMonkey)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+
+  const handleShareLink = () => {
+    setShareModalOpen(true)
   }
 
   useEffect(() => {
@@ -1494,6 +1485,21 @@ function ReportsPageContent() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modal de compartir reporte */}
+      <ShareReportModal
+        open={shareModalOpen}
+        onOpenChange={setShareModalOpen}
+        selectedSurvey={selectedSurvey}
+        currentFilters={{
+          surveyorId: selectedSurveyor !== "all" ? selectedSurveyor : undefined,
+          supervisorId: selectedSupervisor !== "all" ? selectedSupervisor : undefined,
+          coordinatorId: selectedCoordinator !== "all" ? selectedCoordinator : undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          tipo: selectedTipo !== "all" ? selectedTipo : undefined,
+        }}
+      />
     </DashboardLayout>
   )
 }
