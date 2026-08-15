@@ -1,9 +1,14 @@
 "use client"
 
-// Renderiza los 5 tipos de gráfico pedidos en el pptx (slide 21, "Análisis de
-// resultados"): torta, anillo, barras verticales, barras horizontales y tendencia.
-// Construido en SVG/CSS puro para no sumar una librería de charts nueva al bundle
-// (el proyecto ya carga bastante: recharts, leaflet, tiptap, quill).
+// Renderiza los 5 tipos de gráfico usando recharts (ya incluido en el bundle).
+// Recharts maneja dark-mode correctamente (sin fondo negro en donut),
+// tiene tooltips nativos con números al hover, y permite gráficas de línea reales.
+
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area,
+} from "recharts"
 
 export type ChartType = "pie" | "donut" | "barsV" | "barsH" | "trend"
 
@@ -30,44 +35,95 @@ const PALETTE = [
   "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#06b6d4",
 ]
 
-function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
-  const rad = ((angleDeg - 90) * Math.PI) / 180
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
+// Tooltip reutilizable con estilos CSS-var para que funcione en dark mode
+const tooltipStyle = {
+  backgroundColor: "hsl(var(--background))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "hsl(var(--foreground))",
 }
 
-function arcPath(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
-  const start = polarToCartesian(cx, cy, r, endAngle)
-  const end = polarToCartesian(cx, cy, r, startAngle)
-  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1"
-  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y} Z`
-}
-
-function PieOrDonut({ distribution, donut, showLabels }: { distribution: DistributionItem[]; donut: boolean; showLabels: boolean }) {
+function PieOrDonut({
+  distribution,
+  donut,
+  showLabels,
+}: {
+  distribution: DistributionItem[]
+  donut: boolean
+  showLabels: boolean
+}) {
   const total = distribution.reduce((s, d) => s + d.count, 0) || 1
-  let cumulativeAngle = 0
-  const cx = 100, cy = 100, r = 90
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null
+    const d = payload[0].payload as DistributionItem
+    return (
+      <div style={tooltipStyle} className="px-3 py-2 shadow-lg">
+        <p className="font-semibold mb-0.5">{d.label}</p>
+        <p className="text-muted-foreground">
+          {d.count} respuestas — <span className="font-semibold text-foreground">{d.percentage}%</span>
+        </p>
+      </div>
+    )
+  }
+
+  const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }: any) => {
+    // Solo mostrar etiqueta si la porción es >= 8%
+    if (percent < 0.08) return null
+    const RADIAN = Math.PI / 180
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.55
+    const x = cx + radius * Math.cos(-midAngle * RADIAN)
+    const y = cy + radius * Math.sin(-midAngle * RADIAN)
+    return (
+      <text
+        x={x} y={y}
+        fill="#fff"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={12}
+        fontWeight={600}
+      >
+        {`${Math.round(percent * 100)}%`}
+      </text>
+    )
+  }
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <svg viewBox="0 0 200 200" className="w-full max-w-[260px]">
-        {distribution.map((d, i) => {
-          const angle = (d.count / total) * 360
-          const path = arcPath(cx, cy, r, cumulativeAngle, cumulativeAngle + angle)
-          cumulativeAngle += angle
-          return <path key={i} d={path} fill={PALETTE[i % PALETTE.length]} stroke="#fff" strokeWidth={1.5} />
-        })}
-        {donut && <circle cx={cx} cy={cy} r={48} fill="var(--background, #fff)" />}
+    <div className="flex flex-col items-center gap-4 w-full">
+      {/* Wrapper relativo para el overlay del total en el centro del donut */}
+      <div className="relative w-full" style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height={220}>
+          <PieChart>
+            <Pie
+              data={distribution}
+              dataKey="count"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              innerRadius={donut ? 60 : 0}
+              outerRadius={90}
+              strokeWidth={2}
+              stroke="hsl(var(--background))"
+              labelLine={false}
+              label={<CustomLabel />}
+            >
+              {distribution.map((_, i) => (
+                <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+          </PieChart>
+        </ResponsiveContainer>
+        {/* Total centrado — overlay CSS, evita coordenadas SVG frágiles */}
         {donut && (
-          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" className="fill-foreground" style={{ fontSize: 22, fontWeight: 700 }}>
-            {total}
-          </text>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-2xl font-bold tabular-nums">{total}</span>
+          </div>
         )}
-      </svg>
+      </div>
+
       {showLabels && (
-        // Con pocas categorías (ej. Efectivas/Incidencias/Abandonadas) una sola
-        // columna evita que el label se trunque ("Efect...", "Inciden...") —
-        // el grid de 2 columnas se reserva para preguntas con muchas opciones,
-        // donde sí vale la pena aprovechar el ancho.
         <div className={`grid ${distribution.length > 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-x-6 gap-y-1.5 w-full max-w-md`}>
           {distribution.map((d, i) => (
             <div key={i} className="flex items-center gap-2 text-sm min-w-0">
@@ -83,89 +139,148 @@ function PieOrDonut({ distribution, donut, showLabels }: { distribution: Distrib
 }
 
 function BarsVertical({ distribution, showLabels }: { distribution: DistributionItem[]; showLabels: boolean }) {
-  const max = Math.max(...distribution.map((d) => d.count), 1)
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    const item = distribution.find((d) => d.label === label)
+    return (
+      <div style={tooltipStyle} className="px-3 py-2 shadow-lg">
+        <p className="font-semibold mb-0.5 max-w-[200px] truncate">{label}</p>
+        <p className="text-muted-foreground">
+          {payload[0].value} respuestas
+          {item ? ` — ${item.percentage}%` : ""}
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="h-64 flex items-end gap-3 pt-6 px-2">
-      {distribution.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group min-w-0">
-          {showLabels && <span className="text-xs font-medium mb-1">{d.count}</span>}
-          <div
-            className="w-full rounded-t-sm min-h-[3px] transition-all"
-            style={{ height: `${Math.max((d.count / max) * 100, 2)}%`, background: PALETTE[i % PALETTE.length] }}
-            title={`${d.label}: ${d.count} (${d.percentage}%)`}
-          />
-          {showLabels && (
-            <span className="text-[10px] text-muted-foreground mt-1.5 text-center truncate w-full" title={d.label}>
-              {d.label}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={260}>
+      <BarChart data={distribution} margin={{ top: 8, right: 8, left: -8, bottom: 60 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+          angle={-35}
+          textAnchor="end"
+          interval={0}
+        />
+        <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
+        <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? { position: "top", fontSize: 10, fill: "hsl(var(--muted-foreground))" } : false}>
+          {distribution.map((_, i) => (
+            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   )
 }
 
 function BarsHorizontal({ distribution, showLabels }: { distribution: DistributionItem[]; showLabels: boolean }) {
-  const max = Math.max(...distribution.map((d) => d.count), 1)
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    const item = distribution.find((d) => d.label === label)
+    return (
+      <div style={tooltipStyle} className="px-3 py-2 shadow-lg">
+        <p className="font-semibold mb-0.5 max-w-[200px] truncate">{label}</p>
+        <p className="text-muted-foreground">
+          {payload[0].value} respuestas
+          {item ? ` — ${item.percentage}%` : ""}
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-3 py-2">
-      {distribution.map((d, i) => (
-        <div key={i} className="space-y-1">
-          {showLabels && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="truncate max-w-[70%]" title={d.label}>{d.label}</span>
-              <span className="text-muted-foreground whitespace-nowrap">{d.count} ({d.percentage}%)</span>
-            </div>
-          )}
-          <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${Math.max((d.count / max) * 100, 2)}%`, background: PALETTE[i % PALETTE.length] }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={Math.max(200, distribution.length * 44)}>
+      <BarChart data={distribution} layout="vertical" margin={{ top: 4, right: 48, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+        <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={130}
+          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+        />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
+        <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? { position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" } : false}>
+          {distribution.map((_, i) => (
+            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   )
 }
 
 function Trend({ timeline, showLabels }: { timeline: TimelinePoint[]; showLabels: boolean }) {
   if (!timeline || timeline.length === 0) {
-    return <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">Sin datos de tendencia para esta pregunta</div>
+    return (
+      <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
+        Sin datos de tendencia para esta pregunta
+      </div>
+    )
   }
-  const max = Math.max(...timeline.map((t) => t.count), 1)
+
+  const data = timeline.map((t) => ({ ...t, label: t.date.slice(5) }))
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div style={tooltipStyle} className="px-3 py-2 shadow-lg">
+        <p className="font-semibold mb-0.5">{label}</p>
+        <p className="text-muted-foreground">{payload[0].value} respuestas</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="h-56 flex items-end gap-0.5 pt-6 relative">
-      {[25, 50, 75].map((pct) => (
-        <div key={pct} className="absolute left-0 right-0 border-t border-dashed border-muted" style={{ bottom: `${pct}%` }} />
-      ))}
-      {timeline.map((t, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
-          {showLabels && <span className="text-[10px] text-muted-foreground mb-0.5">{t.count > 0 ? t.count : ""}</span>}
-          <div
-            className="w-full bg-[#18b0a4]/80 hover:bg-[#18b0a4] rounded-t-sm min-h-[3px] transition-all"
-            style={{ height: `${Math.max((t.count / max) * 100, 2)}%` }}
-            title={`${t.date}: ${t.count}`}
-          />
-          {timeline.length <= 20 && (
-            <span className="text-[9px] text-muted-foreground mt-1 truncate w-full text-center">{t.date.slice(5)}</span>
-          )}
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={220}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 48 }}>
+        <defs>
+          <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#18b0a4" stopOpacity={0.2} />
+            <stop offset="95%" stopColor="#18b0a4" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          angle={-35}
+          textAnchor="end"
+          interval={Math.max(0, Math.floor(data.length / 8) - 1)}
+        />
+        <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+        <Tooltip content={<CustomTooltip />} />
+        <Area
+          type="monotone"
+          dataKey="count"
+          stroke="#18b0a4"
+          strokeWidth={2.5}
+          fill="url(#trendGrad)"
+          dot={{ r: 3, fill: "#18b0a4", strokeWidth: 0 }}
+          activeDot={{ r: 5, fill: "#18b0a4" }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 
 export function QuestionChart({ type, distribution, timeline, showLabels }: QuestionChartProps) {
   if (type === "trend") return <Trend timeline={timeline || []} showLabels={showLabels} />
   if (distribution.length === 0) {
-    return <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">Sin datos para graficar</div>
+    return (
+      <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
+        Sin datos para graficar
+      </div>
+    )
   }
   switch (type) {
-    case "pie": return <PieOrDonut distribution={distribution} donut={false} showLabels={showLabels} />
-    case "donut": return <PieOrDonut distribution={distribution} donut={true} showLabels={showLabels} />
-    case "barsV": return <BarsVertical distribution={distribution} showLabels={showLabels} />
+    case "pie":   return <PieOrDonut distribution={distribution} donut={false} showLabels={showLabels} />
+    case "donut": return <PieOrDonut distribution={distribution} donut={true}  showLabels={showLabels} />
+    case "barsV": return <BarsVertical   distribution={distribution} showLabels={showLabels} />
     case "barsH": return <BarsHorizontal distribution={distribution} showLabels={showLabels} />
-    default: return null
+    default:      return null
   }
 }

@@ -21,6 +21,10 @@ import { exportSummary, exportResponses, exportPerformance, exportGeographic } f
 import { QuestionChart, type ChartType } from "@/components/reports/question-chart"
 import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
 import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as ReTooltip, ResponsiveContainer, Cell,
+} from "recharts"
 
 // Dynamic import del mapa para evitar problemas SSR con Leaflet
 const ReportsGeoMap = dynamic(() => import("@/components/reports-geo-map"), {
@@ -685,32 +689,48 @@ function ReportsPageContent() {
                           </div>
                         </div>
                       ) : (
-                        <div className="h-56 flex items-end gap-0.5 pt-6 relative">
-                          {/* Grid lines */}
-                          {[25, 50, 75].map((pct) => (
-                            <div key={pct} className="absolute left-0 right-0 border-t border-dashed border-muted" style={{ bottom: `${pct}%` }} />
-                          ))}
-                          {summary!.responsesTimeline.map((d, i) => (
-                            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
-                              {/* Tooltip on hover */}
-                              <div className="hidden group-hover:flex flex-col items-center absolute mb-1 z-10">
-                                <div className="bg-foreground text-background text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap">
-                                  {d.date.slice(5)}: {d.count}
-                                </div>
-                              </div>
-                              <span className="text-[10px] text-muted-foreground mb-0.5 group-hover:text-primary transition-colors">{d.count > 0 ? d.count : ""}</span>
-                              <div
-                                className="w-full bg-primary/80 hover:bg-primary rounded-t-sm min-h-[3px] transition-all cursor-default"
-                                style={{ height: `${Math.max((d.count / maxTimelineCount) * 100, 2)}%` }}
-                              />
-                              {summary!.responsesTimeline.length <= 18 && (
-                                <span className="text-[9px] text-muted-foreground mt-1 truncate w-full text-center">
-                                  {d.date.slice(5)}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                        <ResponsiveContainer width="100%" height={220}>
+                          <AreaChart
+                            data={summary!.responsesTimeline.map((d) => ({ ...d, label: d.date.slice(5) }))}
+                            margin={{ top: 8, right: 8, left: -8, bottom: 48 }}
+                          >
+                            <defs>
+                              <linearGradient id="timelineGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#18b0a4" stopOpacity={0.2} />
+                                <stop offset="95%" stopColor="#18b0a4" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis
+                              dataKey="label"
+                              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                              angle={-35}
+                              textAnchor="end"
+                              interval={Math.max(0, Math.floor((summary?.responsesTimeline?.length ?? 1) / 8) - 1)}
+                            />
+                            <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+                            <ReTooltip
+                              contentStyle={{
+                                backgroundColor: "hsl(var(--background))",
+                                border: "1px solid hsl(var(--border))",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                color: "hsl(var(--foreground))",
+                              }}
+                              formatter={(value: any) => [value, "Respuestas"]}
+                              labelFormatter={(label) => `Fecha: ${label}`}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="count"
+                              stroke="#18b0a4"
+                              strokeWidth={2.5}
+                              fill="url(#timelineGrad)"
+                              dot={{ r: 3, fill: "#18b0a4", strokeWidth: 0 }}
+                              activeDot={{ r: 5, fill: "#18b0a4" }}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       )}
                     </CardContent>
                   </Card>
@@ -756,30 +776,47 @@ function ReportsPageContent() {
                       {(summary?.totalResponses ?? 0) === 0 ? (
                         <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">Sin datos</div>
                       ) : (
-                        <div className="h-40 flex items-end gap-px pt-4">
-                          {(summary?.responsesByHour ?? []).map((h, i) => {
-                            const isPeak = h.hour === summary?.peakHour && h.count > 0
-                            return (
-                              <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-                                {h.count > 0 && (
-                                  <div className="hidden group-hover:block absolute bottom-full mb-1 z-10 bg-foreground text-background text-[9px] px-1 py-0.5 rounded whitespace-nowrap">
-                                    {formatHour(h.hour)}: {h.count}
-                                  </div>
-                                )}
-                                <div
-                                  className={`w-full rounded-t-sm min-h-[2px] transition-all ${isPeak ? "bg-primary" : "bg-primary/30 hover:bg-primary/60"}`}
-                                  style={{ height: `${Math.max((h.count / maxHourCount) * 100, h.count > 0 ? 4 : 0)}%` }}
+                        <ResponsiveContainer width="100%" height={180}>
+                          <BarChart
+                            data={(summary?.responsesByHour ?? []).map((h) => ({
+                              ...h,
+                              label: `${h.hour}:00`,
+                              isPeak: h.hour === summary?.peakHour && h.count > 0,
+                            }))}
+                            margin={{ top: 4, right: 4, left: -16, bottom: 4 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                            <XAxis
+                              dataKey="label"
+                              tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                              interval={5}
+                            />
+                            <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+                            <ReTooltip
+                              contentStyle={{
+                                backgroundColor: "hsl(var(--background))",
+                                border: "1px solid hsl(var(--border))",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                color: "hsl(var(--foreground))",
+                              }}
+                              formatter={(value: any, name: any, props: any) => [value, "Respuestas"]}
+                              labelFormatter={(label) => `Hora: ${label}`}
+                              cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                            />
+                            <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={24}>
+                              {(summary?.responsesByHour ?? []).map((h, i) => (
+                                <Cell
+                                  key={i}
+                                  fill={h.hour === summary?.peakHour && h.count > 0 ? "#18b0a4" : "#18b0a480"}
                                 />
-                                {i % 6 === 0 && (
-                                  <span className="text-[9px] text-muted-foreground mt-1">{i}h</span>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
                       )}
                       {summary && summary.totalResponses > 0 && (
-                        <p className="text-xs text-muted-foreground mt-3 text-center">
+                        <p className="text-xs text-muted-foreground mt-2 text-center">
                           Pico de actividad: <span className="font-semibold text-primary">{formatHour(summary.peakHour)}</span>
                         </p>
                       )}
