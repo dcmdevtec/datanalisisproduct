@@ -317,22 +317,11 @@ function ReportsPageContent() {
     fetchData()
   }, [fetchData])
 
-  if (authLoading || !user) {
-    return <div className="flex h-screen items-center justify-center">Cargando...</div>
-  }
-
-  const summary = data?.summary
-  const maxTimelineCount = Math.max(...(summary?.responsesTimeline?.map((d) => d.count) || [1]))
-  const maxDailyCount = Math.max(...(data?.performance?.dailyDistribution?.map((d) => d.count) || [1]))
-  const maxZoneResponses = Math.max(...(data?.geographic?.zoneBreakdown?.map((z) => z.responseCount) || [1]))
-  const maxHourCount = Math.max(...(summary?.responsesByHour?.map((h) => h.count) || [1]))
-
-  const formatHour = (h: number) => {
-    const ampm = h < 12 ? "AM" : "PM"
-    const display = h === 0 ? 12 : h > 12 ? h - 12 : h
-    return `${display}:00 ${ampm}`
-  }
-
+  // ⚠️ POSICIÓN CRÍTICA: estas constantes y el useEffect de galería DEBEN estar
+  // ANTES del early return de authLoading. Si el useEffect queda después del
+  // early return, React ve N hooks en el primer render (authLoading=true) y N+1
+  // en el segundo (auth cargado) → error #310 "Rendered more hooks than during
+  // the previous render". Regla: todos los hooks antes de cualquier return.
   const questionBreakdowns = data?.responses?.questionBreakdowns ?? []
   const selectedQuestion = questionBreakdowns.find((q) => q.questionId === selectedQuestionId) ?? questionBreakdowns[0]
 
@@ -355,6 +344,23 @@ function ReportsPageContent() {
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedQuestion?.questionId, selectedSurvey])
+
+  // Early return DESPUÉS de todos los hooks — nunca antes
+  if (authLoading || !user) {
+    return <div className="flex h-screen items-center justify-center">Cargando...</div>
+  }
+
+  const summary = data?.summary
+  const maxTimelineCount = Math.max(...(summary?.responsesTimeline?.map((d) => d.count) || [1]))
+  const maxDailyCount = Math.max(...(data?.performance?.dailyDistribution?.map((d) => d.count) || [1]))
+  const maxZoneResponses = Math.max(...(data?.geographic?.zoneBreakdown?.map((z) => z.responseCount) || [1]))
+  const maxHourCount = Math.max(...(summary?.responsesByHour?.map((h) => h.count) || [1]))
+
+  const formatHour = (h: number) => {
+    const ampm = h < 12 ? "AM" : "PM"
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${display}:00 ${ampm}`
+  }
 
   const surveyorRows: SurveyorPerformanceRow[] = (data?.performance?.surveyorPerformance ?? []).map((s) => ({
     name: s.name,

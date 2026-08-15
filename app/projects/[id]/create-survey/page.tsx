@@ -70,7 +70,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { stripHtml } from "@/lib/stripHtml"
 import { debugLog, debugWarn } from "@/lib/debug-log"
 import { QuestionEditor } from "@/components/question-editor"
@@ -3469,5 +3469,15 @@ export function CreateSurveyForProjectPageContent() {
 }
 
 export default function CreateSurveyForProjectPage() {
-  return <CreateSurveyForProjectPageContent />
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <CreateSurveyForProjectPageContent />
+    </Suspense>
+  )
 }
