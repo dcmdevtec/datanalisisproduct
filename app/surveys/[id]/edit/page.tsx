@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -66,6 +66,7 @@ export default function EditSurveyPage() {
   })
   const [showQuill, setShowQuill] = useState<{ [id: string]: boolean }>({})
   const [showConfig, setShowConfig] = useState<{ [id: string]: boolean }>({})
+  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Funciones para manejar el estado de los modales de manera segura
   const openQuillEditor = (questionId: string) => {
@@ -124,6 +125,26 @@ export default function EditSurveyPage() {
     }
     if (user && params.id) fetchSurvey()
   }, [user, params.id])
+
+  // Auto-guarda título y descripción en background 1.5s después de que el usuario
+  // deja de escribir, sin navegar fuera de la página.
+  useEffect(() => {
+    if (!params.id || !surveyTitle.trim()) return
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    titleSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await supabase
+          .from("surveys")
+          .update({ title: surveyTitle, description: surveyDescription })
+          .eq("id", String(params.id))
+      } catch (e) {
+        // Error silencioso — el usuario puede guardar manualmente si algo falla
+        console.warn("Auto-save de título falló:", e)
+      }
+    }, 1500)
+    return () => { if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyTitle, surveyDescription, params.id])
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>

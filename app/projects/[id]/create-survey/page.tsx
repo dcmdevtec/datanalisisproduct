@@ -1148,6 +1148,8 @@ export function CreateSurveyForProjectPageContent() {
   // a handleSaveSection).
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Timer para auto-guardar título/descripción sin navegar
+  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleSaveSection = async (sectionId: string, overrideSurveyId?: string, options?: { silent?: boolean }) => {
     if (!sections.length || !sectionId) return
@@ -1361,6 +1363,55 @@ export function CreateSurveyForProjectPageContent() {
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections, sectionSaveStates, surveyTitle, isSaving, currentSurveyId])
+
+  // Auto-guarda título/descripción en background 1.5s después de que el usuario
+  // deja de escribir. Si la encuesta todavía no existe (currentSurveyId === null),
+  // la crea; si ya existe, actualiza solo los metadatos básicos.
+  // Esto evita que navegar entre tabs o cerrar la pestaña pierda el título.
+  useEffect(() => {
+    if (!surveyTitle.trim() || !user?.id || !projectId) return
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    titleSaveTimerRef.current = setTimeout(async () => {
+      // No interferir con un guardado de sección en curso
+      if (isSavingSectionRef.current || isSaving) return
+      const payload = {
+        title: surveyTitle,
+        description: surveyDescription,
+        project_id: projectId,
+        created_by: user.id,
+        status: surveyStatus || "draft",
+        start_date: startDate || null,
+        deadline: deadline || null,
+        settings: settings || {},
+      }
+      try {
+        if (!currentSurveyId) {
+          const { data, error } = await (supabase as any).from("surveys").insert([payload]).select()
+          if (!error && data?.[0]) {
+            setCurrentSurveyId(data[0].id)
+            setIsEditMode(true)
+            debugLog("✅ Encuesta creada automáticamente con ID:", data[0].id)
+          }
+        } else {
+          await (supabase as any)
+            .from("surveys")
+            .update({
+              title: surveyTitle,
+              description: surveyDescription,
+              start_date: startDate || null,
+              deadline: deadline || null,
+              status: surveyStatus,
+            })
+            .eq("id", currentSurveyId)
+          debugLog("✅ Título/descripción actualizados en background")
+        }
+      } catch (e) {
+        debugWarn("Error en auto-save de título:", e)
+      }
+    }, 1500)
+    return () => { if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyTitle, surveyDescription, startDate, deadline, surveyStatus])
 
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(0)
 
@@ -2298,6 +2349,44 @@ export function CreateSurveyForProjectPageContent() {
     }
   }, [authLoading, user, projectId, currentSurveyId, fetchSurveyForEdit])
 
+  // Botón "Siguiente" del tab Detalles: crea la encuesta si no existe, luego avanza al tab Preguntas
+  const handleNextToQuestions = async () => {
+    if (!surveyTitle.trim()) {
+      toast({ title: "Error", description: "El título de la encuesta es obligatorio", variant: "destructive" })
+      return
+    }
+    if (!currentSurveyId) {
+      // Cancelar el debounce pendiente — vamos a crear ahora mismo
+      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+      setIsSaving(true)
+      try {
+        const payload = {
+          title: surveyTitle,
+          description: surveyDescription,
+          project_id: projectId,
+          created_by: user?.id || null,
+          status: surveyStatus || "draft",
+          start_date: startDate || null,
+          deadline: deadline || null,
+          settings: settings || {},
+        }
+        const { data, error } = await (supabase as any).from("surveys").insert([payload]).select()
+        if (error) throw error
+        if (!data?.[0]) throw new Error("No se pudo crear la encuesta")
+        setCurrentSurveyId(data[0].id)
+        setIsEditMode(true)
+        debugLog("✅ Encuesta creada al presionar Siguiente:", data[0].id)
+      } catch (e: any) {
+        toast({ title: "Error", description: e.message || "Error al guardar", variant: "destructive" })
+        setIsSaving(false)
+        return
+      } finally {
+        setIsSaving(false)
+      }
+    }
+    setActiveTab("questions")
+  }
+
   const addSection = (): void => {
     const newSection: SurveySection = {
       id: generateUUID(), // ✅ UUID real en lugar de timestamp
@@ -2697,12 +2786,41 @@ export function CreateSurveyForProjectPageContent() {
 
           {/* SectionOrganizer mounted below with isOpen prop; removed duplicate conditional render to avoid double mount */}
           <div className="flex-1 space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={(val) => {
+                // Bloquear navegación directa a otros tabs si la encuesta aún no se ha creado
+                if (!currentSurveyId && val !== "details") return
+                setActiveTab(val)
+              }}
+              className="w-full"
+            >
               <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
                 <TabsTrigger value="details" className="text-xs sm:text-sm">Detalles</TabsTrigger>
-                <TabsTrigger value="questions" className="text-xs sm:text-sm">Preguntas</TabsTrigger>
-                <TabsTrigger value="assignment" className="text-xs sm:text-sm">Asignación</TabsTrigger>
-                <TabsTrigger value="settings" className="text-xs sm:text-sm">Config.</TabsTrigger>
+                <TabsTrigger
+                  value="questions"
+                  className="text-xs sm:text-sm"
+                  disabled={!currentSurveyId}
+                  title={!currentSurveyId ? "Guarda los detalles primero usando el botón Siguiente" : undefined}
+                >
+                  Preguntas
+                </TabsTrigger>
+                <TabsTrigger
+                  value="assignment"
+                  className="text-xs sm:text-sm"
+                  disabled={!currentSurveyId}
+                  title={!currentSurveyId ? "Guarda los detalles primero usando el botón Siguiente" : undefined}
+                >
+                  Asignación
+                </TabsTrigger>
+                <TabsTrigger
+                  value="settings"
+                  className="text-xs sm:text-sm"
+                  disabled={!currentSurveyId}
+                  title={!currentSurveyId ? "Guarda los detalles primero usando el botón Siguiente" : undefined}
+                >
+                  Config.
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="details" className="space-y-6">
@@ -2786,9 +2904,14 @@ export function CreateSurveyForProjectPageContent() {
                     <Button
                       className="ml-auto gap-2 bg-primary hover:bg-primary/90 text-white rounded-full"
                       style={{ backgroundColor: "#18b0a4" }}
-                      onClick={() => setActiveTab("questions")}
+                      onClick={handleNextToQuestions}
+                      disabled={isSaving}
                     >
-                      Siguiente: Crear preguntas <ArrowRight className="h-4 w-4" />
+                      {isSaving ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Guardando...</>
+                      ) : (
+                        <>Siguiente: Crear preguntas <ArrowRight className="h-4 w-4" /></>
+                      )}
                     </Button>
                   </CardFooter>
                 </Card>
