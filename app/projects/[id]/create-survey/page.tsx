@@ -678,11 +678,15 @@ function SortableSection({
                 const insertAt = destQuestions.findIndex((q) => q.id === overId)
                 destQuestions.splice(insertAt === -1 ? destQuestions.length : insertAt, 0, moved)
 
-                setSections(sections.map((s, i) => {
-                  if (i === originSectionIndex) return { ...s, questions: originQuestions }
-                  if (i === destSectionIndex) return { ...s, questions: destQuestions }
-                  return s
-                }))
+                // AUDITORÍA (2026-08-17): antes esto llamaba setSections directo, sin
+                // pasar por onUpdateSection (=updateSection), que es lo único que marca
+                // sectionSaveStates[id] = "not-saved". El autosave y "Guardar todas"
+                // solo persisten secciones con ese estado, así que mover una pregunta
+                // de sección se veía en pantalla pero nunca se guardaba (checklist:
+                // "Persistencia del nuevo orden"). Usar onUpdateSection en ambas
+                // secciones para que el cambio quede marcado como pendiente.
+                onUpdateSection(sections[originSectionIndex].id, "questions", originQuestions)
+                onUpdateSection(sections[destSectionIndex].id, "questions", destQuestions)
               }
             }}
           >
@@ -1495,6 +1499,16 @@ export function CreateSurveyForProjectPageContent() {
         s.order_num = idx
       })
       setSections(newOrder)
+      // AUDITORÍA (2026-08-17): reordenar secciones solo tocaba `sections`,
+      // nunca `sectionSaveStates` — autosave y "Guardar todas" filtran por
+      // sectionSaveStates[id] !== "saved", así que el nuevo orden nunca se
+      // guardaba solo (checklist: "Persistencia del nuevo orden"). order_num
+      // cambió para todas, así que se marcan todas como pendientes.
+      setSectionSaveStates((prev) => {
+        const next = { ...prev }
+        newOrder.forEach((s) => { next[s.id] = "not-saved" })
+        return next
+      })
     }
   }
 
