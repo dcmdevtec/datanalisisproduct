@@ -13,6 +13,17 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { MapPin, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 
+// AUDITORÍA (2026-08-17): Nominatim a veces devuelve el nombre de ciudad con
+// un prefijo administrativo que no es el nombre útil (ej. "Perímetro urbano
+// Barranquilla", "Zona urbana Soledad"). El checklist pide mostrar/guardar
+// solo el nombre reconocible de la ciudad.
+function normalizeCityName(raw: string): string {
+  if (!raw) return raw
+  const prefixPattern = /^\s*(per[ií]metro urbano|zona urbana|[aá]rea urbana|zona rural)\s+(de\s+)?/i
+  const stripped = raw.replace(prefixPattern, "").trim()
+  return stripped || raw.trim()
+}
+
 export interface LocationAnswer {
   lat?: number
   lng?: number
@@ -61,7 +72,7 @@ export function LocationQuestion({ value, onChange }: LocationQuestionProps) {
             lng: longitude,
             pais: addr.country || "",
             departamento: addr.state || addr.region || "",
-            ciudad: addr.city || addr.town || addr.municipality || "",
+            ciudad: normalizeCityName(addr.city || addr.town || addr.municipality || ""),
             barrio: addr.suburb || addr.neighbourhood || addr.quarter || "",
             localidad: addr.city_district || addr.borough || addr.locality || "",
           })
