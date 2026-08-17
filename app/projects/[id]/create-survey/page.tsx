@@ -1134,6 +1134,15 @@ export function CreateSurveyForProjectPageContent() {
   // Ref para el guard de concurrencia: el state React es async y no bloquea
   // correctamente cuando handleSaveSection se llama en un for-loop (onSaveAll).
   const isSavingSectionRef = useRef(false)
+  // AUDITORÍA (2026-08-17, C1): al crear la encuesta on-the-fly desde
+  // handleSaveSection/handleNextToQuestions, setCurrentSurveyId(newId) dispara
+  // el useEffect de carga (línea ~2341), que llama fetchSurveyForEdit() y
+  // termina pisando con setSections(validatedSections) los cambios locales
+  // que el usuario siguió haciendo mientras ese fetch estaba en vuelo —
+  // pérdida de trabajo silenciosa. Este ref marca "este surveyId lo acabamos
+  // de crear en esta misma sesión, el estado local ya es la fuente de
+  // verdad" para que ese useEffect se salte el refetch una única vez.
+  const justCreatedSurveyIdRef = useRef<string | null>(null)
   // State to show generated preview URL as a visible fallback
   const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1207,6 +1216,8 @@ export function CreateSurveyForProjectPageContent() {
         }
 
         workingSurveyId = newSurvey[0].id
+        // Marcar antes de setCurrentSurveyId: ver comentario en justCreatedSurveyIdRef (C1).
+        justCreatedSurveyIdRef.current = workingSurveyId
         setCurrentSurveyId(workingSurveyId)
         setIsEditMode(true)
 
@@ -2341,7 +2352,18 @@ export function CreateSurveyForProjectPageContent() {
   useEffect(() => {
     if (!authLoading && user && projectId) {
       if (currentSurveyId) {
-        fetchSurveyForEdit()
+        if (justCreatedSurveyIdRef.current === currentSurveyId) {
+          // C1: encuesta creada en esta misma sesión — el estado local de
+          // `sections` ya refleja lo que el usuario está editando, incluida
+          // cualquier sección/pregunta agregada mientras la encuesta se
+          // estaba creando. Refetchear aquí la pisaría con lo que había en
+          // el servidor en el instante del INSERT. Se consume una sola vez.
+          justCreatedSurveyIdRef.current = null
+          setIsEditMode(true)
+          setInitialLoading(false)
+        } else {
+          fetchSurveyForEdit()
+        }
       } else {
         // Si es una encuesta nueva, crear una sección vacía por defecto
         const defaultSection: SurveySection = {
@@ -2381,6 +2403,8 @@ export function CreateSurveyForProjectPageContent() {
         const { data, error } = await (supabase as any).from("surveys").insert([payload]).select()
         if (error) throw error
         if (!data?.[0]) throw new Error("No se pudo crear la encuesta")
+        // Marcar antes de setCurrentSurveyId: ver comentario en justCreatedSurveyIdRef (C1).
+        justCreatedSurveyIdRef.current = data[0].id
         setCurrentSurveyId(data[0].id)
         setIsEditMode(true)
         debugLog("✅ Encuesta creada al presionar Siguiente:", data[0].id)
