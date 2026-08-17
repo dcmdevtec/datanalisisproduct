@@ -1434,8 +1434,19 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       }
     }
 
-    // Si no se aplicó ningún salto, ir a la siguiente sección
+    // Si no se aplicó ningún salto, ir a la siguiente sección.
+    // CORRECCIÓN (2026-08-16): este avance normal NO registraba nada en
+    // skipLogicHistory (solo lo hacían las 3 ramas de salto de arriba). Eso
+    // dejaba una entrada VIEJA en el historial cada vez que, después de un
+    // salto, el encuestador seguía avanzando de forma normal por 2+
+    // secciones más — el próximo "Atrás" saltaba directo al origen de aquel
+    // salto antiguo en vez de a la sección inmediatamente anterior,
+    // pasándose por encima de secciones que sí se habían visto. Ejemplo: 0→1
+    // (normal) →salta a 3→ 4 (normal, sin registrar) → "Atrás" debía volver a
+    // 3, pero volvía a 1. Se registra el origen en CADA avance, no solo en
+    // los saltos, igual que sectionHistoryRef en la APK (SurveyDetailScreen.tsx).
     if (currentSectionIndex < totalSections - 1) {
+      setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
       setCurrentSectionIndex(currentSectionIndex + 1)
     } else {
       // We're at the end: submit responses including respondent_public_id if present
@@ -1449,13 +1460,16 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     }
   }, [currentSection, answers, currentSectionIndex, totalSections, surveyData, submitResponses, validateCurrentSection])
 
-  // CORRECCIÓN (2026-08-12): el botón "Atrás" antes siempre restaba 1 al índice
-  // de sección (currentSectionIndex - 1), ignorando los saltos de lógica. Si
-  // el encuestador saltó de la sección 1 a la 4, "Atrás" lo llevaba a la 3
-  // (una sección que nunca vio) en vez de volver a la 1.
-  // Ahora usamos skipLogicHistory (stack): cada vez que se ejecuta un salto de
-  // lógica se guarda el índice actual. Al retroceder, si hay historial se
-  // restaura desde allí; si no (navegación secuencial normal), se decrementa.
+  // CORRECCIÓN (2026-08-12, ampliada 2026-08-16): el botón "Atrás" antes
+  // siempre restaba 1 al índice de sección, ignorando los saltos de lógica.
+  // skipLogicHistory es ahora un historial completo (se registra en CADA
+  // avance de handleNextSection, sea por salto o secuencial) — "Atrás"
+  // simplemente saca el último origen del stack, así que siempre vuelve a la
+  // sección inmediatamente anterior que el encuestador realmente vio, nunca
+  // se salta secciones ni se queda pegado en un salto viejo. El
+  // `else if (currentSectionIndex > 0)` queda solo como resguardo por si el
+  // historial estuviera vacío en algún caso borde (ej. sesión ya en curso
+  // antes de este fix).
   const handlePreviousSection = useCallback(() => {
     if (skipLogicHistory.length > 0) {
       // Hay saltos en el historial — volver al origen del último salto
