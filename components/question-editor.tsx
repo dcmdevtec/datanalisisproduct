@@ -859,10 +859,30 @@ export function QuestionEditor({
                     onChange={async (e) => {
                       const f = e.target.files && e.target.files[0]
                       if (!f) return
+                      // AUDITORÍA (2026-08-17): esta subida iba directo a Storage sin
+                      // validar formato ni tamaño — un video de cualquier peso se subía
+                      // sin aviso, aunque /api/response-files/upload (lado encuestado)
+                      // sí limita video a 5MB. Mismos límites/formatos aquí, con mensaje
+                      // claro antes de intentar subir (checklist: "Validar la carga de
+                      // videos de hasta 5 MB... mensaje claro" si excede o formato inválido).
+                      const isVideo = f.type.startsWith('video/')
+                      const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+                      const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm']
+                      if (isVideo ? !allowedVideoTypes.includes(f.type) : !allowedImageTypes.includes(f.type)) {
+                        alert('Formato no admitido. Usa JPG, PNG, WEBP o GIF para imagen, o MP4, MOV o WebM para video.')
+                        e.target.value = ''
+                        return
+                      }
+                      const maxBytes = isVideo ? 5 * 1024 * 1024 : 20 * 1024 * 1024
+                      if (f.size > maxBytes) {
+                        const limitLabel = isVideo ? '5 MB' : '20 MB'
+                        alert(`El archivo no debe superar los ${limitLabel} (tamaño actual: ${(f.size / 1048576).toFixed(1)} MB).`)
+                        e.target.value = ''
+                        return
+                      }
                       setUploadingMedia(true)
                       try {
                         const { uploadImage, generateUniqueFileName, getExtensionFromMimeType, resizeImage } = await import('@/lib/supabase-storage')
-                        const isVideo = f.type.startsWith('video/')
                         // resizeImage usa un <canvas>, solo tiene sentido para imágenes.
                         const toUpload = isVideo ? f : await resizeImage(f, 1600, 1200)
                         const extension = getExtensionFromMimeType(f.type) || (isVideo ? 'mp4' : 'jpg')
