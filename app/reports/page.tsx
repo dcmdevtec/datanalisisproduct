@@ -254,11 +254,22 @@ function ReportsPageContent() {
     setLoading(true)
     try {
       const res = await fetch(`/api/reports?${filterParams}`)
-      if (!res.ok) throw new Error("fetch failed")
+      if (!res.ok) {
+        // AUDITORÍA (2026-08-17): /api/reports exige rol admin/supervisor
+        // (requireRole) pero cualquier falla —incluida una denegación de
+        // permiso— caía en el mismo mensaje genérico. El checklist pide que
+        // una falta de autorización se indique explícitamente en vez de
+        // fallar en silencio.
+        if (res.status === 401 || res.status === 403) {
+          throw new Error("No tienes permiso para ver estos reportes.")
+        }
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || `No se pudieron cargar los reportes (HTTP ${res.status}).`)
+      }
       const json = await res.json()
       setData(json)
-    } catch {
-      toast({ title: "Error", description: "No se pudieron cargar los reportes", variant: "destructive" })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "No se pudieron cargar los reportes", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -285,8 +296,18 @@ function ReportsPageContent() {
           break
       }
       toast({ title: "Exportado", description: "El reporte se descargó correctamente" })
-    } catch {
-      toast({ title: "Error", description: "No se pudo exportar el reporte", variant: "destructive" })
+    } catch (err: any) {
+      // AUDITORÍA (2026-08-17): la exportación (ExcelJS/html2canvas) corre
+      // client-side sobre `data` ya cargado — no hace llamadas de red propias,
+      // así que un fallo aquí nunca es de permisos (eso ya se filtra en
+      // fetchData). Se conserva el mensaje real del error en vez de
+      // descartarlo, para poder diagnosticar fallas puntuales (p.ej. un
+      // gráfico que no pudo capturarse).
+      toast({
+        title: "Error",
+        description: err?.message ? `No se pudo exportar el reporte: ${err.message}` : "No se pudo exportar el reporte",
+        variant: "destructive",
+      })
     } finally {
       setExporting(null)
     }

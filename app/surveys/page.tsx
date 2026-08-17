@@ -281,6 +281,45 @@ function SurveysPageContent() {
     setIsCreatingSurvey(false)
   }
 
+  // AUDITORÍA (2026-08-17): "Descargar PDF" abría /api/surveys/[id]/pdf con
+  // window.open — esa ruta exige rol admin/supervisor (requireRole), así que
+  // si el usuario no tenía permiso, la pestaña nueva mostraba el JSON crudo
+  // del error ({"error": "..."}) en vez de un mensaje claro (checklist:
+  // "Mostrar errores claros de permisos... en lugar de fallar
+  // silenciosamente"). Se reemplaza por fetch + toast, y solo se dispara la
+  // descarga si la respuesta realmente es el PDF.
+  const handleDownloadPdf = async (surveyId: string, surveyTitle?: string) => {
+    try {
+      const res = await fetch(`/api/surveys/${surveyId}/pdf`)
+      if (!res.ok) {
+        let message = "No se pudo generar el PDF."
+        if (res.status === 401 || res.status === 403) {
+          message = "No tienes permiso para descargar el PDF de esta encuesta."
+        } else {
+          const body = await res.json().catch(() => null)
+          if (body?.error) message = body.error
+        }
+        toast({ title: "No se pudo descargar", description: message, variant: "destructive" })
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `encuesta-${(surveyTitle || surveyId).replace(/[^a-z0-9]/gi, "_").substring(0, 40)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      toast({
+        title: "No se pudo descargar",
+        description: err?.message || "Error de conexión al generar el PDF.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleDuplicateSurvey = async (surveyId: string) => {
     setLoading(true)
     setError(null)
@@ -680,7 +719,7 @@ function SurveysPageContent() {
                               <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
                                 <Copy className="h-4 w-4 mr-2" /> Duplicar Encuesta
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")}>
+                              <DropdownMenuItem onClick={() => handleDownloadPdf(survey.id, survey.title)}>
                                 <Download className="h-4 w-4 mr-2" /> Descargar PDF
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
@@ -794,7 +833,7 @@ function SurveysPageContent() {
                           <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
                             <Copy className="h-4 w-4 mr-2" /> Duplicar Encuesta
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.open(`/api/surveys/${survey.id}/pdf`, "_blank")}>
+                          <DropdownMenuItem onClick={() => handleDownloadPdf(survey.id, survey.title)}>
                             <Download className="h-4 w-4 mr-2" /> Descargar PDF
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
