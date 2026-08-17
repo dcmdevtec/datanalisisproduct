@@ -3001,8 +3001,22 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   <video
                     src={question.image}
                     controls
+                    controlsList="nodownload noplaybackrate"
+                    disablePictureInPicture
                     className="w-full rounded-lg bg-black"
                     style={{ maxHeight: 420 }}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onSeeking={(e) => {
+                      const v = e.currentTarget as any
+                      const max = v._maxReached ?? 0
+                      if (v.currentTime > max) v.currentTime = max
+                    }}
+                    onTimeUpdate={(e) => {
+                      const v = e.currentTarget as any
+                      if (!v._maxReached || v.currentTime > v._maxReached) {
+                        v._maxReached = v.currentTime
+                      }
+                    }}
                   />
                 ) : (
                   <div className="flex items-center justify-center py-10 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
@@ -3298,7 +3312,21 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                 <video
                   src={question.image}
                   controls
+                  controlsList="nodownload noplaybackrate"
+                  disablePictureInPicture
                   className="w-full max-h-[420px] rounded-xl border border-gray-200 bg-black"
+                  onContextMenu={(e) => e.preventDefault()}
+                  onSeeking={(e) => {
+                    const v = e.currentTarget as any
+                    const max = v._maxReached ?? 0
+                    if (v.currentTime > max) v.currentTime = max
+                  }}
+                  onTimeUpdate={(e) => {
+                    const v = e.currentTarget as any
+                    if (!v._maxReached || v.currentTime > v._maxReached) {
+                      v._maxReached = v.currentTime
+                    }
+                  }}
                 />
               ) : (
                 <img

@@ -228,6 +228,35 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
     }
   }
 
+  // ── Filtros locales sobre la página cargada ──────────────────────────────────
+  const [tableSearch,      setTableSearch]      = useState("")
+  const [surveyorFilter,   setSurveyorFilter]   = useState("all")
+
+  // Resetear filtros cuando cambia la página global
+  useEffect(() => { setTableSearch(""); setSurveyorFilter("all") }, [filterParams.toString()])
+
+  // Lista única de encuestadores de la página actual (para el select rápido)
+  const surveyorsInPage = Array.from(
+    new Map(
+      items
+        .filter((i) => i.surveyorName || i.surveyorEmail)
+        .map((i) => [i.surveyorName ?? i.surveyorEmail!, { name: i.surveyorName, email: i.surveyorEmail }])
+    ).values()
+  ).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+
+  // Aplicar filtros locales
+  const visibleItems = items.filter((item) => {
+    const matchSurveyor = surveyorFilter === "all"
+      || item.surveyorName === surveyorFilter
+      || item.surveyorEmail === surveyorFilter
+    const search = tableSearch.toLowerCase()
+    const matchSearch = !search
+      || item.respondentName?.toLowerCase().includes(search)
+      || item.surveyorName?.toLowerCase().includes(search)
+      || item.surveyTitle.toLowerCase().includes(search)
+    return matchSurveyor && matchSearch
+  })
+
   // ── Computed ──────────────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
@@ -284,6 +313,44 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {/* ── Barra de búsqueda + filtro encuestador ───────────────────────── */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/30">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar encuestado, encuestador o encuesta…"
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                className="h-8 pl-8 pr-8 text-xs"
+              />
+              {tableSearch && (
+                <button
+                  onClick={() => setTableSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <select
+              value={surveyorFilter}
+              onChange={(e) => setSurveyorFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring min-w-[160px]"
+            >
+              <option value="all">Todos los encuestadores</option>
+              {surveyorsInPage.map((s) => (
+                <option key={s.name ?? s.email} value={s.name ?? s.email ?? ""}>
+                  {s.name ?? s.email}
+                </option>
+              ))}
+            </select>
+            {(tableSearch || surveyorFilter !== "all") && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => { setTableSearch(""); setSurveyorFilter("all") }}>
+                <X className="h-3.5 w-3.5 mr-1" /> Limpiar
+              </Button>
+            )}
+          </div>
+
           {loading ? (
             <div>
               {/* Header de columnas skeleton */}
@@ -318,7 +385,12 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
 
               {/* Filas */}
               <div className="divide-y">
-                {items.map((item) => {
+                {visibleItems.length === 0 && (
+                  <div className="py-10 text-center text-sm text-muted-foreground">
+                    Sin resultados para "{tableSearch || surveyorFilter}"
+                  </div>
+                )}
+                {visibleItems.map((item) => {
                   const badge = outcomeBadge[item.outcome]
                   return (
                     <button

@@ -94,10 +94,12 @@ export async function GET(request: NextRequest) {
     // hay respuestas con assignment_id=null (enviadas desde APK sin asignación),
     // retornando 0 resultados aunque existan registros. Se separa el lookup de
     // nombres de encuestadores en un paso post-proceso para evitar ese problema.
+    // metadata incluye surveyor_id (APK) y respondent_name (APK) — ambos
+    // se usan en mapListItem cuando assignment_id es null (respuestas APK).
     let query = admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title)",
+        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, metadata, surveys(title)",
         { count: "exact" }
       )
     if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
@@ -142,11 +144,11 @@ export async function GET(request: NextRequest) {
     // app/api/portal-encuestador/assignments/[id]/route.ts). El lookup anterior contra
     // `assignments` siempre retornaba vacío, causando que todos los encuestadores del portal
     // aparecieran como "Sin asignar" en Reportes.
+    // ── Lookup 1: encuestadores por assignment_id (portal web, SSZ) ────────────
     const assignmentIds = [...new Set(rawData.map((r: any) => r.assignment_id).filter(Boolean))]
-    // surveyor_info_map: id de assignment → { name, email } del encuestador
     const surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {}
     if (assignmentIds.length > 0) {
-      // 1️⃣ survey_surveyor_zones (flujo real del portal encuestador)
+      // survey_surveyor_zones (flujo real del portal encuestador)
       const { data: sszRows } = await (admin as any)
         .from("survey_surveyor_zones")
         .select("id, surveyor_id, surveyors(id, name, email)")
@@ -157,7 +159,7 @@ export async function GET(request: NextRequest) {
           email: a.surveyors?.email ?? null,
         }
       }
-      // 2️⃣ Fallback: assignments legacy (por si migración parcial)
+      // Fallback: assignments legacy
       const missing = assignmentIds.filter((id) => !surveyorInfoByAssignmentId[id])
       if (missing.length > 0) {
         const { data: assignmentRows } = await (admin as any)
@@ -173,8 +175,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Lookup 2: encuestadores por metadata.surveyor_id (APK, sin assignment) ─
+    // La APK guarda el auth user id en responses.metadata->>'surveyor_id'.
+    // Cuando assignment_id es null Y metadata tiene surveyor_id, lo usamos para
+    // resolver el nombre del encuestador directo de la tabla surveyors.
+    const surveyorInfoBySurveyorId: Record<string, { name: string | null; email: string | null }> = {}
+    const metaSurveyorIds = [
+      ...new Set(
+        rawData
+          .filter((r: any) => !r.assignment_id && r.metadata?.surveyor_id)
+          .map((r: any) => r.metadata.surveyor_id as string)
+      )
+    ]
+    if (metaSurveyorIds.length > 0) {
+      const { data: surveyorRows } = await (admin as any)
+        .from("surveyors")
+        .select("id, name, email")
+        .in("id", metaSurveyorIds)
+      for (const s of (surveyorRows as any[]) || []) {
+        surveyorInfoBySurveyorId[s.id] = { name: s.name ?? null, email: s.email ?? null }
+      }
+    }
+
     return NextResponse.json({
-      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId)),
+      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId)),
       total: totalCount,
       page,
       pageSize,
@@ -187,19 +211,37 @@ export async function GET(request: NextRequest) {
 
 function mapListItem(
   r: any,
-  surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {}
+  surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {},
+  surveyorInfoBySurveyorId:  Record<string, { name: string | null; email: string | null }> = {}
 ) {
   const durationSecs = (r.completed_at && r.created_at)
     ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
     : null
-  const surveyorInfo = r.assignment_id ? (surveyorInfoByAssignmentId[r.assignment_id] ?? null) : null
+
+  // Encuestador: 1) asignación de zona (portal web), 2) metadata.surveyor_id (APK)
+  let surveyorInfo: { name: string | null; email: string | null } | null = null
+  if (r.assignment_id) {
+    surveyorInfo = surveyorInfoByAssignmentId[r.assignment_id] ?? null
+  }
+  if (!surveyorInfo?.name && r.metadata?.surveyor_id) {
+    surveyorInfo = surveyorInfoBySurveyorId[r.metadata.surveyor_id] ?? null
+  }
+
+  // Nombre del encuestado: 1) columna respondent_name (portal web),
+  // 2) metadata.respondent_name (APK — la APK lo guarda ahí porque la columna
+  //    responses.respondent_name no siempre se llena desde el dispositivo).
+  const respondentName: string | null =
+    r.respondent_name
+    ?? (typeof r.metadata?.respondent_name === "string" ? r.metadata.respondent_name : null)
+    ?? null
+
   return {
     id: r.id,
     surveyId: r.survey_id,
     surveyTitle: r.surveys?.title ?? "Sin título",
-    surveyorName: surveyorInfo?.name ?? null,
+    surveyorName:  surveyorInfo?.name  ?? null,
     surveyorEmail: surveyorInfo?.email ?? null,
-    respondentName: r.respondent_name ?? null,
+    respondentName,
     createdAt: r.created_at,
     completedAt: r.completed_at,
     durationSecs,
