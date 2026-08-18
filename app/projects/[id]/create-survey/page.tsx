@@ -2434,15 +2434,22 @@ export function CreateSurveyForProjectPageContent() {
   }
 
   const addSection = (): void => {
-    const newSection: SurveySection = {
-      id: generateUUID(), // ✅ UUID real en lugar de timestamp
-      title: `Nueva Sección ${sections.length + 1}`,
-      description: "",
-      order_num: sections.length,
-      questions: [],
-      skipLogic: undefined,
-    }
-    setSections([...sections, newSection])
+    // AUDITORÍA (2026-08-17): mismo bug que en onAddSection (ver comentario
+    // ahí) — setSections([...sections, ...]) sobre un closure desactualizado
+    // pierde una sección si el botón "Agregar otra sección" se clickea rápido
+    // más de una vez. Forma funcional para que cada llamada parta del estado
+    // más reciente, no del snapshot del render en que se creó el handler.
+    setSections((prev) => {
+      const newSection: SurveySection = {
+        id: generateUUID(), // ✅ UUID real en lugar de timestamp
+        title: `Nueva Sección ${prev.length + 1}`,
+        description: "",
+        order_num: prev.length,
+        questions: [],
+        skipLogic: undefined,
+      }
+      return [...prev, newSection]
+    })
   }
 
   const removeSection = async (sectionId: string) => {
@@ -2998,15 +3005,26 @@ export function CreateSurveyForProjectPageContent() {
                               }
                             }}
                             onAddSection={() => {
-                              const newSection: SurveySection = {
-                                id: generateUUID(),
-                                title: `Nueva Sección ${sections.length + 1}`,
-                                description: "",
-                                order_num: sections.length,
-                                questions: [],
-                                skipLogic: undefined,
-                              }
-                              setSections([...sections, newSection])
+                              // AUDITORÍA (2026-08-17, encontrado probando en vivo): con
+                              // setSections([...sections, newSection]) — closure sobre el
+                              // `sections` de ese render — dos clics rápidos en "+ Nueva"
+                              // (o el mismo doble-tap accidental) leen el MISMO array
+                              // desactualizado; el segundo setSections pisa el resultado
+                              // del primero y una de las dos secciones nuevas desaparece
+                              // en silencio. Reproducido: 3 clics rápidos → solo 3
+                              // secciones guardadas en vez de 4. Forma funcional para que
+                              // cada click parta siempre del estado más reciente.
+                              setSections((prev) => {
+                                const newSection: SurveySection = {
+                                  id: generateUUID(),
+                                  title: `Nueva Sección ${prev.length + 1}`,
+                                  description: "",
+                                  order_num: prev.length,
+                                  questions: [],
+                                  skipLogic: undefined,
+                                }
+                                return [...prev, newSection]
+                              })
                               setActiveSectionIndex(sections.length)
                             }}
                             onPreview={handlePreview}
@@ -3046,15 +3064,19 @@ export function CreateSurveyForProjectPageContent() {
                               size="sm"
                               className="gap-1.5 text-xs border-dashed text-muted-foreground hover:text-primary hover:border-primary bg-transparent"
                               onClick={() => {
-                                const newSection: SurveySection = {
-                                  id: generateUUID(),
-                                  title: `Nueva Sección ${sections.length + 1}`,
-                                  description: "",
-                                  order_num: sections.length,
-                                  questions: [],
-                                  skipLogic: undefined,
-                                }
-                                setSections([...sections, newSection])
+                                // AUDITORÍA (2026-08-17): mismo bug de closure desactualizado
+                                // que en onAddSection/addSection — ver esos comentarios.
+                                setSections((prev) => {
+                                  const newSection: SurveySection = {
+                                    id: generateUUID(),
+                                    title: `Nueva Sección ${prev.length + 1}`,
+                                    description: "",
+                                    order_num: prev.length,
+                                    questions: [],
+                                    skipLogic: undefined,
+                                  }
+                                  return [...prev, newSection]
+                                })
                                 setActiveSectionIndex(sections.length)
                               }}
                             >
