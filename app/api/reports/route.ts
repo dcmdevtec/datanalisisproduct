@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
+import { resolveOutcome } from "@/lib/report-outcome"
 
 // Extract a displayable string from a JSONB answer value
 function extractValue(val: any): string | string[] {
@@ -41,11 +42,6 @@ function extractNumeric(val: any): number | null {
 //   - sin outcome + cualquier otro status -> 'abandonada'
 // Nunca inferimos 'incidencia' por proxy: no hay señal confiable en los datos actuales
 // para distinguir una incidencia real de una respuesta simplemente incompleta.
-function resolveOutcome(r: { outcome?: string | null; status?: string | null }): "efectiva" | "incidencia" | "abandonada" {
-  if (r.outcome === "efectiva" || r.outcome === "incidencia" || r.outcome === "abandonada") return r.outcome
-  return r.status === "completed" ? "efectiva" : "abandonada"
-}
-
 // SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol — un
 // encuestador autenticado podía consultar analítica de toda la organización
 // (incl. datos de otros encuestadores y respondentes).
@@ -198,7 +194,7 @@ export async function GET(request: NextRequest) {
 
     // --- Build responses query with filters ---
     let responsesQuery = admin.from("responses").select(
-      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title)"
+      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, surveys(title)"
     )
     if (filteredSurveyIds !== null) {
       responsesQuery = responsesQuery.in("survey_id", filteredSurveyIds)
@@ -259,8 +255,8 @@ export async function GET(request: NextRequest) {
         zone: z.name,
         responseCount: z.responseCount,
         completedCount: z.completedCount,
-        percentage: Math.round((z.responseCount / totalZoneResponsesEarly) * 100),
-        completionRate: z.responseCount > 0 ? Math.round((z.completedCount / z.responseCount) * 100) : 0,
+        percentage: Math.round((z.responseCount / totalZoneResponsesEarly) * 1000) / 10,
+        completionRate: z.responseCount > 0 ? Math.round((z.completedCount / z.responseCount) * 1000) / 10 : 0,
       }))
       .sort((a, b) => b.responseCount - a.responseCount)
 
@@ -285,9 +281,35 @@ export async function GET(request: NextRequest) {
               zoneColor: z.zone_color || "#3b82f6",
               responseCount: rc,
               completedCount: cc,
-              completionRate: rc > 0 ? Math.round((cc / rc) * 100) : 0,
+              completionRate: rc > 0 ? Math.round((cc / rc) * 1000) / 10 : 0,
             }
           })
+      }
+    }
+
+    // Nombre del encuestado para los puntos con GPS: mismo criterio que
+    // "Respuestas Individuales" (respondent_name, si no, la respuesta de la
+    // pregunta tipo contact_info) — antes el mapa solo mostraba el nombre del
+    // ENCUESTADOR, nunca la persona encuestada.
+    const geoResponseIds = responses
+      .filter((r: any) => r.location && typeof r.location === "object" &&
+        typeof (r.location.lat ?? r.location.latitude) === "number" &&
+        typeof (r.location.lng ?? r.location.longitude) === "number" &&
+        !r.respondent_name)
+      .map((r: any) => r.id)
+    const respondentNameByResponseId: Record<string, string> = {}
+    if (geoResponseIds.length > 0) {
+      const { data: contactAnswers } = await admin
+        .from("answers")
+        .select("response_id, value, questions!inner(type)")
+        .in("response_id", geoResponseIds)
+        .eq("questions.type", "contact_info")
+        .limit(2000)
+      for (const a of (contactAnswers as any[]) || []) {
+        const val = a.value
+        if (!val || typeof val !== "object") continue
+        const fullName = val.fullName || [val.firstName, val.lastName].filter(Boolean).join(" ").trim()
+        if (fullName) respondentNameByResponseId[a.response_id] = fullName
       }
     }
 
@@ -299,8 +321,10 @@ export async function GET(request: NextRequest) {
       .map((r: any) => {
         const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
         const surveyorName = (assignment?.surveyors as any)?.name ?? null
-        const durationSecs = (r.completed_at && (r as any).started_at)
-          ? Math.round((new Date(r.completed_at).getTime() - new Date((r as any).started_at).getTime()) / 1000)
+        const surveyorId = assignment?.surveyor_id ?? null
+        const startedAt = (r as any).started_at ?? null
+        const durationSecs = (r.completed_at && startedAt)
+          ? Math.round((new Date(r.completed_at).getTime() - new Date(startedAt).getTime()) / 1000)
           : null
         return {
           id: r.id,
@@ -310,7 +334,14 @@ export async function GET(request: NextRequest) {
           outcome: resolveOutcome(r),
           createdAt: r.created_at,
           surveyorName,
-          respondentName: r.respondent_name ?? null,
+          // surveyorId + startedAt/completedAt: para reconstruir la ruta GPS
+          // aproximada de ESTE punto (ver /api/reports/route-trace) — no hay
+          // FK directa response->surveyor_locations, se aproxima por
+          // surveyor_id + ventana de tiempo [started_at, completed_at].
+          surveyorId,
+          startedAt,
+          completedAt: r.completed_at ?? null,
+          respondentName: r.respondent_name ?? respondentNameByResponseId[r.id] ?? null,
           durationSecs,
           source: "response" as const,
         }
@@ -408,7 +439,7 @@ export async function GET(request: NextRequest) {
         const batch = responseIds.slice(i, i + batchSize)
         const { data: batchAnswers } = await admin
           .from("answers")
-          .select("id, response_id, question_id, value, questions(id, text, type, options, survey_id, section_id, matrix_rows, matrix_cols, settings)")
+          .select("id, response_id, question_id, value, questions(id, text, type, options, survey_id, section_id, order_num, matrix_rows, matrix_cols, settings)")
           .in("response_id", batch)
           .limit(5000)
         if (batchAnswers) {
@@ -519,17 +550,43 @@ export async function GET(request: NextRequest) {
     // === SUMMARY TAB ===
     const totalResponses = responses.length
     const completedResponses = responses.filter((r: any) => r.status === "completed").length
-    const completionRate = totalResponses > 0 ? Math.round((completedResponses / totalResponses) * 100) : 0
+    const completionRate = totalResponses > 0 ? Math.round((completedResponses / totalResponses) * 1000) / 10 : 0
 
-    // Clasificación efectiva / incidencia / abandonada (slide 20)
-    let efectivas = 0, incidencias = 0, abandonadas = 0
+    // Clasificación efectiva / incidencia / abandonada / descalificado (slide 20).
+    // "descalificado" es su propia categoría (no cuenta como incidencia ni
+    // abandonada) — sale del salto de lógica "Descalificar y terminar" cuando
+    // el encuestado no cumple un filtro (ej. edad mínima).
+    let efectivas = 0, incidencias = 0, abandonadas = 0, descalificadas = 0
+    // Desglose de incidencias por motivo (slide 3: vivienda_cerrada, rechazo,
+    // menor_sin_adulto, etc. — ver sql/2026_07_reports_outcome_and_hierarchy.sql).
+    const incidenceTypeCounts: Record<string, number> = {}
     for (const r of responses) {
       const outcome = resolveOutcome(r)
       if (outcome === "efectiva") efectivas++
-      else if (outcome === "incidencia") incidencias++
+      else if (outcome === "incidencia") {
+        incidencias++
+        const t = (r as any).incidence_type || "otro"
+        incidenceTypeCounts[t] = (incidenceTypeCounts[t] || 0) + 1
+      }
+      else if (outcome === "descalificado") descalificadas++
       else abandonadas++
     }
-    const tasaRespuestasEfectivas = totalResponses > 0 ? Math.round((efectivas / totalResponses) * 100) : 0
+    const INCIDENCE_TYPE_LABELS: Record<string, string> = {
+      vivienda_cerrada: "Vivienda cerrada",
+      vivienda_desocupada: "Vivienda desocupada",
+      senales_ocupacion_sin_atender: "Señales de ocupación sin atender",
+      rechazo: "Rechazo",
+      menor_sin_adulto: "Menor sin adulto",
+      negocio_local: "Negocio/local",
+      propiedad_horizontal_sin_acceso: "Propiedad horizontal sin acceso",
+      idioma_discapacidad: "Idioma/discapacidad",
+      no_cumple_cuota: "No cumple cuota",
+      otro: "Otro",
+    }
+    const incidenceBreakdown = Object.entries(incidenceTypeCounts)
+      .map(([type, count]) => ({ type, label: INCIDENCE_TYPE_LABELS[type] || type, count }))
+      .sort((a, b) => b.count - a.count)
+    const tasaRespuestasEfectivas = totalResponses > 0 ? Math.round((efectivas / totalResponses) * 1000) / 10 : 0
 
     // Average completion time (solo sobre efectivas, como pide slide 20 "tiempo promedio por encuesta efectiva")
     // started_at = inicio real de la respuesta (capturado en el cliente). Antes
@@ -564,7 +621,7 @@ export async function GET(request: NextRequest) {
         if (val >= 9) promoters++
         else if (val <= 6) detractors++
       }
-      if (total > 0) nps = Math.round(((promoters - detractors) / total) * 100)
+      if (total > 0) nps = Math.round(((promoters - detractors) / total) * 1000) / 10
     }
 
     // Responses timeline
@@ -598,7 +655,7 @@ export async function GET(request: NextRequest) {
       const half = Math.floor(responsesTimeline.length / 2)
       const firstHalf = responsesTimeline.slice(0, half).reduce((s, d) => s + d.count, 0)
       const secondHalf = responsesTimeline.slice(half).reduce((s, d) => s + d.count, 0)
-      trendPct = firstHalf > 0 ? Math.round(((secondHalf - firstHalf) / firstHalf) * 100) : 0
+      trendPct = firstHalf > 0 ? Math.round(((secondHalf - firstHalf) / firstHalf) * 1000) / 10 : 0
     }
 
     // Peak day (day with most responses)
@@ -621,13 +678,13 @@ export async function GET(request: NextRequest) {
       prevResponses = count ?? 0
     }
     const responseGrowth = prevResponses > 0
-      ? Math.round(((totalResponses - prevResponses) / prevResponses) * 100)
+      ? Math.round(((totalResponses - prevResponses) / prevResponses) * 1000) / 10
       : totalResponses > 0 ? 100 : 0
 
     // === ANÁLISIS DE RESULTADOS TAB (antes "Respuestas") ===
     // Guarda también el día de cada respuesta por pregunta para poder graficar
     // "Tendencia" por pregunta (slide 21) sin volver a golpear la base de datos.
-    const questionMap: Record<string, { text: string; type: string; options: any[]; answers: any[]; days: string[]; matrixRows: string[]; matrixCols: string[]; cellType: string }> = {}
+    const questionMap: Record<string, { text: string; type: string; options: any[]; answers: any[]; days: string[]; matrixRows: string[]; matrixCols: string[]; cellType: string; sectionId: string | null; orderNum: number }> = {}
     for (const a of answers) {
       const q = a.questions
       if (!q) continue
@@ -635,7 +692,11 @@ export async function GET(request: NextRequest) {
         const mRows: string[] = q.matrix_rows || q.settings?.matrixRows || []
         const mCols: string[] = q.matrix_cols || q.settings?.matrixCols || []
         const cType: string = q.settings?.matrixCellType || "radio"
-        questionMap[q.id] = { text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [], matrixRows: mRows, matrixCols: mCols, cellType: cType }
+        questionMap[q.id] = {
+          text: q.text || "Sin texto", type: q.type, options: q.options || [], answers: [], days: [],
+          matrixRows: mRows, matrixCols: mCols, cellType: cType,
+          sectionId: (q as any).section_id ?? null, orderNum: (q as any).order_num ?? 0,
+        }
       }
       questionMap[q.id].answers.push(a.value)
       const parentResponse = responseById[a.response_id]
@@ -747,7 +808,7 @@ export async function GET(request: NextRequest) {
         }
         const total = qAnswers.length || 1
         const distribution = Object.entries(counts)
-          .map(([label, count]) => ({ label, count, percentage: Math.round((count / total) * 100) }))
+          .map(([label, count]) => ({ label, count, percentage: Math.round((count / total) * 1000) / 10 }))
           .sort((a, b) => b.count - a.count)
         return { questionId: qId, text, type, totalAnswers: qAnswers.length, distribution, timeline }
       }
@@ -758,7 +819,7 @@ export async function GET(request: NextRequest) {
         const counts: Record<string, number> = {}
         for (const n of nums) { counts[String(n)] = (counts[String(n)] || 0) + 1 }
         const distribution = Object.entries(counts)
-          .map(([label, count]) => ({ label, count, percentage: Math.round((count / (nums.length || 1)) * 100) }))
+          .map(([label, count]) => ({ label, count, percentage: Math.round((count / (nums.length || 1)) * 1000) / 10 }))
           .sort((a, b) => Number(a.label) - Number(b.label))
         return { questionId: qId, text, type, totalAnswers: qAnswers.length, average: avg, distribution, timeline }
       }
@@ -769,6 +830,27 @@ export async function GET(request: NextRequest) {
         return Array.isArray(ex) ? ex.join(", ") : ex
       }).filter((v) => v.length > 0)
       return { questionId: qId, text, type, totalAnswers: qAnswers.length, sampleAnswers: textAnswers.slice(0, 5), timeline }
+    })
+
+    // Ordenar igual que en el builder de la encuesta (sección → orden de
+    // pregunta dentro de la sección), no por orden de inserción en el mapa
+    // (que depende del orden en que llegaron las respuestas). Se usa en el
+    // buscador de "Análisis de resultados" y en "Compartir link".
+    let sectionOrderById: Record<string, number> = {}
+    if (filteredSurveyIds !== null && filteredSurveyIds.length > 0) {
+      const { data: sectionsForOrder } = await admin
+        .from("survey_sections")
+        .select("id, order_num")
+        .in("survey_id", filteredSurveyIds)
+      for (const s of (sectionsForOrder as any[]) || []) sectionOrderById[s.id] = s.order_num ?? 0
+    }
+    questionBreakdowns.sort((a, b) => {
+      const qa = questionMap[a.questionId]
+      const qb2 = questionMap[b.questionId]
+      const sa = qa?.sectionId ? (sectionOrderById[qa.sectionId] ?? 0) : 0
+      const sb = qb2?.sectionId ? (sectionOrderById[qb2.sectionId] ?? 0) : 0
+      if (sa !== sb) return sa - sb
+      return (qa?.orderNum ?? 0) - (qb2?.orderNum ?? 0)
     })
 
     // === PERFORMANCE TAB ===
@@ -784,8 +866,68 @@ export async function GET(request: NextRequest) {
       efectivas: number
       incidencias: number
       abandonadas: number
+      descalificadas: number
       timeDiffs: number[]
     }> = {}
+
+    // Encuestadores por metadata.surveyor_id (APK): la APK siempre manda
+    // assignment_id=null (ver SurveyDetailScreen.tsx), así que sin este
+    // fallback ninguna respuesta de la APK se contaba en "Rendimiento por
+    // Encuestador" — mismo criterio ya usado en /api/reports/individual.
+    const metaSurveyorIds = [
+      ...new Set(
+        responses
+          .filter((r: any) => !r.assignment_id && r.metadata?.surveyor_id)
+          .map((r: any) => r.metadata.surveyor_id as string)
+      )
+    ]
+    const surveyorByMetaId: Record<string, { name: string | null; supervisor_id: string | null }> = {}
+    if (metaSurveyorIds.length > 0) {
+      const { data: surveyorRows } = await admin
+        .from("surveyors")
+        .select("id, name, supervisor_id")
+        .in("id", metaSurveyorIds)
+      for (const s of (surveyorRows as any[]) || []) {
+        surveyorByMetaId[s.id] = { name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
+      }
+    }
+
+    // Encuestadores por respondent_id (web autenticada, ej. app/surveys/[id]/collect
+    // o /preview/survey/[id] / /encuesta/[id] tomada directamente por un
+    // encuestador sin pasar por el portal): estas rutas no mandan assignment_id
+    // ni metadata.surveyor_id, pero /api/responses igual guarda
+    // responses.respondent_id = sesión autenticada del navegador. Se resuelve
+    // igual que resolveCurrentSurveyor() en lib/portal-encuestador/auth.ts:
+    // 1) surveyors.user_id = respondent_id, 2) fallback surveyors.id = respondent_id.
+    const respondentIdsNeedingSurveyor = [
+      ...new Set(
+        responses
+          .filter((r: any) => !r.assignment_id && !r.metadata?.surveyor_id && r.respondent_id)
+          .map((r: any) => r.respondent_id as string)
+      )
+    ]
+    const surveyorByRespondentId: Record<string, { name: string | null; supervisor_id: string | null }> = {}
+    if (respondentIdsNeedingSurveyor.length > 0) {
+      const { data: byUserId } = await admin
+        .from("surveyors")
+        .select("id, user_id, name, supervisor_id")
+        .in("user_id", respondentIdsNeedingSurveyor)
+      const resolvedIds = new Set<string>()
+      for (const s of (byUserId as any[]) || []) {
+        surveyorByRespondentId[s.user_id] = { name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
+        resolvedIds.add(s.user_id)
+      }
+      const remaining = respondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
+      if (remaining.length > 0) {
+        const { data: byLegacyId } = await admin
+          .from("surveyors")
+          .select("id, name, supervisor_id")
+          .in("id", remaining)
+        for (const s of (byLegacyId as any[]) || []) {
+          surveyorByRespondentId[s.id] = { name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
+        }
+      }
+    }
 
     // Inicializar desde SSZ (incluye encuestadores asignados aunque no tengan respuestas aún)
     for (const a of assignments) {
@@ -796,23 +938,29 @@ export async function GET(request: NextRequest) {
       surveyorMap[sid] = {
         name, supervisorId,
         supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
-        efectivas: 0, incidencias: 0, abandonadas: 0, timeDiffs: [],
+        efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0, timeDiffs: [],
       }
     }
 
     // Contar outcomes y tiempo promedio desde responses
     for (const r of responses) {
       const ssz = r.assignment_id ? assignmentById[r.assignment_id] : null
-      const sid = ssz?.surveyor_id as string | undefined
+      const metaSurveyor = !r.assignment_id ? surveyorByMetaId[(r as any).metadata?.surveyor_id] : null
+      const respondentSurveyor = (!r.assignment_id && !metaSurveyor && (r as any).respondent_id)
+        ? surveyorByRespondentId[(r as any).respondent_id] ?? null
+        : null
+      const sid = (ssz?.surveyor_id as string | undefined)
+        ?? (!r.assignment_id ? (r as any).metadata?.surveyor_id : undefined)
+        ?? (respondentSurveyor ? (r as any).respondent_id : undefined)
       if (!sid) continue
       // Inicializar si no existía (respuestas sin SSZ en el filtro actual)
       if (!surveyorMap[sid]) {
-        const name = (ssz.surveyors as any)?.name || sid
-        const supervisorId = (ssz.surveyors as any)?.supervisor_id ?? null
+        const name = (ssz?.surveyors as any)?.name || metaSurveyor?.name || respondentSurveyor?.name || sid
+        const supervisorId = (ssz?.surveyors as any)?.supervisor_id ?? metaSurveyor?.supervisor_id ?? respondentSurveyor?.supervisor_id ?? null
         surveyorMap[sid] = {
           name, supervisorId,
           supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
-          efectivas: 0, incidencias: 0, abandonadas: 0, timeDiffs: [],
+          efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0, timeDiffs: [],
         }
       }
       const outcome = resolveOutcome(r)
@@ -825,6 +973,8 @@ export async function GET(request: NextRequest) {
         }
       } else if (outcome === "incidencia") {
         surveyorMap[sid].incidencias++
+      } else if (outcome === "descalificado") {
+        surveyorMap[sid].descalificadas++
       } else {
         surveyorMap[sid].abandonadas++
       }
@@ -832,7 +982,7 @@ export async function GET(request: NextRequest) {
 
     const surveyorPerformance = Object.values(surveyorMap)
       .map((s) => {
-        const totalRegistros = s.efectivas + s.incidencias + s.abandonadas
+        const totalRegistros = s.efectivas + s.incidencias + s.abandonadas + s.descalificadas
         const avgSecs = s.timeDiffs.length > 0
           ? Math.round(s.timeDiffs.reduce((a, b) => a + b, 0) / s.timeDiffs.length) : 0
         const m = Math.floor(avgSecs / 60)
@@ -845,12 +995,13 @@ export async function GET(request: NextRequest) {
           efectivas: s.efectivas,
           incidencias: s.incidencias,
           abandonadas: s.abandonadas,
-          tasaRespuestas: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 100) : 0,
+          descalificadas: s.descalificadas,
+          tasaRespuestas: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 1000) / 10 : 0,
           avgTime: avgSecs > 0 ? `${m}:${String(sec).padStart(2, "0")}` : "—",
           // Alias para backward compat
           totalAssignments: totalRegistros,
           completedAssignments: s.efectivas,
-          completionRate: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 100) : 0,
+          completionRate: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 1000) / 10 : 0,
         }
       })
       .filter((s) => s.totalRegistros > 0)
@@ -890,7 +1041,7 @@ export async function GET(request: NextRequest) {
           title: s.title,
           totalResponses: s.total,
           completedResponses: s.completed,
-          completionRate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0,
+          completionRate: s.total > 0 ? Math.round((s.completed / s.total) * 1000) / 10 : 0,
           avgTime: avgSecs > 0 ? `${m}:${String(sec).padStart(2, "0")}` : "—",
         }
       })
@@ -923,6 +1074,8 @@ export async function GET(request: NextRequest) {
         efectivas,
         incidencias,
         abandonadas,
+        descalificadas,
+        incidenceBreakdown,
         tasaRespuestasEfectivas,
       },
       responses: { questionBreakdowns, filterableQuestions, crosstab },

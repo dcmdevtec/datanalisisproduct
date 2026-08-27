@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { formatPercent } from "@/lib/format"
 import {
   Dialog,
   DialogContent,
@@ -633,7 +634,7 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                             />
                           </div>
                           <span className="text-[10px] font-semibold text-muted-foreground tabular-nums flex-shrink-0">
-                            {Math.round((stats.answered / stats.total) * 100)}%
+                            {formatPercent(Math.round((stats.answered / stats.total) * 1000) / 10)}
                           </span>
                         </div>
                       </div>

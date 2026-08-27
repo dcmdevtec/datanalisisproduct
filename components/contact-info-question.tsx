@@ -362,12 +362,19 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
                   <Select value={addrTipoVia} onValueChange={setAddrTipoVia} disabled={isBlocked}>
                     <SelectTrigger id="addr-tipo" className="h-9 text-sm w-full"><SelectValue placeholder="Tipo..." /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="Avenida">Avenida</SelectItem>
+                      <SelectItem value="Avenida Calle">Avenida Calle</SelectItem>
+                      <SelectItem value="Avenida Carrera">Avenida Carrera</SelectItem>
                       <SelectItem value="Calle">Calle</SelectItem>
                       <SelectItem value="Carrera">Carrera</SelectItem>
+                      <SelectItem value="Circular">Circular</SelectItem>
                       <SelectItem value="Diagonal">Diagonal</SelectItem>
                       <SelectItem value="Transversal">Transversal</SelectItem>
-                      <SelectItem value="Avenida">Avenida</SelectItem>
-                      <SelectItem value="Circular">Circular</SelectItem>
+                      <SelectItem value="Autopista">Autopista</SelectItem>
+                      <SelectItem value="Kilómetro">Kilómetro</SelectItem>
+                      <SelectItem value="Circunvalar">Circunvalar</SelectItem>
+                      <SelectItem value="Manzana">Manzana</SelectItem>
+                      <SelectItem value="Apartado Aéreo">Apartado Aéreo</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

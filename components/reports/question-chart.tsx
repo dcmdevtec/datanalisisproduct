@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area,
 } from "recharts"
+import { formatPercent } from "@/lib/format"
 
 export type ChartType = "pie" | "donut" | "barsV" | "barsH" | "trend"
 
@@ -71,7 +72,7 @@ function PieOrDonut({
       <div style={tooltipStyle} className="px-3 py-2 shadow-lg">
         <p className="font-semibold mb-0.5">{d.label}</p>
         <p className="text-muted-foreground">
-          {d.count} respuestas — <span className="font-semibold text-foreground">{d.percentage}%</span>
+          {d.count} respuestas — <span className="font-semibold text-foreground">{formatPercent(d.percentage)}</span>
         </p>
       </div>
     )
@@ -133,12 +134,20 @@ function PieOrDonut({
       </div>
 
       {showLabels && (
-        <div className={`grid ${distribution.length > 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-x-6 gap-y-1.5 w-full max-w-md`}>
+        // data-html2canvas-ignore: ni flexbox ni <table> lograron que
+        // html2canvas (usado para exportar a PDF) midiera bien este texto —
+        // el punto de color quedaba superpuesto con la primera letra
+        // ("Efectivas" salía como "Ffectivas") sin importar el layout CSS.
+        // En vez de seguir peleando con el motor de captura, se le dice que
+        // ignore este nodo por completo al exportar; export-report.ts dibuja
+        // la leyenda con texto real de jsPDF a partir de data-export-legend
+        // (ver components/reports/summary-content.tsx), nítido siempre.
+        <div className={`grid ${distribution.length > 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-x-6 gap-y-1.5 w-full max-w-md`} data-html2canvas-ignore="true">
           {distribution.map((d, i) => (
             <div key={i} className="flex items-center gap-2 text-sm min-w-0">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: palette[i % palette.length] }} />
               <span className="flex-1 text-muted-foreground truncate" title={d.label}>{d.label}</span>
-              <span className="font-medium whitespace-nowrap flex-shrink-0">{d.count} ({d.percentage}%)</span>
+              <span className="font-medium whitespace-nowrap flex-shrink-0">{d.count} ({formatPercent(d.percentage)})</span>
             </div>
           ))}
         </div>
@@ -156,7 +165,7 @@ function BarsVertical({ distribution, showLabels, palette }: { distribution: Dis
         <p className="font-semibold mb-0.5 max-w-[200px] truncate">{label}</p>
         <p className="text-muted-foreground">
           {payload[0].value} respuestas
-          {item ? ` — ${item.percentage}%` : ""}
+          {item ? ` — ${formatPercent(item.percentage)}` : ""}
         </p>
       </div>
     )
@@ -194,7 +203,7 @@ function BarsHorizontal({ distribution, showLabels, palette }: { distribution: D
         <p className="font-semibold mb-0.5 max-w-[200px] truncate">{label}</p>
         <p className="text-muted-foreground">
           {payload[0].value} respuestas
-          {item ? ` — ${item.percentage}%` : ""}
+          {item ? ` — ${formatPercent(item.percentage)}` : ""}
         </p>
       </div>
     )

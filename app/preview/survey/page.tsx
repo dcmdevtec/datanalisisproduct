@@ -222,6 +222,9 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   const [inferredSurveyId, setInferredSurveyId] = useState<string | null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(true)
   const [showFinishedDialog, setShowFinishedDialog] = useState(false)
+  // true cuando el cierre vino de un salto "Descalificar y terminar" (DISQUALIFY)
+  // — el diálogo de fin muestra un mensaje distinto al de "gracias por participar".
+  const [isDisqualified, setIsDisqualified] = useState(false)
   const [docType, setDocType] = useState("")
   const [docNumber, setDocNumber] = useState("")
   const [fullName, setFullName] = useState("")
@@ -973,7 +976,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   }, [currentSection, answers, shouldShowQuestion])
 
   // Submit responses helper: includes respondent_public_id and document fields if available
-  const submitResponses = useCallback(async () => {
+  const submitResponses = useCallback(async (outcomeOverride?: "descalificado") => {
     if (!surveyData) return
     // Guardia de reentrada: si ya hay un envío en curso, ignora llamadas
     // adicionales (doble tap, doble disparo del handler, etc.) en vez de
@@ -1099,6 +1102,11 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       // reintentos/doble envío del mismo formulario y devolver la respuesta
       // ya creada en vez de insertar una fila duplicada.
       client_submission_id: submissionTokenRef.current,
+      // "descalificado" viene del salto de lógica "Descalificar y terminar"
+      // (ver DISQUALIFY en advanced-question-config.tsx) — sin esto, /api/responses
+      // clasifica todo envío sin outcome explícito como "efectiva" por defecto,
+      // lo cual sería incorrecto para un encuestado que no cumplió el filtro.
+      ...(outcomeOverride ? { outcome: outcomeOverride } : {}),
     }
 
     // Portal de encuestador: liga la respuesta al assignment (zona/encuestador)
@@ -1403,6 +1411,23 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     setSubmissionStatus("error")
                   }
                   return // Salir después de finalizar
+                }
+
+                // "Descalificar y terminar": el encuestado no cumple un filtro
+                // (ej. edad mínima) — termina la encuesta como las demás, pero
+                // se envía con outcome="descalificado" (no "efectiva") y se le
+                // muestra un mensaje distinto ("Encuestado descalificado").
+                if (rule.targetSectionId === "DISQUALIFY") {
+                  setSubmissionStatus("idle")
+                  const ok = await submitResponses("descalificado")
+                  if (ok) {
+                    setSubmissionStatus("success")
+                    setIsDisqualified(true)
+                    setShowFinishedDialog(true)
+                  } else {
+                    setSubmissionStatus("error")
+                  }
+                  return
                 }
 
                 // Si hay una sección objetivo, calcular el índice
@@ -3713,20 +3738,28 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       </Card>
 
       {/* Finished dialog shown after successful submission */}
-      <Dialog open={showFinishedDialog} onOpenChange={(open) => setShowFinishedDialog(open)}>
+      <Dialog open={showFinishedDialog} onOpenChange={(open) => { setShowFinishedDialog(open); if (!open) setIsDisqualified(false) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Encuesta finalizada</DialogTitle>
-            <DialogDescription className="text-base">La encuesta fue enviada correctamente. ¿Deseas iniciar otra?</DialogDescription>
+            <DialogTitle>{isDisqualified ? "Encuestado descalificado" : "Encuesta finalizada"}</DialogTitle>
+            <DialogDescription className="text-base">
+              {isDisqualified
+                ? "Gracias por tu tiempo. Según tus respuestas, no cumples con los criterios requeridos para esta encuesta."
+                : "La encuesta fue enviada correctamente. ¿Deseas iniciar otra?"}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 flex justify-end gap-3">
-            <Button variant="outline" onClick={() => {
-              // go back to start without clearing (close dialog)
-              setShowFinishedDialog(false)
-              setCurrentSectionIndex(0)
-            }}>Ver respuestas</Button>
-            <Button onClick={() => clearAndResetSurvey()}>Iniciar otra</Button>
+            {!isDisqualified && (
+              <Button variant="outline" onClick={() => {
+                // go back to start without clearing (close dialog)
+                setShowFinishedDialog(false)
+                setCurrentSectionIndex(0)
+              }}>Ver respuestas</Button>
+            )}
+            <Button onClick={() => { setIsDisqualified(false); clearAndResetSurvey() }}>
+              {isDisqualified ? "Cerrar" : "Iniciar otra"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

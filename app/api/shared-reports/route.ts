@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
 
     const body = await request.json()
-    const { surveyId, config, customTitle, password } = body
+    const { surveyId, config, customTitle, imageUrl, password } = body
 
     if (!surveyId || surveyId === "all") {
       return NextResponse.json(
@@ -43,6 +43,10 @@ export async function POST(request: NextRequest) {
       surveyTitle: survey?.title ?? "Encuesta",
       surveyDescription: survey?.description ?? "",
       customTitle: customTitle?.trim() || null,
+      // Imagen de rich preview (Open Graph) — se sube antes a
+      // /api/shared-reports/upload-image (bucket público "share-previews")
+      // y acá solo se guarda la URL resultante.
+      imageUrl: typeof imageUrl === "string" && imageUrl.trim() ? imageUrl.trim() : null,
       passwordHash: password?.trim() ? hashPassword(password.trim()) : null,
     }
 

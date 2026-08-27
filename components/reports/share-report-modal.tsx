@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ChangeEvent } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Loader2, Copy, Check, ExternalLink, AlertCircle,
   Globe, BarChart3, Users, ListChecks, Clock, Lock, Tag,
+  Image as ImageIcon, X,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -59,6 +60,8 @@ export function ShareReportModal({
   const [customTitle, setCustomTitle] = useState("")
   const [password, setPassword]     = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   // null = todas las preguntas seleccionadas
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null)
@@ -94,16 +97,44 @@ export function ShareReportModal({
   const nothingSelected =
     !sections.resumen && !sections.analisis && !sections.rendimiento
 
+  const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/shared-reports/upload-image", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "No se pudo subir la imagen", description: data.error || "Intenta de nuevo.", variant: "destructive" })
+        return
+      }
+      setPreviewImageUrl(data.url)
+    } catch {
+      toast({ title: "Error de conexión", description: "No se pudo subir la imagen.", variant: "destructive" })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   const handleGenerate = async () => {
     if (noSurveySelected) return
     setGenerating(true)
     setGeneratedLink(null)
     try {
+      // "null" acá dentro del modal significa "todas las de `questions`" (el
+      // set con el que se abrió el modal — ya viene acotado por el padre a lo
+      // que el usuario armó en "Análisis de resultados"). Server-side, en
+      // cambio, questionIds=null significa "sin restricción: todas las
+      // preguntas de la encuesta" — enviar null ahí ignoraba la selección
+      // guardada y el link compartido mostraba TODO. Se manda siempre la
+      // lista explícita de `questions` (o el subset marcado) para que ambos
+      // lados coincidan.
       const questionIds =
         sections.analisis
-          ? selectedIds === null
-            ? null
-            : [...selectedIds]
+          ? (selectedIds === null ? questions.map((q) => q.questionId) : [...selectedIds])
           : null
 
       const res = await fetch("/api/shared-reports", {
@@ -114,6 +145,7 @@ export function ShareReportModal({
           config: { filters: currentFilters, sections, questionIds },
           expiryDays: expiry === "never" ? null : parseInt(expiry),
           customTitle: customTitle.trim() || null,
+          imageUrl: previewImageUrl,
           password: password.trim() || null,
         }),
       })
@@ -144,7 +176,7 @@ export function ShareReportModal({
   }
 
   const handleClose = (v: boolean) => {
-    if (!v) { setGeneratedLink(null); setCopied(false) }
+    if (!v) { setGeneratedLink(null); setCopied(false); setPreviewImageUrl(null); setCustomTitle("") }
     onOpenChange(v)
   }
 
@@ -294,6 +326,43 @@ export function ShareReportModal({
               placeholder="Ej: Resultados Q3 2026 — Equipo Norte"
               className="text-sm"
             />
+          </div>
+
+          {/* ── Imagen de vista previa (rich preview / Open Graph) ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <ImageIcon className="h-3.5 w-3.5" /> Imagen de vista previa (opcional)
+            </p>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Se muestra junto con el título cuando alguien pega el link en WhatsApp, Slack, etc.
+            </p>
+            <div className="flex items-center gap-3">
+              {previewImageUrl ? (
+                <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={previewImageUrl} alt="" className="h-16 w-28 object-cover rounded-lg border" />
+                  <button
+                    onClick={() => setPreviewImageUrl(null)}
+                    className="absolute -top-1.5 -right-1.5 bg-background border rounded-full p-0.5 shadow-sm hover:bg-muted"
+                    title="Quitar imagen"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 border border-dashed rounded-lg px-3 py-2 text-xs text-muted-foreground cursor-pointer hover:bg-muted/40 transition-colors">
+                  {uploadingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                  {uploadingImage ? "Subiendo..." : "Elegir imagen (JPG/PNG, máx 5MB)"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    disabled={uploadingImage}
+                    onChange={handleImageSelect}
+                  />
+                </label>
+              )}
+            </div>
           </div>
 
           {/* ── Contraseña ── */}

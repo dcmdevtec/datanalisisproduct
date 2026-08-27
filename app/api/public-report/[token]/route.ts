@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { createHash } from "crypto"
+import { resolveOutcome } from "@/lib/report-outcome"
 
 function hashPassword(pw: string): string {
   return createHash("sha256").update(pw).digest("hex")
@@ -33,11 +34,6 @@ function extractNumeric(val: any): number | null {
     if (val.score !== undefined) return extractNumeric(val.score)
   }
   return null
-}
-
-function resolveOutcome(r: { outcome?: string | null; status?: string | null }) {
-  if (r.outcome === "efectiva" || r.outcome === "incidencia" || r.outcome === "abandonada") return r.outcome
-  return r.status === "completed" ? "efectiva" : "abandonada"
 }
 
 // ─── GET /api/public-report/[token] — sin autenticación ──────────────────────
@@ -88,9 +84,28 @@ export async function GET(
   // 2. Metadata de la encuesta
   const { data: survey } = await admin
     .from("surveys")
-    .select("id, title, description, logo, project_id, projects(logo, companies(logo))")
+    .select("id, title, description, logo, project_id, settings, projects(logo, companies(logo))")
     .eq("id", surveyId)
     .maybeSingle()
+
+  // Orden por pregunta elegido en la tabla de "Análisis de resultados" (ver
+  // components/reports/question-card.tsx) — se guarda en surveys.settings
+  // para que el link compartido muestre las gráficas en el MISMO orden que
+  // dejó armado el admin, no siempre el default (descendente por cantidad).
+  const questionSortConfig: Record<string, { key: "label" | "count" | "percentage"; dir: "asc" | "desc" }> =
+    (survey as any)?.settings?.reportQuestionSort && typeof (survey as any).settings.reportQuestionSort === "object"
+      ? (survey as any).settings.reportQuestionSort
+      : {}
+
+  // Tipo de gráfica elegido por pregunta en "Análisis de resultados" (ej.
+  // "Barras horizontales" en vez del pie/bar por defecto que ResultsClient
+  // decidía solo por cantidad de opciones) — mismo criterio que
+  // questionSortConfig arriba, para que "Compartir link" muestre la misma
+  // gráfica que dejó armada el admin.
+  const questionChartSettings: Record<string, { chartType?: string }> =
+    (survey as any)?.settings?.reportQuestionChartSettings && typeof (survey as any).settings.reportQuestionChartSettings === "object"
+      ? (survey as any).settings.reportQuestionChartSettings
+      : {}
 
   // Logo para el header del reporte compartido: prioriza el logo propio de la
   // encuesta, luego el del proyecto, luego el de la empresa — así el cliente
@@ -142,7 +157,7 @@ export async function GET(
   // 5. Summary stats
   const totalResponses = responses.length
   const completedResponses = responses.filter((r: any) => r.status === "completed").length
-  const completionRate = totalResponses > 0 ? Math.round((completedResponses / totalResponses) * 100) : 0
+  const completionRate = totalResponses > 0 ? Math.round((completedResponses / totalResponses) * 1000) / 10 : 0
 
   let efectivas = 0, incidencias = 0, abandonadas = 0
   for (const r of responses) {
@@ -151,7 +166,7 @@ export async function GET(
     else if (outcome === "incidencia") incidencias++
     else abandonadas++
   }
-  const tasaRespuestasEfectivas = totalResponses > 0 ? Math.round((efectivas / totalResponses) * 100) : 0
+  const tasaRespuestasEfectivas = totalResponses > 0 ? Math.round((efectivas / totalResponses) * 1000) / 10 : 0
 
   const timeDiffs: number[] = []
   for (const r of responses) {
@@ -176,7 +191,7 @@ export async function GET(
       if (val >= 9) promoters++
       else if (val <= 6) detractors++
     }
-    if (total > 0) nps = Math.round(((promoters - detractors) / total) * 100)
+    if (total > 0) nps = Math.round(((promoters - detractors) / total) * 1000) / 10
   }
 
   // Timeline
@@ -281,10 +296,18 @@ export async function GET(
         const vals = Array.isArray(extracted) ? extracted : [extracted]
         for (const v of vals) { if (v !== "") counts[v] = (counts[v] || 0) + 1 }
       }
-      const choices = Object.entries(counts)
-        .map(([label, count]) => ({ label, count, percentage: totalAnswered > 0 ? Math.round((count / totalAnswered) * 100) : 0 }))
+      let choices = Object.entries(counts)
+        .map(([label, count]) => ({ label, count, percentage: totalAnswered > 0 ? Math.round((count / totalAnswered) * 1000) / 10 : 0 }))
         .sort((a, b) => b.count - a.count)
-      return { questionId: qId, text, type, totalAnswered, choices, numericStats: null, textAnswers: [] }
+      const customSort = questionSortConfig[qId]
+      if (customSort) {
+        choices = [...choices].sort((a, b) => {
+          if (customSort.key === "label") return a.label.localeCompare(b.label)
+          return (a[customSort.key] as number) - (b[customSort.key] as number)
+        })
+        if (customSort.dir === "desc") choices.reverse()
+      }
+      return { questionId: qId, text, type, totalAnswered, choices, numericStats: null, textAnswers: [], chartType: questionChartSettings[qId]?.chartType ?? null }
     }
 
     if (["rating", "nps", "likert", "scale"].includes(type)) {
@@ -297,7 +320,7 @@ export async function GET(
       const dist: Record<number, number> = {}
       for (const n of nums) dist[n] = (dist[n] || 0) + 1
       const distribution = Object.entries(dist)
-        .map(([value, count]) => ({ value: Number(value), count, percentage: nums.length > 0 ? Math.round((count / nums.length) * 100) : 0 }))
+        .map(([value, count]) => ({ value: Number(value), count, percentage: nums.length > 0 ? Math.round((count / nums.length) * 1000) / 10 : 0 }))
         .sort((a, b) => a.value - b.value)
       return { questionId: qId, text, type, totalAnswered, choices: [], numericStats: { avg, min, max, median, distribution }, textAnswers: [] }
     }
@@ -339,8 +362,8 @@ export async function GET(
     }
     surveyorPerformance = Object.values(surveyorMap).map((s) => ({
       ...s,
-      tasaRespuestas: s.totalRegistros > 0 ? Math.round((s.efectivas / s.totalRegistros) * 100) : 0,
-      completionRate: s.totalRegistros > 0 ? Math.round((s.efectivas / s.totalRegistros) * 100) : 0,
+      tasaRespuestas: s.totalRegistros > 0 ? Math.round((s.efectivas / s.totalRegistros) * 1000) / 10 : 0,
+      completionRate: s.totalRegistros > 0 ? Math.round((s.efectivas / s.totalRegistros) * 1000) / 10 : 0,
     })).sort((a, b) => b.efectivas - a.efectivas)
   }
 
@@ -350,6 +373,9 @@ export async function GET(
       surveyTitle: survey?.title || config.surveyTitle || "Encuesta",
       surveyDescription: survey?.description || config.surveyDescription || "",
       brandLogo,
+      // Imagen de rich preview (Open Graph) adjuntada al compartir — ver
+      // app/results/[token]/page.tsx (generateMetadata) para dónde se usa.
+      imageUrl: config.imageUrl || null,
       sections,
       expiresAt: share.expires_at,
     },

@@ -27,6 +27,8 @@ export interface ReportData {
     efectivas: number
     incidencias: number
     abandonadas: number
+    descalificadas: number
+    incidenceBreakdown?: { type: string; label: string; count: number }[]
     tasaRespuestasEfectivas: number
   }
   responses: {
@@ -89,12 +91,16 @@ export interface ReportData {
       completionRate: number
     }[]
     responsePoints: {
+      id?: string
       lat: number
       lng: number
       status: string
-      outcome?: "efectiva" | "incidencia" | "abandonada" | null
+      outcome?: "efectiva" | "incidencia" | "abandonada" | "descalificado" | null
       createdAt: string
       surveyorName?: string | null
+      surveyorId?: string | null
+      startedAt?: string | null
+      completedAt?: string | null
       respondentName?: string | null
       durationSecs?: number | null
       source?: string

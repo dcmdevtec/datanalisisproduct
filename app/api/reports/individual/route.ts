@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
+import { resolveOutcome } from "@/lib/report-outcome"
 
 // Lista paginada de respuestas individuales (pptx slide 22: "Respuestas Individuales").
 // Reutiliza exactamente los mismos filtros globales del módulo de Reportes
 // (empresa/proyecto/encuesta/encuestador/tipo/rango de fechas) para que la
 // pestaña quede consistente con el resto de pestañas.
-function resolveOutcome(r: { outcome?: string | null; status?: string | null }): "efectiva" | "incidencia" | "abandonada" {
-  if (r.outcome === "efectiva" || r.outcome === "incidencia" || r.outcome === "abandonada") return r.outcome
-  return r.status === "completed" ? "efectiva" : "abandonada"
-}
-
 // SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol —
 // exponía nombre/documento/respuestas individuales de respondentes a
 // cualquier usuario autenticado, incl. encuestadores.
@@ -99,7 +95,7 @@ export async function GET(request: NextRequest) {
     let query = admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, metadata, surveys(title)",
+        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, surveys(title)",
         { count: "exact" }
       )
     if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
@@ -197,8 +193,42 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Lookup 3: encuestadores por respondent_id (web autenticada sin
+    // assignment ni metadata.surveyor_id — ej. app/surveys/[id]/collect). Se
+    // resuelve igual que resolveCurrentSurveyor(): 1) surveyors.user_id =
+    // respondent_id, 2) fallback surveyors.id = respondent_id.
+    const surveyorInfoByRespondentId: Record<string, { name: string | null; email: string | null }> = {}
+    const respondentIdsNeedingSurveyor = [
+      ...new Set(
+        rawData
+          .filter((r: any) => !r.assignment_id && !r.metadata?.surveyor_id && r.respondent_id)
+          .map((r: any) => r.respondent_id as string)
+      )
+    ]
+    if (respondentIdsNeedingSurveyor.length > 0) {
+      const { data: byUserId } = await (admin as any)
+        .from("surveyors")
+        .select("id, user_id, name, email")
+        .in("user_id", respondentIdsNeedingSurveyor)
+      const resolvedIds = new Set<string>()
+      for (const s of (byUserId as any[]) || []) {
+        surveyorInfoByRespondentId[s.user_id] = { name: s.name ?? null, email: s.email ?? null }
+        resolvedIds.add(s.user_id)
+      }
+      const remaining = respondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
+      if (remaining.length > 0) {
+        const { data: byLegacyId } = await (admin as any)
+          .from("surveyors")
+          .select("id, name, email")
+          .in("id", remaining)
+        for (const s of (byLegacyId as any[]) || []) {
+          surveyorInfoByRespondentId[s.id] = { name: s.name ?? null, email: s.email ?? null }
+        }
+      }
+    }
+
     return NextResponse.json({
-      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId)),
+      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId, surveyorInfoByRespondentId)),
       total: totalCount,
       page,
       pageSize,
@@ -212,7 +242,8 @@ export async function GET(request: NextRequest) {
 function mapListItem(
   r: any,
   surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {},
-  surveyorInfoBySurveyorId:  Record<string, { name: string | null; email: string | null }> = {}
+  surveyorInfoBySurveyorId:  Record<string, { name: string | null; email: string | null }> = {},
+  surveyorInfoByRespondentId: Record<string, { name: string | null; email: string | null }> = {}
 ) {
   // started_at = inicio real de la respuesta. created_at/completed_at se
   // setean casi al mismo tiempo (al enviar), por eso no sirven para medir
@@ -221,13 +252,17 @@ function mapListItem(
     ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.started_at).getTime()) / 1000))
     : null
 
-  // Encuestador: 1) asignación de zona (portal web), 2) metadata.surveyor_id (APK)
+  // Encuestador: 1) asignación de zona (portal web), 2) metadata.surveyor_id
+  // (APK), 3) respondent_id (web autenticada sin asignación, ej. .../collect)
   let surveyorInfo: { name: string | null; email: string | null } | null = null
   if (r.assignment_id) {
     surveyorInfo = surveyorInfoByAssignmentId[r.assignment_id] ?? null
   }
   if (!surveyorInfo?.name && r.metadata?.surveyor_id) {
     surveyorInfo = surveyorInfoBySurveyorId[r.metadata.surveyor_id] ?? null
+  }
+  if (!surveyorInfo?.name && r.respondent_id) {
+    surveyorInfo = surveyorInfoByRespondentId[r.respondent_id] ?? null
   }
 
   // Nombre del encuestado: 1) columna respondent_name (portal web),

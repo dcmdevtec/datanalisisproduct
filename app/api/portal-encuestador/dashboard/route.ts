@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
+import { resolveOutcome } from "@/lib/report-outcome"
 
 // Indicadores de la pantalla principal del portal (pptx slide 2):
 // Total Registros, Encuestas Efectivas, Incidencias, Encuestas Abandonadas,
 // última fecha de actualización, con filtro de rango de fechas.
-function resolveOutcome(r: { outcome?: string | null; status?: string | null }): "efectiva" | "incidencia" | "abandonada" {
-  if (r.outcome === "efectiva" || r.outcome === "incidencia" || r.outcome === "abandonada") return r.outcome
-  return r.status === "completed" ? "efectiva" : "abandonada"
-}
-
 export async function GET(request: NextRequest) {
   try {
     const surveyor = await resolveCurrentSurveyor()

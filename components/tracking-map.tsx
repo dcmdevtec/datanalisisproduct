@@ -6,7 +6,7 @@ import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MapPin, Battery, BatteryLow, BatteryCharging, Clock, Phone, Mail } from "lucide-react"
+import { MapPin, Battery, BatteryLow, BatteryCharging, Clock, Phone, Mail, Maximize2, Minimize2 } from "lucide-react"
 
 // Tipos
 interface SurveyorLocation {
@@ -140,6 +140,20 @@ const formatMinutesAgo = (minutes: number | null): string => {
   return `hace ${days} ${days === 1 ? "día" : "días"}`
 }
 
+// Leaflet no detecta que el contenedor cambió de tamaño al entrar/salir de
+// pantalla completa (mismo problema que components/reports-geo-map.tsx) —
+// hay que forzar el recálculo manualmente.
+function InvalidateSizeOnFullscreenChange({ isFullscreen }: { isFullscreen: boolean }) {
+  const map = useMap()
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { map.invalidateSize() } catch { }
+    }, 50)
+    return () => clearTimeout(t)
+  }, [isFullscreen, map])
+  return null
+}
+
 // Componente para centrar el mapa en el encuestador seleccionado
 function SelectedSurveyorController({ surveyor }: { surveyor: SurveyorLocation | null }) {
   const map = useMap()
@@ -210,6 +224,17 @@ export default function TrackingMap({
   const defaultCenter: [number, number] = [10.9639, -74.7964]
   const defaultZoom = 13
 
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Permite cerrar pantalla completa con la tecla Escape (mismo criterio que
+  // components/reports-geo-map.tsx).
+  useEffect(() => {
+    if (!isFullscreen) return
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") setIsFullscreen(false) }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isFullscreen])
+
   // Obtener color según estado
   const getMarkerColor = (surveyor: SurveyorLocation) => {
     if (surveyor.status === "offline") return "gray"
@@ -223,7 +248,13 @@ export default function TrackingMap({
   const selectedSurveyor = surveyorsWithLocation.find((s) => s.id === selectedSurveyorId)
 
   return (
-    <div className="relative h-full w-full rounded-lg overflow-hidden z-0">
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[2000] rounded-none overflow-hidden"
+          : "relative h-full w-full rounded-lg overflow-hidden z-0"
+      }
+    >
       <MapContainer
         center={defaultCenter}
         zoom={defaultZoom}
@@ -238,6 +269,7 @@ export default function TrackingMap({
         {/* Controladores del mapa */}
         <MapController centerOnZone={centerOnZone} zones={zones} />
         <SelectedSurveyorController surveyor={selectedSurveyor || null} />
+        <InvalidateSizeOnFullscreenChange isFullscreen={isFullscreen} />
 
         {/* Renderizar zonas */}
         {zones.map((zone) => (
@@ -354,8 +386,17 @@ export default function TrackingMap({
         </div>
       </div>
 
+      {/* Pantalla completa */}
+      <button
+        onClick={() => setIsFullscreen((v) => !v)}
+        className="absolute top-4 right-4 z-[1000] flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg border bg-white/95 backdrop-blur-sm border-gray-200 text-gray-700 hover:bg-white transition-all"
+      >
+        {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+        {isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+      </button>
+
       {/* Contador */}
-      <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 z-[1000]">
+      <div className="absolute top-16 right-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 z-[1000]">
         <div className="text-xs text-muted-foreground">Encuestadores visibles</div>
         <div className="text-2xl font-bold">{surveyorsWithLocation.length}</div>
       </div>

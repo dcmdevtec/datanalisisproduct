@@ -83,6 +83,8 @@
     "html2canvas": "^1.4.1",
     "iconv-lite": "^0.6.3",
     "input-otp": "1.4.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "leaflet-geosearch": "^4.2.0",

@@ -19,13 +19,15 @@ import {
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Combobox } from "@/components/ui/combobox"
-import { exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
+import { exportSummary, exportResponses, exportPerformance, exportGeographic } from "@/app/lib/export-report"
+import { SummaryContent } from "@/components/reports/summary-content"
 import { QuestionChart, type ChartType } from "@/components/reports/question-chart"
 import { QuestionCard } from "@/components/reports/question-card"
 import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
 import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
 import { ShareReportModal } from "@/components/reports/share-report-modal"
 import type { ReportData } from "./shared"
+import { formatPercent } from "@/lib/format"
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as ReTooltip, ResponsiveContainer, Cell,
@@ -69,6 +71,11 @@ function ReportsPageContent() {
   // mano con el buscador y esa selección se guarda en surveys.settings, así
   // no hay que re-elegir preguntas cada vez que se abre "Compartir link".
   const [reportQuestionIds, setReportQuestionIds] = useState<string[]>([])
+  // Orden elegido en la tabla de cada pregunta (ver QuestionCard) — se guarda
+  // junto con reportQuestionIds para que "Compartir link" muestre las
+  // gráficas en el MISMO orden que dejó armado el admin, no en el orden por
+  // defecto (descendente por cantidad) que usa el servidor.
+  const [questionSortConfig, setQuestionSortConfig] = useState<Record<string, { key: "label" | "count" | "percentage"; dir: "asc" | "desc" }>>({})
   const surveySettingsRef = useRef<Record<string, any>>({})
   const reportQuestionIdsLoadedForRef = useRef<string | null>(null)
   // Panel de herramientas avanzadas (filtro + tabla cruzada) — colapsable
@@ -105,6 +112,8 @@ function ReportsPageContent() {
   useEffect(() => {
     if (selectedSurvey === "all") {
       setReportQuestionIds([])
+      setQuestionSortConfig({})
+      setQuestionSettings({})
       surveySettingsRef.current = {}
       reportQuestionIdsLoadedForRef.current = null
       return
@@ -117,17 +126,26 @@ function ReportsPageContent() {
         const survey = await res.json()
         surveySettingsRef.current = survey?.settings || {}
         setReportQuestionIds(Array.isArray(survey?.settings?.reportAnalysisQuestionIds) ? survey.settings.reportAnalysisQuestionIds : [])
+        setQuestionSortConfig(survey?.settings?.reportQuestionSort && typeof survey.settings.reportQuestionSort === "object" ? survey.settings.reportQuestionSort : {})
+        // Tipo de gráfica elegido por pregunta (ej. "Barras horizontales" en
+        // vez del "Torta" por defecto) — sin esto, "Compartir link" siempre
+        // mostraba el gráfico por defecto (por cantidad de opciones) sin
+        // importar lo que el admin eligió acá.
+        setQuestionSettings(survey?.settings?.reportQuestionChartSettings && typeof survey.settings.reportQuestionChartSettings === "object" ? survey.settings.reportQuestionChartSettings : {})
       } catch {
         // Si falla la carga, arranca vacío en vez de trabar el tab.
         setReportQuestionIds([])
+        setQuestionSortConfig({})
+        setQuestionSettings({})
       } finally {
         reportQuestionIdsLoadedForRef.current = selectedSurvey
       }
     })()
   }, [selectedSurvey])
 
-  // Guarda la selección (debounced) — solo después de haber cargado la
-  // config existente de ESTA encuesta, para no pisarla con [] en el primer render.
+  // Guarda la selección + el orden por pregunta (debounced) — solo después de
+  // haber cargado la config existente de ESTA encuesta, para no pisarla con
+  // [] en el primer render.
   useEffect(() => {
     if (reportQuestionIdsLoadedForRef.current !== selectedSurvey) return
     if (selectedSurvey === "all") return
@@ -137,7 +155,7 @@ function ReportsPageContent() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            settings: { ...surveySettingsRef.current, reportAnalysisQuestionIds: reportQuestionIds },
+            settings: { ...surveySettingsRef.current, reportAnalysisQuestionIds: reportQuestionIds, reportQuestionSort: questionSortConfig, reportQuestionChartSettings: questionSettings },
           }),
         })
       } catch {
@@ -146,7 +164,7 @@ function ReportsPageContent() {
     }, 800)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportQuestionIds, selectedSurvey])
+  }, [reportQuestionIds, questionSortConfig, questionSettings, selectedSurvey])
 
   // Reset cascading filters when parent changes
   const handleCompanyChange = (v: string) => {
@@ -233,6 +251,9 @@ function ReportsPageContent() {
     try {
       const periodLabel = dateFrom || dateTo ? `${dateFrom || "inicio"}_a_${dateTo || "hoy"}` : "todo"
       switch (tab) {
+        case "summary":
+          await exportSummary(data, periodLabel)
+          break
         case "responses":
           await exportResponses(data, periodLabel)
           break
@@ -314,59 +335,72 @@ function ReportsPageContent() {
     completionRate: s.completionRate,
   }))
 
+  // Si se llegó desde "Ver reporte" de una encuesta puntual (?survey=<id>),
+  // ya está decidida — no mostrar los filtros de Empresa/Proyecto/Encuesta, y
+  // el nombre de esa encuesta pasa a ser el encabezado principal de TODA la
+  // página (las 5 pestañas), no solo de una tabla puntual.
+  const isScoped = !!searchParams.get("survey")
+  const scopedSurveyTitle = isScoped ? data?.surveys?.find((s) => s.id === selectedSurvey)?.title : null
+
   return (
     <DashboardLayout>
       <div className="p-6">
         <div className="flex flex-col gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold">Reportes y Análisis</h1>
-            <p className="text-muted-foreground">Visualiza y analiza los datos recopilados</p>
+            <h1 className="text-3xl font-bold">{scopedSurveyTitle || "Reportes y Análisis"}</h1>
+            <p className="text-muted-foreground">
+              {isScoped ? "Reportes de esta encuesta" : "Visualiza y analiza los datos recopilados"}
+            </p>
           </div>
 
           {/* ── Filtros globales (pptx slide 19): aplican a las 5 pestañas ── */}
           <div className="flex flex-col sm:flex-row gap-2 flex-wrap items-end">
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">Empresa</Label>
-              <Select value={selectedCompany} onValueChange={handleCompanyChange}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las empresas</SelectItem>
-                  {data?.companies?.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">Proyecto</Label>
-              <Select value={selectedProject} onValueChange={handleProjectChange}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Proyecto" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los proyectos</SelectItem>
-                  {filteredProjects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">Encuesta</Label>
-              <Select value={selectedSurvey} onValueChange={setSelectedSurvey}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Encuesta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las encuestas</SelectItem>
-                  {filteredSurveys.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {!isScoped && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Empresa</Label>
+                  <Select value={selectedCompany} onValueChange={handleCompanyChange}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue placeholder="Empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las empresas</SelectItem>
+                      {data?.companies?.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Proyecto</Label>
+                  <Select value={selectedProject} onValueChange={handleProjectChange}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue placeholder="Proyecto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los proyectos</SelectItem>
+                      {filteredProjects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Encuesta</Label>
+                  <Select value={selectedSurvey} onValueChange={setSelectedSurvey}>
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <SelectValue placeholder="Encuesta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las encuestas</SelectItem>
+                      {filteredSurveys.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Encuestador</Label>
               <Select value={selectedSurveyor} onValueChange={setSelectedSurveyor}>
@@ -447,13 +481,33 @@ function ReportsPageContent() {
           </p>
         </div>
 
-        <Tabs defaultValue="responses" className="space-y-6">
+        <Tabs defaultValue="summary" className="space-y-6">
           <TabsList className="flex-wrap h-auto">
+            <TabsTrigger value="summary">Resumen</TabsTrigger>
             <TabsTrigger value="responses">Análisis de resultados</TabsTrigger>
             <TabsTrigger value="individual">Respuestas Individuales</TabsTrigger>
             <TabsTrigger value="performance">Rendimiento</TabsTrigger>
             <TabsTrigger value="geographic">Geográfico</TabsTrigger>
           </TabsList>
+
+          {/* ==================== RESUMEN ==================== */}
+          <TabsContent value="summary" className="space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("summary")} disabled={exporting === "summary"}>
+                {exporting === "summary" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting === "summary" ? "Exportando..." : "Descargar PDF"}
+              </Button>
+            </div>
+            {loading ? (
+              <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div id="export-summary">
+                <SummaryContent data={data} />
+              </div>
+            )}
+          </TabsContent>
 
           {/* ==================== ANÁLISIS DE RESULTADOS (antes "Respuestas") ==================== */}
           <TabsContent value="responses" className="space-y-6">
@@ -463,11 +517,7 @@ function ReportsPageContent() {
               </Button>
               <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("responses")} disabled={exporting === "responses"}>
                 {exporting === "responses" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {/* OJO: este export genera un .xlsx real (ExcelJS), no un PDF — el
-                    botón decía "Descargar PDF" pero descargaba Excel, lo cual es
-                    engañoso. Se corrige la etiqueta; generar un PDF de verdad
-                    queda pendiente como pedido aparte. */}
-                {exporting === "responses" ? "Exportando..." : "Descargar Excel"}
+                {exporting === "responses" ? "Exportando..." : "Descargar PDF"}
               </Button>
             </div>
             {loading ? (
@@ -671,6 +721,14 @@ function ReportsPageContent() {
                               onHide={() => setReportQuestionIds((prev) => prev.filter((id) => id !== q.questionId))}
                               hideLabel="Quitar"
                               surveyId={selectedSurvey !== "all" ? selectedSurvey : undefined}
+                              sortConfig={questionSortConfig[q.questionId] ?? null}
+                              onSortChange={(next) => setQuestionSortConfig((prev) => {
+                                if (!next) {
+                                  const { [q.questionId]: _omit, ...rest } = prev
+                                  return rest
+                                }
+                                return { ...prev, [q.questionId]: next }
+                              })}
                             />
                           ))
                         }
@@ -683,16 +741,9 @@ function ReportsPageContent() {
           </TabsContent>
 
           {/* ==================== RESPUESTAS INDIVIDUALES ==================== */}
+          {/* El título de la encuesta ya se muestra como encabezado global de
+              toda la página (arriba, cuando isScoped) — no se repite acá. */}
           <TabsContent value="individual" className="space-y-6">
-            {/* El título de la encuesta va como encabezado de página en vez de
-                columna en la tabla — ya estamos viendo el reporte de esa
-                encuesta puntual, repetirlo por fila era redundante. Solo se
-                muestra cuando el filtro está acotado a una encuesta. */}
-            {selectedSurvey !== "all" && (
-              <h2 className="text-xl font-semibold">
-                {data?.surveys?.find((s) => s.id === selectedSurvey)?.title || "Encuesta"}
-              </h2>
-            )}
             <IndividualResponsesTab filterParams={filterParams} />
           </TabsContent>
 
@@ -701,7 +752,7 @@ function ReportsPageContent() {
             <div className="flex justify-end">
               <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("performance")} disabled={exporting === "performance"}>
                 {exporting === "performance" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exporting === "performance" ? "Exportando..." : "Exportar Rendimiento"}
+                {exporting === "performance" ? "Exportando..." : "Descargar PDF"}
               </Button>
             </div>
             {loading ? (
@@ -737,7 +788,7 @@ function ReportsPageContent() {
                   <Card>
                     <CardContent className="pt-4 px-4 pb-4">
                       <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Tasa Global</p>
-                      <div className="text-3xl font-bold" style={{ color: "#18b0a4" }}>{summary?.tasaRespuestasEfectivas ?? 0}%</div>
+                      <div className="text-3xl font-bold" style={{ color: "#18b0a4" }}>{formatPercent(summary?.tasaRespuestasEfectivas ?? 0)}</div>
                       <p className="text-xs text-muted-foreground mt-1">respuestas efectivas</p>
                     </CardContent>
                   </Card>
@@ -785,7 +836,7 @@ function ReportsPageContent() {
                                     style={{ background: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}
                                   />
                                   <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
-                                    {s.completionRate}%
+                                    {formatPercent(s.completionRate)}
                                   </span>
                                 </span>
                               </div>
@@ -862,7 +913,7 @@ function ReportsPageContent() {
             <div className="flex justify-end">
               <Button variant="outline" size="sm" className="gap-2" onClick={() => handleExport("geographic")} disabled={exporting === "geographic"}>
                 {exporting === "geographic" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exporting === "geographic" ? "Exportando..." : "Exportar Geográfico"}
+                {exporting === "geographic" ? "Exportando..." : "Descargar PDF"}
               </Button>
             </div>
             {loading ? (
@@ -872,6 +923,9 @@ function ReportsPageContent() {
             ) : (
               <div id="export-geographic" className="space-y-6">
                 {/* ── Mapa interactivo ── */}
+                {/* El filtro por color (Incidencias/Efectivas/Abandonadas) y su leyenda
+                    ya viven DENTRO de ReportsGeoMap (esquina superior derecha del mapa
+                    y leyenda inferior izquierda) — no se duplica acá. */}
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -976,7 +1030,7 @@ function ReportsPageContent() {
                                     <div className="text-center">{z.completedCount}</div>
                                     <div className="text-center">
                                       <span className={z.completionRate >= 80 ? "text-green-600 font-medium" : z.completionRate >= 50 ? "text-orange-500 font-medium" : "text-red-500 font-medium"}>
-                                        {z.completionRate}%
+                                        {formatPercent(z.completionRate)}
                                       </span>
                                     </div>
                                   </div>

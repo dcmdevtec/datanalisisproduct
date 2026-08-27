@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       // outcome: clasificación efectiva/incidencia/abandonada (ver sql/2026_07_reports_outcome_and_hierarchy.sql).
       // Ambos opcionales y aditivos — si no vienen, se comporta exactamente igual que antes.
       ...(assignment_id ? { assignment_id } : {}),
-      outcome: outcome === "efectiva" || outcome === "incidencia" || outcome === "abandonada" ? outcome : "efectiva",
+      outcome: ["efectiva", "incidencia", "abandonada", "descalificado"].includes(outcome) ? outcome : "efectiva",
       ...(typeof client_submission_id === "string" && client_submission_id.trim().length > 0
         ? { client_submission_id }
         : {}),

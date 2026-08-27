@@ -8,9 +8,10 @@ import { useState, useEffect } from "react"
 import {
   ChartPie, Disc, BarChart2, AlignLeft, TrendingUp,
   Eye, EyeOff, Table2, ChevronDown, ChevronUp, X,
-  Download, Loader2,
+  Download, Loader2, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react"
 import { QuestionChart, type ChartType, type DistributionItem, type TimelinePoint } from "./question-chart"
+import { formatPercent } from "@/lib/format"
 
 export interface MatrixBreakdown {
   matrixRows: string[]
@@ -47,6 +48,8 @@ const COLOR_PALETTE = [
   "#ef4444", "#10b981", "#f97316", "#ec4899",
 ]
 
+export type QuestionSortConfig = { key: "label" | "count" | "percentage"; dir: "asc" | "desc" } | null
+
 interface QuestionCardProps {
   question: QuestionBreakdown
   index: number
@@ -55,6 +58,12 @@ interface QuestionCardProps {
   onHide: () => void
   hideLabel?: string
   surveyId?: string
+  // Orden de la tabla/gráfica — controlado desde el padre (en vez de estado
+  // local) para poder guardarlo en surveys.settings y que "Compartir link"
+  // lo respete (ver app/api/public-report/[token]/route.ts). Si se omiten,
+  // el componente maneja su propio estado local (uso standalone).
+  sortConfig?: QuestionSortConfig
+  onSortChange?: (next: QuestionSortConfig) => void
 }
 
 // ─── MatrixTable ──────────────────────────────────────────────────────────────
@@ -85,7 +94,7 @@ function MatrixTable({ mb }: { mb: MatrixBreakdown }) {
                   <td className="px-3 py-2 font-medium border border-border">{row}</td>
                   {matrixCols.map((col) => {
                     const cnt = dist[col] || 0
-                    const pct = Math.round((cnt / rowTotal) * 100)
+                    const pct = Math.round((cnt / rowTotal) * 1000) / 10
                     return (
                       <td key={col} className="px-3 py-2 text-center border border-border">
                         {cnt > 0 ? (
@@ -94,7 +103,7 @@ function MatrixTable({ mb }: { mb: MatrixBreakdown }) {
                             <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                               <div className="h-1.5 rounded-full bg-[#18b0a4]" style={{ width: `${pct}%` }} />
                             </div>
-                            <span className="text-xs text-muted-foreground">{pct}%</span>
+                            <span className="text-xs text-muted-foreground">{formatPercent(pct)}</span>
                           </div>
                         ) : (
                           <span className="text-muted-foreground/40">—</span>
@@ -182,7 +191,7 @@ function defaultChartType(questionType: string): ChartType {
   return "barsH"
 }
 
-export function QuestionCard({ question, index, settings, onSettingsChange, onHide, hideLabel, surveyId }: QuestionCardProps) {
+export function QuestionCard({ question, index, settings, onSettingsChange, onHide, hideLabel, surveyId, sortConfig: sortConfigProp, onSortChange }: QuestionCardProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [fileGallery, setFileGallery] = useState<{ url: string; name: string; type?: string }[]>([])
   const [fileLoading, setFileLoading] = useState(false)
@@ -191,6 +200,34 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
   const isMatrixQuestion = question.type === "matrix" && !!question.matrixBreakdown
   const hasDistribution = (question.distribution?.length ?? 0) > 0
   const hasAnswers = question.totalAnswers > 0
+
+  // Orden de la tabla — la gráfica de arriba usa el MISMO arreglo ordenado
+  // (una sola fuente de verdad), así que al ordenar la tabla las barras
+  // también se reacomodan. null = orden original (como llega de la API, ya
+  // viene descendente por cantidad). Controlado desde el padre cuando se
+  // pasan sortConfig/onSortChange (para poder guardarlo y que "Compartir
+  // link" lo respete); si no, usa estado local (uso standalone del componente).
+  const [localSort, setLocalSort] = useState<QuestionSortConfig>(null)
+  const sort = sortConfigProp !== undefined ? sortConfigProp : localSort
+  const setSort = onSortChange ?? setLocalSort
+
+  const sortedDistribution = (() => {
+    const dist = question.distribution ?? []
+    if (!sort) return dist
+    const sorted = [...dist].sort((a, b) => {
+      if (sort.key === "label") return a.label.localeCompare(b.label)
+      return (a[sort.key] as number) - (b[sort.key] as number)
+    })
+    return sort.dir === "asc" ? sorted : sorted.reverse()
+  })()
+  const toggleSort = (key: "label" | "count" | "percentage") => {
+    if (sort?.key !== key) { setSort({ key, dir: key === "label" ? "asc" : "desc" }); return }
+    setSort({ key, dir: sort.dir === "asc" ? "desc" : "asc" })
+  }
+  const sortIcon = (key: "label" | "count" | "percentage") => {
+    if (sort?.key !== key) return <ArrowUpDown className="h-3 w-3 opacity-40" />
+    return sort.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
 
   useEffect(() => {
     if (!isFileQuestion || !surveyId || !question.questionId) return
@@ -349,7 +386,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
             <>
               <QuestionChart
                 type={settings.chartType}
-                distribution={question.distribution ?? []}
+                distribution={sortedDistribution}
                 timeline={question.timeline ?? []}
                 showLabels={settings.showLabels}
                 baseColor={settings.baseColor}
@@ -358,16 +395,22 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
               {settings.showTable && hasDistribution && (
                 <div className="rounded-md border overflow-hidden mt-2">
                   <div className="grid grid-cols-3 p-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/50 border-b">
-                    <div>Opción</div>
-                    <div className="text-center">Respuestas</div>
-                    <div className="text-center">%</div>
+                    <button onClick={() => toggleSort("label")} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Opción {sortIcon("label")}
+                    </button>
+                    <button onClick={() => toggleSort("count")} className="flex items-center justify-center gap-1 hover:text-foreground transition-colors">
+                      Respuestas {sortIcon("count")}
+                    </button>
+                    <button onClick={() => toggleSort("percentage")} className="flex items-center justify-center gap-1 hover:text-foreground transition-colors">
+                      % {sortIcon("percentage")}
+                    </button>
                   </div>
                   <div className="divide-y">
-                    {question.distribution!.map((d, i) => (
+                    {sortedDistribution.map((d, i) => (
                       <div key={i} className="grid grid-cols-3 p-2 text-sm items-center">
                         <div className="truncate">{d.label}</div>
                         <div className="text-center font-medium">{d.count}</div>
-                        <div className="text-center text-muted-foreground">{d.percentage}%</div>
+                        <div className="text-center text-muted-foreground">{formatPercent(d.percentage)}</div>
                       </div>
                     ))}
                   </div>

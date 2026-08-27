@@ -4,12 +4,6 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Chromium del sistema para puppeteer-core (PDF de encuesta = HTML del
-# preview renderizado por Chromium headless, ver app/api/surveys/[id]/pdf).
-# Se usa el paquete de Alpine en vez del Chromium que descarga puppeteer por
-# defecto porque ese binario no corre en musl libc (Alpine).
-RUN apk add --no-cache chromium
-
 # 🔥 AUMENTAR MEMORIA PARA NEXT BUILD
 ENV NODE_OPTIONS="--max_old_space_size=4096"
 
@@ -41,9 +35,15 @@ RUN npm prune --production --legacy-peer-deps
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Mismo Chromium del sistema, ahora en la imagen que realmente corre en
-# producción (el builder solo lo necesitaba para el build/type-check).
-RUN apk add --no-cache chromium
+# Chromium del sistema para puppeteer-core (PDF de encuesta = HTML del
+# preview renderizado por Chromium headless, ver app/api/surveys/[id]/pdf).
+# Se usa el paquete de Alpine en vez del Chromium que descarga puppeteer por
+# defecto porque ese binario no corre en musl libc (Alpine). Solo hace falta
+# en el runner (la imagen que corre en producción) — el builder solo compila.
+# nss/freetype/harfbuzz/ca-certificates/ttf-freefont son dependencias de
+# Chromium para poder LANZARSE en Alpine — sin ellas el proceso crashea al
+# arrancar (causa típica de un 500 "silencioso" en este endpoint).
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY --from=builder /app/package.json .

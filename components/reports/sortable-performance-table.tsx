@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
+import { formatPercent } from "@/lib/format"
 
 // Tabla de rendimiento por encuestador — pptx slide 25.
 // Columnas: Encuestador · Supervisor · Total registros · Incidencias ·
@@ -149,7 +150,7 @@ export function SortablePerformanceTable({ rows }: SortablePerformanceTableProps
                       : "#ef4444",
                   }}
                 >
-                  {row.tasaRespuestas}%
+                  {formatPercent(row.tasaRespuestas)}
                 </span>
               </td>
               {/* Tiempo promedio efectiva */}

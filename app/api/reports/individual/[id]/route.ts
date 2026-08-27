@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
+import { resolveOutcome } from "@/lib/report-outcome"
 
 // Detalle de una respuesta individual (pptx slide 22): preguntas + respuestas
 // de esa encuesta en particular, más audio si existe (tabla media_files,
@@ -29,11 +30,6 @@ function extractValue(val: any, questionType?: string): string {
     return ""
   }
   return String(val)
-}
-
-function resolveOutcome(r: { outcome?: string | null; status?: string | null }): "efectiva" | "incidencia" | "abandonada" {
-  if (r.outcome === "efectiva" || r.outcome === "incidencia" || r.outcome === "abandonada") return r.outcome
-  return r.status === "completed" ? "efectiva" : "abandonada"
 }
 
 // SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol.

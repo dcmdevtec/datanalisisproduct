@@ -436,6 +436,7 @@ function SkipLogicVisualizer({
                             </option>
                           ))}
                           <option value="END_SURVEY">Finalizar Encuesta</option>
+                          <option value="DISQUALIFY">Descalificar y terminar</option>
                         </select>
                       </td>
                       <td className="py-2 align-top text-center">
@@ -508,6 +509,7 @@ function SkipLogicVisualizer({
                     </option>
                   ))}
                   <option value="END_SURVEY">Finalizar Encuesta</option>
+                  <option value="DISQUALIFY">Descalificar y terminar</option>
                 </select>
               </div>
 

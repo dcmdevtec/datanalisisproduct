@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import "leaflet/dist/leaflet.css"
 import { Maximize2, Minimize2 } from "lucide-react"
+import { formatPercent } from "@/lib/format"
 
 interface ZonePolygon {
   id: string
@@ -19,9 +20,12 @@ interface ResponsePoint {
   lat: number
   lng: number
   status: string
-  outcome?: "efectiva" | "incidencia" | "abandonada" | null
+  outcome?: "efectiva" | "incidencia" | "abandonada" | "descalificado" | null
   createdAt: string
   surveyorName?: string | null
+  surveyorId?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
   respondentName?: string | null
   durationSecs?: number | null
   source?: string
@@ -41,16 +45,20 @@ function completionColor(rate: number): string {
   return "#ef4444"                   // rojo
 }
 
-// Colores por tipo de respuesta (pptx slide 24): Verde=Efectiva, Amarillo=Abandonada, Rojo=Incidencia.
+// Colores por tipo de respuesta (pptx slide 24): Verde=Efectiva, Amarillo=Abandonada,
+// Rojo=Incidencia, Morado=Descalificada (misma paleta que el comparativo de
+// "Registros no efectivos" en components/reports/summary-content.tsx).
 const outcomeColor: Record<string, string> = {
   efectiva: "#22c55e",
   abandonada: "#eab308",
   incidencia: "#ef4444",
+  descalificado: "#a855f7",
 }
 const outcomeLabel: Record<string, string> = {
   efectiva: "Efectiva",
   abandonada: "Abandonada",
   incidencia: "Incidencia",
+  descalificado: "Descalificada",
 }
 
 function formatDuration(secs: number | null | undefined): string {
@@ -68,12 +76,17 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const layersRef = useRef<any[]>([])
+  // Ruta GPS aproximada de un punto individual (ver botón "Ver ruta" en su
+  // popup) — se dibuja aparte de layersRef para poder limpiarla sola sin
+  // tocar el resto del mapa (zonas/puntos) cuando se pide otra ruta.
+  const routeLayerRef = useRef<any>(null)
+  const [loadingRouteId, setLoadingRouteId] = useState<string | null>(null)
   const [isClient, setIsClient] = useState(false)
   const [showPoints, setShowPoints] = useState(true)
   const [showZones, setShowZones] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  // Filtro por tipo (slide 24): todas | efectiva | incidencia | abandonada
-  const [typeFilter, setTypeFilter] = useState<"all" | "efectiva" | "incidencia" | "abandonada">("all")
+  // Filtro por tipo (slide 24): todas | efectiva | incidencia | abandonada | descalificado
+  const [typeFilter, setTypeFilter] = useState<"all" | "efectiva" | "incidencia" | "abandonada" | "descalificado">("all")
 
   const filteredPoints = typeFilter === "all"
     ? responsePoints
@@ -117,10 +130,12 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
 
         mapRef.current = map
 
-        // Tile layer profesional (CartoDB Positron — limpio, rápido, sin ruido visual)
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        // Mismo tile que components/tracking-map.tsx (encuestador) — antes este
+        // mapa usaba CartoDB Positron (gris pálido), que el cliente reportó
+        // como "se ve en negativo" al compararlo con el mapa de tracking.
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
-          subdomains: "abcd",
+          subdomains: "abc",
         }).addTo(map)
 
         // Atribución pequeña en esquina
@@ -177,12 +192,43 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [isFullscreen])
 
+  // Pide y dibuja la ruta GPS aproximada de un punto (ver app/api/reports/route-trace).
+  const drawRoute = async (L: any, map: any, p: ResponsePoint) => {
+    if (!p.surveyorId || !p.startedAt || !p.completedAt) return
+    setLoadingRouteId(p.id ?? null)
+    try {
+      const params = new URLSearchParams({ surveyorId: p.surveyorId, from: p.startedAt, to: p.completedAt })
+      const res = await fetch(`/api/reports/route-trace?${params}`)
+      if (!res.ok) return
+      const { points } = await res.json()
+      if (!Array.isArray(points) || points.length < 2) return
+
+      if (routeLayerRef.current) {
+        try { map.removeLayer(routeLayerRef.current) } catch { }
+        routeLayerRef.current = null
+      }
+
+      const latlngs = points.map((pt: any) => [pt.lat, pt.lng])
+      const polyline = L.polyline(latlngs, { color: "#3b82f6", weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
+      routeLayerRef.current = polyline
+      map.fitBounds(polyline.getBounds(), { padding: [40, 40], maxZoom: 16 })
+    } catch (err) {
+      console.error("Error cargando ruta del encuestador:", err)
+    } finally {
+      setLoadingRouteId(null)
+    }
+  }
+
   const renderLayers = async (L: any, map: any) => {
     if (!map) return
 
     // Limpiar capas anteriores
     layersRef.current.forEach((l) => { try { map.removeLayer(l) } catch { } })
     layersRef.current = []
+    if (routeLayerRef.current) {
+      try { map.removeLayer(routeLayerRef.current) } catch { }
+      routeLayerRef.current = null
+    }
 
     const bounds: [number, number][] = []
 
@@ -223,7 +269,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
               </div>
               <div style="margin-top:4px;padding-top:4px;border-top:1px solid #eee;display:flex;justify-content:space-between;font-size:12px">
                 <span style="color:#666">Tasa</span>
-                <span style="font-weight:700;color:${color}">${zone.completionRate}%</span>
+                <span style="font-weight:700;color:${color}">${formatPercent(zone.completionRate)}</span>
               </div>
             </div>
           </div>`
@@ -280,6 +326,8 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
         })
 
         const isSurveyorTrace = p.source === "surveyor"
+        const canShowRoute = !isSurveyorTrace && !!p.surveyorId && !!p.startedAt && !!p.completedAt
+        const routeBtnId = `ver-ruta-${p.id ?? `${p.lat}-${p.lng}`}`
         const popupHtml = isSurveyorTrace
           ? `
           <div style="font-family:system-ui,sans-serif;font-size:12px;min-width:160px">
@@ -295,10 +343,18 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
               <div style="color:#555">Encuestado: <strong>${p.respondentName || "Anónimo"}</strong></div>
               <div style="color:#555">Duración: <strong>${formatDuration(p.durationSecs)}</strong></div>
               <div style="color:#888;font-size:11px;margin-top:2px">${new Date(p.createdAt).toLocaleString("es-CO")}</div>
+              ${canShowRoute ? `<button id="${routeBtnId}" style="margin-top:6px;padding:4px 8px;font-size:11px;font-weight:600;color:#18b0a4;background:#18b0a41a;border:1px solid #18b0a4;border-radius:6px;cursor:pointer">Ver ruta del encuestador</button>` : ""}
             </div>
           </div>`
 
         circle.bindPopup(popupHtml, { maxWidth: 220 })
+        if (canShowRoute) {
+          circle.on("popupopen", () => {
+            const btn = document.getElementById(routeBtnId)
+            if (!btn) return
+            btn.addEventListener("click", () => drawRoute(L, map, p), { once: true })
+          })
+        }
         circle.addTo(map)
         layersRef.current.push(circle)
 
@@ -364,7 +420,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
         {/* Filtro por tipo de respuesta (slide 24) — solo tiene sentido si hay datos clasificados */}
         {hasOutcomeData && (
           <div className="flex flex-col gap-1 bg-white border border-gray-200 rounded-lg shadow-md p-1.5">
-            {(["all", "efectiva", "incidencia", "abandonada"] as const).map((t) => (
+            {(["all", "efectiva", "incidencia", "abandonada", "descalificado"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTypeFilter(t)}
@@ -384,7 +440,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
           <div className="bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-2">
             <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tipo de respuesta</p>
             <div className="flex flex-col gap-1">
-              {(["efectiva", "abandonada", "incidencia"] as const).map((t) => (
+              {(["efectiva", "abandonada", "incidencia", "descalificado"] as const).map((t) => (
                 <div key={t} className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: outcomeColor[t] }} />
                   <span className="text-[10px] text-gray-600">{outcomeLabel[t]}</span>
