@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
 
     // --- Build responses query with filters ---
     let responsesQuery = admin.from("responses").select(
-      "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title)"
+      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title)"
     )
     if (filteredSurveyIds !== null) {
       responsesQuery = responsesQuery.in("survey_id", filteredSurveyIds)
@@ -299,8 +299,8 @@ export async function GET(request: NextRequest) {
       .map((r: any) => {
         const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
         const surveyorName = (assignment?.surveyors as any)?.name ?? null
-        const durationSecs = (r.completed_at && r.created_at)
-          ? Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000)
+        const durationSecs = (r.completed_at && (r as any).started_at)
+          ? Math.round((new Date(r.completed_at).getTime() - new Date((r as any).started_at).getTime()) / 1000)
           : null
         return {
           id: r.id,
@@ -532,11 +532,16 @@ export async function GET(request: NextRequest) {
     const tasaRespuestasEfectivas = totalResponses > 0 ? Math.round((efectivas / totalResponses) * 100) : 0
 
     // Average completion time (solo sobre efectivas, como pide slide 20 "tiempo promedio por encuesta efectiva")
+    // started_at = inicio real de la respuesta (capturado en el cliente). Antes
+    // se medía completed_at - created_at, pero ambos se setean en el mismo
+    // INSERT al enviar, así que el promedio siempre daba 0:00. Con datos
+    // viejos (started_at ausente) esa fila simplemente no se cuenta.
     const timeDiffs: number[] = []
     for (const r of responses) {
       if (resolveOutcome(r) !== "efectiva") continue
-      if (r.completed_at && r.created_at) {
-        const diff = (new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000
+      const start = (r as any).started_at
+      if (r.completed_at && start) {
+        const diff = (new Date(r.completed_at).getTime() - new Date(start).getTime()) / 1000
         if (diff > 0 && diff < 7200) timeDiffs.push(diff)
       }
     }
@@ -813,8 +818,9 @@ export async function GET(request: NextRequest) {
       const outcome = resolveOutcome(r)
       if (outcome === "efectiva") {
         surveyorMap[sid].efectivas++
-        if (r.completed_at && r.created_at) {
-          const diff = (new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000
+        const start = (r as any).started_at
+        if (r.completed_at && start) {
+          const diff = (new Date(r.completed_at).getTime() - new Date(start).getTime()) / 1000
           if (diff > 0 && diff < 7200) surveyorMap[sid].timeDiffs.push(diff)
         }
       } else if (outcome === "incidencia") {
@@ -867,8 +873,9 @@ export async function GET(request: NextRequest) {
       surveyPerfMap[sid].total++
       if (r.status === "completed") {
         surveyPerfMap[sid].completed++
-        if (r.completed_at && r.created_at) {
-          const diff = (new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000
+        const start = (r as any).started_at
+        if (r.completed_at && start) {
+          const diff = (new Date(r.completed_at).getTime() - new Date(start).getTime()) / 1000
           if (diff > 0 && diff < 7200) surveyPerfMap[sid].timeDiffs.push(diff)
         }
       }

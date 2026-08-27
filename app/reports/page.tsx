@@ -561,7 +561,7 @@ function ReportsPageContent() {
                     <div className="absolute inset-0 bg-gradient-to-br from-[#18b0a4]/5 to-transparent pointer-events-none" />
                     <CardHeader className="pb-1 pt-4 px-4">
                       <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-[#18b0a4]" /> Encuestas Efectivas
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[#18b0a4]" /> Efectivas
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
@@ -589,7 +589,7 @@ function ReportsPageContent() {
                     <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
                     <CardHeader className="pb-1 pt-4 px-4">
                       <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                        <XCircle className="h-3.5 w-3.5 text-amber-500" /> Encuestas Abandonadas
+                        <XCircle className="h-3.5 w-3.5 text-amber-500" /> Abandonadas
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">

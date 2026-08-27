@@ -343,7 +343,7 @@ export function SurveyPreviewModal({ isOpen, onClose, previewData }: SurveyPrevi
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <div
-                  dangerouslySetInnerHTML={{ __html: question.text }}
+                  dangerouslySetInnerHTML={{ __html: (question as any).text_html || question.text }}
                   className="text-lg font-semibold"
                 />
                 {question.required && (

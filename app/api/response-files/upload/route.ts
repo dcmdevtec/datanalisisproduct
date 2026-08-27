@@ -20,7 +20,7 @@ import { createAdminSupabase } from "@/lib/supabase-server"
 // mismo patrón ya en uso con audio).
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "application/pdf", "video/mp4", "video/quicktime", "video/webm"]
 const MAX_SIZE_BYTES = 20 * 1024 * 1024  // 20 MB para imágenes y PDFs
-const MAX_VIDEO_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB para videos
+const MAX_VIDEO_SIZE_BYTES = 200 * 1024 * 1024 // 200 MB para videos
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120)
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (file.size > sizeLimit) {
       return NextResponse.json({
         error: isVideo
-          ? `El video no debe superar los 5 MB (tamaño actual: ${(file.size / 1048576).toFixed(1)} MB)`
+          ? `El video no debe superar los 200 MB (tamaño actual: ${(file.size / 1048576).toFixed(1)} MB)`
           : "El archivo no debe superar los 20 MB",
       }, { status: 413 })
     }

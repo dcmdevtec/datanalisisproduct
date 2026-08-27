@@ -45,6 +45,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Download,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -137,6 +138,8 @@ interface SectionPickerBarProps {
   onAddSection: () => void
   onPreview: () => void
   onOrganize: () => void
+  onDownloadPdf: () => void
+  downloadingPdf: boolean
 }
 
 function SectionPickerBar({
@@ -150,6 +153,8 @@ function SectionPickerBar({
   onAddSection,
   onPreview,
   onOrganize,
+  onDownloadPdf,
+  downloadingPdf,
 }: SectionPickerBarProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
@@ -352,6 +357,17 @@ function SectionPickerBar({
           title="Vista previa"
         >
           <Eye className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Descargar PDF */}
+        <Button
+          variant="ghost" size="sm"
+          className="h-8 w-8 p-0 shrink-0 text-muted-foreground"
+          onClick={onDownloadPdf}
+          disabled={downloadingPdf}
+          title="Descargar PDF"
+        >
+          {downloadingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
         </Button>
 
         {/* Organizar */}
@@ -1807,6 +1823,46 @@ export function CreateSurveyForProjectPageContent() {
     }))
   }, [])
 
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+
+  // Reutiliza el mismo endpoint que ya funciona en /surveys (lista de
+  // encuestas) — acá faltaba el botón por completo, por eso "no funcionaba":
+  // el usuario lo buscaba en esta pantalla (Secciones y Preguntas) y no existía.
+  const handleDownloadPdf = async () => {
+    if (!currentSurveyId) {
+      toast({ title: "Guarda la encuesta primero", description: "Necesitas guardar al menos una sección antes de descargar el PDF.", variant: "destructive" })
+      return
+    }
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch(`/api/surveys/${currentSurveyId}/pdf`)
+      if (!res.ok) {
+        let message = "No se pudo generar el PDF."
+        if (res.status === 401 || res.status === 403) {
+          message = "No tienes permiso para descargar el PDF de esta encuesta."
+        } else {
+          const body = await res.json().catch(() => null)
+          if (body?.error) message = body.error
+        }
+        toast({ title: "No se pudo descargar", description: message, variant: "destructive" })
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `encuesta-${(surveyTitle || currentSurveyId).replace(/[^a-z0-9]/gi, "_").substring(0, 40)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      toast({ title: "No se pudo descargar", description: err?.message || "Error de conexión al generar el PDF.", variant: "destructive" })
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
   const handlePreview = () => {
     const sectionsWithSkipLogic = sections.map((section) => ({
       ...section,
@@ -3029,6 +3085,8 @@ export function CreateSurveyForProjectPageContent() {
                             }}
                             onPreview={handlePreview}
                             onOrganize={() => setShowSectionOrganizer(true)}
+                            onDownloadPdf={handleDownloadPdf}
+                            downloadingPdf={downloadingPdf}
                           />
 
                           {/* Sección activa */}

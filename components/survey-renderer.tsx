@@ -457,7 +457,7 @@ export function SurveyRenderer({
           case "phone":
             return (
               <Input
-                type="tel"
+                type="text"
                 value={(answer as string) || ""}
                 onChange={(e) => handleAnswerChange(question.id, e.target.value)}
                 placeholder="+57 300 000 0000"
@@ -834,7 +834,7 @@ function ContactInfoRenderer({
       </div>
       <div>
         <Label className="text-xs">Teléfono</Label>
-        <Input type="tel" value={data.phone || ""} onChange={(e) => update("phone", e.target.value)} />
+        <Input type="text" value={data.phone || ""} onChange={(e) => update("phone", e.target.value)} />
       </div>
       <div>
         <Label className="text-xs">Empresa</Label>

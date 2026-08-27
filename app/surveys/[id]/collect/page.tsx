@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
@@ -47,6 +47,8 @@ export default function CollectDataPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
+  // Momento real en que se abre el formulario, para "tiempo promedio" en /reports.
+  const startedAtRef = useRef<string>(new Date().toISOString())
   const [isRecording, setIsRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -225,6 +227,7 @@ export default function CollectDataPage() {
         })),
         location: location,
         timestamp: new Date().toISOString(),
+        started_at: startedAtRef.current,
         user_id: user?.id,
       }
 

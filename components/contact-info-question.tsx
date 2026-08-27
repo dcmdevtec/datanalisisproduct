@@ -327,7 +327,7 @@ export function ContactInfoQuestion({ surveyId, onChange, onStatusChange, config
           if (fieldKey === 'phone' && includePhone) return (
             <div key="phone" className="space-y-2">
               <Label htmlFor="phone">Teléfono</Label>
-              <Input id="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Ingrese su número de teléfono" disabled={isBlocked} />
+              <Input id="phone" type="text" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Ingrese su número de teléfono" disabled={isBlocked} />
             </div>
           )
           if (fieldKey === 'email' && includeEmail) return (

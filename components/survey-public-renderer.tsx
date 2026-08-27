@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useCallback, useEffect, useMemo } from "react"
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -131,6 +131,9 @@ export function SurveyPublicRenderer({ surveyId }: SurveyPublicRendererProps) {
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, any>>({})
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  // Momento real en que el encuestado empieza a responder (para "tiempo
+  // promedio" en /reports — created_at/completed_at solo marcan el envío).
+  const startedAtRef = useRef<string>(new Date().toISOString())
 
   /* ======================= Carga de datos ======================= */
 
@@ -333,6 +336,7 @@ export function SurveyPublicRenderer({ surveyId }: SurveyPublicRendererProps) {
           question_id,
           value,
         })),
+        started_at: startedAtRef.current,
       }
       const res = await fetch("/api/public/responses", {
         method: "POST",
@@ -661,7 +665,7 @@ export function SurveyPublicRenderer({ surveyId }: SurveyPublicRendererProps) {
           case "email":
             return <Input type="email" value={(answer as string) ?? ""} onChange={(e) => handleAnswerChange(question.id, e.target.value)} placeholder="correo@ejemplo.com" />
           case "phone":
-            return <Input type="tel" value={(answer as string) ?? ""} onChange={(e) => handleAnswerChange(question.id, e.target.value)} placeholder="+57 300 000 0000" />
+            return <Input type="text" value={(answer as string) ?? ""} onChange={(e) => handleAnswerChange(question.id, e.target.value)} placeholder="+57 300 000 0000" />
           case "number":
             return <Input type="number" value={(answer as string) ?? ""} onChange={(e) => handleAnswerChange(question.id, e.target.value)} placeholder="0" />
 

@@ -859,12 +859,8 @@ export function QuestionEditor({
                     onChange={async (e) => {
                       const f = e.target.files && e.target.files[0]
                       if (!f) return
-                      // AUDITORÍA (2026-08-17): esta subida iba directo a Storage sin
-                      // validar formato ni tamaño — un video de cualquier peso se subía
-                      // sin aviso, aunque /api/response-files/upload (lado encuestado)
-                      // sí limita video a 5MB. Mismos límites/formatos aquí, con mensaje
-                      // claro antes de intentar subir (checklist: "Validar la carga de
-                      // videos de hasta 5 MB... mensaje claro" si excede o formato inválido).
+                      // Mismos límites/formatos que /api/response-files/upload (lado
+                      // encuestado): video hasta 200MB, imagen/otros hasta 20MB.
                       const isVideo = f.type.startsWith('video/')
                       const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
                       const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm']
@@ -873,9 +869,9 @@ export function QuestionEditor({
                         e.target.value = ''
                         return
                       }
-                      const maxBytes = isVideo ? 5 * 1024 * 1024 : 20 * 1024 * 1024
+                      const maxBytes = isVideo ? 200 * 1024 * 1024 : 20 * 1024 * 1024
                       if (f.size > maxBytes) {
-                        const limitLabel = isVideo ? '5 MB' : '20 MB'
+                        const limitLabel = isVideo ? '200 MB' : '20 MB'
                         alert(`El archivo no debe superar los ${limitLabel} (tamaño actual: ${(f.size / 1048576).toFixed(1)} MB).`)
                         e.target.value = ''
                         return
@@ -1219,7 +1215,7 @@ export function QuestionEditor({
               <div>
                 <Label className="font-medium">Filas (Preguntas)</Label>
                 {matrixRows.map((row, idx) => (
-                  <div key={idx} className="flex gap-2 mt-2">
+                  <div key={idx} className="flex items-center gap-2 mt-2">
                     <Input
                       value={row}
                       onChange={(e) => {
@@ -1229,6 +1225,22 @@ export function QuestionEditor({
                       }}
                       placeholder={`Fila ${idx + 1}`}
                     />
+                    {question.config?.matrixCellType === "checkbox" && (
+                      <div className="flex items-center gap-1.5 shrink-0" title="Permitir múltiples selecciones en esta fila">
+                        <Switch
+                          checked={question.config?.matrixRowAllowMultiple?.[idx] !== false}
+                          onCheckedChange={(checked) => {
+                            const newRowConfig = [...(question.config?.matrixRowAllowMultiple || matrixRows.map(() => true))]
+                            newRowConfig[idx] = checked
+                            onUpdateQuestion(sectionId, question.id, "config", {
+                              ...question.config,
+                              matrixRowAllowMultiple: newRowConfig,
+                            })
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground">Múltiple</span>
+                      </div>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

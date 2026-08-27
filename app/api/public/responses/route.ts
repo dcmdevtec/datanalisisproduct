@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       respondent_name,
       public_respondent_id,
       location,
+      started_at,
     } = body
 
     // --- Validaciones ---
@@ -146,15 +147,27 @@ export async function POST(request: NextRequest) {
       location: location || null,
       status: "completed",
       completed_at: new Date().toISOString(),
+      ...(typeof started_at === "string" && started_at.trim().length > 0 ? { started_at } : {}),
     }
 
-    const { data: responseData, error: responseError } = await supabase
+    let { data: responseData, error: responseError } = await supabase
       .from("responses")
       .insert(responsePayload)
       .select("id")
       .single()
 
-    if (responseError) {
+    // Fallback: si la columna started_at aún no existe en la BD (migración
+    // pendiente), reintenta sin ella en vez de tumbar el envío de la encuesta.
+    if (responseError && "started_at" in responsePayload && /started_at/i.test(responseError.message || "")) {
+      delete (responsePayload as Record<string, unknown>).started_at
+      ;({ data: responseData, error: responseError } = await supabase
+        .from("responses")
+        .insert(responsePayload)
+        .select("id")
+        .single())
+    }
+
+    if (responseError || !responseData) {
       console.error("Error al crear respuesta pública:", responseError)
       return NextResponse.json(
         { error: "Error al guardar la respuesta" },

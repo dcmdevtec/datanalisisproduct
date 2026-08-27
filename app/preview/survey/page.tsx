@@ -874,7 +874,12 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                 const rowKey = `${question.id}_${i}`;
                 // Keep values like 0 (first column). Only remove null/undefined/empty string
                 const sel = Array.isArray(answers[rowKey]) ? answers[rowKey].filter(v => !(v === null || v === undefined || v === '')) : [];
-                const isValid = sel.length >= effectiveMin;
+                // Fila sin "múltiple": solo puede tener 1 selección, así que el
+                // mínimo efectivo se capa a 1 (si no, exigiría más selecciones
+                // de las que esa fila puede físicamente tener).
+                const rowAllowsMultiple = config.matrixRowAllowMultiple?.[i] !== false;
+                const rowEffectiveMin = rowAllowsMultiple ? effectiveMin : 1;
+                const isValid = sel.length >= rowEffectiveMin;
                 if (!isValid) unansweredRows.push(row || `Fila ${i + 1}`);
                 return isValid;
               }
@@ -3072,12 +3077,20 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   const rowKey = `${question.id}_${rowIdx}`;
                   const selected = Array.isArray(answers[rowKey]) ? answers[rowKey] : [];
                   const isChecked = selected.includes(colIdx);
-                  const isMaxReached = selected.length >= maxSel && !isChecked;
+                  // Toggle por fila: si esta fila NO permite múltiple, se comporta
+                  // como radio (una sola selección) sin importar el maxSel global.
+                  const rowAllowsMultiple = config.matrixRowAllowMultiple?.[rowIdx] !== false;
+                  const rowMaxSel = rowAllowsMultiple ? maxSel : 1;
+                  const isMaxReached = selected.length >= rowMaxSel && !isChecked;
                   return (
                     <Checkbox
                       checked={isChecked}
                       disabled={isMaxReached}
                       onCheckedChange={(checked) => {
+                        if (!rowAllowsMultiple) {
+                          handleAnswerChange(rowKey, checked ? [colIdx] : []);
+                          return;
+                        }
                         let cur = new Set(selected);
                         if (checked) cur.add(colIdx); else cur.delete(colIdx);
                         handleAnswerChange(rowKey, Array.from(cur));

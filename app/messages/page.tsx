@@ -346,7 +346,7 @@ export default function MessagesPage() {
                   <PenSquare className="h-4 w-4" />
                   Nuevo chat
                 </Button>
-                <TabsList className="mt-14">
+                <TabsList>
                   <TabsTrigger value="direct">Directos</TabsTrigger>
                   <TabsTrigger value="broadcast">Anuncios</TabsTrigger>
                 </TabsList>

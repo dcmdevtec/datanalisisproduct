@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createServerSupabase()
     const body = await request.json()
     // Accept both `answers` and `response_answers` (frontend uses response_answers)
-    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name, assignment_id, outcome, client_submission_id } = body
+    const { survey_id, answers, response_answers, location, device_info, respondent_document_type, respondent_document_number, respondent_name, assignment_id, outcome, client_submission_id, started_at } = body
     const effectiveAnswers = answers || response_answers
 
     if (!survey_id) {
@@ -96,6 +96,12 @@ export async function POST(request: NextRequest) {
       device_info: device_info || null,
       status: "completed",
       completed_at: new Date().toISOString(),
+      // started_at: momento real en que el encuestado empezó a responder,
+      // enviado por el cliente (survey-public-renderer / collect page). Sin
+      // esto, created_at/completed_at quedan casi simultáneos y "tiempo
+      // promedio" en /reports siempre da 0:00. Fallback a null si no llega
+      // (clientes viejos) — el cálculo de /reports cae de vuelta a created_at.
+      ...(typeof started_at === "string" && started_at.trim().length > 0 ? { started_at } : {}),
       respondent_document_type: respondent_document_type || null,
       respondent_document_number: respondent_document_number || null,
       respondent_name: respondent_name || null,
