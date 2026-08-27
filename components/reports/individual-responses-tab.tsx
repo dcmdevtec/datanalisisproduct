@@ -356,10 +356,9 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
               {/* Header de columnas skeleton */}
               <div className="grid grid-cols-12 px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y">
                 <div className="col-span-2">Encuestador</div>
-                <div className="col-span-2">Encuestado</div>
-                <div className="col-span-3">Encuesta</div>
-                <div className="col-span-2">Fecha</div>
-                <div className="col-span-1 text-center">Duración</div>
+                <div className="col-span-3">Encuestado</div>
+                <div className="col-span-3">Fecha</div>
+                <div className="col-span-2 text-center">Duración</div>
                 <div className="col-span-2 text-center">Tipo</div>
               </div>
               <div className="divide-y">
@@ -376,10 +375,9 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
               {/* Header de columnas */}
               <div className="grid grid-cols-12 px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y">
                 <div className="col-span-2">Encuestador</div>
-                <div className="col-span-2">Encuestado</div>
-                <div className="col-span-3">Encuesta</div>
-                <div className="col-span-2">Fecha</div>
-                <div className="col-span-1 text-center">Duración</div>
+                <div className="col-span-3">Encuestado</div>
+                <div className="col-span-3">Fecha</div>
+                <div className="col-span-2 text-center">Duración</div>
                 <div className="col-span-2 text-center">Tipo</div>
               </div>
 
@@ -415,25 +413,20 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       </div>
 
                       {/* Encuestado */}
-                      <div className="col-span-2 text-sm truncate pr-2 text-foreground">
+                      <div className="col-span-3 text-sm truncate pr-2 text-foreground">
                         {item.respondentName
                           ? item.respondentName
-                          : <span className="text-muted-foreground font-mono text-xs">#{item.id.slice(0, 8)}</span>
+                          : <span className="text-muted-foreground italic text-xs">Sin asignar</span>
                         }
                       </div>
 
-                      {/* Encuesta */}
-                      <div className="col-span-3 text-xs text-muted-foreground truncate pr-2" title={item.surveyTitle}>
-                        {item.surveyTitle}
-                      </div>
-
                       {/* Fecha */}
-                      <div className="col-span-2 text-xs text-muted-foreground">
+                      <div className="col-span-3 text-xs text-muted-foreground">
                         {formatDate(item.createdAt)}
                       </div>
 
                       {/* Duración */}
-                      <div className="col-span-1 text-center text-xs text-muted-foreground font-mono">
+                      <div className="col-span-2 text-center text-xs text-muted-foreground font-mono">
                         {formatDuration(item.durationSecs)}
                       </div>
 

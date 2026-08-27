@@ -4,6 +4,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Chromium del sistema para puppeteer-core (PDF de encuesta = HTML del
+# preview renderizado por Chromium headless, ver app/api/surveys/[id]/pdf).
+# Se usa el paquete de Alpine en vez del Chromium que descarga puppeteer por
+# defecto porque ese binario no corre en musl libc (Alpine).
+RUN apk add --no-cache chromium
+
 # 🔥 AUMENTAR MEMORIA PARA NEXT BUILD
 ENV NODE_OPTIONS="--max_old_space_size=4096"
 
@@ -34,6 +40,11 @@ RUN npm prune --production --legacy-peer-deps
 # ============================
 FROM node:20-alpine AS runner
 WORKDIR /app
+
+# Mismo Chromium del sistema, ahora en la imagen que realmente corre en
+# producción (el builder solo lo necesitaba para el build/type-check).
+RUN apk add --no-cache chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY --from=builder /app/package.json .
 COPY --from=builder /app/package-lock.json .

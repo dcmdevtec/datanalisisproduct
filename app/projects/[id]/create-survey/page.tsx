@@ -1483,16 +1483,25 @@ export function CreateSurveyForProjectPageContent() {
             debugLog("✅ Encuesta creada automáticamente con ID:", data[0].id)
           }
         } else {
-          await (supabase as any)
-            .from("surveys")
-            .update({
+          // Pasa por la API (no supabase directo) para que, si el estado
+          // cambia de "draft" (Prueba) a "active", se disparen las
+          // respuestas de prueba que hay que limpiar (ver PUT /api/surveys/[id]).
+          const res = await fetch(`/api/surveys/${currentSurveyId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
               title: surveyTitle,
               description: surveyDescription,
               start_date: startDate || null,
               deadline: deadline || null,
               status: surveyStatus,
-            })
-            .eq("id", currentSurveyId)
+              settings: settings || {},
+            }),
+          })
+          if (!res.ok) {
+            const body = await res.json().catch(() => null)
+            throw new Error(body?.error || "No se pudo guardar la encuesta")
+          }
           debugLog("✅ Título/descripción actualizados en background")
         }
       } catch (e) {

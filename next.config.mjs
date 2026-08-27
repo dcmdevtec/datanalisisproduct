@@ -42,7 +42,7 @@ const nextConfig = {
   // @supabase/supabase-js es ESM puro — no debe ir aquí (causa el error de build
   // "Unexpected character '@'" porque webpack genera código JS inválido al externalizarlo).
   // pdfkit sí necesita estar aquí porque tiene bindings nativos de Node.js.
-  serverExternalPackages: ['pdfkit'],
+  serverExternalPackages: ['pdfkit', 'puppeteer-core'],
 
   // Compiler options
   compiler: {

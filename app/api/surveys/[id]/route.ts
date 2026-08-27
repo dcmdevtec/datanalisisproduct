@@ -65,15 +65,28 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // console.log(`PUT /api/surveys/${id} - Actualizando encuesta`)
 
     const body = await request.json()
-    const { title, description, questions, settings, deadline, status } = body
+    const { title, description, questions, settings, deadline, status, start_date } = body
 
     const { data: existingSurvey, error: surveyCheckError } = await supabase
       .from("surveys")
-      .select("id, created_by")
+      .select("id, created_by, status")
       .eq("id", id)
       .single()
 
     if (surveyCheckError) return NextResponse.json({ error: "Encuesta no encontrada" }, { status: 404 })
+
+    // Al pasar de "prueba" (draft) a "activa": las respuestas recopiladas
+    // mientras se probaba la encuesta son basura de prueba, no datos reales —
+    // se borran para que el reporte arranque en cero al salir a producción.
+    // answers tiene ON DELETE CASCADE sobre response_id (ver schema.sql), así
+    // que borrar responses ya limpia sus answers asociadas.
+    if (existingSurvey.status === "draft" && status === "active") {
+      const { error: wipeError } = await supabase.from("responses").delete().eq("survey_id", id)
+      if (wipeError) {
+        console.error("Error borrando respuestas de prueba al activar encuesta:", wipeError)
+        return NextResponse.json({ error: "No se pudieron limpiar las respuestas de prueba antes de activar" }, { status: 500 })
+      }
+    }
 
     const { data: updatedSurvey, error: updateError } = await supabase
       .from("surveys")
@@ -83,6 +96,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         settings,
         deadline,
         status,
+        ...(start_date !== undefined ? { start_date } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

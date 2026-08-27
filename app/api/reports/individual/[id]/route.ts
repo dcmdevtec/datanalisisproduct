@@ -52,7 +52,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: response, error: responseError } = await admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title, description)"
+        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title, description)"
       )
       .eq("id", responseId)
       .single()
@@ -175,8 +175,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         })
     )).sort((a, b) => a.orderNum - b.orderNum)
 
-    const durationSecs = (r.completed_at && r.created_at)
-      ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
+    const durationSecs = (r.completed_at && r.started_at)
+      ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.started_at).getTime()) / 1000))
       : null
 
     // Extraer nombre del encuestado desde pregunta contact_info si respondent_name es null.

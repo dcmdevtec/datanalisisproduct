@@ -15,6 +15,7 @@ interface Meta {
   surveyTitle: string
   surveyDescription: string
   customTitle?: string | null
+  brandLogo?: string | null
   sections: { resumen: boolean; analisis: boolean; rendimiento: boolean; geografico: boolean }
   expiresAt: string | null
 }
@@ -406,8 +407,15 @@ export default function PublicResultsPage() {
                 <p className="text-gray-500 text-sm mt-1">{meta.surveyDescription}</p>
               )}
             </div>
-            <div className="flex-shrink-0 opacity-60">
-              <Logo size="sm" showText />
+            <div className="flex-shrink-0">
+              {meta.brandLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={meta.brandLogo} alt="" className="h-10 max-w-[160px] object-contain" />
+              ) : (
+                <div className="opacity-60">
+                  <Logo size="sm" showText />
+                </div>
+              )}
             </div>
           </div>
 

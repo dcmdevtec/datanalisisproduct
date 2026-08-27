@@ -88,9 +88,18 @@ export async function GET(
   // 2. Metadata de la encuesta
   const { data: survey } = await admin
     .from("surveys")
-    .select("id, title, description")
+    .select("id, title, description, logo, project_id, projects(logo, companies(logo))")
     .eq("id", surveyId)
     .maybeSingle()
+
+  // Logo para el header del reporte compartido: prioriza el logo propio de la
+  // encuesta, luego el del proyecto, luego el de la empresa — así el cliente
+  // ve su propia marca en vez del logo de la plataforma (Datanalisis).
+  const brandLogo: string | null =
+    (survey as any)?.logo ||
+    (survey as any)?.projects?.logo ||
+    (survey as any)?.projects?.companies?.logo ||
+    null
 
   // 3. Fetch responses
   let responsesQuery = admin
@@ -337,8 +346,10 @@ export async function GET(
 
   return NextResponse.json({
     meta: {
+      customTitle: config.customTitle || null,
       surveyTitle: survey?.title || config.surveyTitle || "Encuesta",
       surveyDescription: survey?.description || config.surveyDescription || "",
+      brandLogo,
       sections,
       expiresAt: share.expires_at,
     },

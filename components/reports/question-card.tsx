@@ -53,6 +53,7 @@ interface QuestionCardProps {
   settings: CardSettings
   onSettingsChange: (s: Partial<CardSettings>) => void
   onHide: () => void
+  hideLabel?: string
   surveyId?: string
 }
 
@@ -181,7 +182,7 @@ function defaultChartType(questionType: string): ChartType {
   return "barsH"
 }
 
-export function QuestionCard({ question, index, settings, onSettingsChange, onHide, surveyId }: QuestionCardProps) {
+export function QuestionCard({ question, index, settings, onSettingsChange, onHide, hideLabel, surveyId }: QuestionCardProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [fileGallery, setFileGallery] = useState<{ url: string; name: string; type?: string }[]>([])
   const [fileLoading, setFileLoading] = useState(false)
@@ -228,7 +229,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
           <button
             onClick={onHide}
             className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
-            title="Ocultar pregunta del informe"
+            title={hideLabel ? `${hideLabel} del informe` : "Ocultar pregunta del informe"}
           >
             <X className="h-4 w-4" />
           </button>

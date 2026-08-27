@@ -713,7 +713,7 @@ function SurveysPageContent() {
                               >
                                 <Pencil className="h-4 w-4 mr-2" /> Editar Encuesta
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => router.push(`/reports?survey=${survey.id}`)}>
+                              <DropdownMenuItem onClick={() => router.push(`/dashboard?survey=${survey.id}`)}>
                                 <BarChart3 className="h-4 w-4 mr-2" /> Reporte
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
@@ -827,7 +827,7 @@ function SurveysPageContent() {
                           >
                             <Pencil className="h-4 w-4 mr-2" /> Editar Encuesta
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/reports?survey=${survey.id}`)}>
+                          <DropdownMenuItem onClick={() => router.push(`/dashboard?survey=${survey.id}`)}>
                             <BarChart3 className="h-4 w-4 mr-2" /> Reporte
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>

@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     let query = admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, metadata, surveys(title)",
+        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, metadata, surveys(title)",
         { count: "exact" }
       )
     if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
@@ -214,8 +214,11 @@ function mapListItem(
   surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {},
   surveyorInfoBySurveyorId:  Record<string, { name: string | null; email: string | null }> = {}
 ) {
-  const durationSecs = (r.completed_at && r.created_at)
-    ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 1000))
+  // started_at = inicio real de la respuesta. created_at/completed_at se
+  // setean casi al mismo tiempo (al enviar), por eso no sirven para medir
+  // duración — ver misma corrección en app/api/reports/route.ts.
+  const durationSecs = (r.completed_at && r.started_at)
+    ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.started_at).getTime()) / 1000))
     : null
 
   // Encuestador: 1) asignación de zona (portal web), 2) metadata.surveyor_id (APK)
