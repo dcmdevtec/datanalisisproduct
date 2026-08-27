@@ -78,8 +78,6 @@ export async function GET(
   const surveyId: string = (share as any).survey_id
   const filters = config.filters || {}
   const sections = config.sections || { resumen: true, analisis: true, rendimiento: false, geografico: false }
-  // null = todas las preguntas, array = filtrar solo esas
-  const allowedQuestionIds: string[] | null = config.questionIds ?? null
 
   // 2. Metadata de la encuesta
   const { data: survey } = await admin
@@ -87,6 +85,22 @@ export async function GET(
     .select("id, title, description, logo, project_id, settings, projects(logo, companies(logo))")
     .eq("id", surveyId)
     .maybeSingle()
+
+  // Selección + ORDEN de preguntas de "Análisis de resultados": se lee en
+  // vivo de surveys.settings en cada request (no de config.questionIds,
+  // que quedaba congelado al momento de generar el link) — así, si el admin
+  // agrega/quita/reordena preguntas después de compartir, el link ya
+  // compartido lo refleja solo con refrescar, sin tener que volver a
+  // compartir. config.questionIds queda como fallback para links viejos
+  // creados antes de que existiera reportAnalysisQuestionIds.
+  const liveQuestionIds: string[] | null =
+    Array.isArray((survey as any)?.settings?.reportAnalysisQuestionIds) && (survey as any).settings.reportAnalysisQuestionIds.length > 0
+      ? (survey as any).settings.reportAnalysisQuestionIds
+      : null
+  // null = todas las preguntas, array = filtrar solo esas (y en ESE orden)
+  const allowedQuestionIds: string[] | null = liveQuestionIds ?? config.questionIds ?? null
+  const liveQuestionOrder: Record<string, number> = {}
+  if (liveQuestionIds) liveQuestionIds.forEach((qId, i) => { liveQuestionOrder[qId] = i })
 
   // Orden por pregunta elegido en la tabla de "Análisis de resultados" (ver
   // components/reports/question-card.tsx) — se guarda en surveys.settings
@@ -335,6 +349,17 @@ export async function GET(
 
     return { questionId: qId, text, type, totalAnswered, choices: [], numericStats: null, textAnswers: [] }
   }).filter((q) => q.totalAnswered > 0)
+
+  // Mismo orden que "Análisis de resultados" en vivo (liveQuestionOrder) —
+  // sin esto, el link mostraba las preguntas en el orden en que llegaron
+  // las respuestas de la base de datos, no en el orden que armó el admin.
+  if (liveQuestionIds) {
+    questionBreakdowns.sort((a, b) => {
+      const oa = liveQuestionOrder[a.questionId] ?? Number.MAX_SAFE_INTEGER
+      const ob = liveQuestionOrder[b.questionId] ?? Number.MAX_SAFE_INTEGER
+      return oa - ob
+    })
+  }
 
   // 7. Performance (solo si sections.rendimiento está activo)
   let surveyorPerformance: any[] = []

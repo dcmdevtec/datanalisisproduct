@@ -184,13 +184,17 @@ function QuestionCard({ q, index }: { q: QuestionBreakdown; index: number }) {
   const isChoice = (q.choices?.length ?? 0) > 0
   const isNumeric = q.numericStats !== null
   const isText = (q.textAnswers?.length ?? 0) > 0
-  // Por defecto: pie si hay pocas opciones, barras si hay muchas — pero si
-  // el admin eligió explícitamente un tipo de gráfica en "Análisis de
-  // resultados" (QuestionCard), eso manda (ver chartType arriba).
-  const forcedBar = q.chartType === "barsH" || q.chartType === "barsV"
-  const forcedPie = q.chartType === "pie" || q.chartType === "donut"
-  const isPie = isChoice && (forcedPie || (!forcedBar && (q.choices?.length ?? 0) <= 6))
-  const isBar = isChoice && (forcedBar || (!forcedPie && (q.choices?.length ?? 0) > 6))
+  // El default REAL de "Análisis de resultados" (ver defaultChartType en
+  // components/reports/question-card.tsx) es barras para toda pregunta de
+  // opciones — nunca torta — así que sin esto la mayoría de las preguntas
+  // ni siquiera pasan por onSettingsChange (el admin ve "Barras
+  // horizontales" ya marcado de entrada, no hace falta tocarlo, así que
+  // nunca se guarda nada explícito). El criterio anterior acá (torta si
+  // hay ≤6 opciones) no coincidía con eso, y el link compartido mostraba
+  // torta aunque el admin viera barras. Torta/Anillo solo se usan cuando
+  // se guardó explícitamente ese chartType.
+  const isPie = isChoice && (q.chartType === "pie" || q.chartType === "donut")
+  const isBar = isChoice && !isPie
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 mb-4">
