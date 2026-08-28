@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/api-auth'
+import { existsSync } from 'fs'
 
 // SEGURIDAD (auditoría 2026-07-29): sin auth, cualquiera con el ID de la
 // encuesta podía descargar el contenido completo en PDF sin login.
@@ -29,8 +30,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   let browser: any = null
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const puppeteer = require('puppeteer-core')
+    // BUG (2026-08-28): puppeteer-core@25.x se distribuye como paquete
+    // ESM-only. Con require('puppeteer-core'), Next.js no puede empaquetar
+    // la referencia en el build ("Module not found: ESM packages
+    // (puppeteer-core) need to be imported" — queda como warning, el build
+    // no falla), y en runtime ese require() nunca encuentra el módulo
+    // ("Cannot find module 'puppeteer-core'") aunque esté instalado en
+    // node_modules. Se reemplaza por import() dinámico, que sí es
+    // compatible con paquetes ESM.
+    const puppeteer = (await import('puppeteer-core')).default
 
     // En producción (Dockerfile) se instala Chromium del sistema y se fija
     // PUPPETEER_EXECUTABLE_PATH. En desarrollo local, cae a un Chrome/Chromium
@@ -43,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         '/usr/bin/google-chrome',
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       ].find((p) => {
-        try { return require('fs').existsSync(p) } catch { return false }
+        try { return existsSync(p) } catch { return false }
       })
 
     if (!executablePath) {
