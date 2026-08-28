@@ -127,50 +127,8 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
         </div>
       )}
 
-      {/* ── Registros no efectivos: comparativo + desglose de incidencias por motivo ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card data-export-chart data-export-layout="half">
-          <CardHeader>
-            <CardTitle className="text-base">Registros no efectivos</CardTitle>
-            <CardDescription>Comparativo entre incidencias, descalificados y abandonados</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {(summary?.incidencias ?? 0) + (summary?.descalificadas ?? 0) + (summary?.abandonadas ?? 0) === 0 ? (
-              <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">Sin registros no efectivos en el período</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart
-                  data={[
-                    { label: "Incidencias", count: summary?.incidencias ?? 0 },
-                    { label: "Descalificadas", count: summary?.descalificadas ?? 0 },
-                    { label: "Abandonadas", count: summary?.abandonadas ?? 0 },
-                  ]}
-                  margin={{ top: 8, right: 8, left: -16, bottom: 4 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
-                  <ReTooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--background))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      color: "hsl(var(--foreground))",
-                    }}
-                    formatter={(value: any) => [value, "Registros"]}
-                  />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={64}>
-                    {["#ef4444", "#a855f7", "#f59e0b"].map((color, i) => (
-                      <Cell key={i} fill={color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
+      {/* ── Desglose de incidencias por motivo ── */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Desglose de incidencias por motivo (slide 3): al ser varias, una sola
             barra de "Incidencias" no dice cuál es el motivo más frecuente. */}
         <Card data-export-chart data-export-layout="half">

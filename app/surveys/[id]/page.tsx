@@ -366,6 +366,7 @@ export default function SurveyDetailsPage() {
     if (outcome === "efectiva") return { label: "Efectiva", variant: "default" as const }
     if (outcome === "abandonada") return { label: "Abandonada", variant: "secondary" as const }
     if (outcome === "incidencia") return { label: "Incidencia", variant: "outline" as const }
+    if (outcome === "descalificado") return { label: "Descalificado", variant: "outline" as const }
     return { label: "Sin definir", variant: "outline" as const }
   }
 

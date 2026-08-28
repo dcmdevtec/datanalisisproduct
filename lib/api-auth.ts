@@ -57,11 +57,43 @@ export async function requireRole(allowedRoles?: string[]): Promise<RequireRoleR
 // A quién puede escribirle/leer un usuario en el módulo de mensajes
 // (usado por /api/messages y /api/portal-encuestador/contacts, para que
 // ambos compartan exactamente la misma regla y no se desincronicen).
-// - admin / supervisor: pueden mensajear a cualquier usuario (incl. broadcast).
+// - admin: puede mensajear a cualquier usuario (incl. broadcast).
+// - supervisor: solo a los encuestadores de SU equipo + usuarios admin
+//   (reunión 2026-08-27: "si una persona no hace parte de su equipo de
+//   trabajo, no debe tener acceso a... su chat" — antes un supervisor podía
+//   mensajear a CUALQUIERA, incluidos encuestadores de otros supervisores).
+// - coordinator: a los supervisores a su cargo + los encuestadores de esos
+//   supervisores + usuarios admin.
 // - surveyor: solo a su supervisor asignado (si tiene) + usuarios admin.
 // - cualquier otro rol: sin contactos (por defecto, restrictivo).
 export async function resolveAllowedMessageReceivers(user: AuthedUser): Promise<{ any: true } | { any: false; ids: string[] }> {
-  if (user.role === "admin" || user.role === "supervisor") return { any: true }
+  if (user.role === "admin") return { any: true }
+
+  const admin = createAdminSupabase()
+
+  if (user.role === "supervisor") {
+    const { data: adminUsers } = await admin.from("users").select("id").eq("role", "admin")
+    const { data: mySurveyors } = await admin.from("surveyors").select("user_id, id").eq("supervisor_id", user.id)
+    const ids = new Set<string>((adminUsers || []).map((u: any) => u.id as string))
+    for (const s of (mySurveyors as any[]) || []) {
+      ids.add(s.user_id ?? s.id) // user_id si el encuestador tiene cuenta propia; si no, fallback legacy id===user_id
+    }
+    return { any: false, ids: [...ids] }
+  }
+
+  if (user.role === "coordinator") {
+    const { data: adminUsers } = await admin.from("users").select("id").eq("role", "admin")
+    const { data: mySupervisors } = await admin.from("users").select("id").eq("role", "supervisor").eq("coordinator_id", user.id)
+    const supIds = (mySupervisors || []).map((u: any) => u.id as string)
+    const ids = new Set<string>([...(adminUsers || []).map((u: any) => u.id as string), ...supIds])
+    if (supIds.length > 0) {
+      const { data: theirSurveyors } = await admin.from("surveyors").select("user_id, id").in("supervisor_id", supIds)
+      for (const s of (theirSurveyors as any[]) || []) {
+        ids.add(s.user_id ?? s.id)
+      }
+    }
+    return { any: false, ids: [...ids] }
+  }
 
   if (user.role === "surveyor") {
     const admin = createAdminSupabase()

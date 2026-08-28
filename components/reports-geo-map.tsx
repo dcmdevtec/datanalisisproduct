@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import "leaflet/dist/leaflet.css"
 import { Maximize2, Minimize2 } from "lucide-react"
 import { formatPercent } from "@/lib/format"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface ZonePolygon {
   id: string
@@ -27,6 +28,7 @@ interface ResponsePoint {
   startedAt?: string | null
   completedAt?: string | null
   respondentName?: string | null
+  respondentPhone?: string | null
   durationSecs?: number | null
   source?: string
 }
@@ -34,6 +36,7 @@ interface ResponsePoint {
 interface ReportsGeoMapProps {
   zonePolygons: ZonePolygon[]
   responsePoints: ResponsePoint[]
+  hasActiveSurveyorFilter?: boolean
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
@@ -71,26 +74,88 @@ function formatDuration(secs: number | null | undefined): string {
 // Centro de Colombia como fallback
 const COLOMBIA_CENTER: [number, number] = [4.5709, -74.2973]
 const COLOMBIA_ZOOM = 6
+// Límite de paneo/zoom del mapa: solo territorio colombiano (con margen para
+// no cortar el borde al hacer zoom out).
+const COLOMBIA_BOUNDS: [[number, number], [number, number]] = [
+  [-4.9, -82.5],
+  [16.5, -60.0],
+]
 
-export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsGeoMapProps) {
+// Reunión 2026-08-27: "Poder delimitar el mapa al momento de visualizarlo y
+// descargarlo (Barranquilla, Atlántico, Soledad, o cualquier otro
+// municipio)". No tenemos polígonos oficiales de límites municipales
+// (requeriría datos geográficos del DANE), así que se aproxima con un
+// bounding box por municipio/departamento — suficiente para "delimitar la
+// vista", no para un recorte exacto del límite administrativo.
+const CITY_PRESETS: { label: string; bounds: [[number, number], [number, number]] }[] = [
+  { label: "Todo Colombia",      bounds: COLOMBIA_BOUNDS },
+  { label: "Barranquilla",       bounds: [[10.90, -74.87], [11.05, -74.72]] },
+  { label: "Soledad",            bounds: [[10.85, -74.85], [10.95, -74.72]] },
+  { label: "Atlántico (depto.)", bounds: [[10.15, -75.30], [11.10, -74.70]] },
+  { label: "Cartagena",          bounds: [[10.35, -75.60], [10.50, -75.45]] },
+  { label: "Santa Marta",        bounds: [[11.15, -74.30], [11.30, -74.15]] },
+  { label: "Bogotá",             bounds: [[4.45, -74.25], [4.85, -73.99]] },
+]
+
+export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveSurveyorFilter }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const layersRef = useRef<any[]>([])
   // Ruta GPS aproximada de un punto individual (ver botón "Ver ruta" en su
   // popup) — se dibuja aparte de layersRef para poder limpiarla sola sin
   // tocar el resto del mapa (zonas/puntos) cuando se pide otra ruta.
-  const routeLayerRef = useRef<any>(null)
-  const [loadingRouteId, setLoadingRouteId] = useState<string | null>(null)
+  // Ahora puede haber varias rutas dibujadas a la vez (una por encuestador
+  // seleccionado) — se guardan por surveyorId para poder limpiar/redibujar
+  // solo la que cambió sin afectar las demás.
+  const routeLayersRef = useRef<Map<string, any>>(new Map())
+  const [loadingRouteIds, setLoadingRouteIds] = useState<Set<string>>(new Set())
   const [isClient, setIsClient] = useState(false)
   const [showPoints, setShowPoints] = useState(true)
   const [showZones, setShowZones] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  // Filtro por tipo (slide 24): todas | efectiva | incidencia | abandonada | descalificado
-  const [typeFilter, setTypeFilter] = useState<"all" | "efectiva" | "incidencia" | "abandonada" | "descalificado">("all")
+  // Delimitar el mapa por ciudad/municipio (ver CITY_PRESETS) en vez de
+  // siempre mostrar todo el país.
+  const [cityPresetIdx, setCityPresetIdx] = useState(0)
+  // Filtro por tipo (slide 24): checkboxes multi-selección, todos activos por defecto.
+  // Los puntos sin outcome (ej. rastro GPS del portal encuestador) siempre se
+  // muestran — el filtro solo aplica a respuestas ya clasificadas.
+  const ALL_OUTCOMES = ["efectiva", "abandonada", "incidencia", "descalificado"] as const
+  const [enabledOutcomes, setEnabledOutcomes] = useState<Set<string>>(new Set(ALL_OUTCOMES))
+  const toggleOutcome = (t: string) => {
+    setEnabledOutcomes((prev) => {
+      const next = new Set(prev)
+      if (next.has(t)) next.delete(t)
+      else next.add(t)
+      return next
+    })
+  }
+  // Selector de encuestadores para ver su ruta GPS completa (independiente de
+  // hacer click en un punto puntual) — multi-selección: permite comparar la
+  // ruta de varios encuestadores a la vez, cada una con su propio color, sin
+  // que el mapa "colapse" al perder las rutas ya dibujadas al elegir otra.
+  const [selectedRouteSurveyorIds, setSelectedRouteSurveyorIds] = useState<Set<string>>(new Set())
+  const [showRoutePicker, setShowRoutePicker] = useState(false)
+  const toggleRouteSurveyor = (id: string) => {
+    setSelectedRouteSurveyorIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  // Paleta fija para distinguir rutas simultáneas en el mapa.
+  const ROUTE_COLORS = ["#3b82f6", "#f97316", "#14b8a6", "#e11d48", "#8b5cf6", "#0ea5e9", "#84cc16", "#f43f5e"]
 
-  const filteredPoints = typeFilter === "all"
-    ? responsePoints
-    : responsePoints.filter((p) => (p.outcome ?? null) === typeFilter)
+  const filteredPoints = responsePoints.filter((p) => !p.outcome || enabledOutcomes.has(p.outcome))
+
+  // Encuestadores disponibles para el selector de ruta (dedupe por id).
+  const surveyorOptions = Array.from(
+    new Map(
+      responsePoints
+        .filter((p) => p.surveyorId && p.surveyorName)
+        .map((p) => [p.surveyorId as string, p.surveyorName as string])
+    ).entries()
+  ).map(([id, name]) => ({ id, name }))
 
   useEffect(() => { setIsClient(true) }, [])
 
@@ -126,6 +191,9 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
           zoom: COLOMBIA_ZOOM,
           zoomControl: true,
           attributionControl: false,
+          maxBounds: COLOMBIA_BOUNDS,
+          maxBoundsViscosity: 1.0,
+          minZoom: 5,
         })
 
         mapRef.current = map
@@ -184,6 +252,53 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
     return () => clearTimeout(t)
   }, [isFullscreen])
 
+  // Dibuja/limpia rutas cuando cambia el conjunto de encuestadores
+  // seleccionados. Cada uno mantiene su propia polyline (routeLayersRef,
+  // indexado por surveyorId) así que tildar/destildar uno no afecta a los
+  // demás ya dibujados. Rango de tiempo: desde el primer punto hasta el
+  // último conocido de ese encuestador en los datos ya cargados (createdAt
+  // como fallback si no hay startedAt/completedAt).
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    // Quitar del mapa las rutas de encuestadores que ya no están seleccionados.
+    for (const [id, layer] of routeLayersRef.current.entries()) {
+      if (!selectedRouteSurveyorIds.has(id)) {
+        try { mapRef.current.removeLayer(layer) } catch { }
+        routeLayersRef.current.delete(id)
+      }
+    }
+
+    const toDraw = [...selectedRouteSurveyorIds].filter((id) => !routeLayersRef.current.has(id))
+    if (toDraw.length === 0) return
+
+    import("leaflet").then((mod) => {
+      for (const surveyorId of toDraw) {
+        const pointsForSurveyor = responsePoints.filter((p) => p.surveyorId === surveyorId)
+        if (pointsForSurveyor.length === 0) continue
+        const timestamps = pointsForSurveyor
+          .flatMap((p) => [p.startedAt, p.completedAt, p.createdAt])
+          .filter((t): t is string => !!t)
+          .map((t) => new Date(t).getTime())
+          .filter((t) => !Number.isNaN(t))
+        if (timestamps.length === 0) continue
+        const from = new Date(Math.min(...timestamps)).toISOString()
+        const to = new Date(Math.max(...timestamps)).toISOString()
+        const colorIdx = surveyorOptions.findIndex((s) => s.id === surveyorId)
+        const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
+        drawRouteForSurveyor(mod.default, mapRef.current, surveyorId, from, to, color)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRouteSurveyorIds])
+
+  // Re-encuadra el mapa apenas se elige un municipio/ciudad, sin esperar a
+  // que cambien filteredPoints/zonePolygons.
+  useEffect(() => {
+    if (!mapRef.current) return
+    try { mapRef.current.fitBounds(CITY_PRESETS[cityPresetIdx].bounds, { animate: true }) } catch { }
+  }, [cityPresetIdx])
+
   // Permite cerrar pantalla completa con la tecla Escape
   useEffect(() => {
     if (!isFullscreen) return
@@ -192,31 +307,49 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [isFullscreen])
 
-  // Pide y dibuja la ruta GPS aproximada de un punto (ver app/api/reports/route-trace).
-  const drawRoute = async (L: any, map: any, p: ResponsePoint) => {
-    if (!p.surveyorId || !p.startedAt || !p.completedAt) return
-    setLoadingRouteId(p.id ?? null)
+  // Pide y dibuja la ruta GPS de un encuestador entre `from` y `to` (ver
+  // app/api/reports/route-trace). Usada tanto por el botón "Ver ruta" de un
+  // punto puntual como por el selector general de encuestadores. Cada ruta
+  // se guarda en routeLayersRef bajo su surveyorId para poder tener varias
+  // dibujadas a la vez sin que se pisen entre sí.
+  const drawRouteForSurveyor = async (L: any, map: any, surveyorId: string, from: string, to: string, color: string = "#3b82f6") => {
+    setLoadingRouteIds((prev) => new Set(prev).add(surveyorId))
     try {
-      const params = new URLSearchParams({ surveyorId: p.surveyorId, from: p.startedAt, to: p.completedAt })
+      const params = new URLSearchParams({ surveyorId, from, to })
       const res = await fetch(`/api/reports/route-trace?${params}`)
       if (!res.ok) return
       const { points } = await res.json()
       if (!Array.isArray(points) || points.length < 2) return
 
-      if (routeLayerRef.current) {
-        try { map.removeLayer(routeLayerRef.current) } catch { }
-        routeLayerRef.current = null
+      const existing = routeLayersRef.current.get(surveyorId)
+      if (existing) {
+        try { map.removeLayer(existing) } catch { }
       }
 
       const latlngs = points.map((pt: any) => [pt.lat, pt.lng])
-      const polyline = L.polyline(latlngs, { color: "#3b82f6", weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
-      routeLayerRef.current = polyline
-      map.fitBounds(polyline.getBounds(), { padding: [40, 40], maxZoom: 16 })
+      const polyline = L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
+      routeLayersRef.current.set(surveyorId, polyline)
+
+      // Si hay una sola ruta visible, centra el mapa en ella; con varias,
+      // evita saltar de una a otra y deja que el usuario navegue libremente.
+      if (routeLayersRef.current.size === 1) {
+        map.fitBounds(polyline.getBounds(), { padding: [40, 40], maxZoom: 16 })
+      }
     } catch (err) {
       console.error("Error cargando ruta del encuestador:", err)
     } finally {
-      setLoadingRouteId(null)
+      setLoadingRouteIds((prev) => {
+        const next = new Set(prev)
+        next.delete(surveyorId)
+        return next
+      })
     }
+  }
+
+  const drawRoute = (L: any, map: any, p: ResponsePoint) => {
+    if (!p.surveyorId || !p.startedAt || !p.completedAt) return
+    setSelectedRouteSurveyorIds((prev) => new Set(prev).add(p.surveyorId as string))
+    return drawRouteForSurveyor(L, map, p.surveyorId, p.startedAt, p.completedAt)
   }
 
   const renderLayers = async (L: any, map: any) => {
@@ -225,10 +358,10 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
     // Limpiar capas anteriores
     layersRef.current.forEach((l) => { try { map.removeLayer(l) } catch { } })
     layersRef.current = []
-    if (routeLayerRef.current) {
-      try { map.removeLayer(routeLayerRef.current) } catch { }
-      routeLayerRef.current = null
+    for (const layer of routeLayersRef.current.values()) {
+      try { map.removeLayer(layer) } catch { }
     }
+    routeLayersRef.current.clear()
 
     const bounds: [number, number][] = []
 
@@ -341,6 +474,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
             <div style="display:flex;flex-direction:column;gap:3px">
               <div style="color:#555">Encuestador: <strong>${p.surveyorName || "Sin asignar"}</strong></div>
               <div style="color:#555">Encuestado: <strong>${p.respondentName || "Anónimo"}</strong></div>
+              ${p.respondentPhone ? `<div style="color:#555">Teléfono: <strong>${p.respondentPhone}</strong></div>` : ""}
               <div style="color:#555">Duración: <strong>${formatDuration(p.durationSecs)}</strong></div>
               <div style="color:#888;font-size:11px;margin-top:2px">${new Date(p.createdAt).toLocaleString("es-CO")}</div>
               ${canShowRoute ? `<button id="${routeBtnId}" style="margin-top:6px;padding:4px 8px;font-size:11px;font-weight:600;color:#18b0a4;background:#18b0a41a;border:1px solid #18b0a4;border-radius:6px;cursor:pointer">Ver ruta del encuestador</button>` : ""}
@@ -363,13 +497,38 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
     }
 
     // ── AUTO-FIT BOUNDS ────────────────────────────────────────────────────────
-    if (bounds.length > 0) {
+    // Si el usuario delimitó el mapa a una ciudad/municipio (CITY_PRESETS),
+    // esa elección manda sobre el auto-fit a los datos — si no, cada cambio
+    // de filtro devolvería la vista a "todo el país".
+    if (cityPresetIdx > 0) {
+      try { map.fitBounds(CITY_PRESETS[cityPresetIdx].bounds, { animate: false }) } catch { }
+    } else if (bounds.length > 0) {
       try {
         const latLngBounds = L.latLngBounds(bounds)
         if (latLngBounds.isValid()) {
           map.fitBounds(latLngBounds, { padding: [40, 40], maxZoom: 14, animate: false })
         }
       } catch { }
+    }
+
+    // Este método limpia TODAS las capas (incluidas rutas) arriba, así que
+    // si había encuestadores seleccionados para ver su ruta hay que
+    // redibujarlas para que un cambio de filtro (zonas/puntos/tipo) no las
+    // borre silenciosamente.
+    for (const surveyorId of selectedRouteSurveyorIds) {
+      const pointsForSurveyor = responsePoints.filter((p) => p.surveyorId === surveyorId)
+      if (pointsForSurveyor.length === 0) continue
+      const timestamps = pointsForSurveyor
+        .flatMap((p) => [p.startedAt, p.completedAt, p.createdAt])
+        .filter((t): t is string => !!t)
+        .map((t) => new Date(t).getTime())
+        .filter((t) => !Number.isNaN(t))
+      if (timestamps.length === 0) continue
+      const from = new Date(Math.min(...timestamps)).toISOString()
+      const to = new Date(Math.max(...timestamps)).toISOString()
+      const colorIdx = surveyorOptions.findIndex((s) => s.id === surveyorId)
+      const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
+      drawRouteForSurveyor(L, map, surveyorId, from, to, color)
     }
   }
 
@@ -380,7 +539,6 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
   }
 
   const hasData = zonePolygons.length > 0 || filteredPoints.length > 0
-  const hasOutcomeData = responsePoints.some((p) => !!p.outcome)
 
   return (
     <div
@@ -403,6 +561,16 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
           {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           {isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
         </button>
+        <select
+          value={cityPresetIdx}
+          onChange={(e) => setCityPresetIdx(Number(e.target.value))}
+          className="px-2 py-1.5 rounded-lg text-xs font-medium shadow-md border bg-white border-gray-200 text-gray-700"
+          title="Delimitar el mapa a una ciudad/municipio"
+        >
+          {CITY_PRESETS.map((p, idx) => (
+            <option key={p.label} value={idx}>{p.label}</option>
+          ))}
+        </select>
         <button
           onClick={() => setShowZones((v) => !v)}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border transition-all ${showZones ? "bg-white border-gray-200 text-gray-700" : "bg-gray-100 border-gray-300 text-gray-400"}`}
@@ -417,52 +585,79 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
           <span className="w-3 h-3 rounded-full inline-block" style={{ background: "#22c55e", opacity: showPoints ? 1 : 0.4 }} />
           Respuestas
         </button>
-        {/* Filtro por tipo de respuesta (slide 24) — solo tiene sentido si hay datos clasificados */}
-        {hasOutcomeData && (
-          <div className="flex flex-col gap-1 bg-white border border-gray-200 rounded-lg shadow-md p-1.5">
-            {(["all", "efectiva", "incidencia", "abandonada", "descalificado"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTypeFilter(t)}
-                className={`flex items-center gap-2 px-2 py-1 rounded text-xs font-medium transition-all ${typeFilter === t ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-50"}`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: t === "all" ? "#94a3b8" : outcomeColor[t] }} />
-                {t === "all" ? "Todas" : outcomeLabel[t]}
-              </button>
-            ))}
+        {surveyorOptions.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setShowRoutePicker((v) => !v)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border transition-all w-full ${selectedRouteSurveyorIds.size > 0 ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+            >
+              <span className="w-3 h-0.5 rounded inline-block bg-blue-500" />
+              Ver ruta{selectedRouteSurveyorIds.size > 0 ? ` (${selectedRouteSurveyorIds.size})` : "..."}
+            </button>
+            {showRoutePicker && (
+              <div className="absolute right-0 mt-1 w-56 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex flex-col gap-0.5">
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-1">
+                  Encuestadores (elegí varios)
+                </p>
+                {surveyorOptions.map((s, idx) => {
+                  const checked = selectedRouteSurveyorIds.has(s.id)
+                  const color = ROUTE_COLORS[idx % ROUTE_COLORS.length]
+                  return (
+                    <label key={s.id} className="flex items-center gap-2 px-1 py-1 rounded cursor-pointer hover:bg-gray-50 select-none">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleRouteSurveyor(s.id)}
+                        className="h-3.5 w-3.5"
+                        style={checked ? { borderColor: color, backgroundColor: color } : { borderColor: color }}
+                      />
+                      <span className="text-xs text-gray-700 truncate">{s.name}</span>
+                    </label>
+                  )
+                })}
+                {selectedRouteSurveyorIds.size > 0 && (
+                  <button
+                    onClick={() => setSelectedRouteSurveyorIds(new Set())}
+                    className="mt-1 text-[11px] text-gray-500 hover:text-gray-700 px-1 text-left"
+                  >
+                    Limpiar rutas
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {loadingRouteIds.size > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border bg-white border-gray-200 text-gray-500">
+            Cargando ruta...
           </div>
         )}
       </div>
 
-      {/* Leyenda — esquina inferior izquierda */}
+      {/* Leyenda — esquina inferior izquierda. Doble uso: además de leyenda,
+          cada fila es un checkbox real que filtra el tipo de respuesta.
+          Se muestra siempre (no solo cuando hay puntos clasificados) para que
+          sirva de referencia fija del mapa. */}
       <div className="absolute bottom-6 left-3 z-[1000] flex flex-col gap-2">
-        {hasOutcomeData && (
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-2">
-            <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tipo de respuesta</p>
-            <div className="flex flex-col gap-1">
-              {(["efectiva", "abandonada", "incidencia", "descalificado"] as const).map((t) => (
-                <div key={t} className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: outcomeColor[t] }} />
-                  <span className="text-[10px] text-gray-600">{outcomeLabel[t]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         <div className="bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-2">
-          <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tasa de completación (zonas)</p>
+          <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Tipo de respuesta</p>
           <div className="flex flex-col gap-1">
-            {[
-              { color: "#22c55e", label: "≥ 75% — Alta" },
-              { color: "#f59e0b", label: "50-74% — Media" },
-              { color: "#f97316", label: "25-49% — Baja" },
-              { color: "#ef4444", label: "< 25% — Crítica" },
-            ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: color }} />
-                <span className="text-[10px] text-gray-600">{label}</span>
-              </div>
-            ))}
+            {ALL_OUTCOMES.map((t) => {
+              const checked = enabledOutcomes.has(t)
+              return (
+                <label key={t} className="flex items-center gap-2 cursor-pointer select-none rounded px-1 -mx-1 hover:bg-gray-50">
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => toggleOutcome(t)}
+                    className="h-3.5 w-3.5"
+                    style={{ borderColor: outcomeColor[t], ...(checked ? { backgroundColor: outcomeColor[t] } : {}) }}
+                  />
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: outcomeColor[t], opacity: checked ? 1 : 0.35 }} />
+                  <span className={`text-[10px] ${checked ? "text-gray-900 font-medium" : "text-gray-400"}`}>
+                    {outcomeLabel[t]}
+                  </span>
+                </label>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -484,7 +679,11 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints }: ReportsG
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
           </svg>
           <p className="text-sm font-medium text-gray-500">Sin datos geográficos disponibles</p>
-          <p className="text-xs text-gray-400 mt-1">Asigna encuestadores a zonas para ver el mapa</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {hasActiveSurveyorFilter
+              ? "El encuestador seleccionado no tiene ubicaciones registradas para esta encuesta. Probá con \"Todos\" en el filtro de Encuestador."
+              : "Asigna encuestadores a zonas para ver el mapa"}
+          </p>
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { resolveOutcome } from "@/lib/report-outcome"
 
 /**
  * Calcula el estado del encuestador basado en minutos transcurridos
@@ -85,7 +86,9 @@ export async function GET(request: Request) {
   // SEGURIDAD (auditoría 2026-07-29): esta ruta devuelve ubicación GPS en
   // vivo, batería y contacto de TODOS los encuestadores. Antes no tenía
   // ningún check de sesión/rol — cualquiera con la URL podía verla.
-  const auth = await requireRole(["admin", "supervisor"])
+  // Reunión 2026-08-27 ("Jerarquías y roles"): se agrega coordinator (antes
+  // ni entraba) y se fuerza el alcance por equipo más abajo.
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   // Fix 2026-08-12: cookies() sin await (bug Next.js 15) → cliente anon sin
@@ -101,6 +104,28 @@ export async function GET(request: Request) {
     const status_filter = searchParams.get("status")
 
     console.log("📊 Query params:", { survey_id, zone_id, status_filter })
+
+    // SEGURIDAD (reunión 2026-08-27): esta ubicación en tiempo real, batería
+    // y contacto de encuestadores debe estar limitada al equipo del
+    // supervisor/coordinador autenticado — antes solo el ROL ("supervisor")
+    // daba acceso a la vista completa, sin importar de quién era el equipo.
+    // Se resuelve server-side el set de surveyor_id permitido y se
+    // interseca con lo que haya pedido el cliente (si pidió algo fuera de
+    // su equipo, simplemente no aparece).
+    let teamSurveyorIds: string[] | null = null // null = admin, sin restricción
+    if (auth.user.role === "supervisor") {
+      const { data: mySurveyors } = await supabase.from("surveyors").select("id").eq("supervisor_id", auth.user.id)
+      teamSurveyorIds = ((mySurveyors as any[]) || []).map((s) => s.id)
+    } else if (auth.user.role === "coordinator") {
+      const { data: mySupervisors } = await supabase.from("users").select("id").eq("role", "supervisor").eq("coordinator_id", auth.user.id)
+      const supIds = ((mySupervisors as any[]) || []).map((s: any) => s.id)
+      if (supIds.length === 0) {
+        teamSurveyorIds = []
+      } else {
+        const { data: mySurveyors } = await supabase.from("surveyors").select("id").in("supervisor_id", supIds)
+        teamSurveyorIds = ((mySurveyors as any[]) || []).map((s) => s.id)
+      }
+    }
 
     // Usar la vista surveyor_tracking_view como recomienda el documento
     let query = supabase
@@ -118,8 +143,13 @@ export async function GET(request: Request) {
       query = query.eq("zone_id", zone_id)
     }
 
-    // Filtrar por lista de IDs de encuestadores
-    if (surveyor_ids) {
+    // Filtrar por lista de IDs de encuestadores — intersección con el
+    // equipo permitido cuando el usuario no es admin.
+    if (teamSurveyorIds !== null) {
+      const requestedIds = surveyor_ids ? surveyor_ids.split(",").map((id) => id.trim()) : null
+      const allowedIds = requestedIds ? requestedIds.filter((id) => teamSurveyorIds!.includes(id)) : teamSurveyorIds
+      query = query.in("surveyor_id", allowedIds.length > 0 ? allowedIds : ["__none__"])
+    } else if (surveyor_ids) {
       const ids = surveyor_ids.split(",").map(id => id.trim())
       query = query.in("surveyor_id", ids)
     }
@@ -167,11 +197,48 @@ export async function GET(request: Request) {
       )
     }
 
+    // Reunión 2026-08-27: "Cada punto de encuestador debe estar identificado
+    // con Total de registros, Efectivas y Hora de inicio de la primera
+    // encuesta del día". Se calcula sobre las respuestas de HOY (00:00 en
+    // adelante, hora del servidor) resolviendo el encuestador con el mismo
+    // criterio de 3 niveles que /api/reports/route.ts (assignment_id vía
+    // survey_surveyor_zones → metadata.surveyor_id de la APK →
+    // respondent_id de la web autenticada).
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+    const todayStatsBySurveyorId: Record<string, { total: number; efectivas: number; firstResponseAt: string | null }> = {}
+    if (surveyorIdsForLogout.length > 0) {
+      const { data: sszRows } = await supabase
+        .from("survey_surveyor_zones")
+        .select("id, surveyor_id")
+        .in("surveyor_id", surveyorIdsForLogout)
+      const assignmentToSurveyor: Record<string, string> = {}
+      for (const r of (sszRows as any[]) || []) assignmentToSurveyor[r.id] = r.surveyor_id
+
+      const { data: todayResponses } = await supabase
+        .from("responses")
+        .select("assignment_id, metadata, respondent_id, created_at, status, outcome")
+        .gte("created_at", startOfDay.toISOString())
+
+      for (const r of (todayResponses as any[]) || []) {
+        const sid = (r.assignment_id ? assignmentToSurveyor[r.assignment_id] : undefined)
+          ?? (!r.assignment_id ? r.metadata?.surveyor_id : undefined)
+          ?? (r.respondent_id && surveyorIdsForLogout.includes(r.respondent_id) ? r.respondent_id : undefined)
+        if (!sid || !surveyorIdsForLogout.includes(sid)) continue
+        if (!todayStatsBySurveyorId[sid]) todayStatsBySurveyorId[sid] = { total: 0, efectivas: 0, firstResponseAt: null }
+        const entry = todayStatsBySurveyorId[sid]
+        entry.total++
+        if (resolveOutcome(r) === "efectiva") entry.efectivas++
+        if (!entry.firstResponseAt || r.created_at < entry.firstResponseAt) entry.firstResponseAt = r.created_at
+      }
+    }
+
     // Transformar los datos al formato esperado por el frontend
     const surveyorsWithLocation = trackingData?.map((item: any) => {
       // Estado calculado siempre desde tiempo real, nunca desde el campo status de la vista
       const status = calcStatus(item, lastLogoutMap[item.surveyor_id])
       const in_app = isInApp(item)
+      const todayStats = todayStatsBySurveyorId[item.surveyor_id] ?? { total: 0, efectivas: 0, firstResponseAt: null }
 
       return {
         id: item.surveyor_id,
@@ -180,6 +247,9 @@ export async function GET(request: Request) {
         phone_number: item.surveyor_phone || "",
         status,
         in_app,  // true=en la app, false=background, null=APK no reporta este campo aún
+        today_total_registros: todayStats.total,
+        today_efectivas: todayStats.efectivas,
+        today_first_response_at: todayStats.firstResponseAt,
         current_location: item.latitude && item.longitude ? {
           latitude: item.latitude,
           longitude: item.longitude,
@@ -211,9 +281,9 @@ export async function GET(request: Request) {
       out_of_zone: surveyorsWithLocation.filter(s =>
         s.current_location && !s.current_location.is_in_zone
       ).length,
-      low_battery: surveyorsWithLocation.filter(s => 
-        s.current_location && 
-        s.current_location.battery_level !== null && 
+      low_battery: surveyorsWithLocation.filter(s =>
+        s.current_location &&
+        s.current_location.battery_level !== null &&
         s.current_location.battery_level < 20
       ).length,
     }

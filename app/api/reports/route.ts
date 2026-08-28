@@ -47,7 +47,10 @@ function extractNumeric(val: any): number | null {
 // (incl. datos de otros encuestadores y respondentes).
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["admin", "supervisor"])
+    // Reunión 2026-08-27 ("Jerarquías y roles"): coordinator ahora puede
+    // entrar a Reportes (antes ni figuraba en la lista de roles permitidos,
+    // así que no podía ver ni su propio equipo).
+    const auth = await requireRole(["admin", "supervisor", "coordinator"])
     if (!auth.ok) return auth.response
 
     const { searchParams } = new URL(request.url)
@@ -63,8 +66,23 @@ export async function GET(request: NextRequest) {
     const filterQuestionId = searchParams.get("filterQuestionId")
     const filterValue = searchParams.get("filterValue")
     // Jerarquía Encuestador -> Supervisor -> Coordinador (slide 19).
-    const supervisorFilter = searchParams.get("supervisor") || "all"
-    const coordinatorFilter = searchParams.get("coordinator") || "all"
+    //
+    // SEGURIDAD (reunión 2026-08-27): estos filtros venían tal cual del
+    // query string, es decir, el propio cliente decidía a qué equipo
+    // "mirar". Un supervisor autenticado podía omitir el filtro (o poner el
+    // id de OTRO supervisor) y ver el reporte de toda la organización, no
+    // solo el de su equipo — la única barrera era el rol ("admin"|"supervisor"),
+    // nunca la identidad. Ahora, si el usuario autenticado es supervisor o
+    // coordinador, su propio id GANA sobre lo que haya venido en la URL.
+    let supervisorFilter = searchParams.get("supervisor") || "all"
+    let coordinatorFilter = searchParams.get("coordinator") || "all"
+    if (auth.user.role === "supervisor") {
+      supervisorFilter = auth.user.id
+      coordinatorFilter = "all"
+    } else if (auth.user.role === "coordinator") {
+      coordinatorFilter = auth.user.id
+      supervisorFilter = "all"
+    }
     // Tablas cruzadas (slide 21): cruzar respuestas de dos preguntas de tipo
     // choice/rating, contando cuántas respuestas cayeron en cada combinación.
     const crossRowQuestionId = searchParams.get("crossRowQuestionId")
@@ -155,18 +173,44 @@ export async function GET(request: NextRequest) {
 
     // Si hay filtro por encuestador (directo o vía jerarquía supervisor/coordinador),
     // resolvemos primero los assignment_id que le pertenecen, porque responses no
-    // tiene surveyor_id directo (solo assignment_id -> assignments.surveyor_id).
+    // tiene surveyor_id directo (solo assignment_id -> surveyor).
+    //
+    // BUG (2026-08-27): responses.assignment_id apunta a survey_surveyor_zones.id
+    // en el flujo real del portal encuestador (mismo criterio que ya usa
+    // app/api/reports/individual/[id]/route.ts), NO a la tabla legacy
+    // "assignments". Este filtro solo consultaba "assignments", así que
+    // cualquier encuestador que solo tuviera asignaciones vía
+    // survey_surveyor_zones (la inmensa mayoría hoy) daba
+    // filteredAssignmentIds = [] y el reporte entero devolvía emptyResponse()
+    // al elegirlo en el filtro — aunque SÍ tuviera respuestas y ubicación GPS
+    // visibles sin el filtro. Se consultan ambas tablas y se unen los ids.
+    //
+    // OJO: NO se filtra también por filteredSurveyIds acá — responsesQuery ya
+    // filtra por survey_id directamente sobre "responses" más abajo, así que
+    // agregar ese mismo filtro sobre survey_surveyor_zones es redundante y,
+    // si esa fila de asignación no tiene el survey_id perfectamente
+    // sincronizado (reasignaciones de zona no siempre lo actualizan), la doble
+    // condición podía anular una respuesta real de ese encuestador para esta
+    // encuesta.
     let filteredAssignmentIds: string[] | null = null
     if (surveyorFilter !== "all" || hierarchySurveyorIds !== null) {
       if (hierarchySurveyorIds !== null && hierarchySurveyorIds.length === 0) {
         filteredAssignmentIds = []
       } else {
+        let sszIdQuery = admin.from("survey_surveyor_zones").select("id")
         let assignmentIdQuery = admin.from("assignments").select("id")
-        if (surveyorFilter !== "all") assignmentIdQuery = assignmentIdQuery.eq("surveyor_id", surveyorFilter)
-        else if (hierarchySurveyorIds !== null) assignmentIdQuery = assignmentIdQuery.in("surveyor_id", hierarchySurveyorIds)
-        if (filteredSurveyIds !== null) assignmentIdQuery = assignmentIdQuery.in("survey_id", filteredSurveyIds)
-        const { data: matchingAssignments } = await assignmentIdQuery
-        filteredAssignmentIds = (matchingAssignments || []).map((a: any) => a.id)
+        if (surveyorFilter !== "all") {
+          sszIdQuery = sszIdQuery.eq("surveyor_id", surveyorFilter)
+          assignmentIdQuery = assignmentIdQuery.eq("surveyor_id", surveyorFilter)
+        } else if (hierarchySurveyorIds !== null) {
+          sszIdQuery = sszIdQuery.in("surveyor_id", hierarchySurveyorIds)
+          assignmentIdQuery = assignmentIdQuery.in("surveyor_id", hierarchySurveyorIds)
+        }
+        const [{ data: matchingSSZ }, { data: matchingAssignments }] = await Promise.all([sszIdQuery, assignmentIdQuery])
+        filteredAssignmentIds = [
+          ...((matchingSSZ || []).map((a: any) => a.id)),
+          ...((matchingAssignments || []).map((a: any) => a.id)),
+        ]
       }
     }
 
@@ -178,7 +222,7 @@ export async function GET(request: NextRequest) {
       supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
       coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
       summary: {
-        totalResponses: 0, completionRate: 0, avgTime: "0:00", nps: null, responseGrowth: 0,
+        totalResponses: 0, totalSurveyors: 0, completionRate: 0, avgTime: "0:00", nps: null, responseGrowth: 0,
         responsesTimeline: [], responsesByHour: [], peakHour: 0, activeDays: 0, avgPerDay: 0,
         surveysWithData: 0, trendPct: 0, peakDay: null,
         efectivas: 0, incidencias: 0, abandonadas: 0, tasaRespuestasEfectivas: 0,
@@ -294,10 +338,10 @@ export async function GET(request: NextRequest) {
     const geoResponseIds = responses
       .filter((r: any) => r.location && typeof r.location === "object" &&
         typeof (r.location.lat ?? r.location.latitude) === "number" &&
-        typeof (r.location.lng ?? r.location.longitude) === "number" &&
-        !r.respondent_name)
+        typeof (r.location.lng ?? r.location.longitude) === "number")
       .map((r: any) => r.id)
     const respondentNameByResponseId: Record<string, string> = {}
+    const respondentPhoneByResponseId: Record<string, string> = {}
     if (geoResponseIds.length > 0) {
       const { data: contactAnswers } = await admin
         .from("answers")
@@ -310,6 +354,8 @@ export async function GET(request: NextRequest) {
         if (!val || typeof val !== "object") continue
         const fullName = val.fullName || [val.firstName, val.lastName].filter(Boolean).join(" ").trim()
         if (fullName) respondentNameByResponseId[a.response_id] = fullName
+        const phone = val.phone || val.telefono || val.phoneNumber
+        if (phone) respondentPhoneByResponseId[a.response_id] = String(phone)
       }
     }
 
@@ -342,13 +388,14 @@ export async function GET(request: NextRequest) {
           startedAt,
           completedAt: r.completed_at ?? null,
           respondentName: r.respondent_name ?? respondentNameByResponseId[r.id] ?? null,
+          respondentPhone: respondentPhoneByResponseId[r.id] ?? null,
           durationSecs,
           source: "response" as const,
         }
       })
 
     // Rastro GPS de encuestadores (surveyor_locations)
-    let surveyorLocationPoints: { id: string; lat: number; lng: number; status: string; outcome: string | null; createdAt: string; surveyorName: string | null; respondentName: string | null; durationSecs: number | null; source: "surveyor" }[] = []
+    let surveyorLocationPoints: { id: string; lat: number; lng: number; status: string; outcome: string | null; createdAt: string; surveyorId: string | null; surveyorName: string | null; respondentName: string | null; durationSecs: number | null; source: "surveyor" }[] = []
     try {
       let locQuery = admin
         .from("surveyor_locations")
@@ -388,6 +435,7 @@ export async function GET(request: NextRequest) {
             status: "completed",
             outcome: null,
             createdAt: l.recorded_at,
+            surveyorId: l.surveyor_id ?? null,
             surveyorName: (l.surveyors as any)?.name ?? null,
             respondentName: null,
             durationSecs: null,
@@ -415,7 +463,7 @@ export async function GET(request: NextRequest) {
         supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
         coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
         summary: {
-          totalResponses: 0, completionRate: 0, avgTime: "0:00", nps: null, responseGrowth: 0,
+          totalResponses: 0, totalSurveyors: 0, completionRate: 0, avgTime: "0:00", nps: null, responseGrowth: 0,
           responsesTimeline: [], responsesByHour: [], peakHour: 0, activeDays: 0, avgPerDay: 0,
           surveysWithData: 0, trendPct: 0, peakDay: null,
           efectivas: 0, incidencias: 0, abandonadas: 0, tasaRespuestasEfectivas: 0,
@@ -868,6 +916,12 @@ export async function GET(request: NextRequest) {
       abandonadas: number
       descalificadas: number
       timeDiffs: number[]
+      // Reunión 2026-08-27: "Hora de inicio 1ra encuesta del día" / "Hora
+      // final última encuesta del día" — se aproxima con el primer/último
+      // created_at dentro del rango de fechas ya filtrado (dateFrom/dateTo),
+      // no estrictamente "del día" porque el reporte puede abarcar varios días.
+      firstResponseAt: string | null
+      lastResponseAt: string | null
     }> = {}
 
     // Encuestadores por metadata.surveyor_id (APK): la APK siempre manda
@@ -939,6 +993,7 @@ export async function GET(request: NextRequest) {
         name, supervisorId,
         supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
         efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0, timeDiffs: [],
+        firstResponseAt: null, lastResponseAt: null,
       }
     }
 
@@ -961,7 +1016,13 @@ export async function GET(request: NextRequest) {
           name, supervisorId,
           supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
           efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0, timeDiffs: [],
+          firstResponseAt: null, lastResponseAt: null,
         }
+      }
+      if (r.created_at) {
+        const entry = surveyorMap[sid]
+        if (!entry.firstResponseAt || r.created_at < entry.firstResponseAt) entry.firstResponseAt = r.created_at
+        if (!entry.lastResponseAt || r.created_at > entry.lastResponseAt) entry.lastResponseAt = r.created_at
       }
       const outcome = resolveOutcome(r)
       if (outcome === "efectiva") {
@@ -998,6 +1059,8 @@ export async function GET(request: NextRequest) {
           descalificadas: s.descalificadas,
           tasaRespuestas: totalRegistros > 0 ? Math.round((s.efectivas / totalRegistros) * 1000) / 10 : 0,
           avgTime: avgSecs > 0 ? `${m}:${String(sec).padStart(2, "0")}` : "—",
+          firstResponseAt: s.firstResponseAt,
+          lastResponseAt: s.lastResponseAt,
           // Alias para backward compat
           totalAssignments: totalRegistros,
           completedAssignments: s.efectivas,
@@ -1059,6 +1122,9 @@ export async function GET(request: NextRequest) {
       coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
       summary: {
         totalResponses,
+        // Encuestadores con al menos un registro en el período/filtro actual
+        // (pedido en reunión 2026-08-27: "indicador de los encuestadores").
+        totalSurveyors: surveyorPerformance.length,
         completionRate,
         avgTime: `${avgTimeMin}:${String(avgTimeSec).padStart(2, "0")}`,
         nps,

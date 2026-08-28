@@ -87,7 +87,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: answers } = await admin
       .from("answers")
-      .select("id, question_id, value, questions(id, text, type, options, order_num, section_id)")
+      .select("id, question_id, value, questions(id, text, type, options, order_num, section_id, matrix_rows, matrix_cols, settings)")
       .eq("response_id", responseId)
 
     const answerList = (answers as any[]) || []
@@ -165,6 +165,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             orderNum: q.order_num ?? 0,
             answer: extractValue(a.value, q.type),
             rawAnswer: a.value,
+            matrixRows: q.matrix_rows || q.settings?.matrixRows || null,
+            matrixCols: q.matrix_cols || q.settings?.matrixCols || null,
             audioUrl: audio?.remoteUrl ?? null,
             fileUrls,
           }
@@ -247,6 +249,96 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
   } catch (error) {
     console.error("Error en reports/individual/[id] API:", error)
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+  }
+}
+
+// PATCH /api/reports/individual/[id] — edita el valor de UNA respuesta a una
+// pregunta puntual de esta encuesta (reunión 2026-08-27: "Tener la opción de
+// editar las respuestas por pregunta de una encuesta"). Body:
+// { answerId: string, value: any }. Mismo rol que el GET (admin/supervisor):
+// corregir un dato mal digitado en campo es trabajo de supervisión, no algo
+// tan destructivo como borrar la encuesta completa (eso sí queda solo para
+// admin, ver DELETE más abajo).
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await requireRole(["admin", "supervisor"])
+    if (!auth.ok) return auth.response
+
+    const { id: responseId } = await params
+    const body = await request.json().catch(() => null)
+    const answerId = body?.answerId
+    if (!answerId || typeof answerId !== "string") {
+      return NextResponse.json({ error: "answerId es requerido" }, { status: 400 })
+    }
+    if (!("value" in (body ?? {}))) {
+      return NextResponse.json({ error: "value es requerido" }, { status: 400 })
+    }
+
+    const admin = createAdminSupabase()
+
+    // Confirmar que la respuesta (answer) realmente pertenece a esta
+    // encuesta individual — sin esto, cualquier answerId válido de CUALQUIER
+    // otra respuesta se podría sobreescribir desde este endpoint.
+    const { data: answerRow, error: fetchError } = await admin
+      .from("answers")
+      .select("id, response_id")
+      .eq("id", answerId)
+      .maybeSingle()
+
+    if (fetchError || !answerRow || (answerRow as any).response_id !== responseId) {
+      return NextResponse.json({ error: "La respuesta no pertenece a esta encuesta" }, { status: 404 })
+    }
+
+    const { error: updateError } = await admin
+      .from("answers")
+      .update({ value: body.value })
+      .eq("id", answerId)
+
+    if (updateError) {
+      console.error("Error actualizando answer:", updateError)
+      return NextResponse.json({ error: "No se pudo guardar el cambio" }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error en PATCH reports/individual/[id]:", error)
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+  }
+}
+
+// DELETE /api/reports/individual/[id] — elimina una respuesta individual
+// completa (reunión 2026-08-27: "Tener la opción de Eliminar la encuesta
+// individual"). Solo admin — un supervisor no debería poder borrar datos de
+// campo, solo verlos. Borra en cascada: media_files ligados a las answers
+// de esta respuesta, luego las answers, y por último la respuesta. No se
+// borran los archivos del storage (fuera de alcance; quedan huérfanos, igual
+// que ya pasa con handleDeleteFile en la UI de individual-responses-tab).
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await requireRole(["admin"])
+    if (!auth.ok) return auth.response
+
+    const { id: responseId } = await params
+    const admin = createAdminSupabase()
+
+    const { data: answerRows } = await admin.from("answers").select("id").eq("response_id", responseId)
+    const answerIds = ((answerRows as any[]) || []).map((a) => a.id)
+
+    if (answerIds.length > 0) {
+      await admin.from("media_files").delete().in("answer_id", answerIds)
+      await admin.from("answers").delete().in("id", answerIds)
+    }
+
+    const { error: deleteError } = await admin.from("responses").delete().eq("id", responseId)
+    if (deleteError) {
+      console.error("Error eliminando respuesta:", deleteError)
+      return NextResponse.json({ error: "No se pudo eliminar la respuesta" }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error en DELETE reports/individual/[id]:", error)
     return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
   }
 }

@@ -4,9 +4,11 @@ import { useState, useMemo } from "react"
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
 import { formatPercent } from "@/lib/format"
 
-// Tabla de rendimiento por encuestador — pptx slide 25.
+// Tabla de rendimiento por encuestador — pptx slide 25 + ajustes reunión
+// 2026-08-27 (agrega Descalificadas, Hora inicio y Hora final).
 // Columnas: Encuestador · Supervisor · Total registros · Incidencias ·
-//           Abandonadas · Efectivas · Tasa de respuestas · Tiempo promedio
+//           Abandonadas · Descalificadas · Efectivas · Tasa de respuestas ·
+//           Tiempo promedio · Hora inicio 1ra · Hora final última
 // Todas las columnas numéricas son ordenables (asc/desc).
 
 export interface SurveyorPerformanceRow {
@@ -16,13 +18,16 @@ export interface SurveyorPerformanceRow {
   totalRegistros: number
   incidencias: number
   abandonadas: number
+  descalificadas: number
   efectivas: number
   tasaRespuestas: number
   avgTime: string      // "m:ss" o "—"
   completionRate: number
+  firstResponseAt: string | null
+  lastResponseAt: string | null
 }
 
-type SortKey = "name" | "supervisorName" | "totalRegistros" | "incidencias" | "abandonadas" | "efectivas" | "tasaRespuestas"
+type SortKey = "name" | "supervisorName" | "totalRegistros" | "incidencias" | "abandonadas" | "descalificadas" | "efectivas" | "tasaRespuestas"
 type SortDir = "asc" | "desc"
 
 interface ColDef {
@@ -37,9 +42,17 @@ const columns: ColDef[] = [
   { key: "totalRegistros",  label: "Total registros",    align: "center" },
   { key: "incidencias",     label: "Incidencias",        align: "center" },
   { key: "abandonadas",     label: "Abandonadas",        align: "center" },
+  { key: "descalificadas",  label: "Descalificadas",     align: "center" },
   { key: "efectivas",       label: "Efectivas",          align: "center" },
   { key: "tasaRespuestas",  label: "Tasa",               align: "center" },
 ]
+
+function formatHour(iso: string | null): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })
+}
 
 interface SortablePerformanceTableProps {
   rows: SurveyorPerformanceRow[]
@@ -105,9 +118,15 @@ export function SortablePerformanceTable({ rows }: SortablePerformanceTableProps
                 </span>
               </th>
             ))}
-            {/* Tiempo promedio — no sortable (string "m:ss") */}
+            {/* Tiempo promedio, horas de inicio/fin — no sortable */}
             <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">
               Tiempo prom.
+            </th>
+            <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">
+              Inicio 1ra
+            </th>
+            <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">
+              Fin última
             </th>
           </tr>
         </thead>
@@ -134,6 +153,12 @@ export function SortablePerformanceTable({ rows }: SortablePerformanceTableProps
                   {row.abandonadas}
                 </span>
               </td>
+              {/* Descalificadas */}
+              <td className="p-3 text-center">
+                <span className={row.descalificadas > 0 ? "text-purple-500 font-medium" : "text-muted-foreground"}>
+                  {row.descalificadas}
+                </span>
+              </td>
               {/* Efectivas */}
               <td className="p-3 text-center">
                 <span className="text-[#18b0a4] font-medium">{row.efectivas}</span>
@@ -156,6 +181,14 @@ export function SortablePerformanceTable({ rows }: SortablePerformanceTableProps
               {/* Tiempo promedio efectiva */}
               <td className="p-3 text-center text-xs font-mono text-muted-foreground">
                 {row.avgTime}
+              </td>
+              {/* Hora inicio 1ra encuesta */}
+              <td className="p-3 text-center text-xs font-mono text-muted-foreground">
+                {formatHour(row.firstResponseAt)}
+              </td>
+              {/* Hora final última encuesta */}
+              <td className="p-3 text-center text-xs font-mono text-muted-foreground">
+                {formatHour(row.lastResponseAt)}
               </td>
             </tr>
           ))}

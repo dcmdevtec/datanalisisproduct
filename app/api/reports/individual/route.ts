@@ -227,8 +227,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Barrio / Ciudad-Municipio (reunión 2026-08-27): se sacan de la respuesta
+    // a una pregunta tipo "location" (mismo shape que usa el detalle en
+    // app/api/reports/individual/[id]/route.ts — {ciudad, barrio, lat, lng}),
+    // no de responses.location (que solo trae lat/lng crudos del GPS del
+    // dispositivo, sin geocodificar).
+    const responseIds = rawData.map((r: any) => r.id)
+    const locationByResponseId: Record<string, { ciudad: string | null; barrio: string | null }> = {}
+    if (responseIds.length > 0) {
+      const { data: locationAnswers } = await (admin as any)
+        .from("answers")
+        .select("response_id, value, questions!inner(type)")
+        .in("response_id", responseIds)
+        .eq("questions.type", "location")
+        .limit(2000)
+      for (const a of (locationAnswers as any[]) || []) {
+        if (locationByResponseId[a.response_id]) continue // ya resuelto (primera pregunta location gana)
+        const val = a.value
+        if (!val || typeof val !== "object") continue
+        locationByResponseId[a.response_id] = {
+          ciudad: val.ciudad || null,
+          barrio: val.barrio || null,
+        }
+      }
+    }
+
     return NextResponse.json({
-      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId, surveyorInfoByRespondentId)),
+      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId, surveyorInfoByRespondentId, locationByResponseId[r.id])),
       total: totalCount,
       page,
       pageSize,
@@ -243,7 +268,8 @@ function mapListItem(
   r: any,
   surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {},
   surveyorInfoBySurveyorId:  Record<string, { name: string | null; email: string | null }> = {},
-  surveyorInfoByRespondentId: Record<string, { name: string | null; email: string | null }> = {}
+  surveyorInfoByRespondentId: Record<string, { name: string | null; email: string | null }> = {},
+  locationInfo?: { ciudad: string | null; barrio: string | null }
 ) {
   // started_at = inicio real de la respuesta. created_at/completed_at se
   // setean casi al mismo tiempo (al enviar), por eso no sirven para medir
@@ -281,11 +307,14 @@ function mapListItem(
     surveyorEmail: surveyorInfo?.email ?? null,
     respondentName,
     createdAt: r.created_at,
+    startedAt: r.started_at ?? null,
     completedAt: r.completed_at,
     durationSecs,
     status: r.status,
     outcome: resolveOutcome(r),
     incidenceType: r.incidence_type ?? null,
     hasLocation: !!(r.location && typeof r.location === "object"),
+    ciudad: locationInfo?.ciudad ?? null,
+    barrio: locationInfo?.barrio ?? null,
   }
 }

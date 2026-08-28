@@ -38,6 +38,18 @@ export async function GET(request: Request) {
     const withUser = url.searchParams.get("with")
     const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 200)
 
+    // SEGURIDAD (reunión 2026-08-27, "Jerarquías y roles"): POST ya validaba
+    // el receiver contra resolveAllowedMessageReceivers, pero este GET no —
+    // con `with=<id de cualquier usuario>` se podía LEER la conversación
+    // entre dos personas ajenas al propio equipo (ej. un supervisor viendo
+    // el chat entre otro supervisor y su encuestador). Misma regla que POST.
+    if (withUser) {
+      const allowed = await resolveAllowedMessageReceivers(authedUser)
+      if (allowed.any !== true && !allowed.ids.includes(withUser)) {
+        return NextResponse.json({ error: "No tienes permiso para ver esta conversación" }, { status: 403 })
+      }
+    }
+
     const supabase = getSupabase()
 
     let query = supabase

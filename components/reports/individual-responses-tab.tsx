@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { formatPercent } from "@/lib/format"
 import {
   Dialog,
@@ -15,7 +16,7 @@ import {
 import {
   Loader2, User, Clock, ChevronLeft, ChevronRight, FileAudio, Download,
   AlertCircle, Trash2, Search, MapPin, CheckCircle2, Circle, FileImage,
-  FileText, X, ClipboardList, Paperclip, Mail
+  FileText, X, ClipboardList, Paperclip, Mail, Check, Pencil, Save
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -32,12 +33,15 @@ interface ListItem {
   surveyorEmail: string | null
   respondentName: string | null
   createdAt: string
+  startedAt?: string | null
   completedAt: string | null
   durationSecs: number | null
   status: string
   outcome: "efectiva" | "incidencia" | "abandonada"
   incidenceType: string | null
   hasLocation: boolean
+  ciudad?: string | null
+  barrio?: string | null
 }
 
 interface DetailQuestion {
@@ -46,6 +50,8 @@ interface DetailQuestion {
   type: string
   answer: string
   rawAnswer?: any
+  matrixRows?: string[] | null
+  matrixCols?: string[] | null
   audioUrl: string | null
   fileUrls?: { name: string; url: string | null; type: string; path?: string }[]
   answerId?: string
@@ -68,11 +74,19 @@ interface DetailResponse {
   questions: DetailQuestion[]
 }
 
+// Columnas de la tabla (reunión 2026-08-27): Encuestador, Encuestado, Fecha,
+// Hora inicio, Duración, Barrio, Ciudad/Municipio, Tipo — más columnas de las
+// que caben en una sola pantalla, así que el contenedor scrollea horizontal
+// en vez de apretar cada celda.
+const ROW_GRID = "180px 170px 110px 90px 90px 130px 150px 110px"
+const ROW_MIN_WIDTH = "1030px"
+
 // ── Estilos de outcome ────────────────────────────────────────────────────────
 const outcomeBadge: Record<string, { label: string; className: string }> = {
   efectiva:   { label: "Efectiva",   className: "bg-emerald-50   text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800" },
   incidencia: { label: "Incidencia", className: "bg-red-50       text-red-600     border-red-200     dark:bg-red-900/20     dark:text-red-400     dark:border-red-800"     },
   abandonada: { label: "Abandonada", className: "bg-amber-50     text-amber-600   border-amber-200   dark:bg-amber-900/20   dark:text-amber-400   dark:border-amber-800"  },
+  descalificado: { label: "Descalificado", className: "bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800" },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -144,6 +158,11 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
   const [detail,        setDetail]        = useState<DetailResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [deletingPath,  setDeletingPath]  = useState<string | null>(null)
+  const [deletingResponse, setDeletingResponse] = useState(false)
+  // ── Editar respuesta a una pregunta puntual (reunión 2026-08-27) ────────────
+  const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null)
+  const [editingValue, setEditingValue] = useState("")
+  const [savingAnswer, setSavingAnswer] = useState(false)
 
   // ── Search within sheet questions ───────────────────────────────────────────
   const [qSearch,        setQSearch]        = useState("")
@@ -207,6 +226,60 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
       toast({ title: "Error de red", description: "No se pudo eliminar el archivo", variant: "destructive" })
     } finally {
       setDeletingPath(null)
+    }
+  }
+
+  // ── Eliminar la respuesta individual completa (reunión 2026-08-27) ──────────
+  const handleDeleteResponse = async (id: string) => {
+    if (!confirm("¿Eliminar esta encuesta individual por completo? Esta acción no se puede deshacer.")) return
+    setDeletingResponse(true)
+    try {
+      const res = await fetch(`/api/reports/individual/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast({ title: "Error al eliminar", description: body?.error || "No se pudo eliminar la encuesta", variant: "destructive" })
+        return
+      }
+      toast({ title: "Encuesta eliminada" })
+      setSelectedId(null)
+      setDetail(null)
+      fetchList()
+    } catch {
+      toast({ title: "Error de red", description: "No se pudo eliminar la encuesta", variant: "destructive" })
+    } finally {
+      setDeletingResponse(false)
+    }
+  }
+
+  // ── Guardar edición de una respuesta puntual ─────────────────────────────────
+  const handleSaveAnswer = async (responseId: string, answerId: string) => {
+    setSavingAnswer(true)
+    try {
+      const res = await fetch(`/api/reports/individual/${responseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answerId, value: editingValue }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast({ title: "Error al guardar", description: body?.error || "No se pudo guardar el cambio", variant: "destructive" })
+        return
+      }
+      setDetail((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          questions: prev.questions.map((q) =>
+            q.answerId === answerId ? { ...q, answer: editingValue, rawAnswer: editingValue } : q
+          ),
+        }
+      })
+      toast({ title: "Respuesta actualizada" })
+      setEditingAnswerId(null)
+    } catch {
+      toast({ title: "Error de red", description: "No se pudo guardar el cambio", variant: "destructive" })
+    } finally {
+      setSavingAnswer(false)
     }
   }
 
@@ -353,14 +426,17 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
           </div>
 
           {loading ? (
-            <div>
+            <div className="overflow-x-auto">
               {/* Header de columnas skeleton */}
-              <div className="grid grid-cols-12 px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y">
-                <div className="col-span-2">Encuestador</div>
-                <div className="col-span-3">Encuestado</div>
-                <div className="col-span-3">Fecha</div>
-                <div className="col-span-2 text-center">Duración</div>
-                <div className="col-span-2 text-center">Tipo</div>
+              <div className="grid px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y" style={{ gridTemplateColumns: ROW_GRID, minWidth: ROW_MIN_WIDTH }}>
+                <div>Encuestador</div>
+                <div>Encuestado</div>
+                <div>Fecha</div>
+                <div className="text-center">Hora inicio</div>
+                <div className="text-center">Duración</div>
+                <div>Barrio</div>
+                <div>Ciudad / Municipio</div>
+                <div className="text-center">Tipo</div>
               </div>
               <div className="divide-y">
                 {Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}
@@ -373,32 +449,40 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
             </div>
           ) : (
             <>
+            <div className="overflow-x-auto">
               {/* Header de columnas */}
-              <div className="grid grid-cols-12 px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y">
-                <div className="col-span-2">Encuestador</div>
-                <div className="col-span-3">Encuestado</div>
-                <div className="col-span-3">Fecha</div>
-                <div className="col-span-2 text-center">Duración</div>
-                <div className="col-span-2 text-center">Tipo</div>
+              <div className="grid px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-y" style={{ gridTemplateColumns: ROW_GRID, minWidth: ROW_MIN_WIDTH }}>
+                <div>Encuestador</div>
+                <div>Encuestado</div>
+                <div>Fecha</div>
+                <div className="text-center">Hora inicio</div>
+                <div className="text-center">Duración</div>
+                <div>Barrio</div>
+                <div>Ciudad / Municipio</div>
+                <div className="text-center">Tipo</div>
               </div>
 
               {/* Filas */}
-              <div className="divide-y">
+              <div className="divide-y" style={{ minWidth: ROW_MIN_WIDTH }}>
                 {visibleItems.length === 0 && (
                   <div className="py-10 text-center text-sm text-muted-foreground">
                     Sin resultados para "{tableSearch || surveyorFilter}"
                   </div>
                 )}
                 {visibleItems.map((item) => {
-                  const badge = outcomeBadge[item.outcome]
+                  // Fallback defensivo: si en el futuro aparece un outcome
+                  // nuevo sin agregar acá, que se vea como "Sin clasificar"
+                  // en vez de romper toda la tabla (ver bug de "descalificado").
+                  const badge = outcomeBadge[item.outcome] ?? { label: item.outcome || "Sin clasificar", className: "bg-muted text-muted-foreground border-border" }
                   return (
                     <button
                       key={item.id}
                       onClick={() => openDetail(item.id)}
-                      className="w-full grid grid-cols-12 px-3 py-3 items-center text-left hover:bg-muted/30 transition-colors group"
+                      className="w-full grid px-3 py-3 items-center text-left hover:bg-muted/30 transition-colors group"
+                      style={{ gridTemplateColumns: ROW_GRID }}
                     >
                       {/* Encuestador */}
-                      <div className="col-span-2 flex items-center gap-1.5 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 min-w-0 pr-2">
                         <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                         <div className="min-w-0">
                           <p className="text-sm truncate leading-tight">
@@ -414,7 +498,7 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       </div>
 
                       {/* Encuestado */}
-                      <div className="col-span-3 text-sm truncate pr-2 text-foreground">
+                      <div className="text-sm truncate pr-2 text-foreground">
                         {item.respondentName
                           ? item.respondentName
                           : <span className="text-muted-foreground italic text-xs">Sin asignar</span>
@@ -422,18 +506,35 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       </div>
 
                       {/* Fecha */}
-                      <div className="col-span-3 text-xs text-muted-foreground">
+                      <div className="text-xs text-muted-foreground truncate pr-2">
                         {formatDate(item.createdAt)}
                       </div>
 
+                      {/* Hora inicio */}
+                      <div className="text-center text-xs text-muted-foreground font-mono">
+                        {item.startedAt
+                          ? new Date(item.startedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })
+                          : "—"}
+                      </div>
+
                       {/* Duración */}
-                      <div className="col-span-2 text-center text-xs text-muted-foreground font-mono">
+                      <div className="text-center text-xs text-muted-foreground font-mono">
                         {formatDuration(item.durationSecs)}
                       </div>
 
+                      {/* Barrio */}
+                      <div className="text-xs text-muted-foreground truncate pr-2">
+                        {item.barrio || "—"}
+                      </div>
+
+                      {/* Ciudad / Municipio */}
+                      <div className="text-xs text-muted-foreground truncate pr-2">
+                        {item.ciudad || "—"}
+                      </div>
+
                       {/* Tipo */}
-                      <div className="col-span-2 flex justify-center">
-                        <Badge variant="outline" className={`text-xs ${badge.className}`}>
+                      <div className="flex justify-center overflow-hidden">
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap truncate max-w-full ${badge.className}`}>
                           {badge.label}
                         </Badge>
                       </div>
@@ -441,6 +542,7 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                   )
                 })}
               </div>
+            </div>
 
               {/* Paginación */}
               <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/20">
@@ -516,8 +618,8 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                           <span className="font-mono text-muted-foreground text-sm">#{detail.id.slice(0, 8)}</span>
                         )}
                       </h2>
-                      <Badge variant="outline" className={`${outcomeBadge[detail.outcome].className} text-[10px] py-0`}>
-                        {outcomeBadge[detail.outcome].label}
+                      <Badge variant="outline" className={`${(outcomeBadge[detail.outcome] ?? outcomeBadge.abandonada).className} text-[10px] py-0`}>
+                        {outcomeBadge[detail.outcome]?.label ?? detail.outcome}
                       </Badge>
                       {detail.incidenceType && (
                         <span className="text-[10px] text-muted-foreground">{detail.incidenceType}</span>
@@ -533,6 +635,17 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       </div>
                     )}
                   </div>
+                  {/* Eliminar encuesta individual (reunión 2026-08-27) */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    disabled={deletingResponse}
+                    onClick={() => handleDeleteResponse(detail.id)}
+                    title="Eliminar esta encuesta individual"
+                  >
+                    {deletingResponse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </Button>
                 </div>
 
                 {/* ── Grabación de audio del encuestador (compacto) ──────────── */}
@@ -707,13 +820,52 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                             `}>
                               {globalIdx + 1}
                             </span>
-                            <p className="text-sm font-medium leading-snug text-foreground pt-0.5">
+                            <p className="text-sm font-medium leading-snug text-foreground pt-0.5 flex-1">
                               {q.text}
                             </p>
+                            {/* Editar respuesta (reunión 2026-08-27) — solo para
+                                tipos de valor simple; matrix/location/file
+                                necesitan su propio editor, fuera de alcance acá. */}
+                            {q.answerId && !["matrix", "location", "file", "image_upload"].includes(q.type) && editingAnswerId !== q.answerId && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => { setEditingAnswerId(q.answerId!); setEditingValue(q.answer || "") }}
+                                title="Editar respuesta"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
 
                           {/* Respuesta */}
                           <div className="ml-9">
+                            {editingAnswerId === q.answerId ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  value={editingValue}
+                                  onChange={(e) => setEditingValue(e.target.value)}
+                                  rows={3}
+                                  className="text-sm"
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    disabled={savingAnswer}
+                                    onClick={() => handleSaveAnswer(detail.id, q.answerId!)}
+                                  >
+                                    {savingAnswer ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+                                    Guardar
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setEditingAnswerId(null)} disabled={savingAnswer}>
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                            <>
                             {/* Renderer especial: tipo location (GPS) */}
                             {q.type === "location" && q.rawAnswer && typeof q.rawAnswer === "object" && !Array.isArray(q.rawAnswer) && q.rawAnswer.lat != null ? (
                               <div className="rounded-xl border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20 p-3 space-y-2">
@@ -744,6 +896,37 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                                   {Number(q.rawAnswer.lat).toFixed(5)}, {Number(q.rawAnswer.lng).toFixed(5)} — Ver en mapa
                                 </a>
                               </div>
+                            ) : q.type === "matrix" && q.matrixRows?.length && q.matrixCols?.length && q.rawAnswer && typeof q.rawAnswer === "object" ? (
+                              <div className="overflow-x-auto rounded-lg border">
+                                <table className="w-full text-xs border-collapse">
+                                  <thead>
+                                    <tr className="bg-muted/50">
+                                      <th className="text-left font-medium px-2 py-1.5 border-b"> </th>
+                                      {q.matrixCols.map((col) => (
+                                        <th key={col} className="text-center font-medium px-2 py-1.5 border-b border-l whitespace-nowrap">
+                                          {col}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {q.matrixRows.map((row) => {
+                                      const cellValue = (q.rawAnswer as Record<string, string | string[]>)[row]
+                                      const selected = Array.isArray(cellValue) ? cellValue : cellValue ? [cellValue] : []
+                                      return (
+                                        <tr key={row} className="even:bg-muted/20">
+                                          <td className="px-2 py-1.5 border-b font-medium text-foreground/80">{row}</td>
+                                          {q.matrixCols!.map((col) => (
+                                            <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                              {selected.includes(col) ? <Check className="h-3.5 w-3.5 mx-auto text-emerald-600" /> : null}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
                             ) : hasAnswer ? (
                               <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
                                 {q.answer}
@@ -752,6 +935,8 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-full italic">
                                 <Circle className="h-3 w-3" /> Sin respuesta
                               </span>
+                            )}
+                            </>
                             )}
 
                             {/* Audio */}

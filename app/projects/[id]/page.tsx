@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Building2, Copy, Loader2, Pencil, Plus, Settings, Eye, BarChart3 } from "lucide-react"
+import { ArrowLeft, Building2, Copy, Loader2, Pencil, Plus, Settings, Eye, BarChart3, Download } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase-browser"
@@ -175,12 +175,22 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
               </div>
-              <Button
-                className="mt-10 gap-2 w-full sm:w-auto bg-[#18b0a4] hover:bg-[#18b0a4]/90"
-                onClick={() => router.push(`/projects/${params.id}/create-survey`)}
-              >
-                <Plus className="h-4 w-4" /> Crear Encuesta
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <Button
+                  variant="outline"
+                  className="gap-2 w-full sm:w-auto"
+                  onClick={() => window.open(`/api/projects/${params.id}/export-database`, "_blank")}
+                  title="Descarga en CSV todas las respuestas de todas las encuestas de este proyecto"
+                >
+                  <Download className="h-4 w-4" /> Descargar base de datos
+                </Button>
+                <Button
+                  className="gap-2 w-full sm:w-auto bg-[#18b0a4] hover:bg-[#18b0a4]/90"
+                  onClick={() => router.push(`/projects/${params.id}/create-survey`)}
+                >
+                  <Plus className="h-4 w-4" /> Crear Encuesta
+                </Button>
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-8">

@@ -3569,7 +3569,19 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               >
                 {surveyData.title}
               </CardTitle>
-              {/* Survey description intentionally hidden in the app per audit requirement */}
+              {/* Descripción de la SECCIÓN actual (la que se edita en el tab
+                  "Preguntas" > "Descripción de la sección", con formato
+                  enriquecido — negrita, etc.), no la descripción general de
+                  la encuesta (tab "Detalles") — hay dos campos de
+                  descripción distintos y este es el que debe verse en la
+                  web. */}
+              {currentSection?.description && (
+                <div
+                  className="text-sm sm:text-base mb-4 max-w-2xl text-center"
+                  style={{ color: themeColors.text, opacity: 0.75 }}
+                  dangerouslySetInnerHTML={{ __html: currentSection.description }}
+                />
+              )}
               {/* Barra de progreso mejorada */}
               <div className="mt-4 sm:mt-8 w-full max-w-2xl mx-auto px-2 sm:px-0">
                 <div className="flex items-center justify-between mb-3">

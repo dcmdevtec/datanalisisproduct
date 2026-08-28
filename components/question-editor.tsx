@@ -189,6 +189,8 @@ export function QuestionEditor({
   // Bulk-add matrix columns UI
   const [showMatrixBulk, setShowMatrixBulk] = useState<boolean>(false)
   const [matrixBulkText, setMatrixBulkText] = useState<string>("")
+  const [showMatrixRowBulk, setShowMatrixRowBulk] = useState<boolean>(false)
+  const [matrixRowBulkText, setMatrixRowBulkText] = useState<string>("")
   // Subida de imagen/video adjunto a la pregunta (question.image / columna
   // questions.file_url) — se muestra arriba del enunciado sin importar el
   // tipo de pregunta, para poder armar encuestas "a partir de un video".
@@ -973,23 +975,23 @@ export function QuestionEditor({
           </div>
           <div className="flex-1 mt-2 relative" ref={suggestionsRef}>
             {!isEditing ? (
-              /* Vista compacta: clic para editar */
-              <textarea
-                readOnly
-                className="text-lg cursor-pointer bg-background border rounded-lg w-full resize-none min-h-[48px] whitespace-pre-line focus:outline-none break-words"
-                value={question.text_html ? question.text_html.replace(/<[^>]+>/g, "") : ""}
-                placeholder="Escribe tu pregunta aquí..."
-                onClick={() => setIsEditing(true)}
-                rows={1}
-                style={{ height: "auto", overflow: "hidden" }}
-                ref={el => {
-                  if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
-                }}
-                onInput={e => {
-                  const t = e.target as HTMLTextAreaElement;
-                  t.style.height = "auto"; t.style.height = t.scrollHeight + "px";
-                }}
-              />
+              /* Vista compacta: clic para editar. Debe respetar el formato
+                 (negrita, color, tamaño, etc.) aplicado en el editor enriquecido,
+                 no solo el texto plano. */
+              question.text_html ? (
+                <div
+                  className="text-lg cursor-pointer bg-background border rounded-lg w-full min-h-[48px] whitespace-pre-line break-words px-3 py-2"
+                  onClick={() => setIsEditing(true)}
+                  dangerouslySetInnerHTML={{ __html: question.text_html }}
+                />
+              ) : (
+                <div
+                  className="text-lg cursor-pointer text-muted-foreground bg-background border rounded-lg w-full min-h-[48px] px-3 py-2"
+                  onClick={() => setIsEditing(true)}
+                >
+                  Escribe tu pregunta aquí...
+                </div>
+              )
             ) : (
               /* Modo edición con autocomplete inline */
               <div className="space-y-0">
@@ -1225,22 +1227,6 @@ export function QuestionEditor({
                       }}
                       placeholder={`Fila ${idx + 1}`}
                     />
-                    {question.config?.matrixCellType === "checkbox" && (
-                      <div className="flex items-center gap-1.5 shrink-0" title="Permitir múltiples selecciones en esta fila">
-                        <Switch
-                          checked={question.config?.matrixRowAllowMultiple?.[idx] !== false}
-                          onCheckedChange={(checked) => {
-                            const newRowConfig = [...(question.config?.matrixRowAllowMultiple || matrixRows.map(() => true))]
-                            newRowConfig[idx] = checked
-                            onUpdateQuestion(sectionId, question.id, "config", {
-                              ...question.config,
-                              matrixRowAllowMultiple: newRowConfig,
-                            })
-                          }}
-                        />
-                        <span className="text-xs text-muted-foreground">Múltiple</span>
-                      </div>
-                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1254,19 +1240,65 @@ export function QuestionEditor({
                     </Button>
                   </div>
                 ))}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 bg-transparent"
-                  onClick={() => {
-                    onUpdateQuestion(sectionId, question.id, "matrixRows", [
-                      ...matrixRows,
-                      `Fila ${matrixRows.length + 1}`,
-                    ])
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> Agregar fila
-                </Button>
+                <div className="flex items-start gap-2">
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 bg-transparent"
+                      onClick={() => {
+                        onUpdateQuestion(sectionId, question.id, "matrixRows", [
+                          ...matrixRows,
+                          `Fila ${matrixRows.length + 1}`,
+                        ])
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> Agregar fila
+                    </Button>
+                  </div>
+
+                  <div className="mt-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="ml-2"
+                      onClick={() => setShowMatrixRowBulk((s) => !s)}
+                    >
+                      Múltiples
+                    </Button>
+
+                    {showMatrixRowBulk && (
+                      <div className="mt-2">
+                        <Textarea
+                          value={matrixRowBulkText}
+                          onChange={(e) => setMatrixRowBulkText(e.target.value)}
+                          placeholder={`Pega una fila por línea (ej. Problema A\nProblema B\nProblema C)`}
+                          rows={4}
+                        />
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const lines = matrixRowBulkText
+                                .split("\n")
+                                .map(l => l.trim())
+                                .filter(l => l.length > 0)
+                              if (lines.length > 0) {
+                                onUpdateQuestion(sectionId, question.id, 'matrixRows', [...matrixRows, ...lines])
+                                setMatrixRowBulkText("")
+                                setShowMatrixRowBulk(false)
+                              }
+                            }}
+                          >
+                            Agregar filas
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setMatrixRowBulkText(""); setShowMatrixRowBulk(false) }}>Cancelar</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <div>
                 <Label className="font-medium">Columnas (Opciones)</Label>

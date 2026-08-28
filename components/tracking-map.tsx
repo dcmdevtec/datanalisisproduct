@@ -15,6 +15,9 @@ interface SurveyorLocation {
   email: string
   phone_number: string
   status: "active" | "inactive" | "offline"
+  today_total_registros?: number
+  today_efectivas?: number
+  today_first_response_at?: string | null
   current_location: {
     latitude: number
     longitude: number
@@ -329,6 +332,18 @@ export default function TrackingMap({
                         {formatMinutesAgo(surveyor.current_location.minutes_ago)}
                       </span>
                     </div>
+                    {/* Reunión 2026-08-27: total de registros y efectivas del
+                        día + hora de inicio de la primera encuesta */}
+                    <div className="flex items-center gap-2 pt-1 mt-1 border-t">
+                      <span className="text-muted-foreground">Hoy:</span>
+                      <span className="font-medium">{surveyor.today_total_registros ?? 0} registros</span>
+                      <span className="text-green-600 font-medium">· {surveyor.today_efectivas ?? 0} efectivas</span>
+                    </div>
+                    {surveyor.today_first_response_at && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Inicio 1ra encuesta: {new Date(surveyor.today_first_response_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                    )}
                     {surveyor.current_location.battery_level !== null && (
                       <div className="flex items-center gap-2">
                         {surveyor.current_location.is_charging ? (
