@@ -192,6 +192,14 @@ interface PreviewSurveyPageContentProps {
 function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPageContentProps = {}) {
   // ...existing code...
   const router = useRouter()
+  // BUG (2026-08-28): el flujo web (link público + portal encuestador +
+  // preview) nunca capturaba ni enviaba `started_at` al crear la respuesta
+  // — por eso "Tiempo Promedio" en Reportes siempre quedaba en 0:00/"—"
+  // para respuestas de la web (el cálculo excluye cualquier fila sin
+  // started_at, ver app/api/reports/route.ts). Se captura acá, al momento
+  // en que la encuesta termina de cargar en pantalla (aproximación
+  // razonable de "cuando la persona empezó a responder").
+  const surveyStartedAtRef = useRef<string | null>(null)
   const [surveyData, setSurveyData] = useState<PreviewSurveyData | null>(null)
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0)
   const [answers, setAnswers] = useState<{ [questionId: string]: any }>({})
@@ -342,6 +350,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       }
 
       setSurveyData(parsedData)
+      if (!surveyStartedAtRef.current) surveyStartedAtRef.current = new Date().toISOString()
     } else {
       router.push("/")
     }
@@ -1097,6 +1106,9 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       survey_id: surveyId,
       response_answers: validAnswers,
       timestamp: new Date().toISOString(),
+      // Ver comentario junto a surveyStartedAtRef: sin esto, /api/reports
+      // nunca puede calcular "Tiempo Promedio" para respuestas de la web.
+      started_at: surveyStartedAtRef.current ?? new Date().toISOString(),
       // Llave de idempotencia (auditoría 2026-07-29): estable para todos los
       // intentos de este componente, permite a /api/responses detectar
       // reintentos/doble envío del mismo formulario y devolver la respuesta
