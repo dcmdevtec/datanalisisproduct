@@ -1,7 +1,12 @@
 # ============================
 # 🧱 Builder stage
 # ============================
-FROM node:20-alpine AS builder
+# Node 22 (antes 20): puppeteer-core@25.x exige Node >=22.12.0 (ver
+# "npm warn EBADENGINE" en el log de build con Node 20) — con Node 20 la
+# instalación queda con ese warning y en runtime terminaba fallando el
+# import ("Cannot find module 'puppeteer-core'") al generar el PDF de
+# encuesta. Mismo cambio en el runner stage más abajo.
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 # 🔥 AUMENTAR MEMORIA PARA NEXT BUILD
@@ -32,7 +37,7 @@ RUN npm prune --production --legacy-peer-deps
 # ============================
 # 🚀 Runner stage
 # ============================
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 # Chromium del sistema para puppeteer-core (PDF de encuesta = HTML del
