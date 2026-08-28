@@ -635,17 +635,6 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       </div>
                     )}
                   </div>
-                  {/* Eliminar encuesta individual (reunión 2026-08-27) */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    disabled={deletingResponse}
-                    onClick={() => handleDeleteResponse(detail.id)}
-                    title="Eliminar esta encuesta individual"
-                  >
-                    {deletingResponse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
                 </div>
 
                 {/* ── Grabación de audio del encuestador (compacto) ──────────── */}
@@ -910,15 +899,30 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {q.matrixRows.map((row) => {
-                                      const cellValue = (q.rawAnswer as Record<string, string | string[]>)[row]
-                                      const selected = Array.isArray(cellValue) ? cellValue : cellValue ? [cellValue] : []
+                                    {q.matrixRows.map((row, rowIdx) => {
+                                      // BUG (2026-08-28): el editor de matriz guarda la
+                                      // selección bajo `${questionId}_${rowIdx}` (ÍNDICE de
+                                      // fila, no el texto), y el valor de la celda es el
+                                      // texto de columna para "radio" pero el ÍNDICE de
+                                      // columna para "checkbox" (ver case "radio"/"checkbox"
+                                      // en app/preview/survey/page.tsx). Buscar por el
+                                      // texto exacto de la fila (como antes) nunca
+                                      // encontraba nada — la tabla salía siempre vacía.
+                                      // Se intenta primero por índice (formato real) y se
+                                      // deja el texto de fila como fallback por si algún
+                                      // origen de datos distinto (ej. legado) sí guardó así.
+                                      const raw = q.rawAnswer as Record<string, any> | undefined
+                                      const cellValue = raw?.[String(rowIdx)] ?? raw?.[row]
+                                      const rawList = Array.isArray(cellValue) ? cellValue : cellValue !== undefined && cellValue !== null && cellValue !== "" ? [cellValue] : []
+                                      const selectedLabels = rawList.map((v) =>
+                                        typeof v === "number" ? (q.matrixCols![v] ?? String(v)) : String(v)
+                                      )
                                       return (
                                         <tr key={row} className="even:bg-muted/20">
                                           <td className="px-2 py-1.5 border-b font-medium text-foreground/80">{row}</td>
                                           {q.matrixCols!.map((col) => (
                                             <td key={col} className="text-center px-2 py-1.5 border-b border-l">
-                                              {selected.includes(col) ? <Check className="h-3.5 w-3.5 mx-auto text-emerald-600" /> : null}
+                                              {selectedLabels.includes(col) ? <Check className="h-3.5 w-3.5 mx-auto text-emerald-600" /> : null}
                                             </td>
                                           ))}
                                         </tr>
@@ -1047,6 +1051,23 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                     {filteredQuestions.length} de {detail.questions.length} preguntas
                   </div>
                 )}
+              </div>
+
+              {/* ── Pie fijo: eliminar encuesta (reunión 2026-08-27) ──────────
+                  Lejos a propósito del botón "X" de cerrar (esquina superior
+                  derecha) — estaban uno al lado del otro y era fácil borrar
+                  la encuesta por error al querer solo cerrar el modal. */}
+              <div className="flex-shrink-0 border-t px-4 py-2.5 bg-background">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                  disabled={deletingResponse}
+                  onClick={() => handleDeleteResponse(detail.id)}
+                >
+                  {deletingResponse ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Eliminar esta encuesta
+                </Button>
               </div>
             </>
           )}
