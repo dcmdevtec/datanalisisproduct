@@ -68,8 +68,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
 
     const page = await browser.newPage()
-    const origin = new URL(request.url).origin
-    await page.goto(`${origin}/print/survey/${surveyId}`, { waitUntil: 'networkidle0', timeout: 30000 })
+
+    // BUG (2026-08-28): usar el origin del request público (new URL(request.url).origin)
+    // rompe detrás de un proxy (Traefik/Dokploy) — el proxy reenvía
+    // X-Forwarded-Proto: https pero el Host termina siendo el interno
+    // ("localhost:3000"), así que Next reconstruye el origin como
+    // "https://localhost:3000". Puppeteer corre DENTRO del mismo contenedor
+    // que el servidor, que solo habla HTTP plano en ese puerto — de ahí el
+    // net::ERR_SSL_PROTOCOL_ERROR. Se navega siempre por HTTP directo al
+    // puerto interno, sin pasar por el proxy externo.
+    const internalOrigin = process.env.INTERNAL_APP_URL || `http://127.0.0.1:${process.env.PORT || 3000}`
+
+    // La página /print/survey/[id] llama a /api/surveys/[id], que exige
+    // sesión (requireRole) — sin reenviar la cookie del usuario que pidió
+    // el PDF, esa llamada interna daría 401 y la página nunca llegaría a
+    // "data-print-ready".
+    const cookieHeader = request.headers.get('cookie')
+    if (cookieHeader) {
+      await page.setExtraHTTPHeaders({ Cookie: cookieHeader })
+    }
+
+    await page.goto(`${internalOrigin}/print/survey/${surveyId}`, { waitUntil: 'networkidle0', timeout: 30000 })
     await page.waitForSelector('[data-print-ready="true"]', { timeout: 15000 })
 
     const pdfBuffer = await page.pdf({
