@@ -951,6 +951,7 @@ function ReportsPageContent() {
                       zonePolygons={data?.geographic?.zonePolygons ?? []}
                       responsePoints={data?.geographic?.responsePoints ?? []}
                       hasActiveSurveyorFilter={selectedSurveyor !== "all"}
+                      hasSurveySelected={selectedSurvey !== "all"}
                     />
                   </CardContent>
                 </Card>

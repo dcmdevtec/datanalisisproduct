@@ -37,6 +37,7 @@ interface ReportsGeoMapProps {
   zonePolygons: ZonePolygon[]
   responsePoints: ResponsePoint[]
   hasActiveSurveyorFilter?: boolean
+  hasSurveySelected?: boolean
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
@@ -97,7 +98,7 @@ const CITY_PRESETS: { label: string; bounds: [[number, number], [number, number]
   { label: "Bogotá",             bounds: [[4.45, -74.25], [4.85, -73.99]] },
 ]
 
-export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveSurveyorFilter }: ReportsGeoMapProps) {
+export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveSurveyorFilter, hasSurveySelected }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const layersRef = useRef<any[]>([])
@@ -145,6 +146,17 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
   }
   // Paleta fija para distinguir rutas simultáneas en el mapa.
   const ROUTE_COLORS = ["#3b82f6", "#f97316", "#14b8a6", "#e11d48", "#8b5cf6", "#0ea5e9", "#84cc16", "#f43f5e"]
+  // Tope defensivo del rango de tiempo que se le pide a /api/reports/route-trace
+  // por encuestador: aunque ya se exige elegir una encuesta puntual (ver
+  // "Ver ruta" arriba), una encuesta que lleva corriendo varias semanas
+  // igual generaría una ventana enorme mezclando días de trabajo distintos.
+  // Se limita a las últimas 48h de actividad de ese encuestador dentro del
+  // rango detectado.
+  const MAX_ROUTE_WINDOW_MS = 48 * 60 * 60 * 1000
+  const clampRouteWindow = (minTs: number, maxTs: number): { from: string; to: string } => {
+    const clampedMin = maxTs - minTs > MAX_ROUTE_WINDOW_MS ? maxTs - MAX_ROUTE_WINDOW_MS : minTs
+    return { from: new Date(clampedMin).toISOString(), to: new Date(maxTs).toISOString() }
+  }
 
   const filteredPoints = responsePoints.filter((p) => !p.outcome || enabledOutcomes.has(p.outcome))
 
@@ -282,8 +294,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
           .map((t) => new Date(t).getTime())
           .filter((t) => !Number.isNaN(t))
         if (timestamps.length === 0) continue
-        const from = new Date(Math.min(...timestamps)).toISOString()
-        const to = new Date(Math.max(...timestamps)).toISOString()
+        const { from, to } = clampRouteWindow(Math.min(...timestamps), Math.max(...timestamps))
         const colorIdx = surveyorOptions.findIndex((s) => s.id === surveyorId)
         const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
         drawRouteForSurveyor(mod.default, mapRef.current, surveyorId, from, to, color)
@@ -291,6 +302,17 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteSurveyorIds])
+
+  // Si se quita el filtro de encuesta (vuelve a "Todas"), limpia cualquier
+  // ruta que hubiera quedado seleccionada — ver comentario junto al botón
+  // "Ver ruta" sobre por qué esa combinación trababa el mapa.
+  useEffect(() => {
+    if (!hasSurveySelected && selectedRouteSurveyorIds.size > 0) {
+      setSelectedRouteSurveyorIds(new Set())
+      setShowRoutePicker(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSurveySelected])
 
   // Re-encuadra el mapa apenas se elige un municipio/ciudad, sin esperar a
   // que cambien filteredPoints/zonePolygons.
@@ -524,8 +546,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
         .map((t) => new Date(t).getTime())
         .filter((t) => !Number.isNaN(t))
       if (timestamps.length === 0) continue
-      const from = new Date(Math.min(...timestamps)).toISOString()
-      const to = new Date(Math.max(...timestamps)).toISOString()
+      const { from, to } = clampRouteWindow(Math.min(...timestamps), Math.max(...timestamps))
       const colorIdx = surveyorOptions.findIndex((s) => s.id === surveyorId)
       const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
       drawRouteForSurveyor(L, map, surveyorId, from, to, color)
@@ -585,7 +606,20 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
           <span className="w-3 h-3 rounded-full inline-block" style={{ background: "#22c55e", opacity: showPoints ? 1 : 0.4 }} />
           Respuestas
         </button>
-        {surveyorOptions.length > 0 && (
+        {/* Ver ruta: requiere una encuesta puntual seleccionada arriba.
+            Sin eso, el rango de tiempo para reconstruir la ruta de un
+            encuestador termina siendo "todo su historial" (semanas/meses de
+            pings de días y encuestas distintas mezclados), lo que generaba
+            consultas pesadas y un polyline sin sentido que trababa el mapa. */}
+        {!hasSurveySelected ? (
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+            title="Elegí una encuesta específica en el filtro de arriba para poder ver la ruta de un encuestador"
+          >
+            <span className="w-3 h-0.5 rounded inline-block bg-gray-300" />
+            Ver ruta
+          </div>
+        ) : surveyorOptions.length > 0 && (
           <div className="relative">
             <button
               onClick={() => setShowRoutePicker((v) => !v)}
