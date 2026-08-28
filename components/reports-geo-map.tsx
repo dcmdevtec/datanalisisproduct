@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import "leaflet/dist/leaflet.css"
 import { Maximize2, Minimize2 } from "lucide-react"
 import { formatPercent } from "@/lib/format"
@@ -109,6 +109,12 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
   // seleccionado) — se guardan por surveyorId para poder limpiar/redibujar
   // solo la que cambió sin afectar las demás.
   const routeLayersRef = useRef<Map<string, any>>(new Map())
+  // Caché de puntos ya traídos por encuestador — a diferencia de
+  // routeLayersRef (que se vacía cada vez que se redibuja el mapa),
+  // sobrevive entre redibujados para no volver a pedir /api/reports/route-trace
+  // cada vez que cambia un filtro (zonas, puntos, tipo, etc.) mientras la
+  // ruta seleccionada sigue siendo la misma.
+  const routeDataCacheRef = useRef<Map<string, { lat: number; lng: number }[]>>(new Map())
   const [loadingRouteIds, setLoadingRouteIds] = useState<Set<string>>(new Set())
   const [isClient, setIsClient] = useState(false)
   const [showPoints, setShowPoints] = useState(true)
@@ -158,7 +164,19 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
     return { from: new Date(clampedMin).toISOString(), to: new Date(maxTs).toISOString() }
   }
 
-  const filteredPoints = responsePoints.filter((p) => !p.outcome || enabledOutcomes.has(p.outcome))
+  // BUG CRÍTICO (2026-08-28): esto se recalculaba en cada render como un
+  // array NUEVO (nueva referencia), y era dependencia del efecto que
+  // redibuja las capas del mapa. Ese efecto, al dibujar una ruta
+  // seleccionada, actualiza estado (setLoadingRouteIds) — lo cual dispara
+  // un re-render — lo cual crea un `filteredPoints` con referencia distinta
+  // — lo cual vuelve a disparar el efecto — bucle infinito: seguía
+  // pidiendo /api/reports/route-trace y redibujando el mapa sin parar,
+  // hasta trabar/colgar la pestaña. Memoizado para que la referencia solo
+  // cambie cuando los datos o el filtro de tipo realmente cambian.
+  const filteredPoints = useMemo(
+    () => responsePoints.filter((p) => !p.outcome || enabledOutcomes.has(p.outcome)),
+    [responsePoints, enabledOutcomes]
+  )
 
   // Encuestadores disponibles para el selector de ruta (dedupe por id).
   const surveyorOptions = Array.from(
@@ -329,12 +347,34 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [isFullscreen])
 
-  // Pide y dibuja la ruta GPS de un encuestador entre `from` y `to` (ver
-  // app/api/reports/route-trace). Usada tanto por el botón "Ver ruta" de un
-  // punto puntual como por el selector general de encuestadores. Cada ruta
-  // se guarda en routeLayersRef bajo su surveyorId para poder tener varias
-  // dibujadas a la vez sin que se pisen entre sí.
+  // Dibuja una polyline ya resuelta (desde caché) sin tocar red ni estado —
+  // usado cuando renderLayers necesita redibujar una ruta que ya se había
+  // traído antes (ej. el usuario tocó el filtro de tipo/zonas mientras una
+  // ruta seguía seleccionada). No llamar setState acá es intencional: eso
+  // fue justamente lo que causaba el bucle infinito (ver comentario en
+  // filteredPoints) — redibujar nunca debe disparar un re-render.
+  const drawCachedRoute = (L: any, map: any, surveyorId: string, points: { lat: number; lng: number }[], color: string) => {
+    const existing = routeLayersRef.current.get(surveyorId)
+    if (existing) {
+      try { map.removeLayer(existing) } catch { }
+    }
+    const latlngs = points.map((pt) => [pt.lat, pt.lng])
+    const polyline = L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
+    routeLayersRef.current.set(surveyorId, polyline)
+  }
+
+  // Pide (si no está en caché) y dibuja la ruta GPS de un encuestador entre
+  // `from` y `to` (ver app/api/reports/route-trace). Usada tanto por el
+  // botón "Ver ruta" de un punto puntual como por el selector general de
+  // encuestadores. Cada ruta se guarda en routeLayersRef bajo su surveyorId
+  // para poder tener varias dibujadas a la vez sin que se pisen entre sí.
   const drawRouteForSurveyor = async (L: any, map: any, surveyorId: string, from: string, to: string, color: string = "#3b82f6") => {
+    const cached = routeDataCacheRef.current.get(surveyorId)
+    if (cached) {
+      drawCachedRoute(L, map, surveyorId, cached, color)
+      return
+    }
+
     setLoadingRouteIds((prev) => new Set(prev).add(surveyorId))
     try {
       const params = new URLSearchParams({ surveyorId, from, to })
@@ -343,19 +383,14 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
       const { points } = await res.json()
       if (!Array.isArray(points) || points.length < 2) return
 
-      const existing = routeLayersRef.current.get(surveyorId)
-      if (existing) {
-        try { map.removeLayer(existing) } catch { }
-      }
-
-      const latlngs = points.map((pt: any) => [pt.lat, pt.lng])
-      const polyline = L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
-      routeLayersRef.current.set(surveyorId, polyline)
+      routeDataCacheRef.current.set(surveyorId, points)
+      drawCachedRoute(L, map, surveyorId, points, color)
 
       // Si hay una sola ruta visible, centra el mapa en ella; con varias,
       // evita saltar de una a otra y deja que el usuario navegue libremente.
-      if (routeLayersRef.current.size === 1) {
-        map.fitBounds(polyline.getBounds(), { padding: [40, 40], maxZoom: 16 })
+      const layer = routeLayersRef.current.get(surveyorId)
+      if (layer && routeLayersRef.current.size === 1) {
+        map.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 16 })
       }
     } catch (err) {
       console.error("Error cargando ruta del encuestador:", err)
