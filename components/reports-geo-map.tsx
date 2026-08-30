@@ -38,6 +38,16 @@ interface ReportsGeoMapProps {
   responsePoints: ResponsePoint[]
   hasActiveSurveyorFilter?: boolean
   hasSurveySelected?: boolean
+  // Reunión 2026-08-27 ("Poder descargar el PDF del mapa"): html2canvas
+  // tiñe el canvas (y tira SecurityError al leerlo) si intenta capturar
+  // imágenes cross-origin que el navegador cargó sin permiso CORS — que es
+  // como Leaflet pide los tiles por defecto. Activar esto en el mapa que el
+  // equipo usa todo el día es arriesgado sin poder probarlo en un navegador
+  // real (si el tile server no manda los headers CORS esperados, las
+  // imágenes ni siquiera cargarían). Por eso es un prop aparte, false por
+  // default, y solo lo prende la copia oculta que arma el PDF en
+  // app/reports/page.tsx — el mapa visible de siempre nunca lo toca.
+  crossOriginTiles?: boolean
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
@@ -98,7 +108,7 @@ const CITY_PRESETS: { label: string; bounds: [[number, number], [number, number]
   { label: "Bogotá",             bounds: [[4.45, -74.25], [4.85, -73.99]] },
 ]
 
-export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveSurveyorFilter, hasSurveySelected }: ReportsGeoMapProps) {
+export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveSurveyorFilter, hasSurveySelected, crossOriginTiles }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const layersRef = useRef<any[]>([])
@@ -234,6 +244,7 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           subdomains: "abc",
+          ...(crossOriginTiles ? { crossOrigin: true } : {}),
         }).addTo(map)
 
         // Atribución pequeña en esquina
