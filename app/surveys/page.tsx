@@ -85,6 +85,11 @@ function SurveysPageContent() {
   // Confirmation dialog state
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [surveyToDeleteId, setSurveyToDeleteId] = useState<string | null>(null)
+  // Genera el PDF con Puppeteer del lado del servidor — puede tardar varios
+  // segundos (arranca Chromium headless, carga /print/survey/[id] completo).
+  // Sin este estado, el usuario no tenía ninguna señal de que algo estaba
+  // pasando entre el click y la descarga.
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null)
 
   // Project creation modal state (opened from survey creation modal)
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false)
@@ -289,6 +294,12 @@ function SurveysPageContent() {
   // silenciosamente"). Se reemplaza por fetch + toast, y solo se dispara la
   // descarga si la respuesta realmente es el PDF.
   const handleDownloadPdf = async (surveyId: string, surveyTitle?: string) => {
+    setDownloadingPdfId(surveyId)
+    // El menú se cierra apenas se elige el ítem (comportamiento normal del
+    // dropdown), así que el spinner del ítem no queda visible — este toast
+    // es la señal real de "se está generando" mientras Puppeteer arranca
+    // Chromium y renderiza la encuesta completa (puede tardar >10s).
+    const loadingToast = toast({ title: "Generando PDF...", description: "Esto puede tardar unos segundos." })
     try {
       const res = await fetch(`/api/surveys/${surveyId}/pdf`)
       if (!res.ok) {
@@ -317,6 +328,9 @@ function SurveysPageContent() {
         description: err?.message || "Error de conexión al generar el PDF.",
         variant: "destructive",
       })
+    } finally {
+      loadingToast.dismiss()
+      setDownloadingPdfId(null)
     }
   }
 
@@ -719,8 +733,15 @@ function SurveysPageContent() {
                               <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
                                 <Copy className="h-4 w-4 mr-2" /> Duplicar Encuesta
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDownloadPdf(survey.id, survey.title)}>
-                                <Download className="h-4 w-4 mr-2" /> Descargar PDF
+                              <DropdownMenuItem
+                                disabled={downloadingPdfId === survey.id}
+                                onClick={(e) => { e.preventDefault(); handleDownloadPdf(survey.id, survey.title) }}
+                              >
+                                {downloadingPdfId === survey.id
+                                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  : <Download className="h-4 w-4 mr-2" />
+                                }
+                                {downloadingPdfId === survey.id ? "Generando PDF..." : "Descargar PDF"}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem

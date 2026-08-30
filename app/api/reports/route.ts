@@ -159,6 +159,31 @@ export async function GET(request: NextRequest) {
       hierarchySurveyorIds = ((survsUnderSup as any[]) || []).map((s) => s.id)
     }
 
+    // Reunión 2026-08-27 ("Asignación"): el organigrama de arriba es GLOBAL
+    // (fijo por usuario). Pero ahora la asignación de una encuesta puntual
+    // puede tener su PROPIO coordinador/supervisor por fila
+    // (survey_surveyor_zones.coordinator_id/supervisor_id — ver
+    // migration.sql), distinto del global, porque el mismo encuestador
+    // puede caer bajo otro supervisor según la encuesta. Cuando hay una
+    // encuesta puntual seleccionada Y un filtro de supervisor/coordinador
+    // activo, se UNE el resultado global con lo que diga la asignación de
+    // ESTA encuesta específica — así un supervisor ve su equipo real de
+    // esta encuesta aunque difiera de su equipo global.
+    if (surveyFilter !== "all" && (coordinatorFilter !== "all" || supervisorFilter !== "all")) {
+      // cast a any: coordinator_id/supervisor_id son columnas nuevas (ver
+      // migration.sql) que todavía no están en el tipo generado de Supabase
+      // para esta tabla — mismo patrón ya usado en el resto del archivo.
+      let perSurveyQuery: any = admin.from("survey_surveyor_zones").select("surveyor_id").eq("survey_id", surveyFilter)
+      perSurveyQuery = coordinatorFilter !== "all"
+        ? perSurveyQuery.eq("coordinator_id", coordinatorFilter)
+        : perSurveyQuery.eq("supervisor_id", supervisorFilter)
+      const { data: perSurveyRows } = await perSurveyQuery
+      const perSurveyIds = ((perSurveyRows as any[]) || []).map((r) => r.surveyor_id).filter(Boolean)
+      if (perSurveyIds.length > 0) {
+        hierarchySurveyorIds = [...new Set([...(hierarchySurveyorIds ?? []), ...perSurveyIds])]
+      }
+    }
+
     // Resolve survey IDs based on cascading filters
     let filteredSurveyIds: string[] | null = null // null = no filter (all)
 

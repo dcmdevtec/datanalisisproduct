@@ -56,7 +56,7 @@ import { generateUUID, cn } from "@/lib/utils"
 import { EditSurveySettingsModal } from "@/components/edit-survey-settings-modal"
 import { MultiSelectZones } from "@/components/multi-select-zones"
 import { ZoneSurveyorAssignment } from "@/components/zone-surveyor-assignment"
-import { GeneralSurveyorAssignment } from "@/components/general-surveyor-assignment"
+import { SurveyHierarchyAssignment } from "@/components/survey-hierarchy-assignment"
 import type { Zone } from "@/types/zone"
 import type { Surveyor } from "@/types/surveyor"
 import type { GeoJSON } from "geojson"
@@ -1401,6 +1401,18 @@ export function CreateSurveyForProjectPageContent() {
   // State to manage general surveyor assignments (without specific zones)
   const [assignedGeneralSurveyors, setAssignedGeneralSurveyors] = useState<string[]>([])
 
+  // Reunión 2026-08-27 ("Asignación"): jerarquía Coordinador->Supervisor
+  // para la asignación general en cascada (ver
+  // components/survey-hierarchy-assignment.tsx). generalHierarchyAssignments
+  // reemplaza a assignedGeneralSurveyors como fuente de verdad para la
+  // asignación general — assignedGeneralSurveyors se mantiene sincronizado
+  // desde acá solo por compatibilidad con el resto del código que ya lo lee.
+  const [coordinators, setCoordinators] = useState<{ id: string; name: string | null }[]>([])
+  const [supervisors, setSupervisors] = useState<{ id: string; name: string | null; coordinatorId: string | null }[]>([])
+  const [generalHierarchyAssignments, setGeneralHierarchyAssignments] = useState<
+    { surveyorId: string; coordinatorId: string | null; supervisorId: string | null }[]
+  >([])
+
   const [showSectionOrganizer, setShowSectionOrganizer] = useState(false)
   const [selectedZoneForPreview, setSelectedZoneForPreview] = useState<string | null>(null)
 
@@ -1822,13 +1834,18 @@ export function CreateSurveyForProjectPageContent() {
     }))
   }, [])
 
-  // Handler for general surveyor assignment (no specific zone)
-  const handleGeneralSurveyorAssignmentChange = useCallback((newAssignedSurveyorIds: string[]) => {
-    setAssignedGeneralSurveyors(newAssignedSurveyorIds)
+  // Reunión 2026-08-27: reemplaza al viejo handleGeneralSurveyorAssignmentChange
+  // (asignación plana) — ahora cada asignación general trae también el
+  // coordinador/supervisor elegidos en el picker en cascada
+  // (components/survey-hierarchy-assignment.tsx).
+  const handleGeneralHierarchyAssignmentChange = useCallback((next: typeof generalHierarchyAssignments) => {
+    setGeneralHierarchyAssignments(next)
+    const surveyorIds = next.map((a) => a.surveyorId)
+    setAssignedGeneralSurveyors(surveyorIds)
     // Also update the settings for backwards compatibility
     setSettings((prev) => ({
       ...prev,
-      assignedUsers: newAssignedSurveyorIds,
+      assignedUsers: surveyorIds,
     }))
   }, [])
 
@@ -2074,31 +2091,61 @@ export function CreateSurveyForProjectPageContent() {
         surveyor_id: string;
         zone_id?: string | null;
         general_status?: boolean | null;
+        coordinator_id?: string | null;
+        supervisor_id?: string | null;
       }[] = [];
+
+      // Reunión 2026-08-27: para las asignaciones POR ZONA (que siguen
+      // eligiéndose de la lista plana de encuestadores, sin el picker en
+      // cascada) se completa coordinator_id/supervisor_id con el
+      // organigrama GLOBAL del encuestador como valor por defecto —
+      // mejor que dejarlo vacío, y consistente con lo que ya se ve en su
+      // ficha. Si el equipo real para esta encuesta es distinto, se puede
+      // ajustar más adelante desde el picker en cascada (asignación general).
+      const coordinatorIdBySupervisorId: Record<string, string | null> = Object.fromEntries(
+        supervisors.map((s) => [s.id, s.coordinatorId])
+      )
+      const globalHierarchyBySurveyorId: Record<string, { supervisorId: string | null; coordinatorId: string | null }> =
+        Object.fromEntries(
+          allSurveyors.map((s) => {
+            const supervisorId = s.supervisor_id ?? null
+            const coordinatorId = supervisorId ? (coordinatorIdBySupervisorId[supervisorId] ?? null) : null
+            return [s.id, { supervisorId, coordinatorId }]
+          })
+        )
 
       // Insertar asignaciones por zona específica
       for (const zoneId of settings.assignedZones || []) {
         const surveyorsForZone = assignedZoneSurveyors[zoneId] || [];
         for (const surveyorId of surveyorsForZone) {
           if (surveyorId && zoneId) {
+            const globalHierarchy = globalHierarchyBySurveyorId[surveyorId]
             surveyorZoneAssignmentsToInsert.push({
               survey_id: surveyId,
               surveyor_id: surveyorId,
               zone_id: zoneId,
               general_status: null,
+              coordinator_id: globalHierarchy?.coordinatorId ?? null,
+              supervisor_id: globalHierarchy?.supervisorId ?? null,
             });
           }
         }
       }
 
-      // Insertar asignaciones generales (sin zona específica)
-      for (const surveyorId of assignedGeneralSurveyors) {
-        if (surveyorId) {
+      // Insertar asignaciones generales (sin zona específica) — acá el
+      // coordinador/supervisor SÍ vienen del picker en cascada
+      // (generalHierarchyAssignments), no del organigrama global, porque
+      // esta es justo la asignación que se pidió poder personalizar por
+      // encuesta.
+      for (const a of generalHierarchyAssignments) {
+        if (a.surveyorId) {
           surveyorZoneAssignmentsToInsert.push({
             survey_id: surveyId,
-            surveyor_id: surveyorId,
+            surveyor_id: a.surveyorId,
             zone_id: null,
             general_status: true,
+            coordinator_id: a.coordinatorId,
+            supervisor_id: a.supervisorId,
           });
         }
       }
@@ -2241,7 +2288,7 @@ export function CreateSurveyForProjectPageContent() {
       // Fetch surveyor-zone assignments
       const { data: surveyorZoneData, error: surveyorZoneError } = await (supabase as any)
         .from("survey_surveyor_zones")
-        .select("surveyor_id, zone_id, general_status")
+        .select("surveyor_id, zone_id, general_status, coordinator_id, supervisor_id")
         .eq("survey_id", currentSurveyId)
 
       if (surveyorZoneError) throw surveyorZoneError
@@ -2250,11 +2297,17 @@ export function CreateSurveyForProjectPageContent() {
 
       const newAssignedZoneSurveyors: { [zoneId: string]: string[] } = {}
       const newAssignedGeneralSurveyors: string[] = []
+      const newGeneralHierarchyAssignments: { surveyorId: string; coordinatorId: string | null; supervisorId: string | null }[] = []
 
       surveyorZoneData.forEach((assignment: any) => {
         if (assignment.general_status === true && assignment.zone_id === null) {
           // Asignación general
           newAssignedGeneralSurveyors.push(assignment.surveyor_id)
+          newGeneralHierarchyAssignments.push({
+            surveyorId: assignment.surveyor_id,
+            coordinatorId: assignment.coordinator_id ?? null,
+            supervisorId: assignment.supervisor_id ?? null,
+          })
         } else if (assignment.zone_id) {
           // Asignación específica por zona
           if (!newAssignedZoneSurveyors[assignment.zone_id]) {
@@ -2268,6 +2321,7 @@ export function CreateSurveyForProjectPageContent() {
       debugLog("👥 Encuestadores generales:", newAssignedGeneralSurveyors)
       setAssignedZoneSurveyors(newAssignedZoneSurveyors)
       setAssignedGeneralSurveyors(newAssignedGeneralSurveyors)
+      setGeneralHierarchyAssignments(newGeneralHierarchyAssignments)
 
       // Update settings to maintain backwards compatibility
       setSettings((prevSettings) => ({
@@ -2763,6 +2817,20 @@ export function CreateSurveyForProjectPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, projectId])
 
+  // Coordinadores y supervisores para la asignación en cascada (reunión
+  // 2026-08-27) — endpoint separado porque users.role='coordinator'/
+  // 'supervisor' no es seguro leerlo directo desde el cliente con RLS.
+  useEffect(() => {
+    if (!user) return
+    fetch("/api/hierarchy")
+      .then((r) => r.json())
+      .then((json) => {
+        setCoordinators(json.coordinators || [])
+        setSupervisors(json.supervisors || [])
+      })
+      .catch((err) => console.error("Error cargando jerarquía:", err))
+  }, [user])
+
   // Load surveyors data
   useEffect(() => {
     if (!user) return
@@ -2772,7 +2840,7 @@ export function CreateSurveyForProjectPageContent() {
       try {
         const { data: surveyorsData, error: surveyorsError } = await supabase
           .from("surveyors")
-          .select("id, name, email")
+          .select("id, name, email, supervisor_id")
           .order("name", { ascending: true })
 
         if (surveyorsError) {
@@ -3310,10 +3378,12 @@ export function CreateSurveyForProjectPageContent() {
                   </div>
 
                   <div className="space-y-4">
-                    <GeneralSurveyorAssignment
-                      allSurveyors={allSurveyors}
-                      assignedSurveyorIds={assignedGeneralSurveyors}
-                      onAssignmentChange={handleGeneralSurveyorAssignmentChange}
+                    <SurveyHierarchyAssignment
+                      coordinators={coordinators}
+                      supervisors={supervisors}
+                      surveyors={allSurveyors.map((s) => ({ id: s.id, name: s.name, email: s.email, supervisorId: s.supervisor_id ?? null }))}
+                      assignments={generalHierarchyAssignments}
+                      onChange={handleGeneralHierarchyAssignmentChange}
                     />
 
                     <Card className="border-0 shadow-none sm:border sm:shadow-sm">
@@ -3330,7 +3400,7 @@ export function CreateSurveyForProjectPageContent() {
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-muted-foreground">Encuestadores generales</span>
-                          <Badge variant="outline">{assignedGeneralSurveyors?.length || 0}</Badge>
+                          <Badge variant="outline">{generalHierarchyAssignments?.length || 0}</Badge>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-muted-foreground">Asignaciones por zona</span>

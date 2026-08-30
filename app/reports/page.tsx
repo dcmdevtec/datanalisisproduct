@@ -25,6 +25,7 @@ import { QuestionChart, type ChartType } from "@/components/reports/question-cha
 import { QuestionCard } from "@/components/reports/question-card"
 import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
 import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
+import { AudiosTab } from "@/components/reports/audios-tab"
 import { ShareReportModal } from "@/components/reports/share-report-modal"
 import type { ReportData } from "./shared"
 import { formatPercent } from "@/lib/format"
@@ -492,6 +493,7 @@ function ReportsPageContent() {
             <TabsTrigger value="individual">Respuestas Individuales</TabsTrigger>
             <TabsTrigger value="performance">Rendimiento</TabsTrigger>
             <TabsTrigger value="geographic">Geográfico</TabsTrigger>
+            <TabsTrigger value="audios">Audios</TabsTrigger>
           </TabsList>
 
           {/* ==================== RESUMEN ==================== */}
@@ -1063,6 +1065,21 @@ function ReportsPageContent() {
                   )
                 })()}
               </div>
+            )}
+          </TabsContent>
+
+          {/* ==================== AUDIOS ==================== */}
+          <TabsContent value="audios" className="space-y-6">
+            {selectedSurvey === "all" ? (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Elegí una <strong>encuesta específica</strong> en el filtro de arriba para descargar sus audios.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <AudiosTab surveyId={selectedSurvey} />
             )}
           </TabsContent>
         </Tabs>

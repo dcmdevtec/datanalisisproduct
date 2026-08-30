@@ -211,7 +211,13 @@ export default function PrintSurveyPage() {
               ) : (
                 <p className="text-sm font-bold text-[#18b0a4]">{section.title || "Sección"}</p>
               )}
-              {section.description && <p className="text-xs text-gray-500 mt-0.5">{section.description}</p>}
+              {/* section.description es HTML enriquecido (mismo campo que
+                  "Descripción de la sección" en el editor), no texto plano
+                  — mostrarlo como texto dejaba ver las etiquetas <p>/<strong>
+                  literales en el PDF. */}
+              {section.description && (
+                <div className="text-xs text-gray-500 mt-0.5" dangerouslySetInnerHTML={{ __html: section.description }} />
+              )}
             </div>
             {qs.map((q) => {
               const idx = globalIndex++

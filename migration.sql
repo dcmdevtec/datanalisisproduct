@@ -68,3 +68,35 @@ DROP POLICY IF EXISTS "share-previews public read" ON storage.objects;
 CREATE POLICY "share-previews public read"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'share-previews');
+
+-- Reunión 2026-08-27 ("Jerarquías y roles" + "Asignación"): hoy
+-- surveyors.supervisor_id y users.coordinator_id son GLOBALES (fijos por
+-- usuario), así que un supervisor siempre tiene el mismo coordinador y el
+-- mismo equipo de encuestadores en TODAS las encuestas. El cliente pidió
+-- que la asignación sea Coordinador -> Supervisor -> Encuestadores POR
+-- ENCUESTA, porque "pueden haber coordinadores en otra encuesta con otros
+-- supervisores y otros encuestadores" — el mismo encuestador puede caer
+-- bajo un supervisor distinto según la encuesta.
+--
+-- Se agregan coordinator_id/supervisor_id a survey_surveyor_zones (la
+-- tabla donde ya se guarda "este encuestador está asignado a esta
+-- encuesta/zona") en vez de crear una tabla nueva: cada fila de asignación
+-- ya representa "este encuestador en esta encuesta", así que agregarle
+-- quién era su supervisor/coordinador EN ESA asignación puntual es
+-- exactamente la granularidad que se pidió, sin duplicar la relación
+-- encuesta-encuestador en dos tablas distintas.
+--
+-- Las columnas globales (surveyors.supervisor_id, users.coordinator_id)
+-- NO se eliminan ni se reemplazan: quedan como el "organigrama por
+-- defecto" para precargar la UI de asignación (ver
+-- components/survey-hierarchy-assignment.tsx) y como fallback para
+-- reportes que no están filtrados a una encuesta puntual.
+ALTER TABLE public.survey_surveyor_zones
+  ADD COLUMN IF NOT EXISTS coordinator_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS supervisor_id uuid REFERENCES public.users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_survey_surveyor_zones_coordinator_id ON public.survey_surveyor_zones(coordinator_id);
+CREATE INDEX IF NOT EXISTS idx_survey_surveyor_zones_supervisor_id ON public.survey_surveyor_zones(supervisor_id);
+
+COMMENT ON COLUMN public.survey_surveyor_zones.coordinator_id IS 'Coordinador (users.role=coordinator) bajo el que quedó este encuestador PARA ESTA ENCUESTA. Puede diferir del coordinador global de su supervisor si el equipo se reorganizó para esta encuesta puntual.';
+COMMENT ON COLUMN public.survey_surveyor_zones.supervisor_id IS 'Supervisor (users.role=supervisor) bajo el que quedó este encuestador PARA ESTA ENCUESTA. Puede diferir de surveyors.supervisor_id (el global) si el equipo se reorganizó para esta encuesta puntual.';
