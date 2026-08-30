@@ -48,6 +48,30 @@ interface ReportsGeoMapProps {
   // default, y solo lo prende la copia oculta que arma el PDF en
   // app/reports/page.tsx — el mapa visible de siempre nunca lo toca.
   crossOriginTiles?: boolean
+  // Estado inicial de los filtros — solo se leen al MONTAR (useState
+  // perezoso), nunca se vuelven a aplicar si cambian después. Existen para
+  // que la copia oculta de exportación (app/reports/page.tsx) pueda
+  // arrancar con el mismo tipo de respuesta filtrado y la misma ruta
+  // seleccionada que tenía el mapa visible en pantalla al tocar "Descargar
+  // PDF" — sin esto, la exportación siempre salía con el filtro de fábrica
+  // (todo activado, sin ruta), sin importar lo que el usuario tuviera
+  // elegido. El mapa visible los ignora (nunca se le pasan).
+  initialEnabledOutcomes?: string[]
+  initialShowZones?: boolean
+  initialShowPoints?: boolean
+  initialSelectedRouteSurveyorIds?: string[]
+  // El mapa VISIBLE usa esto para avisarle a app/reports/page.tsx cuál es su
+  // filtro actual cada vez que cambia — así, al momento de exportar, el
+  // padre ya tiene a mano qué pasarle como initial* de arriba a la copia
+  // oculta. Se evita un ref imperativo a propósito: ReportsGeoMap se importa
+  // con next/dynamic, y no vale la pena depender de que el forwarding de
+  // refs a través de next/dynamic funcione sin poder probarlo.
+  onFilterStateChange?: (state: {
+    enabledOutcomes: string[]
+    showZones: boolean
+    showPoints: boolean
+    selectedRouteSurveyorIds: string[]
+  }) => void
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
@@ -108,7 +132,18 @@ const CITY_PRESETS: { label: string; bounds: [[number, number], [number, number]
   { label: "Bogotá",             bounds: [[4.45, -74.25], [4.85, -73.99]] },
 ]
 
-export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveSurveyorFilter, hasSurveySelected, crossOriginTiles }: ReportsGeoMapProps) {
+export default function ReportsGeoMap({
+  zonePolygons,
+  responsePoints,
+  hasActiveSurveyorFilter,
+  hasSurveySelected,
+  crossOriginTiles,
+  initialEnabledOutcomes,
+  initialShowZones,
+  initialShowPoints,
+  initialSelectedRouteSurveyorIds,
+  onFilterStateChange,
+}: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const layersRef = useRef<any[]>([])
@@ -127,8 +162,8 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
   const routeDataCacheRef = useRef<Map<string, { lat: number; lng: number }[]>>(new Map())
   const [loadingRouteIds, setLoadingRouteIds] = useState<Set<string>>(new Set())
   const [isClient, setIsClient] = useState(false)
-  const [showPoints, setShowPoints] = useState(true)
-  const [showZones, setShowZones] = useState(true)
+  const [showPoints, setShowPoints] = useState(initialShowPoints ?? true)
+  const [showZones, setShowZones] = useState(initialShowZones ?? true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   // Delimitar el mapa por ciudad/municipio (ver CITY_PRESETS) en vez de
   // siempre mostrar todo el país.
@@ -137,7 +172,9 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
   // Los puntos sin outcome (ej. rastro GPS del portal encuestador) siempre se
   // muestran — el filtro solo aplica a respuestas ya clasificadas.
   const ALL_OUTCOMES = ["efectiva", "abandonada", "incidencia", "descalificado"] as const
-  const [enabledOutcomes, setEnabledOutcomes] = useState<Set<string>>(new Set(ALL_OUTCOMES))
+  const [enabledOutcomes, setEnabledOutcomes] = useState<Set<string>>(
+    () => new Set(initialEnabledOutcomes ?? ALL_OUTCOMES),
+  )
   const toggleOutcome = (t: string) => {
     setEnabledOutcomes((prev) => {
       const next = new Set(prev)
@@ -150,8 +187,25 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
   // hacer click en un punto puntual) — multi-selección: permite comparar la
   // ruta de varios encuestadores a la vez, cada una con su propio color, sin
   // que el mapa "colapse" al perder las rutas ya dibujadas al elegir otra.
-  const [selectedRouteSurveyorIds, setSelectedRouteSurveyorIds] = useState<Set<string>>(new Set())
+  const [selectedRouteSurveyorIds, setSelectedRouteSurveyorIds] = useState<Set<string>>(
+    () => new Set(initialSelectedRouteSurveyorIds ?? []),
+  )
   const [showRoutePicker, setShowRoutePicker] = useState(false)
+
+  // Le avisa a app/reports/page.tsx cada vez que cambia el filtro de esta
+  // instancia — ver onFilterStateChange arriba. Solo lo usa el mapa
+  // visible; la copia oculta de exportación no pasa este prop, así que ahí
+  // esto no hace nada.
+  useEffect(() => {
+    onFilterStateChange?.({
+      enabledOutcomes: [...enabledOutcomes],
+      showZones,
+      showPoints,
+      selectedRouteSurveyorIds: [...selectedRouteSurveyorIds],
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabledOutcomes, showZones, showPoints, selectedRouteSurveyorIds])
+
   const toggleRouteSurveyor = (id: string) => {
     setSelectedRouteSurveyorIds((prev) => {
       const next = new Set(prev)
@@ -253,6 +307,31 @@ export default function ReportsGeoMap({ zonePolygons, responsePoints, hasActiveS
           .addTo(map)
 
         await renderLayers(L, map)
+
+        // Dibuja de una las rutas que ya venían seleccionadas al montar (la
+        // copia oculta de exportación arranca con initialSelectedRouteSurveyorIds
+        // ya poblado — ver props arriba). El efecto de más abajo que dibuja
+        // rutas depende de selectedRouteSurveyorIds y bailea si mapRef.current
+        // todavía es null (que es justo el caso acá, porque ese efecto ya
+        // corrió una vez ANTES de que este init() asíncrono terminara de
+        // crear el mapa) — sin esto, la ruta seleccionada nunca aparecería
+        // en el PDF exportado.
+        if (selectedRouteSurveyorIds.size > 0) {
+          for (const surveyorId of selectedRouteSurveyorIds) {
+            const pointsForSurveyor = responsePoints.filter((p) => p.surveyorId === surveyorId)
+            if (pointsForSurveyor.length === 0) continue
+            const timestamps = pointsForSurveyor
+              .flatMap((p) => [p.startedAt, p.completedAt, p.createdAt])
+              .filter((t): t is string => !!t)
+              .map((t) => new Date(t).getTime())
+              .filter((t) => !Number.isNaN(t))
+            if (timestamps.length === 0) continue
+            const { from, to } = clampRouteWindow(Math.min(...timestamps), Math.max(...timestamps))
+            const colorIdx = surveyorOptions.findIndex((s) => s.id === surveyorId)
+            const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
+            await drawRouteForSurveyor(L, map, surveyorId, from, to, color)
+          }
+        }
       } catch (err) {
         console.error("Error inicializando mapa de reportes:", err)
       }
