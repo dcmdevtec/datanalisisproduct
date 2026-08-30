@@ -200,6 +200,18 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
   // en que la encuesta termina de cargar en pantalla (aproximación
   // razonable de "cuando la persona empezó a responder").
   const surveyStartedAtRef = useRef<string | null>(null)
+  // BUG (2026-08-30): el mapa geográfico de Reportes solo puede colorear un
+  // punto por outcome y mostrar el nombre del encuestado cuando
+  // responses.location tiene coordenadas — pero acá tampoco se capturaba
+  // nunca, salvo que la encuesta tuviera explícitamente una pregunta tipo
+  // "Ubicación" (LocationQuestion). La inmensa mayoría de encuestas no
+  // tiene esa pregunta, así que esos puntos nunca existían: el mapa solo
+  // mostraba el rastro GPS crudo del encuestador (surveyor_locations, sin
+  // outcome/nombre), que es justo lo que se veía. Se pide la geolocalización
+  // del navegador apenas carga la encuesta (mejor esfuerzo, no bloqueante)
+  // para que esté lista al momento de enviar, sin importar el tipo de
+  // pregunta que tenga la encuesta.
+  const respondentLocationRef = useRef<{ lat: number; lng: number } | null>(null)
   const [surveyData, setSurveyData] = useState<PreviewSurveyData | null>(null)
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0)
   const [answers, setAnswers] = useState<{ [questionId: string]: any }>({})
@@ -351,6 +363,19 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
 
       setSurveyData(parsedData)
       if (!surveyStartedAtRef.current) surveyStartedAtRef.current = new Date().toISOString()
+      // Mejor esfuerzo: no bloquea la carga de la encuesta ni pide de nuevo
+      // si ya se resolvió. Si el usuario niega el permiso o no hay señal
+      // GPS a tiempo, la respuesta simplemente se envía sin ubicación
+      // (como pasaba antes) — nunca impide continuar la encuesta.
+      if (!respondentLocationRef.current && typeof navigator !== "undefined" && "geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            respondentLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          },
+          () => { /* permiso denegado o error — se envía sin ubicación */ },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        )
+      }
     } else {
       router.push("/")
     }
@@ -1109,6 +1134,12 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       // Ver comentario junto a surveyStartedAtRef: sin esto, /api/reports
       // nunca puede calcular "Tiempo Promedio" para respuestas de la web.
       started_at: surveyStartedAtRef.current ?? new Date().toISOString(),
+      // Ver comentario junto a respondentLocationRef: sin esto, el mapa
+      // geográfico de Reportes no tiene con qué colorear ni nombrar el
+      // punto de esta respuesta. Si null (permiso denegado / sin señal a
+      // tiempo), simplemente no se manda — /api/responses ya maneja
+      // location ausente sin problema.
+      ...(respondentLocationRef.current ? { location: respondentLocationRef.current } : {}),
       // Llave de idempotencia (auditoría 2026-07-29): estable para todos los
       // intentos de este componente, permite a /api/responses detectar
       // reintentos/doble envío del mismo formulario y devolver la respuesta
