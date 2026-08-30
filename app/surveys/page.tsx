@@ -854,8 +854,15 @@ function SurveysPageContent() {
                           <DropdownMenuItem onClick={() => handleDuplicateSurvey(survey.id)}>
                             <Copy className="h-4 w-4 mr-2" /> Duplicar Encuesta
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownloadPdf(survey.id, survey.title)}>
-                            <Download className="h-4 w-4 mr-2" /> Descargar PDF
+                          <DropdownMenuItem
+                            disabled={downloadingPdfId === survey.id}
+                            onClick={(e) => { e.preventDefault(); handleDownloadPdf(survey.id, survey.title) }}
+                          >
+                            {downloadingPdfId === survey.id
+                              ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              : <Download className="h-4 w-4 mr-2" />
+                            }
+                            {downloadingPdfId === survey.id ? "Generando PDF..." : "Descargar PDF"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem

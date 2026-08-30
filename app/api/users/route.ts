@@ -64,14 +64,19 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
 
-  const { email, password, name, role } = body as { email?: string; password?: string; name?: string; role?: string }
+  const { email, password, name, role, coordinatorId } = body as { email?: string; password?: string; name?: string; role?: string; coordinatorId?: string | null }
 
   if (!email || !password || !name || !role) {
     return NextResponse.json({ error: "email, password, name and role are required" }, { status: 400 })
   }
 
   // Basic role validation - match project's allowed roles
-  const allowedRoles = ["admin", "supervisor", "surveyor", "client"]
+  // "coordinator" agregado reunión 2026-08-27 ("Jerarquías y roles") — ya no
+  // se crean usuarios "client" desde este modal, coordinator lo reemplaza
+  // en el flujo de asignación de encuestas (Coordinador -> Supervisor ->
+  // Encuestadores). Se deja "client" en la lista por compatibilidad con
+  // cuentas ya existentes, simplemente no se ofrece en la UI de creación.
+  const allowedRoles = ["admin", "supervisor", "coordinator", "surveyor", "client"]
   if (!allowedRoles.includes(role)) {
     return NextResponse.json({ error: `role must be one of: ${allowedRoles.join(", ")}` }, { status: 400 })
   }
@@ -95,9 +100,22 @@ export async function POST(request: Request) {
     }
 
     // 2) Insert into public.users (profile table)
+    // coordinatorId (reunión 2026-08-27): solo tiene sentido para role='supervisor'
+    // — vincula al supervisor con su coordinador GLOBAL por defecto (ver
+    // users.coordinator_id en sql/2026_07_reports_outcome_and_hierarchy.sql).
+    // Este es el organigrama por defecto; la asignación por encuesta puntual
+    // puede seguir siendo distinta (survey_surveyor_zones.coordinator_id).
     const { data: userData, error: userInsertError } = await supabaseAdmin
       .from("users")
-      .insert({ id: userId, email, name, role, status: "active", metadata: {} })
+      .insert({
+        id: userId,
+        email,
+        name,
+        role,
+        status: "active",
+        metadata: {},
+        ...(role === "supervisor" && coordinatorId ? { coordinator_id: coordinatorId } : {}),
+      })
       .select()
       .single()
 

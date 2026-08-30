@@ -28,7 +28,21 @@ export default function CreateUserModal({ isOpen, onOpenChange, onCreated }: Pro
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [role, setRole] = useState("surveyor")
+  const [coordinatorId, setCoordinatorId] = useState("")
+  const [coordinators, setCoordinators] = useState<{ id: string; name: string | null }[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Reunión 2026-08-27 ("Jerarquías y roles"): al crear un Supervisor se
+  // puede elegir de una vez su Coordinador (organigrama global por
+  // defecto) — la lista sale de /api/hierarchy, mismo endpoint que usa el
+  // picker en cascada de asignación de encuestas.
+  useEffect(() => {
+    if (!isOpen) return
+    fetch("/api/hierarchy")
+      .then((r) => r.json())
+      .then((json) => setCoordinators(json.coordinators || []))
+      .catch(() => setCoordinators([]))
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) {
@@ -36,6 +50,7 @@ export default function CreateUserModal({ isOpen, onOpenChange, onCreated }: Pro
       setEmail("")
       setPassword("")
       setRole("surveyor")
+      setCoordinatorId("")
       setIsSubmitting(false)
     }
   }, [isOpen])
@@ -51,7 +66,7 @@ export default function CreateUserModal({ isOpen, onOpenChange, onCreated }: Pro
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name, role }),
+        body: JSON.stringify({ email, password, name, role, coordinatorId: role === "supervisor" ? (coordinatorId || null) : undefined }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -91,17 +106,40 @@ export default function CreateUserModal({ isOpen, onOpenChange, onCreated }: Pro
           </div>
           <div className="space-y-2">
             <Label htmlFor="userRole">Rol</Label>
-            <Select onValueChange={(v) => setRole(v)} defaultValue={role}>
+            <Select onValueChange={(v) => { setRole(v); if (v !== "supervisor") setCoordinatorId("") }} defaultValue={role}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecciona rol" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">Administrador</SelectItem>
+                <SelectItem value="coordinator">Coordinador</SelectItem>
                 <SelectItem value="supervisor">Supervisor</SelectItem>
-                <SelectItem value="client">Cliente</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {role === "supervisor" && (
+            <div className="space-y-2">
+              <Label htmlFor="userCoordinator">Coordinador a cargo (opcional)</Label>
+              <Select onValueChange={(v) => setCoordinatorId(v)} value={coordinatorId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin coordinador asignado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {coordinators.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No hay coordinadores creados todavía</div>
+                  ) : (
+                    coordinators.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name || "Sin nombre"}</SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Organigrama por defecto — se puede ajustar por encuesta puntual desde "Asignación" al crear/editar una encuesta.
+              </p>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

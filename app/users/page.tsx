@@ -94,6 +94,8 @@ export default function UsersPage() {
         return "Administrador"
       case "supervisor":
         return "Supervisor"
+      case "coordinator":
+        return "Coordinador"
       case "surveyor":
         return "Encuestador"
       case "client":
