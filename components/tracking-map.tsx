@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Popup, Polygon, Polyline, useMap } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { Badge } from "@/components/ui/badge"
@@ -216,6 +216,40 @@ function GeoJSONPolygon({ geometry, color = "#3388ff", name }: { geometry: any; 
   }
 }
 
+// Dibuja el recorrido de HOY del encuestador seleccionado (reunión
+// 2026-08-27: "¿Qué ruta hizo el encuestador? ¿Cómo podemos verla?").
+// Trae el historial de /api/tracking/history — se re-consulta cada vez que
+// cambia el encuestador seleccionado; se limpia el trazo al deseleccionar.
+function SurveyorRouteTrail({ surveyorId }: { surveyorId: string | null }) {
+  const [points, setPoints] = useState<[number, number][]>([])
+
+  useEffect(() => {
+    if (!surveyorId) {
+      setPoints([])
+      return
+    }
+    let cancelled = false
+    fetch(`/api/tracking/history?surveyor_id=${surveyorId}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return
+        const pts = (json.points || []).map((p: any) => [p.latitude, p.longitude] as [number, number])
+        setPoints(pts)
+      })
+      .catch(() => { if (!cancelled) setPoints([]) })
+    return () => { cancelled = true }
+  }, [surveyorId])
+
+  if (points.length < 2) return null
+
+  return (
+    <Polyline
+      positions={points}
+      pathOptions={{ color: "#3b82f6", weight: 3, opacity: 0.7, dashArray: "6 6" }}
+    />
+  )
+}
+
 export default function TrackingMap({
   surveyors,
   zones,
@@ -273,6 +307,7 @@ export default function TrackingMap({
         <MapController centerOnZone={centerOnZone} zones={zones} />
         <SelectedSurveyorController surveyor={selectedSurveyor || null} />
         <InvalidateSizeOnFullscreenChange isFullscreen={isFullscreen} />
+        <SurveyorRouteTrail surveyorId={selectedSurveyorId ?? null} />
 
         {/* Renderizar zonas */}
         {zones.map((zone) => (
@@ -398,6 +433,12 @@ export default function TrackingMap({
             <div className="w-3 h-3 rounded-full bg-gray-400" />
             <span>Offline</span>
           </div>
+          {selectedSurveyorId && (
+            <div className="flex items-center gap-2 pt-1 mt-1 border-t">
+              <div className="w-4 h-0.5 border-t-2 border-dashed" style={{ borderColor: "#3b82f6" }} />
+              <span>Recorrido de hoy</span>
+            </div>
+          )}
         </div>
       </div>
 
