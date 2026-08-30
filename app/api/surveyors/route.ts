@@ -47,7 +47,14 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response
 
   const supabaseAdmin = createAdminSupabase()
-  const { name, email, phone_number, password } = (await request.json()) as SurveyorInsert & { password?: string }
+  const { name, email, phone_number, password, supervisor_id } = (await request.json()) as SurveyorInsert & {
+    password?: string
+    // Supervisor global de este encuestador (users.id, role="supervisor") —
+    // organigrama por defecto (reunión 2026-08-27 "Jerarquías y roles").
+    // Precarga la asignación en cascada de encuestas; se puede sobreescribir
+    // por encuesta puntual desde "Asignación" (ver survey-hierarchy-assignment.tsx).
+    supervisor_id?: string | null
+  }
 
   if (!name || !email || !password) {
     return NextResponse.json({ error: "Name, email, and password are required." }, { status: 400 })
@@ -104,6 +111,7 @@ export async function POST(request: Request) {
         email,
         phone_number,
         status: "active",
+        supervisor_id: supervisor_id || null,
       } as any)
       .select()
       .single()
@@ -130,7 +138,7 @@ export async function PUT(request: Request) {
   const supabaseAdmin = createAdminSupabase()
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id")
-  const { name, email, phone_number, password } = await request.json()
+  const { name, email, phone_number, password, supervisor_id } = await request.json()
 
   if (!id) {
     return NextResponse.json({ error: "Surveyor ID is required." }, { status: 400 })
@@ -152,7 +160,7 @@ export async function PUT(request: Request) {
     // Update surveyor in public.surveyors table
     const { data, error } = await supabaseAdmin
       .from("surveyors")
-      .update({ name, email, phone_number })
+      .update({ name, email, phone_number, supervisor_id: supervisor_id ?? null })
       .eq("id", id)
       .select()
       .single()

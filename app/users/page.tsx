@@ -19,6 +19,7 @@ import {
 import { Search, MoreHorizontal, Loader2, UserPlus } from "lucide-react"
 import dynamic from "next/dynamic"
 import CreateUserModal from "@/components/create-user-modal"
+import EditUserModal from "@/components/edit-user-modal"
 import { useToast } from "@/components/ui/use-toast"
 
 type User = {
@@ -27,6 +28,10 @@ type User = {
   email: string
   role: string
   status: string
+  coordinator_id?: string | null
+  // Nombre del coordinador asignado (solo aplica a role="supervisor") —
+  // lo arma el propio GET /api/users, no viene de una relación de Supabase.
+  coordinatorName?: string | null
   // The API may return created_at / updated_at instead of lastActive
   lastActive?: string | null
   created_at?: string | null
@@ -41,6 +46,8 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null)
 
   const refreshUsers = async () => {
     setLoading(true)
@@ -67,6 +74,34 @@ export default function UsersPage() {
     refreshUsers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  // Antes este botón solo mostraba un toast — no llamaba a ningún API, así
+  // que "desactivar" un usuario no tenía ningún efecto real (el usuario
+  // seguía pudiendo iniciar sesión). Ahora persiste el cambio vía PATCH y
+  // refleja el resultado real devuelto por el servidor, no un valor optimista.
+  const handleToggleStatus = async (target: User) => {
+    const nextStatus = target.status === "active" ? "inactive" : "active"
+    setTogglingStatusId(target.id)
+    try {
+      const res = await fetch(`/api/users?id=${target.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "No se pudo actualizar el estado")
+
+      setUsers((prev) => prev.map((u) => (u.id === target.id ? { ...u, status: data.status } : u)))
+      toast({
+        title: "Cambio de estado",
+        description: `Usuario ${data.status === "active" ? "activado" : "desactivado"} correctamente`,
+      })
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || String(err), variant: "destructive" })
+    } finally {
+      setTogglingStatusId(null)
+    }
+  }
 
   const filteredUsers = users.filter(
     (u) =>
@@ -175,15 +210,10 @@ export default function UsersPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setEditingUser(user)}>Editar</DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() =>
-                              toast({
-                                title: "Cambio de estado",
-                                description: `Usuario ${
-                                  user.status === "active" ? "desactivado" : "activado"
-                                } correctamente`,
-                              })
-                            }
+                            disabled={togglingStatusId === user.id}
+                            onClick={() => handleToggleStatus(user)}
                           >
                             {user.status === "active" ? "Desactivar" : "Activar"}
                           </DropdownMenuItem>
@@ -199,6 +229,12 @@ export default function UsersPage() {
                         {user.status === "active" ? "Activo" : "Inactivo"}
                       </Badge>
                     </div>
+                    {user.role === "supervisor" && (
+                      <div className="text-sm text-muted-foreground">
+                        <span>Coordinador: </span>
+                        <span className="font-medium">{user.coordinatorName || "Sin asignar"}</span>
+                      </div>
+                    )}
                     <div className="text-sm text-muted-foreground">
                       <span>Última actividad: </span>
                       <span className="font-medium">
@@ -220,6 +256,7 @@ export default function UsersPage() {
                         <TableHead className="min-w-[150px]">Nombre</TableHead>
                         <TableHead className="min-w-[200px]">Correo</TableHead>
                         <TableHead className="min-w-[120px]">Rol</TableHead>
+                        <TableHead className="min-w-[140px]">Coordinador</TableHead>
                         <TableHead className="min-w-[100px]">Estado</TableHead>
                         <TableHead className="min-w-[140px]">Última actividad</TableHead>
                         <TableHead className="w-[80px]"></TableHead>
@@ -228,7 +265,7 @@ export default function UsersPage() {
                     <TableBody>
                       {filteredUsers.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center h-24">
+                          <TableCell colSpan={7} className="text-center h-24">
                             No se encontraron usuarios
                           </TableCell>
                         </TableRow>
@@ -247,6 +284,11 @@ export default function UsersPage() {
                             </TableCell>
                             <TableCell>
                               <span className="whitespace-nowrap">{getRoleName(user.role)}</span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="whitespace-nowrap text-sm text-muted-foreground">
+                                {user.role === "supervisor" ? user.coordinatorName || "Sin asignar" : "—"}
+                              </span>
                             </TableCell>
                             <TableCell>
                               <Badge variant={user.status === "active" ? "default" : "secondary"} className="capitalize">
@@ -269,15 +311,10 @@ export default function UsersPage() {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setEditingUser(user)}>Editar</DropdownMenuItem>
                                   <DropdownMenuItem
-                                    onClick={() =>
-                                      toast({
-                                        title: "Cambio de estado",
-                                        description: `Usuario ${
-                                          user.status === "active" ? "desactivado" : "activado"
-                                        } correctamente`,
-                                      })
-                                    }
+                                    disabled={togglingStatusId === user.id}
+                                    onClick={() => handleToggleStatus(user)}
                                   >
                                     {user.status === "active" ? "Desactivar" : "Activar"}
                                   </DropdownMenuItem>
@@ -294,6 +331,12 @@ export default function UsersPage() {
             </div>
           </div>
         )}
+
+        <EditUserModal
+          user={editingUser}
+          onOpenChange={(open) => { if (!open) setEditingUser(null) }}
+          onUpdated={() => refreshUsers()}
+        />
       </div>
     </DashboardLayout>
   )
