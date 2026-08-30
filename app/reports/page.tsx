@@ -262,6 +262,15 @@ function ReportsPageContent() {
           await exportPerformance(data, periodLabel)
           break
         case "geographic":
+          // El mapa oculto de exportación (ver #export-geographic más abajo)
+          // recién se monta cuando exporting pasa a "geographic" — antes de
+          // capturarlo con html2canvas hay que darle tiempo a Leaflet de
+          // inicializar Y a los tiles de terminar de bajar por red. No hay
+          // forma limpia de "esperar a que termine de cargar" sin reescribir
+          // el mapa entero a promesas, así que se usa una espera fija (mismo
+          // criterio pragmático que el resto de esta exportación: si algún
+          // tile no llegó a tiempo, la captura sigue sin él en vez de fallar).
+          await new Promise((resolve) => setTimeout(resolve, 1800))
           await exportGeographic(data, periodLabel)
           break
       }
@@ -957,6 +966,31 @@ function ReportsPageContent() {
                     />
                   </CardContent>
                 </Card>
+
+                {/* ── Copia oculta del mapa, SOLO para el PDF ──────────────────
+                    Reunión 2026-08-27 ("Poder descargar el PDF del mapa"): el
+                    mapa visible de arriba nunca se captura con crossOrigin
+                    (ver por qué en el prop crossOriginTiles de ReportsGeoMap)
+                    para no arriesgar romperlo en vivo. Esta segunda instancia
+                    es completamente independiente — su propio mapa de
+                    Leaflet, sus propios tiles con crossOrigin activado — y
+                    solo existe mientras se está exportando (ver handleExport,
+                    que espera a que cargue antes de capturarla). data-export-chart
+                    la marca para que captureCharts() la incluya en el PDF; se
+                    posiciona fuera de la pantalla en vez de con display:none
+                    porque html2canvas no puede capturar algo que no se está
+                    renderizando. */}
+                {exporting === "geographic" && (
+                  <div style={{ position: "fixed", top: 0, left: -9999, width: 860 }} data-export-chart>
+                    <ReportsGeoMap
+                      zonePolygons={data?.geographic?.zonePolygons ?? []}
+                      responsePoints={data?.geographic?.responsePoints ?? []}
+                      hasActiveSurveyorFilter={selectedSurveyor !== "all"}
+                      hasSurveySelected={selectedSurvey !== "all"}
+                      crossOriginTiles
+                    />
+                  </div>
+                )}
 
                 {/* ── Actividad de encuestadores (siempre visible si hay puntos GPS) ── */}
                 {(() => {
