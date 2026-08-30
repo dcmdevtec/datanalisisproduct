@@ -47,6 +47,17 @@ function ReportsPageContent() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState<string | null>(null)
+  // Último filtro reportado por el mapa VISIBLE de la pestaña Geográfico
+  // (tipo de respuesta, zonas/puntos, ruta seleccionada) — ver
+  // onFilterStateChange en components/reports-geo-map.tsx. Se usa para que
+  // la copia oculta que arma el PDF del mapa arranque con el mismo filtro
+  // en vez de siempre con todo activado y sin ruta.
+  const [geoExportFilterState, setGeoExportFilterState] = useState<{
+    enabledOutcomes: string[]
+    showZones: boolean
+    showPoints: boolean
+    selectedRouteSurveyorIds: string[]
+  } | null>(null)
   const [data, setData] = useState<ReportData | null>(null)
   const [selectedCompany, setSelectedCompany] = useState<string>("all")
   const [selectedProject, setSelectedProject] = useState<string>("all")
@@ -265,12 +276,13 @@ function ReportsPageContent() {
           // El mapa oculto de exportación (ver #export-geographic más abajo)
           // recién se monta cuando exporting pasa a "geographic" — antes de
           // capturarlo con html2canvas hay que darle tiempo a Leaflet de
-          // inicializar Y a los tiles de terminar de bajar por red. No hay
+          // inicializar, a los tiles de bajar por red, Y (si había una ruta
+          // seleccionada) a /api/reports/route-trace de resolver. No hay
           // forma limpia de "esperar a que termine de cargar" sin reescribir
           // el mapa entero a promesas, así que se usa una espera fija (mismo
-          // criterio pragmático que el resto de esta exportación: si algún
-          // tile no llegó a tiempo, la captura sigue sin él en vez de fallar).
-          await new Promise((resolve) => setTimeout(resolve, 1800))
+          // criterio pragmático que el resto de esta exportación: si algo no
+          // llegó a tiempo, la captura sigue sin eso en vez de fallar).
+          await new Promise((resolve) => setTimeout(resolve, 2500))
           await exportGeographic(data, periodLabel)
           break
       }
@@ -963,6 +975,7 @@ function ReportsPageContent() {
                       responsePoints={data?.geographic?.responsePoints ?? []}
                       hasActiveSurveyorFilter={selectedSurveyor !== "all"}
                       hasSurveySelected={selectedSurvey !== "all"}
+                      onFilterStateChange={setGeoExportFilterState}
                     />
                   </CardContent>
                 </Card>
@@ -979,7 +992,14 @@ function ReportsPageContent() {
                     la marca para que captureCharts() la incluya en el PDF; se
                     posiciona fuera de la pantalla en vez de con display:none
                     porque html2canvas no puede capturar algo que no se está
-                    renderizando. */}
+                    renderizando.
+
+                    Arranca con initialEnabledOutcomes/initialShowZones/etc.
+                    tomados de geoExportFilterState — lo último que reportó el
+                    mapa VISIBLE vía onFilterStateChange — para que el PDF
+                    salga con el mismo filtro de tipo de respuesta y la misma
+                    ruta que el usuario tenía elegidos al tocar "Descargar
+                    PDF", no siempre con todo activado y sin ruta. */}
                 {exporting === "geographic" && (
                   <div style={{ position: "fixed", top: 0, left: -9999, width: 860 }} data-export-chart>
                     <ReportsGeoMap
@@ -988,6 +1008,10 @@ function ReportsPageContent() {
                       hasActiveSurveyorFilter={selectedSurveyor !== "all"}
                       hasSurveySelected={selectedSurvey !== "all"}
                       crossOriginTiles
+                      initialEnabledOutcomes={geoExportFilterState?.enabledOutcomes}
+                      initialShowZones={geoExportFilterState?.showZones}
+                      initialShowPoints={geoExportFilterState?.showPoints}
+                      initialSelectedRouteSurveyorIds={geoExportFilterState?.selectedRouteSurveyorIds}
                     />
                   </div>
                 )}
