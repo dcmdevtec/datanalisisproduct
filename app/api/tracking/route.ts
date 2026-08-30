@@ -1,7 +1,36 @@
 import { NextResponse } from "next/server"
-import { requireRole } from "@/lib/api-auth"
+import { requireRole, type AuthedUser } from "@/lib/api-auth"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveOutcome } from "@/lib/report-outcome"
+
+// Resuelve a qué surveyor_id tiene acceso este usuario (reunión 2026-08-27,
+// "Jerarquías y roles"). null = admin, sin restricción. [] = supervisor o
+// coordinador sin equipo asignado (no debe ver a nadie).
+//
+// CORRECCIÓN: este cálculo vivía solo dentro de GET — pero la pantalla de
+// Geolocalización (app/surveyors/page.tsx) llama a POST /api/tracking, que
+// hasta ahora NO aplicaba ningún filtro de equipo (solo exigía rol
+// admin/supervisor). En la práctica, cualquier supervisor podía ver la
+// ubicación en tiempo real, batería y contacto de TODOS los encuestadores,
+// no solo los suyos — exactamente el hueco que la reunión pidió cerrar.
+// Se extrae a un helper para que GET y POST apliquen la misma regla.
+async function resolveTeamSurveyorIds(
+  user: AuthedUser,
+  supabase: ReturnType<typeof createAdminSupabase>,
+): Promise<string[] | null> {
+  if (user.role === "supervisor") {
+    const { data: mySurveyors } = await supabase.from("surveyors").select("id").eq("supervisor_id", user.id)
+    return ((mySurveyors as any[]) || []).map((s) => s.id)
+  }
+  if (user.role === "coordinator") {
+    const { data: mySupervisors } = await supabase.from("users").select("id").eq("role", "supervisor").eq("coordinator_id", user.id)
+    const supIds = ((mySupervisors as any[]) || []).map((s: any) => s.id)
+    if (supIds.length === 0) return []
+    const { data: mySurveyors } = await supabase.from("surveyors").select("id").in("supervisor_id", supIds)
+    return ((mySurveyors as any[]) || []).map((s) => s.id)
+  }
+  return null // admin
+}
 
 /**
  * Calcula el estado del encuestador basado en minutos transcurridos
@@ -112,20 +141,7 @@ export async function GET(request: Request) {
     // Se resuelve server-side el set de surveyor_id permitido y se
     // interseca con lo que haya pedido el cliente (si pidió algo fuera de
     // su equipo, simplemente no aparece).
-    let teamSurveyorIds: string[] | null = null // null = admin, sin restricción
-    if (auth.user.role === "supervisor") {
-      const { data: mySurveyors } = await supabase.from("surveyors").select("id").eq("supervisor_id", auth.user.id)
-      teamSurveyorIds = ((mySurveyors as any[]) || []).map((s) => s.id)
-    } else if (auth.user.role === "coordinator") {
-      const { data: mySupervisors } = await supabase.from("users").select("id").eq("role", "supervisor").eq("coordinator_id", auth.user.id)
-      const supIds = ((mySupervisors as any[]) || []).map((s: any) => s.id)
-      if (supIds.length === 0) {
-        teamSurveyorIds = []
-      } else {
-        const { data: mySurveyors } = await supabase.from("surveyors").select("id").in("supervisor_id", supIds)
-        teamSurveyorIds = ((mySurveyors as any[]) || []).map((s) => s.id)
-      }
-    }
+    const teamSurveyorIds = await resolveTeamSurveyorIds(auth.user, supabase)
 
     // Usar la vista surveyor_tracking_view como recomienda el documento
     let query = supabase
@@ -342,7 +358,12 @@ export async function POST(request: Request) {
   // Misma protección que GET — este POST también solo LEE ubicaciones
   // (filtros vía body en vez de query string), no es el endpoint donde el
   // encuestador reporta su propia posición (eso vive en /api/location).
-  const auth = await requireRole(["admin", "supervisor"])
+  //
+  // CORRECCIÓN (ver resolveTeamSurveyorIds arriba): antes solo exigía rol
+  // admin/supervisor sin filtrar por equipo — y este es el endpoint que la
+  // pantalla de Geolocalización realmente usa (app/surveyors/page.tsx llama
+  // a POST, no a GET). Se agrega coordinator y el mismo alcance por equipo.
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   // Fix 2026-08-12: mismo bug de cookies() sin await que el GET handler.
@@ -353,6 +374,8 @@ export async function POST(request: Request) {
     const { survey_id, zone_id, surveyor_ids, status } = body
 
     console.log("📊 Body params:", { survey_id, zone_id, surveyor_ids, status })
+
+    const teamSurveyorIds = await resolveTeamSurveyorIds(auth.user, supabase)
 
     // Usar la vista surveyor_tracking_view como recomienda el documento
     let query = supabase
@@ -370,8 +393,13 @@ export async function POST(request: Request) {
       query = query.eq("zone_id", zone_id)
     }
 
-    // Filtrar por lista de IDs de encuestadores
-    if (surveyor_ids && Array.isArray(surveyor_ids) && surveyor_ids.length > 0) {
+    // Filtrar por lista de IDs de encuestadores — intersección con el
+    // equipo permitido cuando el usuario no es admin (mismo criterio que GET).
+    if (teamSurveyorIds !== null) {
+      const requestedIds = surveyor_ids && Array.isArray(surveyor_ids) && surveyor_ids.length > 0 ? surveyor_ids : null
+      const allowedIds = requestedIds ? requestedIds.filter((id: string) => teamSurveyorIds.includes(id)) : teamSurveyorIds
+      query = query.in("surveyor_id", allowedIds.length > 0 ? allowedIds : ["__none__"])
+    } else if (surveyor_ids && Array.isArray(surveyor_ids) && surveyor_ids.length > 0) {
       query = query.in("surveyor_id", surveyor_ids)
     }
 

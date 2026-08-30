@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ChangeEvent } from "react"
+import { useState, useEffect, type ChangeEvent } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -67,6 +67,45 @@ export function ShareReportModal({
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null)
 
   const noSurveySelected = !selectedSurvey || selectedSurvey === "all"
+
+  // Reunión 2026-08-27: "todo cambio que se haga debe reflejarse en el link
+  // enviado" — si esta encuesta YA tiene un link creado por este usuario, se
+  // precarga su configuración y "Generar link" pasa a ACTUALIZARLO (PATCH,
+  // mismo token/URL) en vez de crear uno nuevo. `existingToken` es lo que
+  // distingue ambos modos.
+  const [existingToken, setExistingToken] = useState<string | null>(null)
+  const [loadingExisting, setLoadingExisting] = useState(false)
+
+  useEffect(() => {
+    if (!open || noSurveySelected) return
+    let cancelled = false
+    // Por si el modal cambia de encuesta sin cerrarse (poco común, pero
+    // evita arrastrar el existingToken de la encuesta anterior si esta no
+    // tiene link todavía).
+    setExistingToken(null)
+    setLoadingExisting(true)
+    fetch("/api/shared-reports")
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return
+        const link = (json.links || []).find((l: any) => l.survey_id === selectedSurvey)
+        if (!link) return
+        const cfg = link.config || {}
+        setExistingToken(link.token)
+        if (cfg.sections) setSections(cfg.sections)
+        setSelectedIds(
+          Array.isArray(cfg.questionIds) ? new Set<string>(cfg.questionIds) : null,
+        )
+        setCustomTitle(cfg.customTitle || "")
+        setPreviewImageUrl(cfg.imageUrl || null)
+        const origin = typeof window !== "undefined" ? window.location.origin : ""
+        setGeneratedLink(`${origin}/results/${link.token}`)
+      })
+      .catch(() => { /* si falla la precarga, el modal simplemente ofrece crear un link nuevo */ })
+      .finally(() => { if (!cancelled) setLoadingExisting(false) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedSurvey])
 
   const isSelected = (id: string) => selectedIds === null || selectedIds.has(id)
 
@@ -137,30 +176,50 @@ export function ShareReportModal({
           ? (selectedIds === null ? questions.map((q) => q.questionId) : [...selectedIds])
           : null
 
-      const res = await fetch("/api/shared-reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          surveyId: selectedSurvey,
-          config: { filters: currentFilters, sections, questionIds },
-          expiryDays: expiry === "never" ? null : parseInt(expiry),
-          customTitle: customTitle.trim() || null,
-          imageUrl: previewImageUrl,
-          password: password.trim() || null,
-        }),
-      })
+      const isUpdate = !!existingToken
+      const res = await fetch(
+        isUpdate ? `/api/shared-reports?token=${existingToken}` : "/api/shared-reports",
+        {
+          method: isUpdate ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            surveyId: selectedSurvey,
+            config: { filters: currentFilters, sections, questionIds },
+            expiryDays: expiry === "never" ? null : parseInt(expiry),
+            customTitle: customTitle.trim() || null,
+            imageUrl: previewImageUrl,
+            password: password.trim() || null,
+          }),
+        },
+      )
       const data = await res.json()
       if (!res.ok) {
-        toast({ title: "Error", description: data.error || "No se pudo generar el link.", variant: "destructive" })
+        toast({ title: "Error", description: data.error || "No se pudo guardar el link.", variant: "destructive" })
         return
       }
       const origin = typeof window !== "undefined" ? window.location.origin : ""
       setGeneratedLink(`${origin}/results/${data.token}`)
+      if (isUpdate) {
+        toast({ title: "Link actualizado", description: "Los cambios ya se reflejan en el link que enviaste." })
+      } else {
+        setExistingToken(data.token)
+      }
     } catch {
       toast({ title: "Error de conexión", description: "Intenta de nuevo.", variant: "destructive" })
     } finally {
       setGenerating(false)
     }
+  }
+
+  // Descarta la precarga y vuelve al modo "crear un link nuevo" (nueva URL,
+  // no toca el link existente).
+  const handleStartNewLink = () => {
+    setExistingToken(null)
+    setGeneratedLink(null)
+    setCustomTitle("")
+    setPreviewImageUrl(null)
+    setSelectedIds(null)
+    setPassword("")
   }
 
   const handleCopy = async () => {
@@ -176,7 +235,13 @@ export function ShareReportModal({
   }
 
   const handleClose = (v: boolean) => {
-    if (!v) { setGeneratedLink(null); setCopied(false); setPreviewImageUrl(null); setCustomTitle("") }
+    if (!v) {
+      setGeneratedLink(null)
+      setCopied(false)
+      setPreviewImageUrl(null)
+      setCustomTitle("")
+      setExistingToken(null)
+    }
     onOpenChange(v)
   }
 
@@ -410,12 +475,30 @@ export function ShareReportModal({
             </div>
           </div>
 
+          {/* ── Link ya existente para esta encuesta ── */}
+          {existingToken && !generatedLink && loadingExisting && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando un link ya creado para esta encuesta…
+            </div>
+          )}
+          {existingToken && (
+            <div className="flex items-start gap-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3 text-sm text-blue-800 dark:text-blue-300">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <div>
+                <p>Ya existe un link para esta encuesta — se precargó su configuración. "Guardar cambios" actualiza <strong>ese mismo link</strong> (misma URL), no crea uno nuevo.</p>
+                <button onClick={handleStartNewLink} className="text-xs font-medium underline mt-1">
+                  Crear un link nuevo en su lugar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Link generado ── */}
           {generatedLink && (
             <div className="rounded-xl border border-[#18b0a4]/30 bg-[#18b0a4]/5 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-[#18b0a4] animate-pulse" />
-                <p className="text-sm font-semibold text-[#18b0a4]">Link listo</p>
+                <p className="text-sm font-semibold text-[#18b0a4]">{existingToken ? "Link" : "Link listo"}</p>
                 <span className="text-xs text-muted-foreground">
                   · {selectedCount} pregunta{selectedCount !== 1 ? "s" : ""}
                   {expiry !== "never" ? ` · expira en ${EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}` : " · sin expiración"}
@@ -469,9 +552,9 @@ export function ShareReportModal({
             className="bg-[#18b0a4] hover:bg-[#14918a] text-white gap-2"
           >
             {generating ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Generando…</>
+              <><Loader2 className="h-4 w-4 animate-spin" /> {existingToken ? "Guardando…" : "Generando…"}</>
             ) : (
-              <><Globe className="h-4 w-4" /> {generatedLink ? "Nuevo link" : "Generar link"}</>
+              <><Globe className="h-4 w-4" /> {existingToken ? "Guardar cambios" : "Generar link"}</>
             )}
           </Button>
         </div>
