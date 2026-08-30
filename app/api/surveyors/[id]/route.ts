@@ -11,6 +11,7 @@ interface SurveyorUpdateRequest {
   phone_number?: string | null
   password?: string
   status?: "active" | "inactive"
+  supervisor_id?: string | null
 }
 
 // SEGURIDAD (auditoría 2026-07-29): PUT puede resetear la contraseña de
@@ -41,7 +42,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (!auth.ok) return auth.response
 
   const { id } = await params
-  const { name, email, phone_number, password, status } = (await request.json()) as SurveyorUpdateRequest
+  const { name, email, phone_number, password, status, supervisor_id } = (await request.json()) as SurveyorUpdateRequest
   const adminSupabase = createAdminSupabase()
 
   if (!name || !email) {
@@ -67,7 +68,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   // Update surveyor in public.surveyors table using the admin client to bypass RLS
   const { data: surveyor, error: dbError } = await adminSupabase
     .from("surveyors")
-    .update({ name, email, phone_number, status })
+    .update({ name, email, phone_number, status, supervisor_id: supervisor_id ?? null })
     .eq("id", id)
     .select()
     .single()

@@ -3,6 +3,7 @@
  *
  * - GET: returns list of users using the server Supabase client (respects RLS and session cookies)
  * - POST: creates a user in Supabase Auth (using the service role) and inserts a profile row in `public.users`.
+ * - PATCH ?id=<uuid>: updates name/role/status/coordinatorId of an existing profile row.
  *
  * Requirements:
  * - Environment variables: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY (for server client), SUPABASE_SERVICE_ROLE_KEY (for admin actions)
@@ -13,7 +14,8 @@
  *   email: string,
  *   password: string,
  *   name: string,
- *   role: "admin" | "supervisor" | "surveyor" | "client"
+ *   role: "admin" | "supervisor" | "coordinator" | "surveyor" | "client",
+ *   coordinatorId?: string | null // solo aplica si role === "supervisor"
  * }
  *
  * On failure inserting the profile, the code attempts to delete the created auth user to avoid orphaned auth records.
@@ -40,14 +42,28 @@ export async function GET(request: Request) {
   try {
     const supabaseAdmin = createAdminClient()
 
-    const { data, error } = await supabaseAdmin.from("users").select("id, email, name, role, status, created_at, updated_at")
+    const { data, error } = await supabaseAdmin
+      .from("users")
+      .select("id, email, name, role, status, coordinator_id, created_at, updated_at")
 
     if (error) {
       console.error("Error fetching users:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    // coordinator_id no trae el nombre del coordinador — se arma el mapa
+    // id -> name desde el mismo resultado (los coordinadores también son
+    // filas de esta tabla) en vez de hacer una query aparte o depender de
+    // una relación FK registrada en PostgREST (que esta tabla no tiene).
+    const coordinatorNameById = new Map(
+      (data || []).filter((u: any) => u.role === "coordinator").map((u: any) => [u.id, u.name]),
+    )
+    const withCoordinatorName = (data || []).map((u: any) => ({
+      ...u,
+      coordinatorName: u.coordinator_id ? coordinatorNameById.get(u.coordinator_id) ?? null : null,
+    }))
+
+    return NextResponse.json(withCoordinatorName)
   } catch (err: any) {
     console.error("Unexpected error in GET /api/users:", err.message)
     return NextResponse.json({ error: err.message || "Unexpected error" }, { status: 500 })
@@ -138,6 +154,75 @@ export async function POST(request: Request) {
     return NextResponse.json(userData, { status: 201 })
   } catch (err: any) {
     console.error("Unexpected error in POST /api/users:", err.message)
+    return NextResponse.json({ error: err.message || "Unexpected error" }, { status: 500 })
+  }
+}
+
+// PATCH /api/users?id=<uuid>
+//
+// Antes no existía ninguna forma de editar un usuario ya creado: el botón
+// "Activar/Desactivar" del módulo de Usuarios solo mostraba un toast y no
+// llamaba a ningún API (no persistía), y el coordinador de un supervisor
+// solo se podía fijar al momento de crearlo — si se necesitaba corregirlo
+// después, no había cómo. Mismo criterio de autorización que POST: solo
+// admin, porque cambia rol/estado/jerarquía de otras cuentas.
+export async function PATCH(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get("id")
+  if (!id) {
+    return NextResponse.json({ error: "id es requerido" }, { status: 400 })
+  }
+
+  const body = await request.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
+
+  const { name, role, status, coordinatorId } = body as {
+    name?: string
+    role?: string
+    status?: string
+    coordinatorId?: string | null
+  }
+
+  const allowedRoles = ["admin", "supervisor", "coordinator", "surveyor", "client"]
+  if (role !== undefined && !allowedRoles.includes(role)) {
+    return NextResponse.json({ error: `role must be one of: ${allowedRoles.join(", ")}` }, { status: 400 })
+  }
+  const allowedStatuses = ["active", "inactive"]
+  if (status !== undefined && !allowedStatuses.includes(status)) {
+    return NextResponse.json({ error: `status must be one of: ${allowedStatuses.join(", ")}` }, { status: 400 })
+  }
+
+  const update: Record<string, any> = {}
+  if (name !== undefined) update.name = name
+  if (status !== undefined) update.status = status
+  if (role !== undefined) {
+    update.role = role
+    // coordinator_id solo tiene sentido para role="supervisor" — si el rol
+    // cambia a otra cosa se limpia, para no dejar un valor huérfano/inválido.
+    update.coordinator_id = role === "supervisor" ? coordinatorId ?? null : null
+  } else if (coordinatorId !== undefined) {
+    update.coordinator_id = coordinatorId
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "No hay cambios para aplicar" }, { status: 400 })
+  }
+
+  try {
+    const supabaseAdmin = createAdminClient()
+    const { data, error } = await supabaseAdmin.from("users").update(update).eq("id", id).select().single()
+
+    if (error) {
+      console.error("Error updating user:", error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(data)
+  } catch (err: any) {
+    console.error("Unexpected error in PATCH /api/users:", err.message)
     return NextResponse.json({ error: err.message || "Unexpected error" }, { status: 500 })
   }
 }

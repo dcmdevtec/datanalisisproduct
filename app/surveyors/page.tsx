@@ -106,6 +106,11 @@ export default function SurveyorsPage() {
   const [surveyorEmail, setSurveyorEmail] = useState("")
   const [surveyorPhone, setSurveyorPhone] = useState("")
   const [surveyorPassword, setSurveyorPassword] = useState("")
+  // Supervisor global del encuestador (organigrama por defecto, reunión
+  // 2026-08-27 "Jerarquías y roles") — precarga la asignación en cascada de
+  // /components/survey-hierarchy-assignment.tsx al crear una encuesta.
+  const [surveyorSupervisorId, setSurveyorSupervisorId] = useState("")
+  const [supervisors, setSupervisors] = useState<{ id: string; name: string | null }[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false)
   const [surveyorToDelete, setSurveyorToDelete] = useState<Surveyor | null>(null)
@@ -256,6 +261,18 @@ export default function SurveyorsPage() {
     }
   }, [user])
 
+  // Lista de supervisores — la usa el picker del modal y la columna
+  // "Supervisor" de la tabla, así que se carga apenas hay sesión, no solo
+  // al abrir el modal (si no, la tabla mostraría "Sin asignar" para todos
+  // hasta el primer click en "Añadir/Editar").
+  useEffect(() => {
+    if (!user) return
+    fetch("/api/hierarchy")
+      .then((r) => r.json())
+      .then((json) => setSupervisors(json.supervisors || []))
+      .catch(() => setSupervisors([]))
+  }, [user])
+
   // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = () => setShowSurveyDropdown(false)
@@ -318,6 +335,7 @@ export default function SurveyorsPage() {
     setSurveyorEmail("")
     setSurveyorPhone("")
     setSurveyorPassword("")
+    setSurveyorSupervisorId("")
     setIsModalOpen(true)
   }
 
@@ -326,6 +344,7 @@ export default function SurveyorsPage() {
     setSurveyorName(surveyor.name)
     setSurveyorEmail(surveyor.email)
     setSurveyorPhone(surveyor.phone_number || "")
+    setSurveyorSupervisorId((surveyor as any).supervisor_id || "")
     setIsModalOpen(true)
   }
 
@@ -356,6 +375,7 @@ export default function SurveyorsPage() {
       name: surveyorName,
       email: surveyorEmail,
       phone_number: surveyorPhone || null,
+      supervisor_id: surveyorSupervisorId || null,
       ...(surveyorPassword && { password: surveyorPassword }),
     }
 
@@ -529,6 +549,7 @@ export default function SurveyorsPage() {
                           <TableHead className="py-3 px-4 min-w-[150px]">Nombre</TableHead>
                           <TableHead className="py-3 px-4 min-w-[200px]">Correo</TableHead>
                           <TableHead className="hidden md:table-cell py-3 px-4">Teléfono</TableHead>
+                          <TableHead className="hidden lg:table-cell py-3 px-4">Supervisor</TableHead>
                           <TableHead className="hidden sm:table-cell py-3 px-4">Estado</TableHead>
                           <TableHead className="hidden lg:table-cell py-3 px-4">Creado en</TableHead>
                           <TableHead className="text-right py-3 px-4">Acciones</TableHead>
@@ -537,7 +558,7 @@ export default function SurveyorsPage() {
                       <TableBody>
                         {filteredSurveyors.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                               No se encontraron encuestadores.
                             </TableCell>
                           </TableRow>
@@ -566,6 +587,11 @@ export default function SurveyorsPage() {
                               <TableCell className="hidden md:table-cell py-3 px-4">
                                 <span className="whitespace-nowrap">
                                   {surveyor.phone_number || "N/A"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell py-3 px-4">
+                                <span className="whitespace-nowrap text-sm text-muted-foreground">
+                                  {supervisors.find((s) => s.id === (surveyor as any).supervisor_id)?.name || "Sin asignar"}
                                 </span>
                               </TableCell>
                               <TableCell className="hidden sm:table-cell capitalize py-3 px-4">
@@ -964,6 +990,30 @@ export default function SurveyorsPage() {
                   />
                 </div>
               )}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="supervisor" className="text-right">
+                  Supervisor
+                </Label>
+                <div className="col-span-3">
+                  <Select value={surveyorSupervisorId} onValueChange={setSurveyorSupervisorId}>
+                    <SelectTrigger id="supervisor">
+                      <SelectValue placeholder="Sin supervisor asignado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {supervisors.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">No hay supervisores creados todavía</div>
+                      ) : (
+                        supervisors.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name || "Sin nombre"}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Organigrama por defecto — se puede ajustar por encuesta puntual desde "Asignación".
+                  </p>
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsModalOpen(false)}>
