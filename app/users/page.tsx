@@ -21,6 +21,7 @@ import dynamic from "next/dynamic"
 import CreateUserModal from "@/components/create-user-modal"
 import EditUserModal from "@/components/edit-user-modal"
 import { useToast } from "@/components/ui/use-toast"
+import type { PermissionGrid } from "@/lib/permissions"
 
 type User = {
   id: string
@@ -29,6 +30,7 @@ type User = {
   role: string
   status: string
   coordinator_id?: string | null
+  permissions?: PermissionGrid | null
   // Nombre del coordinador asignado (solo aplica a role="supervisor") —
   // lo arma el propio GET /api/users, no viene de una relación de Supabase.
   coordinatorName?: string | null

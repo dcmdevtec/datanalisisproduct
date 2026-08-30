@@ -26,6 +26,7 @@ import SupabaseImage from "@/components/supabase-image"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import { CreateProjectModal } from "@/components/create-project-modal"
+import { useMyPermissions } from "@/hooks/use-permissions"
 
 type Company = {
   id: string
@@ -61,6 +62,7 @@ export default function CompaniesPage() {
     localStorage.setItem('companies_viewMode', viewMode)
   }, [viewMode])
   const { user, loading: authLoading } = useAuth()
+  const { can } = useMyPermissions()
   const router = useRouter()
   const { toast } = useToast()
 
@@ -130,9 +132,15 @@ export default function CompaniesPage() {
     return <div className="flex h-screen items-center justify-center">Cargando...</div>
   }
 
-  // Sin permisos - todos los usuarios pueden hacer todo
-  // const isAdmin = user.role === "admin"
-  // const isSupervisor = user.role === "supervisor"
+  // AUDITORÍA 2026-08-30: hasta ahora esta página no tenía NINGÚN control de
+  // rol (el intento de arriba quedó comentado y nunca se activó) — cualquier
+  // sesión válida podía crear/editar/borrar empresas. La restricción real
+  // vive ahora en las políticas RLS de sql/2026_08_30_user_permissions.sql;
+  // esto solo oculta los botones para que la UI no ofrezca acciones que el
+  // servidor va a rechazar.
+  const canCreate = can("companies", "create")
+  const canEdit = can("companies", "edit")
+  const canDelete = can("companies", "delete")
 
   const filteredCompanies = companies.filter(
     (company) =>
@@ -410,11 +418,13 @@ export default function CompaniesPage() {
               </Button>
             </div>
           </div>
-          <div>
-            <Button onClick={handleOpenCreateCompanyModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto">
-              <Plus className="h-4 w-4 mr-2" /> Nueva Empresa
-            </Button>
-          </div>
+          {canCreate && (
+            <div>
+              <Button onClick={handleOpenCreateCompanyModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto">
+                <Plus className="h-4 w-4 mr-2" /> Nueva Empresa
+              </Button>
+            </div>
+          )}
         </div>
         <div className="mb-8">
           <input
@@ -524,7 +534,7 @@ export default function CompaniesPage() {
                             <span className="sr-only">Ver Proyectos</span>
                             <FolderKanban className="h-4 w-4" />
                           </Button>
-                        ) : (
+                        ) : can("projects", "create") ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -535,27 +545,31 @@ export default function CompaniesPage() {
                             <span className="sr-only">Crear Proyecto</span>
                             <Plus className="h-4 w-4" />
                           </Button>
+                        ) : null}
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
+                            onClick={() => handleOpenEditCompanyModal(company)}
+                            title="Editar Empresa"
+                          >
+                            <span className="sr-only">Editar Empresa</span>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10"
-                          onClick={() => handleOpenEditCompanyModal(company)}
-                          title="Editar Empresa"
-                        >
-                          <span className="sr-only">Editar Empresa</span>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-red-500 hover:bg-red-500/10"
-                          onClick={() => handleDeleteClick(company.id)}
-                          title="Eliminar Empresa"
-                        >
-                          <span className="sr-only">Eliminar Empresa</span>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:bg-red-500/10"
+                            onClick={() => handleDeleteClick(company.id)}
+                            title="Eliminar Empresa"
+                          >
+                            <span className="sr-only">Eliminar Empresa</span>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -748,7 +762,7 @@ export default function CompaniesPage() {
                           <FolderKanban className="h-3 w-3 mr-1" />
                           <span className="hidden sm:inline">Ver</span>
                         </Button>
-                      ) : (
+                      ) : can("projects", "create") ? (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -759,27 +773,31 @@ export default function CompaniesPage() {
                           <Plus className="h-3 w-3 mr-1" />
                           <span className="hidden sm:inline">Crear</span>
                         </Button>
+                      ) : null}
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs"
+                          onClick={() => handleOpenEditCompanyModal(company)}
+                          title="Editar Empresa"
+                        >
+                          <Pencil className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Editar</span>
+                        </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs"
-                        onClick={() => handleOpenEditCompanyModal(company)}
-                        title="Editar Empresa"
-                      >
-                        <Pencil className="h-3 w-3 mr-1" />
-                        <span className="hidden sm:inline">Editar</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:bg-red-500/10 h-8 px-2 flex-1 text-xs"
-                        onClick={() => handleDeleteClick(company.id)}
-                        title="Eliminar Empresa"
-                      >
-                        <Trash2 className="h-3 w-3 mr-1" />
-                        <span className="hidden sm:inline">Eliminar</span>
-                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:bg-red-500/10 h-8 px-2 flex-1 text-xs"
+                          onClick={() => handleDeleteClick(company.id)}
+                          title="Eliminar Empresa"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Eliminar</span>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -14,6 +14,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import { CreateProjectModal } from "@/components/create-project-modal"
+import { useMyPermissions } from "@/hooks/use-permissions"
 
 type Project = {
   id: string
@@ -34,6 +35,10 @@ type Company = {
 
 function ProjectsPageContent() {
   const { user, loading: authLoading } = useAuth()
+  const { can } = useMyPermissions()
+  const canCreateProject = can("projects", "create")
+  const canEditProject = can("projects", "edit")
+  const canDeleteProject = can("projects", "delete")
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
@@ -214,9 +219,11 @@ function ProjectsPageContent() {
             </h1>
             <p className="mt-2 text-sm sm:text-base text-gray-500">Gestiona los proyectos de la plataforma</p>
           </div>
-          <Button onClick={handleOpenCreateModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" /> Crear Proyecto
-          </Button>
+          {canCreateProject && (
+            <Button onClick={handleOpenCreateModal} className="bg-[#18b0a4] hover:bg-[#18b0a4]/90 w-full sm:w-auto">
+              <Plus className="h-4 w-4 mr-2" /> Crear Proyecto
+            </Button>
+          )}
         </div>
         {/* Botones para alternar vista (íconos estilo Google Drive) */}
         <div className="flex gap-2 mb-4">
@@ -276,9 +283,11 @@ function ProjectsPageContent() {
           <div className="text-center p-6 sm:p-8 border rounded-lg bg-muted/50">
             <h3 className="text-lg sm:text-xl font-medium mb-2">No hay proyectos disponibles</h3>
             <p className="text-sm sm:text-base text-muted-foreground mb-4">No se encontraron proyectos para mostrar.</p>
-            <Button onClick={handleOpenCreateModal} className="w-full sm:w-auto">
-              <Plus className="h-4 w-4 mr-2" /> Crear tu primer proyecto
-            </Button>
+            {canCreateProject && (
+              <Button onClick={handleOpenCreateModal} className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 mr-2" /> Crear tu primer proyecto
+              </Button>
+            )}
           </div>
         ) : (
           <>
@@ -363,26 +372,30 @@ function ProjectsPageContent() {
                               <span className="sr-only">Ver Encuestas</span>
                               <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
-                              onClick={() => handleOpenEditModal(project)}
-                              title="Editar Proyecto"
-                            >
-                              <span className="sr-only">Editar Proyecto</span>
-                              <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
-                              onClick={() => handleDeleteClick(project.id)}
-                              title="Eliminar Proyecto"
-                            >
-                              <span className="sr-only">Eliminar Proyecto</span>
-                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </Button>
+                            {canEditProject && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
+                                onClick={() => handleOpenEditModal(project)}
+                                title="Editar Proyecto"
+                              >
+                                <span className="sr-only">Editar Proyecto</span>
+                                <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
+                              </Button>
+                            )}
+                            {canDeleteProject && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-500 hover:bg-red-500/10 h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
+                                onClick={() => handleDeleteClick(project.id)}
+                                title="Eliminar Proyecto"
+                              >
+                                <span className="sr-only">Eliminar Proyecto</span>
+                                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -471,26 +484,30 @@ function ProjectsPageContent() {
                           <Eye className="h-3 w-3 mr-1" />
                           <span className="hidden sm:inline">Ver</span>
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs" 
-                          onClick={() => handleOpenEditModal(project)} 
-                          title="Editar Proyecto"
-                        >
-                          <Pencil className="h-3 w-3 mr-1" />
-                          <span className="hidden sm:inline">Editar</span>
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-red-500 hover:bg-red-500/10 h-8 px-2 flex-1 text-xs" 
-                          onClick={() => handleDeleteClick(project.id)} 
-                          title="Eliminar Proyecto"
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          <span className="hidden sm:inline">Eliminar</span>
-                        </Button>
+                        {canEditProject && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-[#18b0a4] hover:bg-[#18b0a4]/10 h-8 px-2 flex-1 text-xs"
+                            onClick={() => handleOpenEditModal(project)}
+                            title="Editar Proyecto"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            <span className="hidden sm:inline">Editar</span>
+                          </Button>
+                        )}
+                        {canDeleteProject && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:bg-red-500/10 h-8 px-2 flex-1 text-xs"
+                            onClick={() => handleDeleteClick(project.id)}
+                            title="Eliminar Proyecto"
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            <span className="hidden sm:inline">Eliminar</span>
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
