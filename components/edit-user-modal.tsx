@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { UserPermissionsEditor } from "@/components/user-permissions-editor"
+import type { PermissionGrid } from "@/lib/permissions"
 
 type EditableUser = {
   id: string
@@ -23,6 +25,7 @@ type EditableUser = {
   role: string
   status: string
   coordinator_id?: string | null
+  permissions?: PermissionGrid | null
 }
 
 type Props = {
@@ -46,6 +49,7 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
   const [status, setStatus] = useState("active")
   const [coordinatorId, setCoordinatorId] = useState("")
   const [coordinators, setCoordinators] = useState<{ id: string; name: string | null }[]>([])
+  const [permissions, setPermissions] = useState<PermissionGrid | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const isOpen = !!user
@@ -57,6 +61,7 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
     setRole(user.role)
     setStatus(user.status)
     setCoordinatorId(user.coordinator_id || "")
+    setPermissions(user.permissions ?? null)
   }, [user])
 
   useEffect(() => {
@@ -72,7 +77,7 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
     if (!user) return
     setIsSubmitting(true)
     try {
-      const payload: Record<string, any> = { name, status }
+      const payload: Record<string, any> = { name, status, permissions }
       if (roleIsManaged) {
         payload.role = role
         payload.coordinatorId = role === "supervisor" ? coordinatorId || null : null
@@ -163,6 +168,8 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
               </SelectContent>
             </Select>
           </div>
+
+          <UserPermissionsEditor role={role} value={permissions} onChange={setPermissions} />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

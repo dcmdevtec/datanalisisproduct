@@ -42,9 +42,21 @@ export async function GET(request: Request) {
   try {
     const supabaseAdmin = createAdminClient()
 
-    const { data, error } = await supabaseAdmin
+    // `permissions` es una columna nueva (sql/2026_08_30_user_permissions.sql)
+    // que puede no existir todavía en un ambiente dado. Se pide aparte y con
+    // fallback: si falla (columna inexistente), se seguía con el resto de
+    // columnas para no tumbar toda la pantalla de Usuarios por esto.
+    let data: any[] | null = null
+    let error: any = null
+    ;({ data, error } = await supabaseAdmin
       .from("users")
-      .select("id, email, name, role, status, coordinator_id, created_at, updated_at")
+      .select("id, email, name, role, status, coordinator_id, permissions, created_at, updated_at"))
+
+    if (error) {
+      ;({ data, error } = await supabaseAdmin
+        .from("users")
+        .select("id, email, name, role, status, coordinator_id, created_at, updated_at"))
+    }
 
     if (error) {
       console.error("Error fetching users:", error.message)
@@ -179,11 +191,16 @@ export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
 
-  const { name, role, status, coordinatorId } = body as {
+  const { name, role, status, coordinatorId, permissions } = body as {
     name?: string
     role?: string
     status?: string
     coordinatorId?: string | null
+    // Override de permisos por módulo/acción (ver lib/permissions.ts). Se
+    // guarda tal cual venga — es responsabilidad del editor de permisos en
+    // el cliente mandar solo módulos/acciones válidos, mismo criterio que
+    // el resto de este endpoint (no hay validación de forma exhaustiva acá).
+    permissions?: Record<string, Record<string, boolean>> | null
   }
 
   const allowedRoles = ["admin", "supervisor", "coordinator", "surveyor", "client"]
@@ -206,6 +223,7 @@ export async function PATCH(request: Request) {
   } else if (coordinatorId !== undefined) {
     update.coordinator_id = coordinatorId
   }
+  if (permissions !== undefined) update.permissions = permissions
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "No hay cambios para aplicar" }, { status: 400 })
@@ -216,6 +234,16 @@ export async function PATCH(request: Request) {
     const { data, error } = await supabaseAdmin.from("users").update(update).eq("id", id).select().single()
 
     if (error) {
+      // La columna `permissions` puede no existir todavía en este ambiente
+      // (migración sql/2026_08_30_user_permissions.sql pendiente de correr)
+      // — se distingue ese caso del resto de errores para que el mensaje en
+      // el editor de permisos sea claro en vez de un 500 genérico.
+      if (permissions !== undefined && /column .*permissions.* does not exist/i.test(error.message)) {
+        return NextResponse.json(
+          { error: "La base de datos todavía no tiene la columna de permisos (falta correr sql/2026_08_30_user_permissions.sql)." },
+          { status: 409 },
+        )
+      }
       console.error("Error updating user:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }

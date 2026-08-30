@@ -4,6 +4,7 @@ import { cookies } from "next/headers"
 import type { Database } from "@/types/supabase"
 import { createServerClient } from "@supabase/ssr"
 import { type SupabaseClient } from "@supabase/supabase-js"
+import { requirePermission } from "@/lib/api-auth"
 
 // NOTE: @supabase/ssr@0.6.1 vs supabase-js@2.101.1 version mismatch causes Schema=never.
 // Cast to SupabaseClient<Database> fixes type resolution. See lib/supabase-server.ts.
@@ -31,29 +32,15 @@ async function getSupabaseClient(): Promise<SupabaseClient<Database>> {
   ) as unknown as SupabaseClient<Database>
 }
 export async function GET(request: Request) {
+  // AUDITORÍA 2026-08-30: reemplaza el check inline de rol (que llegó a
+  // duplicar la misma lógica de requireRole tres veces en este archivo) por
+  // requirePermission("surveys","view") — mismo comportamiento hoy (admin/
+  // supervisor por default en lib/permissions.ts), pero ahora un admin
+  // puede además restringirlo por usuario puntual desde Editar Usuario.
+  const auth = await requirePermission("surveys", "view")
+  if (!auth.ok) return auth.response
+
   const supabase = await getSupabaseClient()
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
-
-  const { data: userInfo, error: userError } = await supabase.from("users").select("role").eq("id", user.id).single()
-
-  if (userError) {
-    return NextResponse.json({ error: "Error al obtener rol" }, { status: 500 })
-  }
-
-  // SEGURIDAD (auditoría 2026-07-29): el rol se consultaba pero nunca se
-  // usaba para nada — cualquier usuario autenticado (incl. surveyor/client)
-  // podía listar todas las encuestas de la organización.
-  if (!["admin", "supervisor"].includes((userInfo as any)?.role)) {
-    return NextResponse.json({ error: "No tienes permiso para esta acción" }, { status: 403 })
-  }
 
   const query = supabase.from("surveys").select("*, questions(*)").order("created_at", { ascending: false })
 
@@ -67,6 +54,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requirePermission("surveys", "create")
+  if (!auth.ok) return auth.response
+
   const supabase = await getSupabaseClient()
   const body = await request.json()
   const { title, description, questions, settings, deadline } = body
@@ -75,25 +65,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "El título es obligatorio" }, { status: 400 })
   }
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
-
-  const { data: userInfo, error: userError } = await supabase.from("users").select("role").eq("id", user.id).single()
-
-  if (userError) {
-    return NextResponse.json({ error: "Error al verificar permisos" }, { status: 500 })
-  }
-
-  if (!["admin", "supervisor"].includes((userInfo as any)?.role)) {
-    return NextResponse.json({ error: "No tienes permiso para esta acción" }, { status: 403 })
-  }
-
+  const user = auth.user
   const logo = settings?.branding?.logo || null
 
   const { data: surveyData, error: surveyError } = await supabase
@@ -152,31 +124,15 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requirePermission("surveys", "edit")
+  if (!auth.ok) return auth.response
+
   const supabase = await getSupabaseClient()
   const body = await request.json()
   const { id, title, description, questions, settings, deadline, status } = body
 
   if (!id) {
     return NextResponse.json({ error: "ID de encuesta requerido" }, { status: 400 })
-  }
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
-
-  const { data: userInfo, error: userError } = await supabase.from("users").select("role").eq("id", user.id).single()
-
-  if (userError) {
-    return NextResponse.json({ error: "Error al verificar permisos" }, { status: 500 })
-  }
-
-  if (!["admin", "supervisor"].includes((userInfo as any)?.role)) {
-    return NextResponse.json({ error: "No tienes permiso para esta acción" }, { status: 403 })
   }
 
   const { data: existingSurvey, error: checkError } = await supabase

@@ -25,9 +25,12 @@ import {
 } from "lucide-react"
 import SyncStatus from "@/components/sync-status"
 import { Logo } from "@/components/ui/logo"
+import { useMyPermissions } from "@/hooks/use-permissions"
+import type { ModuleKey } from "@/lib/permissions"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth()
+  const { can, loading: permissionsLoading } = useMyPermissions()
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -38,70 +41,96 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     href: string
     icon: React.ElementType
     disabled?: boolean
+    // Módulo del catálogo de lib/permissions.ts que gatea este ítem. Sin
+    // `module` = siempre visible (Configuración/Control de Versiones no
+    // tienen modelo de permisos propio todavía).
+    module?: ModuleKey
   }
 
-  // Menú simplificado sin permisos - todas las opciones visibles
-  const navigation: NavigationItem[] = useMemo(() => [
-    { 
-      name: "Dashboard", 
-      href: "/dashboard", 
-      icon: LayoutDashboard
+  // AUDITORÍA 2026-08-30: hasta ahora este menú mostraba TODO a cualquiera
+  // ("Menú simplificado sin permisos"), y era el hueco #1 de la auditoría de
+  // permisos — ahora filtra por el permiso EFECTIVO del usuario (default de
+  // su rol + override puntual, ver lib/permissions.ts). Esto es solo UX: el
+  // control real sigue en cada ruta /api/** (requirePermission/requireRole)
+  // y en RLS — ocultar un ítem acá no reemplaza esa protección.
+  const allNavigation: NavigationItem[] = useMemo(() => [
+    {
+      name: "Dashboard",
+      href: "/dashboard",
+      icon: LayoutDashboard,
+      module: "dashboard",
     },
-    { 
-      name: "Empresas", 
-      href: "/companies", 
-      icon: Building2
+    {
+      name: "Empresas",
+      href: "/companies",
+      icon: Building2,
+      module: "companies",
     },
-    { 
-      name: "Proyectos", 
-      href: "/projects", 
-      icon: FolderKanban
+    {
+      name: "Proyectos",
+      href: "/projects",
+      icon: FolderKanban,
+      module: "projects",
     },
-    { 
-      name: "Encuestas", 
-      href: "/surveys", 
-      icon: FileText
+    {
+      name: "Encuestas",
+      href: "/surveys",
+      icon: FileText,
+      module: "surveys",
     },
-    { 
-      name: "Encuestadores", 
-      href: "/surveyors", 
-      icon: Users
-    },
-  
-    { 
-      name: "Usuarios", 
-      href: "/users", 
+    {
+      name: "Encuestadores",
+      href: "/surveyors",
       icon: Users,
-    
+      module: "surveyors",
     },
-    { 
-      name: "Zonas", 
-      href: "/zones", 
-      icon: MapPin
+
+    {
+      name: "Usuarios",
+      href: "/users",
+      icon: Users,
+      module: "users",
     },
-    { 
-      name: "Reportes", 
-      href: "/reports", 
-      icon: BarChart3
+    {
+      name: "Zonas",
+      href: "/zones",
+      icon: MapPin,
+      module: "zones",
     },
-    { 
-      name: "Mensajes", 
-      href: "/messages", 
-      icon: MessageSquare
+    {
+      name: "Reportes",
+      href: "/reports",
+      icon: BarChart3,
+      module: "reports",
     },
-    { 
-      name: "Configuración", 
-      href: "/settings", 
+    {
+      name: "Mensajes",
+      href: "/messages",
+      icon: MessageSquare,
+      module: "messages",
+    },
+    {
+      name: "Configuración",
+      href: "/settings",
       icon: Settings,
       disabled: true
     },
-    { 
-      name: "Control de Versiones", 
-      href: "/control", 
+    {
+      name: "Control de Versiones",
+      href: "/control",
       icon: Settings,
       disabled: false
     },
   ], [])
+
+  // Mientras se resuelve el permiso (permissionsLoading) se muestra todo —
+  // evita el parpadeo de "sidebar vacío" al cargar; la protección real está
+  // en el servidor, así que mostrar un ítem de más por un instante no es un
+  // problema de seguridad, solo de UX.
+  const navigation = useMemo(
+    () => allNavigation.filter((item) => !item.module || permissionsLoading || can(item.module, "view")),
+    [allNavigation, permissionsLoading, can],
+  )
 
   // Prefetch de rutas comunes para mejorar la navegación
   useEffect(() => {
@@ -130,14 +159,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setOpen(prev => !prev)
   }, [])
 
-  // Guardia de rol: este layout ("Menú simplificado sin permisos - todas
-  // las opciones visibles", ver comentario arriba) no filtra el sidebar por
-  // rol — cualquiera que llegue aquí ve todo el panel admin. Un encuestador
-  // NUNCA debería aterrizar en /dashboard (su superficie es
-  // /portal-encuestador), pero si lo hace por un link viejo, un cambio de
-  // rol, o el bug ya corregido en POST /api/surveyors (encuestadores creados
-  // sin fila en public.users terminaban aquí por defecto), lo sacamos apenas
-  // se detecta. Defensa en profundidad, no reemplaza corregir el origen.
+  // Guardia de rol: el sidebar ya filtra por permiso (ver `navigation`
+  // arriba), pero eso no le sirve de nada a un encuestador — su superficie
+  // es /portal-encuestador, no este layout en absoluto. Si de todos modos
+  // aterriza acá (link viejo, cambio de rol, o el bug ya corregido en POST
+  // /api/surveyors donde encuestadores creados sin fila en public.users
+  // terminaban aquí por defecto), lo sacamos apenas se detecta. Defensa en
+  // profundidad, no reemplaza corregir el origen.
   useEffect(() => {
     if (!user) return
     let cancelled = false

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
+import { getEffectivePermissions, type ModuleKey, type ActionKey, type PermissionGrid } from "@/lib/permissions"
 
 // Helper de autenticación/autorización compartido para rutas de app/api/**.
 //
@@ -49,6 +50,50 @@ export async function requireRole(allowedRoles?: string[]): Promise<RequireRoleR
     return { ok: false, response: NextResponse.json({ error: "No autorizado" }, { status: 401 }) }
   }
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    return { ok: false, response: NextResponse.json({ error: "No tienes permiso para realizar esta acción" }, { status: 403 }) }
+  }
+  return { ok: true, user }
+}
+
+// Trae el override de permisos del usuario (users.permissions) EN UNA QUERY
+// APARTE de resolveAuthedUser() — a propósito: users.permissions es una
+// columna nueva (ver sql/2026_08_30_user_permissions.sql) y este código
+// puede desplegarse ANTES de correr esa migración en un ambiente dado. Si
+// la columna todavía no existe, esta query falla — se atrapa el error y se
+// sigue con el default del rol (grid vacío), en vez de tumbar TODA ruta que
+// use requirePermission(). resolveAuthedUser() en cambio nunca toca esta
+// columna, así que requireRole() (usado en casi toda la app) no depende en
+// absoluto de que la migración ya haya corrido.
+async function resolvePermissionOverride(userId: string): Promise<PermissionGrid> {
+  try {
+    const admin = createAdminSupabase()
+    const { data, error } = await admin.from("users").select("permissions").eq("id", userId).maybeSingle()
+    if (error) throw error
+    return ((data as any)?.permissions as PermissionGrid) ?? {}
+  } catch {
+    return {}
+  }
+}
+
+type RequirePermissionResult =
+  | { ok: true; user: AuthedUser }
+  | { ok: false; response: NextResponse }
+
+// Exige sesión Y que el permiso efectivo del usuario (default de su rol +
+// override de users.permissions) incluya `module.action`. A diferencia de
+// requireRole(), esto sí puede variar de un usuario a otro dentro del mismo
+// rol — es lo que habilita "este supervisor en particular no ve Mensajes"
+// sin tocar código. El TECHO sigue siendo el rol: si ninguna ruta relevante
+// usa requirePermission() para una acción dada, el rol manda como siempre
+// (ver comentario de cabecera en lib/permissions.ts).
+export async function requirePermission(module: ModuleKey, action: ActionKey): Promise<RequirePermissionResult> {
+  const user = await resolveAuthedUser()
+  if (!user) {
+    return { ok: false, response: NextResponse.json({ error: "No autorizado" }, { status: 401 }) }
+  }
+  const overrides = await resolvePermissionOverride(user.id)
+  const effective = getEffectivePermissions({ role: user.role, permissions: overrides })
+  if (effective[module]?.[action] !== true) {
     return { ok: false, response: NextResponse.json({ error: "No tienes permiso para realizar esta acción" }, { status: 403 }) }
   }
   return { ok: true, user }

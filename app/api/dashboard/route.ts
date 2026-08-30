@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
-import { requireRole } from "@/lib/api-auth"
+import { requirePermission } from "@/lib/api-auth"
 
 // SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol — un
 // encuestador autenticado podía consultar analítica de toda la organización.
+//
+// CORRECCIÓN (auditoría 2026-08-30): requireRole(["admin","supervisor"]) se
+// quedó desactualizado — Reportes, Tracking y Mensajes ya suman
+// "coordinator" desde la reunión del 27 ago, pero acá se olvidó. Un
+// coordinador podía ver Reportes pero le rebotaba el Dashboard. Se
+// reemplaza por requirePermission("dashboard","view"), que en
+// lib/permissions.ts sí incluye a coordinator por default.
 export async function GET() {
   try {
-    const auth = await requireRole(["admin", "supervisor"])
+    const auth = await requirePermission("dashboard", "view")
     if (!auth.ok) return auth.response
 
     const supabase = await createServerSupabase()
