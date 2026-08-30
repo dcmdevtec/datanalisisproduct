@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserPermissionsEditor } from "@/components/user-permissions-editor"
 import type { PermissionGrid } from "@/lib/permissions"
 
@@ -51,6 +52,7 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
   const [coordinators, setCoordinators] = useState<{ id: string; name: string | null }[]>([])
   const [permissions, setPermissions] = useState<PermissionGrid | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [activeTab, setActiveTab] = useState("general")
 
   const isOpen = !!user
   const roleIsManaged = user ? EDITABLE_ROLES.includes(user.role) : true
@@ -62,6 +64,10 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
     setStatus(user.status)
     setCoordinatorId(user.coordinator_id || "")
     setPermissions(user.permissions ?? null)
+    // Vuelve a la pestaña General al abrir — si quedó en Permisos de una
+    // edición anterior, sería fácil no notar que se está editando a otro
+    // usuario.
+    setActiveTab("general")
   }, [user])
 
   useEffect(() => {
@@ -110,66 +116,82 @@ export default function EditUserModal({ user, onOpenChange, onUpdated }: Props) 
           <DialogDescription>Actualiza el rol, la jerarquía o el estado de {user?.email}.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="editUserName">Nombre</Label>
-            <Input id="editUserName" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="permisos" className="gap-1.5">
+                Roles y permisos
+                {permissions && Object.keys(permissions).length > 0 && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#18b0a4]" title="Tiene permisos personalizados" />
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="space-y-2">
-            <Label htmlFor="editUserRole">Rol</Label>
-            {roleIsManaged ? (
-              <Select onValueChange={(v) => { setRole(v); if (v !== "supervisor") setCoordinatorId("") }} value={role}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona rol" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="coordinator">Coordinador</SelectItem>
-                  <SelectItem value="supervisor">Supervisor</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <p className="text-sm text-muted-foreground border rounded-md px-3 py-2">
-                {role === "surveyor" ? "Encuestador — gestiona el rol desde el módulo Encuestadores." : "Cliente"}
-              </p>
-            )}
-          </div>
+            <TabsContent value="general" className="grid gap-4 pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="editUserName">Nombre</Label>
+                <Input id="editUserName" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
 
-          {roleIsManaged && role === "supervisor" && (
-            <div className="space-y-2">
-              <Label htmlFor="editUserCoordinator">Coordinador a cargo (opcional)</Label>
-              <Select onValueChange={(v) => setCoordinatorId(v)} value={coordinatorId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin coordinador asignado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {coordinators.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">No hay coordinadores creados todavía</div>
-                  ) : (
-                    coordinators.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name || "Sin nombre"}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+              <div className="space-y-2">
+                <Label htmlFor="editUserRole">Rol</Label>
+                {roleIsManaged ? (
+                  <Select onValueChange={(v) => { setRole(v); if (v !== "supervisor") setCoordinatorId("") }} value={role}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona rol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="coordinator">Coordinador</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm text-muted-foreground border rounded-md px-3 py-2">
+                    {role === "surveyor" ? "Encuestador — gestiona el rol desde el módulo Encuestadores." : "Cliente"}
+                  </p>
+                )}
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="editUserStatus">Estado</Label>
-            <Select onValueChange={(v) => setStatus(v)} value={status}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Activo</SelectItem>
-                <SelectItem value="inactive">Inactivo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+              {roleIsManaged && role === "supervisor" && (
+                <div className="space-y-2">
+                  <Label htmlFor="editUserCoordinator">Coordinador a cargo (opcional)</Label>
+                  <Select onValueChange={(v) => setCoordinatorId(v)} value={coordinatorId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sin coordinador asignado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {coordinators.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">No hay coordinadores creados todavía</div>
+                      ) : (
+                        coordinators.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name || "Sin nombre"}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-          <UserPermissionsEditor role={role} value={permissions} onChange={setPermissions} />
+              <div className="space-y-2">
+                <Label htmlFor="editUserStatus">Estado</Label>
+                <Select onValueChange={(v) => setStatus(v)} value={status}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Activo</SelectItem>
+                    <SelectItem value="inactive">Inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="permisos" className="pt-4">
+              <UserPermissionsEditor role={role} value={permissions} onChange={setPermissions} />
+            </TabsContent>
+          </Tabs>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
