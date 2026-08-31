@@ -268,8 +268,35 @@ export async function GET(request: NextRequest) {
         typeof (r.location.lat ?? r.location.latitude) === "number" &&
         typeof (r.location.lng ?? r.location.longitude) === "number")
       .map((r: any) => ({ id: r.id, lat: r.location.lat ?? r.location.latitude, lng: r.location.lng ?? r.location.longitude }))
+
+    // DIAGNÓSTICO TEMPORAL (2026-08-31): en producción, con las migraciones
+    // ya corridas, Barrio/Ciudad seguían en "—" y NO aparecía ningún log
+    // "[geocode]" (que solo se imprime en un fallo) — eso apunta a que el
+    // fallback ni siquiera se está intentando para estas filas, no a que
+    // Nominatim esté fallando. Este log SIEMPRE imprime (haya o no
+    // candidatos) para ver de un vistazo, sin acceso a la base de datos,
+    // cuántas respuestas de esta página ya tenían ciudad/barrio resuelto,
+    // cuántas tienen responses.location con forma válida, y — si hay 0
+    // candidatos — cómo luce el campo location crudo de la primera fila sin
+    // resolver, para detectar un problema de forma de dato (ej. lat/lng
+    // anidados distinto a como se esperaba). Quitar una vez diagnosticado.
+    {
+      const withResolvedLocation = rawData.filter((r: any) => !!locationByResponseId[r.id]).length
+      const withRawLocation = rawData.filter((r: any) => r.location).length
+      console.log(
+        `[geocode][diagnóstico] página con ${rawData.length} respuestas — ${withResolvedLocation} ya con ciudad/barrio (pregunta Ubicación), ${withRawLocation} con responses.location no vacío, ${geocodeFallbackPoints.length} candidatas para el fallback de geocoding.`,
+      )
+      if (geocodeFallbackPoints.length === 0 && withRawLocation > 0) {
+        const sample = rawData.find((r: any) => r.location && !locationByResponseId[r.id])
+        if (sample) {
+          console.log(`[geocode][diagnóstico] responses.location crudo de una fila sin resolver (id=${sample.id}):`, JSON.stringify(sample.location))
+        }
+      }
+    }
+
     if (geocodeFallbackPoints.length > 0) {
       const geocoded = await reverseGeocodeBatch(admin, geocodeFallbackPoints)
+      console.log(`[geocode][diagnóstico] ${Object.keys(geocoded).length} de ${geocodeFallbackPoints.length} candidatas resueltas en esta pasada.`)
       for (const [id, info] of Object.entries(geocoded)) {
         locationByResponseId[id] = info
       }
