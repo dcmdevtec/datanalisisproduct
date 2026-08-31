@@ -656,6 +656,15 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                       <span className="text-[11px] font-medium text-sky-700 dark:text-sky-400">
                         Antes de iniciar la encuesta (consulta de incidencia / conversación previa)
                       </span>
+                      {/* Resumen rápido: cuántos clips y cuánto duran en total, para no
+                          tener que reproducir todo para saber si hay algo largo que revisar. */}
+                      <span className="text-[10px] text-sky-600/80 dark:text-sky-400/80">
+                        · {detail.preSurveyRecordings.length} {detail.preSurveyRecordings.length === 1 ? "clip" : "clips"}
+                        {(() => {
+                          const total = detail.preSurveyRecordings.reduce((sum, r) => sum + (r.durationSecs || 0), 0)
+                          return total > 0 ? ` · ${formatDuration(total)} en total` : ""
+                        })()}
+                      </span>
                     </div>
                     <div className="space-y-1.5">
                       {detail.preSurveyRecordings.map((rec, idx) => {
@@ -666,10 +675,17 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                           : url.includes('.mp3') ? 'audio/mpeg'
                           : url.includes('.ogg') ? 'audio/ogg'
                           : undefined
+                        // Hora de cada clip (no solo la duración) — así el supervisor ve a
+                        // qué momento exacto, antes de "Iniciar Encuesta", corresponde cada
+                        // segmento, en vez de tener que adivinar el orden por el número.
+                        const time = rec.startedAt
+                          ? new Date(rec.startedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })
+                          : null
                         return (
                           <div key={idx} className="flex items-center gap-2">
-                            <span className="text-[10px] text-sky-600 dark:text-sky-400 flex-shrink-0 w-14">
-                              {rec.durationSecs ? formatDuration(rec.durationSecs) : "—"}
+                            <span className="text-[10px] text-sky-600 dark:text-sky-400 flex-shrink-0 whitespace-nowrap" title={time ? `Empezó a las ${time}` : undefined}>
+                              {time ?? `Clip ${idx + 1}`}
+                              {rec.durationSecs ? ` · ${formatDuration(rec.durationSecs)}` : ""}
                             </span>
                             {isAmr ? (
                               <div className="flex items-center gap-1.5 flex-1">
