@@ -384,6 +384,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // BUG (reporte 2026-08-31): "Encuestador: Sin asignar" en el popup del
+    // mapa aunque la respuesta SÍ tenía encuestador resuelto en Respuestas
+    // Individuales/Rendimiento. Causa: acá el nombre del encuestador solo se
+    // sacaba de assignment_id (survey_surveyor_zones) — pero una respuesta
+    // tomada por un encuestador logueado directamente (web autenticada, sin
+    // pasar por una zona asignada) o desde la APK nunca trae assignment_id
+    // (ver comentario igual en "Rendimiento por Encuestador" más abajo, línea
+    // ~952). Se replica acá el mismo fallback en dos pasos: metadata.surveyor_id
+    // (APK) y luego respondent_id (sesión web, mismo criterio que
+    // resolveCurrentSurveyor() en lib/portal-encuestador/auth.ts).
+    const geoMetaSurveyorIds = [
+      ...new Set(
+        responses
+          .filter((r: any) => !r.assignment_id && r.metadata?.surveyor_id)
+          .map((r: any) => r.metadata.surveyor_id as string)
+      )
+    ]
+    const geoSurveyorNameByMetaId: Record<string, string | null> = {}
+    if (geoMetaSurveyorIds.length > 0) {
+      const { data } = await admin.from("surveyors").select("id, name").in("id", geoMetaSurveyorIds)
+      for (const s of (data as any[]) || []) geoSurveyorNameByMetaId[s.id] = s.name ?? null
+    }
+
+    const geoRespondentIdsNeedingSurveyor = [
+      ...new Set(
+        responses
+          .filter((r: any) => !r.assignment_id && !r.metadata?.surveyor_id && r.respondent_id)
+          .map((r: any) => r.respondent_id as string)
+      )
+    ]
+    const geoSurveyorNameByRespondentId: Record<string, string | null> = {}
+    if (geoRespondentIdsNeedingSurveyor.length > 0) {
+      const { data: byUserId } = await admin
+        .from("surveyors")
+        .select("id, user_id, name")
+        .in("user_id", geoRespondentIdsNeedingSurveyor)
+      const resolvedIds = new Set<string>()
+      for (const s of (byUserId as any[]) || []) {
+        geoSurveyorNameByRespondentId[s.user_id] = s.name ?? null
+        resolvedIds.add(s.user_id)
+      }
+      const remaining = geoRespondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
+      if (remaining.length > 0) {
+        const { data: byLegacyId } = await admin.from("surveyors").select("id, name").in("id", remaining)
+        for (const s of (byLegacyId as any[]) || []) geoSurveyorNameByRespondentId[s.id] = s.name ?? null
+      }
+    }
+
     // Puntos de respuesta con GPS (de la tabla responses)
     const responsePointsFromResponses = responses
       .filter((r: any) => r.location && typeof r.location === "object" &&
@@ -391,8 +439,18 @@ export async function GET(request: NextRequest) {
         typeof (r.location.lng ?? r.location.longitude) === "number")
       .map((r: any) => {
         const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
-        const surveyorName = (assignment?.surveyors as any)?.name ?? null
-        const surveyorId = assignment?.surveyor_id ?? null
+        let surveyorName = (assignment?.surveyors as any)?.name ?? null
+        let surveyorId = assignment?.surveyor_id ?? null
+        if (!surveyorId && !r.assignment_id) {
+          const metaId = (r as any).metadata?.surveyor_id as string | undefined
+          if (metaId && geoSurveyorNameByMetaId[metaId] !== undefined) {
+            surveyorId = metaId
+            surveyorName = geoSurveyorNameByMetaId[metaId]
+          } else if ((r as any).respondent_id && geoSurveyorNameByRespondentId[(r as any).respondent_id] !== undefined) {
+            surveyorId = (r as any).respondent_id
+            surveyorName = geoSurveyorNameByRespondentId[(r as any).respondent_id]
+          }
+        }
         const startedAt = (r as any).started_at ?? null
         const durationSecs = (r.completed_at && startedAt)
           ? Math.round((new Date(r.completed_at).getTime() - new Date(startedAt).getTime()) / 1000)
