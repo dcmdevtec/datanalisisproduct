@@ -75,7 +75,17 @@ export async function reverseGeocodeCached(
           // servidor (a diferencia del navegador, que manda su propio
           // User-Agent automáticamente) — identifica de dónde vienen las
           // consultas en vez de aparecer como anónimas.
-          "User-Agent": "DatanalisisReportes/1.0 (portal de encuestas — reverse geocoding de respuestas)",
+          //
+          // BUG encontrado en vivo (2026-08-31, con logs corriendo local):
+          // este valor tenía un guión largo tipográfico "—" (U+2014, el
+          // mismo que se usa en los comentarios de este archivo) en vez de
+          // un guión ASCII normal. Los headers HTTP solo aceptan ByteString
+          // (valores 0-255) — fetch() lanzaba
+          // "Cannot convert argument to a ByteString" ANTES de mandar
+          // cualquier request, así que ninguna llamada a Nominatim se
+          // intentaba de verdad, en ningún ambiente. Nunca fue un problema
+          // de red/firewall/Nominatim como se sospechaba — era este typo.
+          "User-Agent": "DatanalisisReportes/1.0 (portal de encuestas - reverse geocoding de respuestas)",
         },
       },
     )
