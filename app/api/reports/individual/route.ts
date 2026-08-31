@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { reverseGeocodeBatch } from "@/lib/geocode"
 
 // Lista paginada de respuestas individuales (pptx slide 22: "Respuestas Individuales").
 // Reutiliza exactamente los mismos filtros globales del módulo de Reportes
@@ -249,6 +250,28 @@ export async function GET(request: NextRequest) {
           ciudad: val.ciudad || null,
           barrio: val.barrio || null,
         }
+      }
+    }
+
+    // Fallback (reporte 2026-08-31): "ya tenemos la ubicación donde se hace
+    // la encuesta [el GPS del mapa], ¿por qué no aparece el barrio/ciudad?"
+    // — porque hasta ahora esas dos columnas dependían por completo de que
+    // la encuesta tuviera una pregunta tipo "Ubicación" (la inmensa mayoría
+    // no la tiene). Para las respuestas que quedaron sin resolver arriba
+    // pero sí tienen GPS crudo (responses.location, lo mismo que alimenta el
+    // mapa), se reverse-geocodifica ese punto como respaldo — con caché y un
+    // tope por página (ver lib/geocode.ts) para no violar el límite de uso
+    // de Nominatim. Lo que no alcance a resolverse en esta pasada sigue
+    // mostrando "—", y normalmente ya cae en caché la próxima vez.
+    const geocodeFallbackPoints = rawData
+      .filter((r: any) => !locationByResponseId[r.id] && r.location && typeof r.location === "object" &&
+        typeof (r.location.lat ?? r.location.latitude) === "number" &&
+        typeof (r.location.lng ?? r.location.longitude) === "number")
+      .map((r: any) => ({ id: r.id, lat: r.location.lat ?? r.location.latitude, lng: r.location.lng ?? r.location.longitude }))
+    if (geocodeFallbackPoints.length > 0) {
+      const geocoded = await reverseGeocodeBatch(admin, geocodeFallbackPoints)
+      for (const [id, info] of Object.entries(geocoded)) {
+        locationByResponseId[id] = info
       }
     }
 
