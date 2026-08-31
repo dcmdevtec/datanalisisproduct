@@ -48,7 +48,12 @@ WORKDIR /app
 # nss/freetype/harfbuzz/ca-certificates/ttf-freefont son dependencias de
 # Chromium para poder LANZARSE en Alpine — sin ellas el proceso crashea al
 # arrancar (causa típica de un 500 "silencioso" en este endpoint).
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+#
+# ffmpeg (pedido 2026-08-31): app/api/surveys/[id]/audios/zip fusiona en un
+# solo archivo el audio "de antes" (fondo del turno) con el de la encuesta
+# para el ZIP de descarga masiva — necesita el binario `ffmpeg` en PATH.
+# Mismo criterio que Chromium arriba: solo hace falta en el runner.
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont ffmpeg
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY --from=builder /app/package.json .
