@@ -203,15 +203,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // (b) la tabla surveyor_recordings no existe todavía en la DB,
     // (c) allowAudio=false, o (d) el upload falló.
     let surveyorRecording: { audioUrl: string | null; durationSecs: number | null; startedAt: string | null } | null = null
+    // Reunión 2026-08-27 ("no está tomando el audio desde la incidencia") +
+    // aclaración 2026-08-31: el motor de grabación del portal (ver
+    // lib/portal-encuestador/use-shift-recording.ts) YA graba de fondo sin
+    // parar desde que arranca el turno (scope='shift') — el audio de "antes
+    // de iniciar la encuesta" (consultar si hay incidencia, negociar con el
+    // encuestado) nunca se pierde, se sube igual que cualquier otro
+    // segmento. El problema real era que este endpoint solo traía el
+    // segmento scope='survey' (desde que se toca "Iniciar Encuesta"): el
+    // audio de fondo quedaba huérfano, subido pero invisible para quien
+    // revisa la encuesta acá. Se agregan los segmentos scope='shift' del
+    // mismo turno que terminan justo antes de que arrancara este, con un
+    // límite de 30 min hacia atrás (suficiente para cualquier consulta de
+    // incidencia real, evita traer audio de mucho antes en el turno).
+    let preSurveyRecordings: { audioUrl: string; durationSecs: number | null; startedAt: string | null }[] = []
     try {
       const { data: recRow } = await (admin as any)
         .from("surveyor_recordings")
-        .select("id, storage_path, duration_secs, started_at, upload_status")
+        .select("id, shift_id, storage_path, duration_secs, started_at, upload_status")
         .eq("response_id", responseId)
         .eq("scope", "survey")
         .eq("upload_status", "uploaded")
         .limit(1)
-        .maybeSingle() as { data: { storage_path: string; duration_secs: number | null; started_at: string | null } | null }
+        .maybeSingle() as { data: { shift_id: string | null; storage_path: string; duration_secs: number | null; started_at: string | null } | null }
 
       if (recRow?.storage_path) {
         const { data: signed } = await admin.storage
@@ -221,6 +235,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           audioUrl: signed?.signedUrl ?? null,
           durationSecs: recRow.duration_secs ?? null,
           startedAt: recRow.started_at ?? null,
+        }
+      }
+
+      if (recRow?.shift_id && recRow.started_at) {
+        const lowerBound = new Date(new Date(recRow.started_at).getTime() - 30 * 60 * 1000).toISOString()
+        const { data: preRows } = await (admin as any)
+          .from("surveyor_recordings")
+          .select("storage_path, duration_secs, started_at")
+          .eq("shift_id", recRow.shift_id)
+          .eq("scope", "shift")
+          .eq("upload_status", "uploaded")
+          .gte("started_at", lowerBound)
+          .lt("started_at", recRow.started_at)
+          .order("started_at", { ascending: true })
+          .limit(10) as { data: { storage_path: string; duration_secs: number | null; started_at: string | null }[] | null }
+
+        for (const row of preRows || []) {
+          if (!row.storage_path) continue
+          const { data: signed } = await admin.storage
+            .from("response-media")
+            .createSignedUrl(row.storage_path, 3600)
+          if (signed?.signedUrl) {
+            preSurveyRecordings.push({
+              audioUrl: signed.signedUrl,
+              durationSecs: row.duration_secs ?? null,
+              startedAt: row.started_at ?? null,
+            })
+          }
         }
       }
     } catch {
@@ -245,6 +287,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       incidenceType: r.incidence_type ?? null,
       location: r.location ?? null,
       surveyorRecording,
+      preSurveyRecordings,
       questions,
     })
   } catch (error) {

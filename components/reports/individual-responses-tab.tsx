@@ -71,6 +71,12 @@ interface DetailResponse {
   incidenceType: string | null
   location?: any
   surveyorRecording?: { audioUrl: string | null; durationSecs: number | null; startedAt: string | null } | null
+  // Segmentos de fondo del turno (scope='shift') grabados justo antes de que
+  // arrancara esta encuesta — cubre la consulta de incidencia y cualquier
+  // charla previa con el encuestado, que el motor de grabación ya subía
+  // pero antes no aparecía en ningún lado de este visor (ver comentario en
+  // app/api/reports/individual/[id]/route.ts).
+  preSurveyRecordings?: { audioUrl: string; durationSecs: number | null; startedAt: string | null }[] | null
   questions: DetailQuestion[]
 }
 
@@ -636,6 +642,55 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                     )}
                   </div>
                 </div>
+
+                {/* ── Audio de ANTES de iniciar la encuesta (fondo del turno) ──
+                    Reunión 2026-08-27 ("no está tomando el audio desde la
+                    incidencia") + aclaración 2026-08-31: este audio siempre
+                    se grabó (el motor de fondo del turno no se detiene entre
+                    encuestas), lo que faltaba era mostrarlo acá — ver
+                    preSurveyRecordings en app/api/reports/individual/[id]/route.ts. */}
+                {detail.preSurveyRecordings && detail.preSurveyRecordings.length > 0 && (
+                  <div className="px-4 py-2 border-b bg-sky-50/50 dark:bg-sky-900/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileAudio className="h-3.5 w-3.5 text-sky-600 flex-shrink-0" />
+                      <span className="text-[11px] font-medium text-sky-700 dark:text-sky-400">
+                        Antes de iniciar la encuesta (consulta de incidencia / conversación previa)
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {detail.preSurveyRecordings.map((rec, idx) => {
+                        const url = rec.audioUrl
+                        const isAmr = url.includes('.amr') || url.includes('%2Famr') || url.includes('audio%2Famr')
+                        const mimeType = url.includes('.m4a') ? 'audio/mp4'
+                          : url.includes('.webm') ? 'audio/webm'
+                          : url.includes('.mp3') ? 'audio/mpeg'
+                          : url.includes('.ogg') ? 'audio/ogg'
+                          : undefined
+                        return (
+                          <div key={idx} className="flex items-center gap-2">
+                            <span className="text-[10px] text-sky-600 dark:text-sky-400 flex-shrink-0 w-14">
+                              {rec.durationSecs ? formatDuration(rec.durationSecs) : "—"}
+                            </span>
+                            {isAmr ? (
+                              <div className="flex items-center gap-1.5 flex-1">
+                                <span className="text-[10px] text-sky-600 dark:text-sky-400">
+                                  Formato AMR — no compatible con el navegador.
+                                </span>
+                                <a href={url} download className="text-[10px] underline text-sky-700 dark:text-sky-300 hover:opacity-80">
+                                  Descargar
+                                </a>
+                              </div>
+                            ) : (
+                              <audio src={url} controls className="flex-1 h-7 min-w-0" style={{ accentColor: "#0284c7" }}>
+                                {mimeType && <source src={url} type={mimeType} />}
+                              </audio>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* ── Grabación de audio del encuestador (compacto) ──────────── */}
                 {detail.surveyorRecording?.audioUrl && (() => {
