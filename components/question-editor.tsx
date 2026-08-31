@@ -371,6 +371,19 @@ export function QuestionEditor({
 
   const matrixRows = question.matrixRows?.length ? question.matrixRows : ["Fila 1"]
   const matrixCols = question.matrixCols?.length ? question.matrixCols : ["Columna 1"]
+  // Bug reportado (2026-08-31): en una matriz "Opción única (Radio)" el botón
+  // "Múltiples" para pegar columnas de a varias no aparecía — solo el de
+  // filas. El <Select> de Tipo de celda usa `matrixCellType || "radio"` para
+  // decidir qué mostrar seleccionado, pero cada condicional de abajo (qué
+  // panel de config mostrar, si mostrar el botón "Múltiples" de columnas,
+  // etc.) comparaba el valor CRUDO sin ese mismo fallback — así que una
+  // pregunta de matriz creada antes de que existiera este campo (o cualquiera
+  // sin `config.matrixCellType` explícito) se veía como "Radio" en el
+  // selector pero para el resto del componente no era ni "radio" ni
+  // "checkbox" ni nada, y todo el UI específico de tipo de celda (incluido
+  // el botón de columnas masivas) se ocultaba en silencio. Se centraliza acá
+  // el mismo fallback para que todo el archivo lea el mismo valor efectivo.
+  const effectiveMatrixCellType = question.config?.matrixCellType || "radio"
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1327,7 +1340,7 @@ export function QuestionEditor({
                   </div>
                 ))}
                 {/* Hide add column button if cell type is 'ranking' */}
-                {question.config?.matrixCellType !== "ranking" && (
+                {effectiveMatrixCellType !== "ranking" && (
                   <div className="flex items-start gap-2">
                     <div>
                       <Button
@@ -1346,7 +1359,7 @@ export function QuestionEditor({
                     </div>
 
                     {/* Show bulk-add only for cell types that require selectable options */}
-                    {(question.config?.matrixCellType === "radio" || question.config?.matrixCellType === "checkbox" || question.config?.matrixCellType === "select") && (
+                    {(effectiveMatrixCellType === "radio" || effectiveMatrixCellType === "checkbox" || effectiveMatrixCellType === "select") && (
                       <div className="mt-2">
                         <Button
                           size="sm"
@@ -1397,7 +1410,7 @@ export function QuestionEditor({
             <div className="space-y-2">
               <Label className="font-medium">Tipo de celda</Label>
               <Select
-                value={question.config?.matrixCellType || "radio"}
+                value={effectiveMatrixCellType}
                 onValueChange={(value) => {
                   const newConfig = {
                     ...question.config,
@@ -1448,7 +1461,7 @@ export function QuestionEditor({
               </p>
             </div>
             {/* Información sobre límites para checkbox */}
-            {question.config?.matrixCellType === "checkbox" && (
+            {effectiveMatrixCellType === "checkbox" && (
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <Label className="font-medium text-blue-800">Configuración de Checkbox</Label>
                 <div className="text-sm text-blue-700 mt-1">
@@ -1464,7 +1477,7 @@ export function QuestionEditor({
               </div>
             )}
             {/* Opciones para celdas tipo 'select' - per-column options */}
-            {question.config?.matrixCellType === "select" && (
+            {effectiveMatrixCellType === "select" && (
               <div className="space-y-2 mt-4">
                 <Label className="font-medium">Opciones para cada columna</Label>
                 {matrixCols.map((col, colIdx) => {
@@ -1596,7 +1609,7 @@ export function QuestionEditor({
             )}
 
             {/* Opciones para celdas tipo 'rating' */}
-            {question.config?.matrixCellType === "rating" && (
+            {effectiveMatrixCellType === "rating" && (
               <div className="space-y-2 mt-4">
                 <Label className="font-medium">Configuración de valoración</Label>
                 <Select
@@ -1621,7 +1634,7 @@ export function QuestionEditor({
             )}
 
             {/* Opciones para celdas tipo 'ranking' */}
-            {question.config?.matrixCellType === "ranking" && (
+            {effectiveMatrixCellType === "ranking" && (
               <div className="space-y-2 mt-4">
                 <Label className="font-medium">Configuración de ranking</Label>
                 <div className="space-y-2">
@@ -1674,7 +1687,7 @@ export function QuestionEditor({
                             {matrixCols.map((_, cIdx) => (
                               <td key={cIdx} className="px-4 py-4 text-center">
                                 {(() => {
-                                  switch (question.config?.matrixCellType) {
+                                  switch (effectiveMatrixCellType) {
                                     case "checkbox":
                                       return <input type="checkbox" disabled className="cursor-not-allowed" />
                                     case "text":
