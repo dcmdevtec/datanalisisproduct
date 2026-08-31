@@ -57,6 +57,7 @@ function ReportsPageContent() {
     showZones: boolean
     showPoints: boolean
     selectedRouteSurveyorIds: string[]
+    cityPresetIdx: number
   } | null>(null)
   const [data, setData] = useState<ReportData | null>(null)
   const [selectedCompany, setSelectedCompany] = useState<string>("all")
@@ -997,9 +998,10 @@ function ReportsPageContent() {
                     Arranca con initialEnabledOutcomes/initialShowZones/etc.
                     tomados de geoExportFilterState — lo último que reportó el
                     mapa VISIBLE vía onFilterStateChange — para que el PDF
-                    salga con el mismo filtro de tipo de respuesta y la misma
-                    ruta que el usuario tenía elegidos al tocar "Descargar
-                    PDF", no siempre con todo activado y sin ruta. */}
+                    salga con el mismo filtro de tipo de respuesta, la misma
+                    ruta y la misma delimitación de ciudad/municipio que el
+                    usuario tenía elegidos al tocar "Descargar PDF", no
+                    siempre con todo Colombia activado y sin ruta. */}
                 {exporting === "geographic" && (
                   <div style={{ position: "fixed", top: 0, left: -9999, width: 860 }} data-export-chart>
                     <ReportsGeoMap
@@ -1012,6 +1014,7 @@ function ReportsPageContent() {
                       initialShowZones={geoExportFilterState?.showZones}
                       initialShowPoints={geoExportFilterState?.showPoints}
                       initialSelectedRouteSurveyorIds={geoExportFilterState?.selectedRouteSurveyorIds}
+                      initialCityPresetIdx={geoExportFilterState?.cityPresetIdx}
                     />
                   </div>
                 )}
