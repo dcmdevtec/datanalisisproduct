@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/ui/logo"
 import {
   Loader2, Mic, MicOff, LogOut, MapPin, Clock, CheckCircle2, AlertTriangle, XCircle,
-  BarChart3, RefreshCw, ChevronRight, ShieldAlert, MessageSquare,
+  BarChart3, RefreshCw, ChevronRight, ShieldAlert, MessageSquare, UserX,
 } from "lucide-react"
 
 interface SurveyItem {
@@ -36,6 +36,7 @@ interface DashboardKpis {
   efectivas: number
   incidencias: number
   abandonadas: number
+  descalificadas: number
   lastUpdatedAt: string | null
 }
 
@@ -283,11 +284,15 @@ export default function PortalEncuestadorPage() {
     )
   }
 
+  // Mismos 5 colores/labels que el módulo de Reportes del admin (ver
+  // components/reports/summary-content.tsx) — "Descalificadas" en morado,
+  // separada de "Abandonadas" en vez de sumarse ahí.
   const kpiCards = [
     { label: "Total Registros", value: kpis?.totalRegistros ?? 0, icon: BarChart3, color: "text-foreground" },
     { label: "Efectivas", value: kpis?.efectivas ?? 0, icon: CheckCircle2, color: "text-[#18b0a4]" },
     { label: "Incidencias", value: kpis?.incidencias ?? 0, icon: AlertTriangle, color: "text-red-500" },
     { label: "Abandonadas", value: kpis?.abandonadas ?? 0, icon: XCircle, color: "text-amber-500" },
+    { label: "Descalificadas", value: kpis?.descalificadas ?? 0, icon: UserX, color: "text-purple-500" },
   ]
 
   return (
@@ -366,7 +371,7 @@ export default function PortalEncuestadorPage() {
 
       <div className="max-w-3xl mx-auto px-4 pt-5 space-y-5">
         {/* KPIs (pptx slide 2) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {kpiCards.map((k) => {
             const Icon = k.icon
             return (

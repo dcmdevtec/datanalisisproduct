@@ -5,7 +5,13 @@ import { resolveOutcome } from "@/lib/report-outcome"
 
 // Indicadores de la pantalla principal del portal (pptx slide 2):
 // Total Registros, Encuestas Efectivas, Incidencias, Encuestas Abandonadas,
-// última fecha de actualización, con filtro de rango de fechas.
+// Descalificadas, última fecha de actualización, con filtro de rango de fechas.
+//
+// Bug (reporte 2026-08-31, screenshot del portal): a "descalificado" (salto
+// de lógica "Descalificar y terminar", ver lib/report-outcome.ts) le faltaba
+// su propio indicador acá — cualquier respuesta con ese outcome caía en el
+// `else` y se contaba como "abandonada", igual que en el módulo de Reportes
+// del admin antes de agregarse "descalificadas" ahí (app/api/reports/route.ts).
 export async function GET(request: NextRequest) {
   try {
     const surveyor = await resolveCurrentSurveyor()
@@ -32,7 +38,7 @@ export async function GET(request: NextRequest) {
     if (assignmentIds.length === 0) {
       return NextResponse.json({
         surveyorName: surveyor.name,
-        totalRegistros: 0, efectivas: 0, incidencias: 0, abandonadas: 0,
+        totalRegistros: 0, efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0,
         lastUpdatedAt: null,
       })
     }
@@ -54,12 +60,13 @@ export async function GET(request: NextRequest) {
     const { data: responses } = await query
     const list = (responses as any[]) || []
 
-    let efectivas = 0, incidencias = 0, abandonadas = 0
+    let efectivas = 0, incidencias = 0, abandonadas = 0, descalificadas = 0
     let lastUpdatedAt: string | null = null
     for (const r of list) {
       const outcome = resolveOutcome(r)
       if (outcome === "efectiva") efectivas++
       else if (outcome === "incidencia") incidencias++
+      else if (outcome === "descalificado") descalificadas++
       else abandonadas++
       const updated = r.updated_at || r.completed_at || r.created_at
       if (updated && (!lastUpdatedAt || new Date(updated) > new Date(lastUpdatedAt))) {
@@ -73,6 +80,7 @@ export async function GET(request: NextRequest) {
       efectivas,
       incidencias,
       abandonadas,
+      descalificadas,
       lastUpdatedAt,
     })
   } catch (error) {
