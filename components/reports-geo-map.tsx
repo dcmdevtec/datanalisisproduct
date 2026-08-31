@@ -60,6 +60,13 @@ interface ReportsGeoMapProps {
   initialShowZones?: boolean
   initialShowPoints?: boolean
   initialSelectedRouteSurveyorIds?: string[]
+  // Reunión 2026-08-27, punto 4 ("Poder delimitar el mapa al momento de
+  // visualizarlo Y descargarlo"): el selector de ciudad/municipio (ver
+  // CITY_PRESETS) delimitaba la vista en pantalla, pero la copia oculta de
+  // exportación siempre arrancaba en "Todo Colombia" — el PDF descargado
+  // ignoraba la delimitación elegida. Se agrega como initial* más, mismo
+  // patrón que los demás filtros.
+  initialCityPresetIdx?: number
   // El mapa VISIBLE usa esto para avisarle a app/reports/page.tsx cuál es su
   // filtro actual cada vez que cambia — así, al momento de exportar, el
   // padre ya tiene a mano qué pasarle como initial* de arriba a la copia
@@ -71,6 +78,7 @@ interface ReportsGeoMapProps {
     showZones: boolean
     showPoints: boolean
     selectedRouteSurveyorIds: string[]
+    cityPresetIdx: number
   }) => void
 }
 
@@ -142,6 +150,7 @@ export default function ReportsGeoMap({
   initialShowZones,
   initialShowPoints,
   initialSelectedRouteSurveyorIds,
+  initialCityPresetIdx,
   onFilterStateChange,
 }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -167,7 +176,7 @@ export default function ReportsGeoMap({
   const [isFullscreen, setIsFullscreen] = useState(false)
   // Delimitar el mapa por ciudad/municipio (ver CITY_PRESETS) en vez de
   // siempre mostrar todo el país.
-  const [cityPresetIdx, setCityPresetIdx] = useState(0)
+  const [cityPresetIdx, setCityPresetIdx] = useState(initialCityPresetIdx ?? 0)
   // Filtro por tipo (slide 24): checkboxes multi-selección, todos activos por defecto.
   // Los puntos sin outcome (ej. rastro GPS del portal encuestador) siempre se
   // muestran — el filtro solo aplica a respuestas ya clasificadas.
@@ -202,9 +211,10 @@ export default function ReportsGeoMap({
       showZones,
       showPoints,
       selectedRouteSurveyorIds: [...selectedRouteSurveyorIds],
+      cityPresetIdx,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabledOutcomes, showZones, showPoints, selectedRouteSurveyorIds])
+  }, [enabledOutcomes, showZones, showPoints, selectedRouteSurveyorIds, cityPresetIdx])
 
   const toggleRouteSurveyor = (id: string) => {
     setSelectedRouteSurveyorIds((prev) => {
