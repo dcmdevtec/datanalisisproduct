@@ -31,12 +31,17 @@ export function useMyPermissions() {
     }
     let cancelled = false
     setLoading(true)
-    supabase
-      .from("users")
-      .select("*")
-      .eq("id", user.id)
-      .single()
-      .then(async ({ data }) => {
+    // Fix de tipos (2026-08-31): encadenar .then(async cb).catch().finally()
+    // directo sobre el builder de Supabase (PromiseLike, no un Promise
+    // completo) rompía la inferencia de tipos apenas el callback de .then()
+    // pasó a ser async (TS2339: 'catch' no existe en PromiseLike<void>). Se
+    // envuelve todo en una función async propia e invocada de una — así el
+    // await de adentro corre sobre Promises normales y se preserva el mismo
+    // orden que antes (loading solo pasa a false cuando TODO termina,
+    // incluido el fetch del override de rol).
+    ;(async () => {
+      try {
+        const { data } = await supabase.from("users").select("*").eq("id", user.id).single()
         if (cancelled) return
         const r = (data as any)?.role ?? null
         setRole(r)
@@ -62,9 +67,12 @@ export function useMyPermissions() {
         }
         if (cancelled) return
         setPermissions(getEffectivePermissions({ role: r, permissions: (data as any)?.permissions ?? null }, roleOverride))
-      })
-      .catch(() => { /* sin perfil resuelto, se queda en "sin permisos" */ })
-      .finally(() => { if (!cancelled) setLoading(false) })
+      } catch {
+        // sin perfil resuelto, se queda en "sin permisos"
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
     return () => { cancelled = true }
   }, [user])
 

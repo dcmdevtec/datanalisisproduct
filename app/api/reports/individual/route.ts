@@ -12,9 +12,19 @@ import { reverseGeocodeBatch } from "@/lib/geocode"
 // exponía nombre/documento/respuestas individuales de respondentes a
 // cualquier usuario autenticado, incl. encuestadores.
 export async function GET(request: NextRequest) {
+  // DIAGNÓSTICO TEMPORAL (2026-08-31): confirma si esta ruta se está
+  // ejecutando en absoluto — si esto tampoco aparece en la terminal al
+  // recargar la pestaña "Respuestas Individuales", el problema no es el
+  // geocoding, es que el navegador no está llegando a este endpoint (revisar
+  // Network tab del navegador: ¿la petición a /api/reports/individual
+  // devuelve 200? ¿Con qué URL exacta?). Quitar una vez diagnosticado.
+  console.log(`[geocode][diagnóstico] GET /api/reports/individual — ${request.url}`)
   try {
     const auth = await requireRole(["admin", "supervisor"])
-    if (!auth.ok) return auth.response
+    if (!auth.ok) {
+      console.log(`[geocode][diagnóstico] requireRole rechazó la petición (no autorizado).`)
+      return auth.response
+    }
 
     const { searchParams } = new URL(request.url)
     const companyFilter = searchParams.get("company") || "all"
