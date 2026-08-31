@@ -75,6 +75,22 @@ async function resolvePermissionOverride(userId: string): Promise<PermissionGrid
   }
 }
 
+// Trae el default EDITABLE del rol (public.role_permissions, ver
+// sql/2026_08_31_role_permissions.sql) — misma cautela defensiva que
+// resolvePermissionOverride(): tabla nueva, puede no existir todavía en un
+// ambiente dado, así que un error acá cae a "sin override de rol" (grid
+// vacío) en vez de tumbar la ruta.
+async function resolveRolePermissionOverride(role: string): Promise<PermissionGrid> {
+  try {
+    const admin = createAdminSupabase()
+    const { data, error } = await admin.from("role_permissions").select("permissions").eq("role", role).maybeSingle()
+    if (error) throw error
+    return ((data as any)?.permissions as PermissionGrid) ?? {}
+  } catch {
+    return {}
+  }
+}
+
 type RequirePermissionResult =
   | { ok: true; user: AuthedUser }
   | { ok: false; response: NextResponse }
@@ -91,8 +107,11 @@ export async function requirePermission(module: ModuleKey, action: ActionKey): P
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: "No autorizado" }, { status: 401 }) }
   }
-  const overrides = await resolvePermissionOverride(user.id)
-  const effective = getEffectivePermissions({ role: user.role, permissions: overrides })
+  const [userOverride, roleOverride] = await Promise.all([
+    resolvePermissionOverride(user.id),
+    resolveRolePermissionOverride(user.role),
+  ])
+  const effective = getEffectivePermissions({ role: user.role, permissions: userOverride }, roleOverride)
   if (effective[module]?.[action] !== true) {
     return { ok: false, response: NextResponse.json({ error: "No tienes permiso para realizar esta acción" }, { status: 403 }) }
   }

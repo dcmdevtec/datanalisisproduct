@@ -20,8 +20,9 @@ import { Search, MoreHorizontal, Loader2, UserPlus } from "lucide-react"
 import dynamic from "next/dynamic"
 import CreateUserModal from "@/components/create-user-modal"
 import EditUserModal from "@/components/edit-user-modal"
+import { RolePermissionsTab } from "@/components/role-permissions-tab"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
-import type { PermissionGrid } from "@/lib/permissions"
 
 type User = {
   id: string
@@ -30,7 +31,6 @@ type User = {
   role: string
   status: string
   coordinator_id?: string | null
-  permissions?: PermissionGrid | null
   // Nombre del coordinador asignado (solo aplica a role="supervisor") —
   // lo arma el propio GET /api/users, no viene de una relación de Supabase.
   coordinatorName?: string | null
@@ -151,34 +151,47 @@ export default function UsersPage() {
   return (
     <DashboardLayout>
       <div className="p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold">Usuarios</h1>
-            <p className="text-muted-foreground">Gestiona los usuarios de la plataforma</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative mt-10">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Buscar usuarios..."
-                className="pl-8 w-full sm:w-[250px]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <Button className="gap-2 mt-10" onClick={() => setIsCreateOpen(true)}>
-              <UserPlus className="h-4 w-4" /> Añadir Usuario
-            </Button>
-            <CreateUserModal
-              isOpen={isCreateOpen}
-              onOpenChange={(open) => setIsCreateOpen(open)}
-              onCreated={() => refreshUsers()}
-            />
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Usuarios</h1>
+          <p className="text-muted-foreground">Gestiona los usuarios de la plataforma y los permisos de cada rol</p>
         </div>
 
-        {loading ? (
+        {/* Roles y permisos vive en su propio tab (auditoría 2026-08-31: antes
+            estaba metido en el modal de Editar Usuario editando el override de
+            UN usuario puntual — corregido a pedido explícito del cliente: acá
+            se edita el default del ROL, aplica a todos los usuarios que lo
+            tengan, y vive a nivel del módulo de Usuarios, no de un usuario). */}
+        <Tabs defaultValue="usuarios">
+          <TabsList className="mb-6">
+            <TabsTrigger value="usuarios">Usuarios</TabsTrigger>
+            <TabsTrigger value="roles">Roles y Permisos</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="usuarios">
+            <div className="flex flex-col md:flex-row md:items-center justify-end gap-4 mb-6">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Buscar usuarios..."
+                    className="pl-8 w-full sm:w-[250px]"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
+                  <UserPlus className="h-4 w-4" /> Añadir Usuario
+                </Button>
+                <CreateUserModal
+                  isOpen={isCreateOpen}
+                  onOpenChange={(open) => setIsCreateOpen(open)}
+                  onCreated={() => refreshUsers()}
+                />
+              </div>
+            </div>
+
+            {loading ? (
           <div className="flex justify-center items-center h-64">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
@@ -332,13 +345,19 @@ export default function UsersPage() {
               </div>
             </div>
           </div>
-        )}
+            )}
 
-        <EditUserModal
-          user={editingUser}
-          onOpenChange={(open) => { if (!open) setEditingUser(null) }}
-          onUpdated={() => refreshUsers()}
-        />
+            <EditUserModal
+              user={editingUser}
+              onOpenChange={(open) => { if (!open) setEditingUser(null) }}
+              onUpdated={() => refreshUsers()}
+            />
+          </TabsContent>
+
+          <TabsContent value="roles">
+            <RolePermissionsTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </DashboardLayout>
   )
