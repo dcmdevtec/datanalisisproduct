@@ -25,9 +25,11 @@ function round3(n: number): number {
 }
 
 // Resuelve ciudad/barrio para UNA coordenada, usando la caché primero. Si no
-// está en caché, llama a Nominatim y guarda el resultado (incluso si viene
-// vacío, para no volver a pedirlo). Nunca lanza — un fallo de red o de
-// Nominatim simplemente devuelve null, y el llamador se queda con "—".
+// está en caché (o lo que hay en caché es un intento anterior que no
+// encontró nada — ver más abajo por qué NO se trata como "ya resuelto"),
+// llama a Nominatim y, si esta vez sí trae algo, lo guarda para la próxima.
+// Nunca lanza — un fallo de red o de Nominatim simplemente devuelve null, y
+// el llamador se queda con "—" (reintentable en la próxima carga).
 export async function reverseGeocodeCached(
   admin: any,
   lat: number,
@@ -43,13 +45,25 @@ export async function reverseGeocodeCached(
       .eq("lat_round", latRound)
       .eq("lng_round", lngRound)
       .maybeSingle()
-    if (cached) return { ciudad: cached.ciudad ?? null, barrio: cached.barrio ?? null }
+    // BUG corregido (2026-08-31): antes se guardaba en caché CUALQUIER
+    // resultado, incluido un fallo de red o de Nominatim (ciudad=null,
+    // barrio=null) — una sola falla transitoria (ej. el contenedor sin
+    // salida a internet en ese momento, un timeout, Nominatim caído un
+    // instante) quedaba grabada para siempre como "ya se intentó, no hay
+    // nada acá", y esa coordenada nunca más se volvía a intentar. Ahora solo
+    // se confía en la caché si REALMENTE trajo algo la vez anterior — una
+    // fila con ambos campos vacíos se trata como "todavía no resuelto" y se
+    // reintenta (entra en el mismo cupo por página que un punto nuevo).
+    if (cached && (cached.ciudad || cached.barrio)) {
+      return { ciudad: cached.ciudad ?? null, barrio: cached.barrio ?? null }
+    }
   } catch {
     // Tabla nueva (sql/2026_08_31_geocode_cache.sql) — si todavía no existe
     // en este ambiente, se sigue sin caché (cada llamada golpea Nominatim
     // directo) en vez de romper la pantalla.
   }
 
+  let succeeded = false
   let result: { ciudad: string | null; barrio: string | null } = { ciudad: null, barrio: null }
   try {
     const res = await fetch(
@@ -71,22 +85,34 @@ export async function reverseGeocodeCached(
       const ciudad = normalizeCityName(addr.city || addr.town || addr.municipality || "") || null
       const barrio = addr.suburb || addr.neighbourhood || addr.quarter || null
       result = { ciudad, barrio }
+      succeeded = true
+    } else {
+      console.error(`[geocode] Nominatim respondió ${res.status} para ${lat},${lng}`)
     }
   } catch (err) {
-    console.error("[geocode] reverse geocoding falló:", err)
+    // Si esto se repite siempre, lo más probable es que el servidor no
+    // tenga salida a internet hacia nominatim.openstreetmap.org (revisar
+    // firewall/egress del contenedor) — no es un bug de este código.
+    console.error(`[geocode] no se pudo contactar a Nominatim para ${lat},${lng}:`, err)
   }
 
-  try {
-    await (admin as any)
-      .from("geocode_cache")
-      .upsert({ lat_round: latRound, lng_round: lngRound, ciudad: result.ciudad, barrio: result.barrio }, { onConflict: "lat_round,lng_round" })
-  } catch {
-    // Igual que arriba: si la tabla no existe todavía, no pasa nada — se
-    // devuelve el resultado igual, solo que sin quedar cacheado para la
-    // próxima vez.
+  // Solo se cachea un resultado EXITOSO (incluso si vino vacío de verdad —
+  // eso sí es información real: "Nominatim no tiene nada para este punto").
+  // Un fallo de red/HTTP no se guarda, así que la próxima carga lo reintenta
+  // en vez de darlo por perdido para siempre.
+  if (succeeded) {
+    try {
+      await (admin as any)
+        .from("geocode_cache")
+        .upsert({ lat_round: latRound, lng_round: lngRound, ciudad: result.ciudad, barrio: result.barrio }, { onConflict: "lat_round,lng_round" })
+    } catch {
+      // Igual que arriba: si la tabla no existe todavía, no pasa nada — se
+      // devuelve el resultado igual, solo que sin quedar cacheado para la
+      // próxima vez.
+    }
   }
 
-  return result
+  return succeeded ? result : null
 }
 
 // Resuelve ciudad/barrio para un LOTE de respuestas sin pregunta de
@@ -122,7 +148,14 @@ export async function reverseGeocodeBatch(
         .select("lat_round, lng_round, ciudad, barrio")
         .in("lat_round", [...new Set(roundedList.map((c) => c.lat))])
       for (const row of (data as any[]) || []) {
-        cachedByKey[`${row.lat_round},${row.lng_round}`] = { ciudad: row.ciudad ?? null, barrio: row.barrio ?? null }
+        // Mismo criterio que reverseGeocodeCached: una fila cacheada con
+        // ambos campos vacíos es un intento anterior fallido (ver bug
+        // corregido arriba), no "ya se confirmó que no hay nada acá" — no
+        // se cuenta como hit, así que cae en el cupo de reintentos de abajo
+        // en vez de quedarse en "—" para siempre.
+        if (row.ciudad || row.barrio) {
+          cachedByKey[`${row.lat_round},${row.lng_round}`] = { ciudad: row.ciudad ?? null, barrio: row.barrio ?? null }
+        }
       }
     }
   } catch {
