@@ -141,27 +141,47 @@ export interface PermissionUser {
   permissions?: PermissionGrid | null
 }
 
-// Combina el default del rol con el override guardado en users.permissions.
-// El override es un OBJETO PARCIAL: solo pisa los módulos/acciones que
-// explícitamente define (true o false); todo lo que no menciona conserva
-// el default del rol. Esto es lo que hace seguro activar esta función en
-// producción: un usuario sin `permissions` (el caso de TODOS los usuarios
-// existentes hoy) se comporta exactamente igual que antes.
-export function getEffectivePermissions(user: PermissionUser): PermissionGrid {
+// Combina en capas, de menor a mayor prioridad:
+//   1) ROLE_DEFAULTS[role]      — hardcodeado, el "piso" de siempre.
+//   2) roleOverride             — default del ROL editable por un admin
+//      desde /users → pestaña "Roles y permisos" (tabla
+//      public.role_permissions, ver sql/2026_08_30_role_permissions.sql).
+//      Afecta a TODOS los usuarios de ese rol.
+//   3) user.permissions         — excepción puntual para ESE usuario (hoy
+//      sin UI propia — el editor de permisos se sacó de Editar Usuario a
+//      pedido explícito: "lo que se edita son los permisos del rol", no los
+//      de un usuario en particular — pero el mecanismo se deja funcional
+//      por si hace falta más adelante).
+// Cada capa es un objeto PARCIAL: solo pisa lo que explícitamente define;
+// todo lo que no menciona conserva el valor de la capa anterior. Esto es lo
+// que hace seguro activar esta función en producción: un rol sin fila en
+// role_permissions y un usuario sin `permissions` (el caso de TODOS los
+// roles/usuarios existentes hoy) se comportan exactamente igual que antes.
+export function getEffectivePermissions(
+  user: PermissionUser,
+  roleOverride?: PermissionGrid | null,
+): PermissionGrid {
   const base = ROLE_DEFAULTS[user.role as Role] ?? {}
-  const override = user.permissions ?? {}
+  const roleLayer = roleOverride ?? {}
+  const userLayer = user.permissions ?? {}
   const merged: PermissionGrid = {}
   const modules = new Set<ModuleKey>([
     ...(Object.keys(base) as ModuleKey[]),
-    ...(Object.keys(override) as ModuleKey[]),
+    ...(Object.keys(roleLayer) as ModuleKey[]),
+    ...(Object.keys(userLayer) as ModuleKey[]),
   ])
   for (const mod of modules) {
-    merged[mod] = { ...(base[mod] ?? {}), ...(override[mod] ?? {}) }
+    merged[mod] = { ...(base[mod] ?? {}), ...(roleLayer[mod] ?? {}), ...(userLayer[mod] ?? {}) }
   }
   return merged
 }
 
-export function hasPermission(user: PermissionUser, module: ModuleKey, action: ActionKey): boolean {
-  const perms = getEffectivePermissions(user)
+export function hasPermission(
+  user: PermissionUser,
+  module: ModuleKey,
+  action: ActionKey,
+  roleOverride?: PermissionGrid | null,
+): boolean {
+  const perms = getEffectivePermissions(user, roleOverride)
   return perms[module]?.[action] === true
 }

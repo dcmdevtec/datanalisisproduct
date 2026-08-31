@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, type ReactNode } from "react"
 import { RotateCcw } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -19,20 +19,33 @@ interface Props {
   role: string
   value: PermissionGrid | null
   onChange: (next: PermissionGrid | null) => void
+  // Texto de ayuda mostrado arriba del grid — varía según quién usa este
+  // componente (ver más abajo).
+  description?: ReactNode
+  resetLabel?: string
 }
 
-// Editor de permisos por módulo/acción para un usuario puntual — auditoría
-// 2026-08-30: "no existe forma de decirle a un usuario en particular qué
-// módulo/acción puede hacer". Arranca mostrando el default del ROL
-// (lib/permissions.ts ROLE_DEFAULTS) y cada casilla que se toca pasa a ser
-// un override explícito guardado en users.permissions. "Restablecer al
-// default del rol" (por módulo o global) limpia el override.
+// Editor de permisos por módulo/acción, reutilizado en dos lugares con
+// distinto "value"/persistencia:
 //
-// Vive en su propia pestaña "Roles y permisos" de EditUserModal (antes iba
-// apilado junto con Nombre/Rol/Estado en un solo formulario largo, lo que
-// se veía muy lleno) — por eso ya no tiene su propio colapsable: al entrar
-// a la pestaña ya es lo único que hay que ver.
-export function UserPermissionsEditor({ role, value, onChange }: Props) {
+//   1) components/role-permissions-tab.tsx (pestaña "Roles y permisos" de
+//      /users) — value/onChange apuntan al default EDITABLE de un ROL
+//      completo (public.role_permissions), afecta a TODOS los usuarios con
+//      ese rol. Este es el uso principal hoy (auditoría 2026-08-30: "no
+//      existe forma de decirle a un usuario en particular qué módulo/acción
+//      puede hacer" → corrección 2026-08-31 del cliente: "lo que se edita
+//      son los permisos del ROL", no de un usuario puntual, y en su propio
+//      tab del módulo de Usuarios, no metido en Editar Usuario).
+//   2) El override POR USUARIO (users.permissions) se deja funcional en el
+//      backend por si hace falta más adelante, pero hoy no tiene UI propia
+//      — se sacó de EditUserModal a pedido explícito.
+//
+// Sea cual sea el "value" que reciba, el comportamiento es el mismo: arranca
+// mostrando el default heredado (ROLE_DEFAULTS de lib/permissions.ts, más
+// cualquier capa debajo) y cada casilla que se toca pasa a ser un override
+// explícito. "Restablecer" (por módulo o global) limpia el override y vuelve
+// a heredar.
+export function UserPermissionsEditor({ role, value, onChange, description, resetLabel }: Props) {
   const roleDefaults = ROLE_DEFAULTS[role as Role] ?? {}
   const effective = useMemo(
     () => getEffectivePermissions({ role, permissions: value }),
@@ -64,8 +77,12 @@ export function UserPermissionsEditor({ role, value, onChange }: Props) {
     <div className="rounded-lg border">
       <div className="flex items-center justify-between px-3 py-2.5 border-b bg-muted/20">
         <p className="text-xs text-muted-foreground">
-          Arranca con el default de <strong>{role}</strong>. Lo que toques acá queda guardado como excepción para
-          este usuario puntual, sin cambiar el default del rol para los demás.
+          {description ?? (
+            <>
+              Arranca con el default de <strong>{role}</strong>. Lo que toques acá queda guardado como excepción,
+              sin afectar los módulos que no toques.
+            </>
+          )}
         </p>
         {hasAnyOverride && (
           <button
@@ -73,7 +90,7 @@ export function UserPermissionsEditor({ role, value, onChange }: Props) {
             onClick={resetAll}
             className="shrink-0 ml-3 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
-            <RotateCcw className="h-3 w-3" /> Restablecer todo al rol
+            <RotateCcw className="h-3 w-3" /> {resetLabel ?? "Restablecer todo al rol"}
           </button>
         )}
       </div>

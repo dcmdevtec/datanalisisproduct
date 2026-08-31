@@ -36,11 +36,32 @@ export function useMyPermissions() {
       .select("*")
       .eq("id", user.id)
       .single()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (cancelled) return
         const r = (data as any)?.role ?? null
         setRole(r)
-        setPermissions(r ? getEffectivePermissions({ role: r, permissions: (data as any)?.permissions ?? null }) : {})
+        if (!r) {
+          setPermissions({})
+          return
+        }
+        // Default editable del rol (public.role_permissions, ver
+        // sql/2026_08_31_role_permissions.sql) — mismo criterio defensivo
+        // que arriba: si la tabla todavía no existe en este ambiente, la
+        // query simplemente no devuelve fila y se sigue con el default
+        // hardcodeado (ROLE_DEFAULTS), sin romper la página.
+        let roleOverride: any = null
+        try {
+          const { data: roleRow } = await supabase
+            .from("role_permissions")
+            .select("permissions")
+            .eq("role", r)
+            .maybeSingle()
+          roleOverride = (roleRow as any)?.permissions ?? null
+        } catch {
+          roleOverride = null
+        }
+        if (cancelled) return
+        setPermissions(getEffectivePermissions({ role: r, permissions: (data as any)?.permissions ?? null }, roleOverride))
       })
       .catch(() => { /* sin perfil resuelto, se queda en "sin permisos" */ })
       .finally(() => { if (!cancelled) setLoading(false) })
