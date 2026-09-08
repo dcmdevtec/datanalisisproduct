@@ -231,6 +231,24 @@ export async function GET(request: Request) {
       const assignmentToSurveyor: Record<string, string> = {}
       for (const r of (sszRows as any[]) || []) assignmentToSurveyor[r.id] = r.surveyor_id
 
+      // BUG (acta 07/09/2026, ítem #40: "no está tomando los indicadores"):
+      // responses.respondent_id es el auth user_id, NO surveyors.id — el
+      // chequeo anterior (`surveyorIdsForLogout.includes(r.respondent_id)`)
+      // solo acertaba por coincidencia en cuentas viejas donde surveyors.id
+      // se seteó igual al user_id antes del backfill de la columna user_id
+      // (ver lib/portal-encuestador/auth.ts). Para cuentas nuevas nunca
+      // matcheaba, así que esas respuestas quedaban fuera del conteo. Se
+      // resuelve el id real vía surveyors.user_id, mismo patrón que
+      // app/api/reports/route.ts (surveyorByRespondentId).
+      const { data: byUserId } = await supabase
+        .from("surveyors")
+        .select("id, user_id")
+        .in("user_id", surveyorIdsForLogout.filter(Boolean))
+      const surveyorIdByUserId: Record<string, string> = {}
+      for (const s of (byUserId as any[]) || []) {
+        if (s.user_id) surveyorIdByUserId[s.user_id] = s.id
+      }
+
       const { data: todayResponses } = await supabase
         .from("responses")
         .select("assignment_id, metadata, respondent_id, created_at, status, outcome")
@@ -239,7 +257,7 @@ export async function GET(request: Request) {
       for (const r of (todayResponses as any[]) || []) {
         const sid = (r.assignment_id ? assignmentToSurveyor[r.assignment_id] : undefined)
           ?? (!r.assignment_id ? r.metadata?.surveyor_id : undefined)
-          ?? (r.respondent_id && surveyorIdsForLogout.includes(r.respondent_id) ? r.respondent_id : undefined)
+          ?? (r.respondent_id ? (surveyorIdByUserId[r.respondent_id] ?? (surveyorIdsForLogout.includes(r.respondent_id) ? r.respondent_id : undefined)) : undefined)
         if (!sid || !surveyorIdsForLogout.includes(sid)) continue
         if (!todayStatsBySurveyorId[sid]) todayStatsBySurveyorId[sid] = { total: 0, efectivas: 0, firstResponseAt: null }
         const entry = todayStatsBySurveyorId[sid]

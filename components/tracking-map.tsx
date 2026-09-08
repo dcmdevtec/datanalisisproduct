@@ -216,11 +216,14 @@ function GeoJSONPolygon({ geometry, color = "#3388ff", name }: { geometry: any; 
   }
 }
 
-// Dibuja el recorrido de HOY del encuestador seleccionado (reunión
-// 2026-08-27: "¿Qué ruta hizo el encuestador? ¿Cómo podemos verla?").
-// Trae el historial de /api/tracking/history — se re-consulta cada vez que
-// cambia el encuestador seleccionado; se limpia el trazo al deseleccionar.
-function SurveyorRouteTrail({ surveyorId }: { surveyorId: string | null }) {
+// Dibuja el recorrido del DÍA SELECCIONADO del encuestador (reunión
+// 2026-08-27: "¿Qué ruta hizo el encuestador? ¿Cómo podemos verla?"; acta
+// 07/09/2026, #42: "poder ver el recorrido de un día anterior"). El backend
+// (/api/tracking/history) ya aceptaba `date` desde que se construyó — solo
+// faltaba que esta pantalla lo expusiera; antes SIEMPRE mostraba hoy. Se
+// re-consulta cada vez que cambia el encuestador O la fecha seleccionada; se
+// limpia el trazo al deseleccionar.
+function SurveyorRouteTrail({ surveyorId, date }: { surveyorId: string | null; date: string }) {
   const [points, setPoints] = useState<[number, number][]>([])
 
   useEffect(() => {
@@ -229,7 +232,7 @@ function SurveyorRouteTrail({ surveyorId }: { surveyorId: string | null }) {
       return
     }
     let cancelled = false
-    fetch(`/api/tracking/history?surveyor_id=${surveyorId}`)
+    fetch(`/api/tracking/history?surveyor_id=${surveyorId}&date=${date}`)
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return
@@ -238,7 +241,7 @@ function SurveyorRouteTrail({ surveyorId }: { surveyorId: string | null }) {
       })
       .catch(() => { if (!cancelled) setPoints([]) })
     return () => { cancelled = true }
-  }, [surveyorId])
+  }, [surveyorId, date])
 
   if (points.length < 2) return null
 
@@ -262,6 +265,9 @@ export default function TrackingMap({
   const defaultZoom = 13
 
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // Día del recorrido mostrado (ítem #42, acta 07/09/2026) — YYYY-MM-DD, hoy por defecto.
+  const [routeDate, setRouteDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   // Permite cerrar pantalla completa con la tecla Escape (mismo criterio que
   // components/reports-geo-map.tsx).
@@ -307,7 +313,7 @@ export default function TrackingMap({
         <MapController centerOnZone={centerOnZone} zones={zones} />
         <SelectedSurveyorController surveyor={selectedSurveyor || null} />
         <InvalidateSizeOnFullscreenChange isFullscreen={isFullscreen} />
-        <SurveyorRouteTrail surveyorId={selectedSurveyorId ?? null} />
+        <SurveyorRouteTrail surveyorId={selectedSurveyorId ?? null} date={routeDate} />
 
         {/* Renderizar zonas */}
         {zones.map((zone) => (
@@ -434,9 +440,22 @@ export default function TrackingMap({
             <span>Offline</span>
           </div>
           {selectedSurveyorId && (
-            <div className="flex items-center gap-2 pt-1 mt-1 border-t">
-              <div className="w-4 h-0.5 border-t-2 border-dashed" style={{ borderColor: "#3b82f6" }} />
-              <span>Recorrido de hoy</span>
+            <div className="pt-1 mt-1 border-t space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-0.5 border-t-2 border-dashed" style={{ borderColor: "#3b82f6" }} />
+                <span>{routeDate === todayStr ? "Recorrido de hoy" : `Recorrido del ${routeDate}`}</span>
+              </div>
+              {/* Ítem #42 (acta 07/09/2026): "poder ver el recorrido de un día
+                  anterior" — antes esta pantalla solo pedía el día de hoy al
+                  backend (que ya soportaba `date` desde 2026-08-27). */}
+              <input
+                type="date"
+                value={routeDate}
+                max={todayStr}
+                onChange={(e) => setRouteDate(e.target.value || todayStr)}
+                className="w-full text-[11px] border rounded px-1.5 py-0.5"
+                aria-label="Fecha del recorrido"
+              />
             </div>
           )}
         </div>
