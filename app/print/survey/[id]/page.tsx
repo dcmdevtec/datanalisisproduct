@@ -26,7 +26,16 @@ interface QuestionRow {
   section_id?: string | null
   matrix_rows?: string[] | null
   matrix_cols?: string[] | null
-  question_config?: any
+  // Antes se leía de un campo "question_config" que no existe en la tabla
+  // questions (la columna real es "settings") — la lectura siempre daba
+  // vacío. Corregido, y se agregan skip_logic/display_logic (columnas
+  // propias, no anidadas en settings) para el ítem #11 (acta 07/09/2026):
+  // "¿es posible que en la encuesta en PDF salgan todas las
+  // configuraciones? (salto de secciones, visualizaciones, máximo de
+  // respuestas, salto de preguntas)".
+  settings?: any
+  skip_logic?: { enabled?: boolean; rules?: any[] } | null
+  display_logic?: { enabled?: boolean; conditions?: any[]; logicalOperator?: string } | null
   rating_scale?: number | null
 }
 
@@ -36,6 +45,7 @@ interface SectionRow {
   title_html?: string | null
   description?: string | null
   order_num?: number
+  skip_logic?: { enabled?: boolean; action?: string; targetSectionId?: string } | null
 }
 
 interface SurveyRow {
@@ -70,11 +80,44 @@ function optionLabel(opt: any): string {
   return String(opt)
 }
 
-function QuestionBlock({ question, index }: { question: QuestionRow; index: number }) {
-  const config = question.question_config || {}
+const SKIP_ACTION_LABELS: Record<string, string> = {
+  next_section: "Continuar a la siguiente sección",
+  specific_section: "Saltar a sección",
+  end_survey: "Finalizar la encuesta",
+}
+
+function sectionTitle(sections: SectionRow[], id?: string): string {
+  const s = sections.find((x) => x.id === id)
+  return s ? (s.title || "Sección sin título") : "Sección no encontrada"
+}
+
+const OPERATOR_LABELS: Record<string, string> = {
+  equals: "es igual a", not_equals: "es distinto de", contains: "contiene",
+  not_contains: "no contiene", greater_than: "es mayor que", less_than: "es menor que",
+  is_empty: "está vacía", is_not_empty: "no está vacía",
+}
+
+// Para condiciones de lógica de VISUALIZACIÓN, que referencian OTRA pregunta
+// (necesitan decir cuál).
+function conditionLabel(c: any): string {
+  return `${c?.questionText || "Pregunta"} ${ruleOperatorLabel(c)}`.trim()
+}
+
+// Para reglas de SALTO de la pregunta actual (el texto ya dice "Si la
+// respuesta..." antes de llamar esto, no hace falta repetir a qué pregunta se
+// refiere).
+function ruleOperatorLabel(r: any): string {
+  const op = OPERATOR_LABELS[r?.operator] || r?.operator || ""
+  return `${op}${r?.value ? ` "${r.value}"` : ""}`.trim()
+}
+
+function QuestionBlock({ question, index, sections }: { question: QuestionRow; index: number; sections: SectionRow[] }) {
+  const config = question.settings || {}
   const matrixRows = question.matrix_rows || config.matrixRows || []
   const matrixCols = question.matrix_cols || config.matrixCols || []
   const options = Array.isArray(question.options) ? question.options.filter(Boolean) : []
+  const minSel = config.minSelections ?? config.advanced?.minSelections
+  const maxSel = config.maxSelections ?? config.advanced?.maxSelections
 
   return (
     <div className="mb-6 p-5 border border-gray-200 rounded-lg bg-white break-inside-avoid">
@@ -84,8 +127,16 @@ function QuestionBlock({ question, index }: { question: QuestionRow; index: numb
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Acta 07/09/2026, ítem #10: "los enunciados aparecen en negrilla,
+                importante que salgan con el mismo formato con el que se creó".
+                Antes esta clase forzaba font-semibold en TODO el enunciado sin
+                importar el formato real de text_html (negrilla solo en parte
+                del texto, texto normal, etc.) — el wrapper se veía siempre en
+                negrilla completa por encima de lo que el usuario realmente
+                definió. Se quita el peso forzado; el HTML enriquecido decide
+                su propio formato (<strong>/<b> donde el usuario lo puso). */}
             <div
-              className="text-base font-semibold text-gray-900"
+              className="text-base text-gray-900 rich-html-content"
               dangerouslySetInnerHTML={{ __html: question.text_html || question.text || "" }}
             />
             {question.required && (
@@ -141,6 +192,43 @@ function QuestionBlock({ question, index }: { question: QuestionRow; index: numb
           )}
           {question.type === "rating" && (
             <p className="mt-2 text-xs text-gray-400 italic">{config.scaleMax ?? question.rating_scale ?? 5} estrellas</p>
+          )}
+
+          {/* Máximo/mínimo de respuestas (ítem #11) */}
+          {(minSel || maxSel) && (
+            <p className="mt-2 text-xs text-gray-400 italic">
+              {minSel && maxSel ? `Seleccionar entre ${minSel} y ${maxSel} opciones`
+                : maxSel ? `Máximo ${maxSel} opciones`
+                : `Mínimo ${minSel} opciones`}
+            </p>
+          )}
+
+          {/* Lógica de visualización condicional (ítem #11) */}
+          {question.display_logic?.enabled && question.display_logic.conditions && question.display_logic.conditions.length > 0 && (
+            <div className="mt-2 text-xs bg-purple-50 border border-purple-200 rounded px-2 py-1.5 text-purple-700">
+              <span className="font-semibold">Se muestra solo si: </span>
+              {question.display_logic.conditions.map((c: any, i: number) => (
+                <span key={i}>
+                  {i > 0 && <span className="font-medium"> {question.display_logic!.logicalOperator || "Y"} </span>}
+                  {conditionLabel(c)}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Lógica de salto por pregunta (ítem #11) */}
+          {question.skip_logic?.enabled && question.skip_logic.rules && question.skip_logic.rules.length > 0 && (
+            <div className="mt-2 text-xs bg-blue-50 border border-blue-200 rounded px-2 py-1.5 text-blue-700 space-y-0.5">
+              <span className="font-semibold block">Salto condicional:</span>
+              {question.skip_logic.rules.filter((r: any) => r.enabled !== false).map((r: any, i: number) => (
+                <div key={i}>
+                  Si la respuesta {ruleOperatorLabel(r)} →{" "}
+                  {r.targetSectionId === "END_SURVEY" ? "finalizar la encuesta"
+                    : r.targetSectionId === "DISQUALIFY" ? "descalificar y terminar"
+                    : `saltar a "${sectionTitle(sections, r.targetSectionId)}"`}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -218,10 +306,19 @@ export default function PrintSurveyPage() {
               {section.description && (
                 <div className="text-xs text-gray-500 mt-0.5" dangerouslySetInnerHTML={{ __html: section.description }} />
               )}
+              {/* Salto de sección (ítem #11) — solo se muestra cuando no es el
+                  comportamiento por defecto ("continuar a la siguiente"). */}
+              {section.skip_logic?.enabled && section.skip_logic.action && section.skip_logic.action !== "next_section" && (
+                <p className="text-xs text-[#0d7d74] mt-1 font-medium">
+                  Al finalizar esta sección: {section.skip_logic.action === "specific_section"
+                    ? `saltar a "${sectionTitle(sections, section.skip_logic.targetSectionId)}"`
+                    : SKIP_ACTION_LABELS[section.skip_logic.action] || section.skip_logic.action}
+                </p>
+              )}
             </div>
             {qs.map((q) => {
               const idx = globalIndex++
-              return <QuestionBlock key={q.id} question={q} index={idx} />
+              return <QuestionBlock key={q.id} question={q} index={idx} sections={sections} />
             })}
           </div>
         )

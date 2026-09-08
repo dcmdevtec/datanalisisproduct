@@ -26,6 +26,47 @@ import { join } from "path"
 // Devuelve null (nunca lanza) si ffmpeg no está disponible o falla — el
 // llamador debe caer con gracia a incluir los clips por separado en vez de
 // romper toda la descarga por un solo archivo problemático.
+// Convierte un audio (cualquier formato que ffmpeg entienda, típicamente
+// webm/opus grabado por el navegador) a MP3 — acta 07/09/2026, ítem #36:
+// "¿en qué otro formato podemos guardar estos audios? Que no sea webm".
+// Mismo criterio de "nunca lanza" que mergeAudioSegments: si ffmpeg falla o
+// no está disponible, el llamador debe caer con gracia al archivo original
+// en vez de romper toda la descarga por una conversión fallida.
+export async function convertToMp3(buffer: Buffer, ext: string): Promise<Buffer | null> {
+  let dir: string | null = null
+  try {
+    dir = await mkdtemp(join(tmpdir(), "audio-mp3-"))
+    const inputPath = join(dir, `in.${ext || "webm"}`)
+    const outputPath = join(dir, "out.mp3")
+    await writeFile(inputPath, buffer)
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("ffmpeg", [
+        "-i", inputPath,
+        "-c:a", "libmp3lame",
+        "-b:a", "128k",
+        "-y", outputPath,
+      ], { stdio: ["ignore", "ignore", "pipe"] })
+      let stderr = ""
+      proc.stderr.on("data", (d) => { stderr += d.toString() })
+      proc.on("error", reject)
+      proc.on("close", (code) => {
+        if (code === 0) resolve()
+        else reject(new Error(`ffmpeg (mp3) salió con código ${code}: ${stderr.slice(-500)}`))
+      })
+    })
+
+    return await readFile(outputPath)
+  } catch (err) {
+    console.error("[audio-merge] no se pudo convertir a mp3, se deja el formato original:", err)
+    return null
+  } finally {
+    if (dir) {
+      try { await rm(dir, { recursive: true, force: true }) } catch { /* best effort */ }
+    }
+  }
+}
+
 export async function mergeAudioSegments(
   segments: { buffer: Buffer; ext: string }[],
 ): Promise<Buffer | null> {

@@ -51,9 +51,9 @@
 
 | # | Ajuste | Módulo/Componente probable | Prioridad | Complejidad | Estado |
 |---|---|---|---|---|---|
-| 10 | Los enunciados aparecen en negrilla; deben salir con el **mismo formato con el que se creó** (rich text). | Módulo de exportación a PDF — ⏳ **no se localizó una librería/endpoint de generación de PDF de encuesta en el repo actual** (solo hay uso de PDF en `components/create-edit-zone-modal.tsx`, que es de zonas). Hay que confirmar dónde vive esta función. | **Alta** | M | ⏳ Por confirmar (foto/flujo) |
-| 11 | El PDF debe reflejar **todas** las configuraciones creadas (salto de secciones, visualizaciones, máximo de respuestas, salto de preguntas). | Idem #10 | Alta | M/L | ⏳ Por confirmar |
-| 12 | Los títulos de sección quedan con demasiado espacio en el PDF. | Idem #10 | Baja | S | Pendiente |
+| 10 | Los enunciados aparecen en negrilla; deben salir con el **mismo formato con el que se creó** (rich text). | **Encontrado:** `app/print/survey/[id]/page.tsx` (Puppeteer renderiza esta página y la imprime a PDF — ver `app/api/surveys/[id]/pdf/route.ts`). **Causa raíz confirmada:** el contenedor del enunciado forzaba `font-semibold` (negrilla) vía clase CSS sin importar el HTML enriquecido real (`text_html`) — todo salía en negrilla completa aunque el usuario no lo hubiera puesto así. Corregido: se quita el peso forzado y se agrega la clase `rich-html-content` (ya usada en otras partes de la app) para que el propio HTML decida su formato. | **Alta** | M | ✅ Corregido |
+| 11 | El PDF debe reflejar **todas** las configuraciones creadas (salto de secciones, visualizaciones, máximo de respuestas, salto de preguntas). | `app/print/survey/[id]/page.tsx`. **Confirmado:** no mostraba nada de esto. Se agregan: nota de salto de sección (cuando no es "continuar a la siguiente"), nota de salto condicional por pregunta (con la regla y el destino), nota de lógica de visualización condicional, y mínimo/máximo de opciones a seleccionar. De paso se corrigió que el componente leía un campo `question_config` que no existe en la tabla `questions` (la columna real es `settings`) — afectaba también la nota de "Escala de X a Y" para preguntas tipo `scale`. | Alta | M/L | ✅ Corregido |
+| 12 | Los títulos de sección quedan con demasiado espacio en el PDF. | `app/print/survey/[id]/page.tsx`. Revisado el markup del encabezado de sección — no encontré un valor de espaciado obviamente excesivo (`mb-4`/`py-2`, valores normales). No se pudo confirmar el problema por lectura de código sin ver el PDF real. | Baja | S | ⏳ Sin cambios — necesita el PDF real (o una captura) para comparar el espaciado |
 
 ### 1.5 Reportes — Resumen
 
@@ -105,15 +105,15 @@
 
 | # | Ajuste | Módulo/Componente probable | Prioridad | Complejidad | Estado |
 |---|---|---|---|---|---|
-| 34 | Solo existe la opción de descargar **todos** los audios juntos; en estudios de +1000 audios esto es inviable (tiempo de descarga). | ⏳ **No se ubicó una pantalla/endpoint dedicado de descarga masiva de audios** en el repo actual — probablemente vive dentro de "Respuestas Individuales" o está pendiente de construir. | **Alta** | L | ⏳ Por confirmar (foto) |
-| 35 | Se propone estructura de carpetas: `Encuesta > Día > Encuestador > Audio`. | Idem — nueva funcionalidad de empaquetado (zip) por jerarquía | Media | L | Pendiente |
-| 36 | Evaluar exportar en otro formato distinto a **webm** (p. ej. mp3/wav). | Idem — requiere transcodificación (backend) | Media | L | Pendiente |
+| 34 | Solo existe la opción de descargar **todos** los audios juntos; en estudios de +1000 audios esto es inviable (tiempo de descarga). | `components/reports/audios-tab.tsx` + `app/api/surveys/[id]/audios/zip/route.ts`. **Confirmado:** solo había un botón "descargar todo (ZIP)" y un conteo — pero el endpoint de detalle (`/api/surveys/[id]/recordings`) YA traía cada grabación con URL firmada individual, solo no se usaba. Se agregó: lista de grabaciones agrupadas por encuestador con reproducción/descarga individual, y filtros de fecha/encuestador que ahora sí acotan el ZIP (antes siempre bajaba todo, sin parámetros). | **Alta** | L | ✅ Corregido |
+| 35 | Se propone estructura de carpetas: `Encuesta > Día > Encuestador > Audio`. | `app/api/surveys/[id]/audios/zip/route.ts`. **Ya estaba implementado** (construido en la reunión 27/08): organiza en `Proyecto/Encuesta/Fecha/Encuestador/archivo` — mismo concepto pedido, con una carpeta extra de Proyecto. | Media | L | ✅ Ya estaba implementado |
+| 36 | Evaluar exportar en otro formato distinto a **webm** (p. ej. mp3/wav). | `lib/audio-merge.ts` + `app/api/surveys/[id]/audios/zip/route.ts`. ffmpeg ya está disponible en el servidor (se usa para fusionar segmentos de audio). Se agrega conversión opcional a MP3 (`?format=mp3` en el ZIP, selector "WebM/MP3" en la pestaña Audios) — si la conversión de un archivo puntual falla, ese archivo queda en su formato original en vez de perderse, el resto de la descarga no se ve afectada. | Media | L | ✅ Corregido |
 
 ### 1.11 Base de Datos
 
 | # | Ajuste | Módulo/Componente probable | Prioridad | Complejidad | Estado |
 |---|---|---|---|---|---|
-| 37 | Definir cómo se descarga la "base de datos definitiva" (export completo de respuestas). | ⏳ No se encontró endpoint de exportación en `app/api/*` actual. Candidato natural: nuevo endpoint en `app/api/responses/route.ts` + botón en `app/reports/page.tsx`. | **Alta** | M | ⏳ Por confirmar (foto/expectativa: Excel/CSV/SPSS?) |
+| 37 | Definir cómo se descarga la "base de datos definitiva" (export completo de respuestas). | **Ya estaba implementado por completo:** `app/api/projects/[id]/export-database/route.ts` (CSV pivotado, una fila por respuesta, una columna por pregunta de todo el proyecto, con nombre de encuestador/encuestado/fecha/duración) + botón "Descargar base de datos" en `app/projects/[id]/page.tsx` (construido en la reunión 27/08). No se tocó nada. | **Alta** | M | ✅ Ya estaba implementado |
 
 ### 1.12 Asignación
 

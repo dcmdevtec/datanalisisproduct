@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
-import { mergeAudioSegments } from "@/lib/audio-merge"
+import { mergeAudioSegments, convertToMp3 } from "@/lib/audio-merge"
 import { ZipArchive } from "archiver"
 import { Readable } from "stream"
 
-// GET /api/surveys/[id]/audios/zip — descarga TODAS las grabaciones de
-// audio de una encuesta en un único ZIP, organizadas en carpetas
-// Proyecto/Encuesta/Fecha/Encuestador/archivo (reunión 2026-08-27,
-// módulo "Audios").
+// GET /api/surveys/[id]/audios/zip?date=YYYY-MM-DD&surveyorId=<uuid> —
+// descarga las grabaciones de audio de una encuesta en un único ZIP,
+// organizadas en carpetas Proyecto/Encuesta/Fecha/Encuestador/archivo
+// (reunión 2026-08-27, módulo "Audios"). `date`/`surveyorId` son opcionales
+// (acta 07/09/2026, ítem #34: "solo tengo la opción de descargar todos los
+// audios... con más de mil audios, ¿cuánto demorará?") — permiten pedir un
+// subconjunto manejable en vez de un solo ZIP gigante con todo.
 //
 // Fuente de datos: surveyor_recordings con scope='survey' (grabación
 // completa de la entrevista, ligada a una response puntual) — misma
@@ -37,6 +40,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   try {
     const { id: surveyId } = await params
+    const { searchParams } = new URL(request.url)
+    const dateFilter = searchParams.get("date") // YYYY-MM-DD, opcional
+    const surveyorIdFilter = searchParams.get("surveyorId") // opcional
+    // Ítem #36 (acta 07/09/2026): "¿en qué otro formato podemos guardar estos
+    // audios? Que no sea webm" — opcional, default se mantiene en el formato
+    // original grabado por el navegador (webm/opus) para no romper nada para
+    // quien no pida el cambio.
+    const wantsMp3 = searchParams.get("format") === "mp3"
     const admin = createAdminSupabase() as any
 
     const { data: survey } = await admin
@@ -60,20 +71,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     const responseById = new Map<string, any>((responses || []).map((r: any) => [r.id, r]))
 
-    const { data: recordings, error: recordingsError } = await admin
+    let recordingsQuery = admin
       .from("surveyor_recordings")
       .select("id, surveyor_id, response_id, shift_id, started_at, storage_path")
       .in("response_id", responseIds)
       .eq("scope", "survey")
       .eq("upload_status", "uploaded")
       .not("storage_path", "is", null)
+    if (surveyorIdFilter) recordingsQuery = recordingsQuery.eq("surveyor_id", surveyorIdFilter)
+
+    const { data: recordingsRaw, error: recordingsError } = await recordingsQuery
 
     if (recordingsError) {
       console.error("Error obteniendo grabaciones para ZIP:", recordingsError)
       return NextResponse.json({ error: "No se pudieron obtener las grabaciones" }, { status: 500 })
     }
+
+    // Filtro por fecha (en memoria): la "fecha efectiva" de una grabación es
+    // la misma que usa el nombre de carpeta más abajo (started_at, o el
+    // created_at de la respuesta si no hay started_at) — filtrar acá antes
+    // evita descargar/procesar grabaciones que no van a incluirse en el ZIP.
+    const recordings = dateFilter
+      ? (recordingsRaw || []).filter((r: any) => {
+          const response = responseById.get(r.response_id)
+          const effectiveDate = (r.started_at || response?.created_at || "").slice(0, 10)
+          return effectiveDate === dateFilter
+        })
+      : recordingsRaw
+
     if (!recordings || recordings.length === 0) {
-      return NextResponse.json({ error: "No hay grabaciones de audio para esta encuesta" }, { status: 404 })
+      return NextResponse.json({ error: "No hay grabaciones de audio para esta encuesta con ese filtro" }, { status: 404 })
     }
 
     const surveyorIds = Array.from(new Set(recordings.map((r: any) => r.surveyor_id).filter(Boolean)))
@@ -144,18 +171,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             // agregar cada clip por separado en vez de perder la grabación.
             const merged = await mergeAudioSegments(downloaded)
             if (merged) {
-              const fileName = `grabacion_${rec.id.slice(0, 8)}.webm`
-              archive.append(merged, { name: `${folderBase}/${fileName}` })
+              // Ítem #36: conversión opcional a mp3 — si falla, se deja el
+              // webm ya fusionado en vez de perder el archivo.
+              const mp3 = wantsMp3 ? await convertToMp3(merged, "webm") : null
+              const fileName = `grabacion_${rec.id.slice(0, 8)}.${mp3 ? "mp3" : "webm"}`
+              archive.append(mp3 || merged, { name: `${folderBase}/${fileName}` })
               continue
             }
             console.error("[audios/zip] fusión falló para", rec.id, "— se dejan los clips sueltos")
           }
 
-          downloaded.forEach((seg, idx) => {
+          for (let idx = 0; idx < downloaded.length; idx++) {
+            const seg = downloaded[idx]
             const suffix = downloaded.length > 1 ? (idx < downloaded.length - 1 ? `_antes_${idx + 1}` : "") : ""
-            const fileName = `grabacion_${rec.id.slice(0, 8)}${suffix}.${seg.ext}`
-            archive.append(seg.buffer, { name: `${folderBase}/${fileName}` })
-          })
+            const mp3 = wantsMp3 ? await convertToMp3(seg.buffer, seg.ext) : null
+            const fileName = `grabacion_${rec.id.slice(0, 8)}${suffix}.${mp3 ? "mp3" : seg.ext}`
+            archive.append(mp3 || seg.buffer, { name: `${folderBase}/${fileName}` })
+          }
         } catch (err) {
           console.error("[audios/zip] error procesando grabación", rec.id, err)
         }
@@ -165,7 +197,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const webStream = Readable.toWeb(archive as unknown as Readable) as ReadableStream
 
-    const zipFilename = `audios_${sanitize(surveyName)}.zip`
+    const filterSuffix = [dateFilter, surveyorIdFilter ? surveyorNameById.get(surveyorIdFilter) : null]
+      .filter(Boolean)
+      .map((s) => sanitize(String(s)))
+      .join("_")
+    const zipFilename = `audios_${sanitize(surveyName)}${filterSuffix ? `_${filterSuffix}` : ""}.zip`
     return new NextResponse(webStream, {
       headers: {
         "Content-Type": "application/zip",
