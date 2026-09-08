@@ -10,7 +10,7 @@ import {
   Eye, EyeOff, Table2, ChevronDown, ChevronUp, X,
   Download, Loader2, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react"
-import { QuestionChart, type ChartType, type DistributionItem, type TimelinePoint } from "./question-chart"
+import { QuestionChart, DEFAULT_PALETTE, type ChartType, type DistributionItem, type TimelinePoint } from "./question-chart"
 import { formatPercent } from "@/lib/format"
 
 export interface MatrixBreakdown {
@@ -39,7 +39,11 @@ export interface CardSettings {
   chartType: ChartType
   showLabels: boolean
   showTable: boolean
-  baseColor?: string
+  // Ítem 08/09/2026: "si selecciono la barra, la barra que seleccione es la
+  // que le cambio el color no todas" — el color se personaliza POR barra/
+  // porción (clave = label de la opción), no con un único color global que
+  // recoloreaba toda la gráfica (así funcionaba antes, ver #18 en el plan).
+  colorOverrides?: Record<string, string>
 }
 
 // Paleta de colores para personalización rápida
@@ -195,6 +199,21 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
   const [collapsed, setCollapsed] = useState(false)
   const [fileGallery, setFileGallery] = useState<{ url: string; name: string; type?: string }[]>([])
   const [fileLoading, setFileLoading] = useState(false)
+  // Barra/porción seleccionada para personalizar su color (08/09/2026: el
+  // color ahora se aplica solo a la barra elegida, no a toda la gráfica).
+  // Es estado local (no se guarda) — es solo "qué estoy editando ahora".
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
+  const toggleSelectLabel = (label: string) => setSelectedLabel((prev) => (prev === label ? null : label))
+  const setColorForSelected = (color: string) => {
+    if (!selectedLabel) return
+    onSettingsChange({ colorOverrides: { ...(settings.colorOverrides || {}), [selectedLabel]: color } })
+  }
+  const clearColorForSelected = () => {
+    if (!selectedLabel || !settings.colorOverrides?.[selectedLabel]) return
+    const next = { ...settings.colorOverrides }
+    delete next[selectedLabel]
+    onSettingsChange({ colorOverrides: next })
+  }
 
   const isFileQuestion = ["file", "image_upload"].includes(question.type)
   const isMatrixQuestion = question.type === "matrix" && !!question.matrixBreakdown
@@ -306,19 +325,37 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
 
               <div className="h-4 w-px bg-border hidden sm:block" />
 
-              {/* Color palette */}
-              <div className="flex gap-1 items-center" title="Color base de la gráfica">
+              {/* Color palette — aplica al elemento seleccionado en la gráfica/tabla,
+                  no a toda la gráfica (ítem 08/09/2026, ver CardSettings arriba) */}
+              <div className="flex gap-1 items-center">
                 {COLOR_PALETTE.map((color) => (
                   <button
                     key={color}
-                    onClick={() => onSettingsChange({ baseColor: color })}
+                    onClick={() => setColorForSelected(color)}
+                    disabled={!selectedLabel}
                     style={{ backgroundColor: color }}
                     className={`w-4 h-4 rounded-full transition-all border-2 ${
-                      settings.baseColor === color ? "border-foreground scale-110" : "border-transparent"
-                    }`}
-                    title={color}
+                      selectedLabel && settings.colorOverrides?.[selectedLabel] === color
+                        ? "border-foreground scale-110"
+                        : "border-transparent"
+                    } ${!selectedLabel ? "opacity-30 cursor-not-allowed" : ""}`}
+                    title={
+                      selectedLabel
+                        ? `Usar este color para "${selectedLabel}"`
+                        : "Selecciona una barra/porción o una fila de la tabla para cambiarle el color"
+                    }
                   />
                 ))}
+                {selectedLabel && (
+                  <span className="text-xs text-muted-foreground ml-1 flex items-center gap-1">
+                    · {selectedLabel.length > 18 ? `${selectedLabel.slice(0, 18)}…` : selectedLabel}
+                    {settings.colorOverrides?.[selectedLabel] && (
+                      <button onClick={clearColorForSelected} className="underline hover:text-foreground" title="Quitar color personalizado">
+                        quitar
+                      </button>
+                    )}
+                  </span>
+                )}
               </div>
 
               <div className="h-4 w-px bg-border hidden sm:block" />
@@ -396,7 +433,9 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
                 distribution={sortedDistribution}
                 timeline={question.timeline ?? []}
                 showLabels={settings.showLabels}
-                baseColor={settings.baseColor}
+                colorOverrides={settings.colorOverrides}
+                selectedLabel={selectedLabel}
+                onSelectLabel={toggleSelectLabel}
               />
 
               {settings.showTable && hasDistribution && (
@@ -414,11 +453,29 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
                   </div>
                   <div className="divide-y">
                     {sortedDistribution.map((d, i) => (
-                      <div key={i} className="grid grid-cols-3 p-2 text-sm items-center">
-                        <div className="truncate">{d.label}</div>
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => toggleSelectLabel(d.label)}
+                        title="Clic para cambiarle el color en la gráfica"
+                        className={`grid grid-cols-3 p-2 text-sm items-center w-full text-left hover:bg-muted/50 transition-colors ${
+                          selectedLabel === d.label ? "bg-muted ring-1 ring-inset ring-foreground/30" : ""
+                        }`}
+                      >
+                        <div className="truncate flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{
+                              background:
+                                settings.colorOverrides?.[d.label] ||
+                                DEFAULT_PALETTE[i % DEFAULT_PALETTE.length],
+                            }}
+                          />
+                          {d.label}
+                        </div>
                         <div className="text-center font-medium">{d.count}</div>
                         <div className="text-center text-muted-foreground">{formatPercent(d.percentage)}</div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>

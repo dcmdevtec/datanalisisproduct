@@ -29,64 +29,28 @@ interface QuestionChartProps {
   distribution: DistributionItem[]
   timeline?: TimelinePoint[]
   showLabels: boolean
-  baseColor?: string
+  /** Colores personalizados por opción (clave = label), no un color global. */
+  colorOverrides?: Record<string, string>
+  /** Label de la barra/porción actualmente seleccionada (resalte visual). */
+  selectedLabel?: string | null
+  /** Se dispara al hacer clic en una barra/porción o en su entrada de leyenda. */
+  onSelectLabel?: (label: string) => void
 }
 
-const DEFAULT_PALETTE = [
+export const DEFAULT_PALETTE = [
   "#18b0a4", "#2563eb", "#f59e0b", "#ef4444", "#8b5cf6",
   "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#06b6d4",
 ]
 
-function hexToHsl(hex: string): [number, number, number] {
-  const m = hex.replace("#", "")
-  const r = parseInt(m.slice(0, 2), 16) / 255
-  const g = parseInt(m.slice(2, 4), 16) / 255
-  const b = parseInt(m.slice(4, 6), 16) / 255
-  const max = Math.max(r, g, b), min = Math.min(r, g, b)
-  let h = 0, s = 0
-  const l = (max + min) / 2
-  const d = max - min
-  if (d !== 0) {
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)); break
-      case g: h = (b - r) / d + 2; break
-      default: h = (r - g) / d + 4
-    }
-    h *= 60
-  }
-  return [h, s * 100, l * 100]
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  const sN = s / 100, lN = l / 100
-  const k = (n: number) => (n + h / 30) % 12
-  const a = sN * Math.min(lN, 1 - lN)
-  const f = (n: number) => lN - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
-  const toHex = (n: number) => Math.round(f(n) * 255).toString(16).padStart(2, "0")
-  return `#${toHex(0)}${toHex(8)}${toHex(4)}`
-}
-
-// Al elegir un color base (#18 reunión 07/09/2026: "solo permite personalizar
-// parte de la gráfica"), antes solo se recoloreaba la primera barra/porción y
-// el resto quedaba con la paleta por defecto (azul, ámbar, rojo...) sin
-// relación con lo elegido. Ahora se genera una escala completa de tonos del
-// mismo color (variando el brillo) para que TODA la gráfica refleje la
-// personalización, manteniendo cada serie distinguible.
-function buildPalette(baseColor?: string, count: number = 10): string[] {
-  if (!baseColor) return DEFAULT_PALETTE
-  const [h, s, l] = hexToHsl(baseColor)
-  const n = Math.max(count, 1)
-  if (n === 1) return [baseColor]
-  return Array.from({ length: n }, (_, i) => {
-    // La primera barra/porción es EXACTAMENTE el color elegido (lo que el
-    // cliente espera al hacer clic en un color); el resto alterna tonos más
-    // claros/oscuros del mismo matiz, en vez de mezclar colores sin relación.
-    if (i === 0) return baseColor
-    const step = Math.ceil(i / 2) * 12
-    const lightness = i % 2 === 1 ? Math.min(85, l + step) : Math.max(15, l - step)
-    return hslToHex(h, Math.max(s, 35), lightness)
-  })
+// #18 (reunión 07/09/2026, "solo permite personalizar parte de la gráfica")
+// pasó por dos versiones: primero solo se pintaba la primera barra; luego se
+// generaban tonos del mismo color para TODA la gráfica. El cliente aclaró
+// (08/09/2026) que lo que quiere es personalización POR barra: seleccionar
+// una barra/porción puntual y que el color elegido cambie SOLO esa, no todas.
+// `colorOverrides` guarda esos colores puntuales por label; el resto de
+// barras conserva la paleta por defecto (o su propio override, si tiene uno).
+function colorFor(label: string, index: number, overrides?: Record<string, string>): string {
+  return overrides?.[label] || DEFAULT_PALETTE[index % DEFAULT_PALETTE.length]
 }
 
 // Tooltip reutilizable con estilos CSS-var para que funcione en dark mode
@@ -102,12 +66,16 @@ function PieOrDonut({
   distribution,
   donut,
   showLabels,
-  palette,
+  colorOverrides,
+  selectedLabel,
+  onSelectLabel,
 }: {
   distribution: DistributionItem[]
   donut: boolean
   showLabels: boolean
-  palette: string[]
+  colorOverrides?: Record<string, string>
+  selectedLabel?: string | null
+  onSelectLabel?: (label: string) => void
 }) {
   const total = distribution.reduce((s, d) => s + d.count, 0) || 1
 
@@ -164,8 +132,15 @@ function PieOrDonut({
               labelLine={false}
               label={<CustomLabel />}
             >
-              {distribution.map((_, i) => (
-                <Cell key={i} fill={palette[i % palette.length]} />
+              {distribution.map((d, i) => (
+                <Cell
+                  key={i}
+                  fill={colorFor(d.label, i, colorOverrides)}
+                  onClick={() => onSelectLabel?.(d.label)}
+                  cursor={onSelectLabel ? "pointer" : undefined}
+                  stroke={d.label === selectedLabel ? "hsl(var(--foreground))" : "hsl(var(--background))"}
+                  strokeWidth={d.label === selectedLabel ? 3 : 2}
+                />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
@@ -190,11 +165,19 @@ function PieOrDonut({
         // (ver components/reports/summary-content.tsx), nítido siempre.
         <div className={`grid ${distribution.length > 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-x-6 gap-y-1.5 w-full max-w-md`} data-html2canvas-ignore="true">
           {distribution.map((d, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: palette[i % palette.length] }} />
-              <span className="flex-1 text-muted-foreground truncate" title={d.label}>{d.label}</span>
+            <button
+              key={i}
+              type="button"
+              onClick={() => onSelectLabel?.(d.label)}
+              className={`flex items-center gap-2 text-sm min-w-0 rounded px-1 -mx-1 transition-colors ${
+                onSelectLabel ? "hover:bg-muted cursor-pointer" : ""
+              } ${d.label === selectedLabel ? "ring-1 ring-foreground/40 bg-muted/60" : ""}`}
+              title={onSelectLabel ? `Seleccionar "${d.label}" para cambiar su color` : d.label}
+            >
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colorFor(d.label, i, colorOverrides) }} />
+              <span className="flex-1 text-left text-muted-foreground truncate" title={d.label}>{d.label}</span>
               <span className="font-medium whitespace-nowrap flex-shrink-0">{d.count} ({formatPercent(d.percentage)})</span>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -202,7 +185,19 @@ function PieOrDonut({
   )
 }
 
-function BarsVertical({ distribution, showLabels, palette }: { distribution: DistributionItem[]; showLabels: boolean; palette: string[] }) {
+function BarsVertical({
+  distribution,
+  showLabels,
+  colorOverrides,
+  selectedLabel,
+  onSelectLabel,
+}: {
+  distribution: DistributionItem[]
+  showLabels: boolean
+  colorOverrides?: Record<string, string>
+  selectedLabel?: string | null
+  onSelectLabel?: (label: string) => void
+}) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     const item = distribution.find((d) => d.label === label)
@@ -240,8 +235,15 @@ function BarsVertical({ distribution, showLabels, palette }: { distribution: Dis
         <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
         <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? <ValueLabel /> : false}>
-          {distribution.map((_, i) => (
-            <Cell key={i} fill={palette[i % palette.length]} />
+          {distribution.map((d, i) => (
+            <Cell
+              key={i}
+              fill={colorFor(d.label, i, colorOverrides)}
+              onClick={() => onSelectLabel?.(d.label)}
+              cursor={onSelectLabel ? "pointer" : undefined}
+              stroke={d.label === selectedLabel ? "hsl(var(--foreground))" : undefined}
+              strokeWidth={d.label === selectedLabel ? 2 : 0}
+            />
           ))}
         </Bar>
       </BarChart>
@@ -249,7 +251,19 @@ function BarsVertical({ distribution, showLabels, palette }: { distribution: Dis
   )
 }
 
-function BarsHorizontal({ distribution, showLabels, palette }: { distribution: DistributionItem[]; showLabels: boolean; palette: string[] }) {
+function BarsHorizontal({
+  distribution,
+  showLabels,
+  colorOverrides,
+  selectedLabel,
+  onSelectLabel,
+}: {
+  distribution: DistributionItem[]
+  showLabels: boolean
+  colorOverrides?: Record<string, string>
+  selectedLabel?: string | null
+  onSelectLabel?: (label: string) => void
+}) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     const item = distribution.find((d) => d.label === label)
@@ -285,8 +299,15 @@ function BarsHorizontal({ distribution, showLabels, palette }: { distribution: D
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
         <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? <ValueLabel /> : false}>
-          {distribution.map((_, i) => (
-            <Cell key={i} fill={palette[i % palette.length]} />
+          {distribution.map((d, i) => (
+            <Cell
+              key={i}
+              fill={colorFor(d.label, i, colorOverrides)}
+              onClick={() => onSelectLabel?.(d.label)}
+              cursor={onSelectLabel ? "pointer" : undefined}
+              stroke={d.label === selectedLabel ? "hsl(var(--foreground))" : undefined}
+              strokeWidth={d.label === selectedLabel ? 2 : 0}
+            />
           ))}
         </Bar>
       </BarChart>
@@ -348,8 +369,7 @@ function Trend({ timeline, showLabels }: { timeline: TimelinePoint[]; showLabels
   )
 }
 
-export function QuestionChart({ type, distribution, timeline, showLabels, baseColor }: QuestionChartProps) {
-  const palette = buildPalette(baseColor, distribution.length || 10)
+export function QuestionChart({ type, distribution, timeline, showLabels, colorOverrides, selectedLabel, onSelectLabel }: QuestionChartProps) {
   if (type === "trend") return <Trend timeline={timeline || []} showLabels={showLabels} />
   if (distribution.length === 0) {
     return (
@@ -359,10 +379,10 @@ export function QuestionChart({ type, distribution, timeline, showLabels, baseCo
     )
   }
   switch (type) {
-    case "pie":   return <PieOrDonut distribution={distribution} donut={false} showLabels={showLabels} palette={palette} />
-    case "donut": return <PieOrDonut distribution={distribution} donut={true}  showLabels={showLabels} palette={palette} />
-    case "barsV": return <BarsVertical   distribution={distribution} showLabels={showLabels} palette={palette} />
-    case "barsH": return <BarsHorizontal distribution={distribution} showLabels={showLabels} palette={palette} />
+    case "pie":   return <PieOrDonut distribution={distribution} donut={false} showLabels={showLabels} colorOverrides={colorOverrides} selectedLabel={selectedLabel} onSelectLabel={onSelectLabel} />
+    case "donut": return <PieOrDonut distribution={distribution} donut={true}  showLabels={showLabels} colorOverrides={colorOverrides} selectedLabel={selectedLabel} onSelectLabel={onSelectLabel} />
+    case "barsV": return <BarsVertical   distribution={distribution} showLabels={showLabels} colorOverrides={colorOverrides} selectedLabel={selectedLabel} onSelectLabel={onSelectLabel} />
+    case "barsH": return <BarsHorizontal distribution={distribution} showLabels={showLabels} colorOverrides={colorOverrides} selectedLabel={selectedLabel} onSelectLabel={onSelectLabel} />
     default:      return null
   }
 }
