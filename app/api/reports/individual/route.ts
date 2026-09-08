@@ -275,8 +275,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Nombre del encuestado desde pregunta contact_info (mismo fallback que ya
+    // tenía el detalle en app/api/reports/individual/[id]/route.ts — al
+    // faltar acá, la lista mostraba "Sin asignar" para encuestados cuyo
+    // nombre solo se guardó como respuesta a esa pregunta, sin documento
+    // (respondent_name en responses solo se llena cuando hay docType+docNum),
+    // mientras el detalle de esa misma respuesta sí lo mostraba (acta
+    // 07/09/2026, seguimiento del ítem #22: "no toma el nombre del
+    // encuestado" — pasaba solo para este subconjunto de respuestas).
+    const respondentNameByResponseId: Record<string, string> = {}
+    if (responseIds.length > 0) {
+      const { data: contactAnswers } = await (admin as any)
+        .from("answers")
+        .select("response_id, value, questions!inner(type)")
+        .in("response_id", responseIds)
+        .eq("questions.type", "contact_info")
+        .limit(2000)
+      for (const a of (contactAnswers as any[]) || []) {
+        if (respondentNameByResponseId[a.response_id]) continue // primera pregunta contact_info gana
+        const val = a.value
+        if (!val || typeof val !== "object") continue
+        const fullName = val.fullName || [val.firstName, val.lastName].filter(Boolean).join(" ").trim() || null
+        if (fullName) respondentNameByResponseId[a.response_id] = fullName
+      }
+    }
+
     return NextResponse.json({
-      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId, surveyorInfoByRespondentId, locationByResponseId[r.id])),
+      items: rawData.map((r: any) => mapListItem(r, surveyorInfoByAssignmentId, surveyorInfoBySurveyorId, surveyorInfoByRespondentId, locationByResponseId[r.id], respondentNameByResponseId[r.id])),
       total: totalCount,
       page,
       pageSize,
@@ -292,7 +317,8 @@ function mapListItem(
   surveyorInfoByAssignmentId: Record<string, { name: string | null; email: string | null }> = {},
   surveyorInfoBySurveyorId:  Record<string, { name: string | null; email: string | null }> = {},
   surveyorInfoByRespondentId: Record<string, { name: string | null; email: string | null }> = {},
-  locationInfo?: { ciudad: string | null; barrio: string | null }
+  locationInfo?: { ciudad: string | null; barrio: string | null },
+  respondentNameFromContactInfo?: string
 ) {
   // started_at = inicio real de la respuesta. created_at/completed_at se
   // setean casi al mismo tiempo (al enviar), por eso no sirven para medir
@@ -316,10 +342,12 @@ function mapListItem(
 
   // Nombre del encuestado: 1) columna respondent_name (portal web),
   // 2) metadata.respondent_name (APK — la APK lo guarda ahí porque la columna
-  //    responses.respondent_name no siempre se llena desde el dispositivo).
+  //    responses.respondent_name no siempre se llena desde el dispositivo),
+  // 3) respuesta a una pregunta contact_info (mismo fallback que el detalle).
   const respondentName: string | null =
     r.respondent_name
     ?? (typeof r.metadata?.respondent_name === "string" ? r.metadata.respondent_name : null)
+    ?? respondentNameFromContactInfo
     ?? null
 
   return {
