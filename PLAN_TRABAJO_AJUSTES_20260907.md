@@ -207,3 +207,15 @@ De los 45 ítems del acta:
 1. Actualiza tu ambiente (`git pull origin dev-testing-main`) y prueba todo lo marcado ✅ — es la prioridad, porque son cambios reales de código que nadie ha visto correr todavía (este entorno no tiene navegador ni Supabase real para probar).
 2. Para los ítems `⏳`, una captura/video del síntoma exacto (o del PDF/mapa real) es lo que hace falta para poder actuar — no se pudieron diagnosticar más a fondo por lectura de código sola.
 3. Para #7 y #38 (grupos con nombre), son preguntas de qué comportamiento esperas, no bugs — dime y lo ajustamos.
+
+---
+
+## 5. Ítems reportados después del acta (fuera de los 45 originales)
+
+| # | Pedido | Diagnóstico / solución | Estado |
+|---|---|---|---|
+| A1 | Roles/Asignación: no asociar usuarios en la creación; que en Asignación salgan todos los supervisores/encuestadores, no solo los ya asociados. | `components/survey-hierarchy-assignment.tsx` filtraba supervisores/encuestadores por la jerarquía global (Coordinador→Supervisor) en vez de mostrarlos todos. Corregido: ahora siempre se listan todos, la jerarquía queda solo como referencia visual, no como filtro. | ✅ Corregido |
+| A2 | Salto de sección funciona en el preview pero no cuando el encuestador resuelve la encuesta real. | Causa raíz: en `create-survey/page.tsx`, el editor de salto de sección actualizaba el estado por un camino que no marcaba la sección como "sin guardar" para el autosave — el cambio nunca llegaba a la base de datos (el preview sí funcionaba porque lee la memoria del builder, no la DB). Corregido para que use el mismo camino que sí dispara el autosave. | ✅ Corregido — pendiente que el cliente confirme guardando un salto real y probándolo con un encuestador |
+| A3 | ID único de encuesta (ej. `ENC-2026-0001`), generado por el sistema, editable mientras está en "Prueba", bloqueado para siempre al activarse. | Nuevo campo `surveys.code` + triggers en base de datos (contador atómico, asignación automática, bloqueo post-activación) + campo en el tab Detalles del builder. **Requiere correr manualmente** `db/migrations/2026-09-08_add_survey_code.sql` contra Supabase — no se aplica sola. | ✅ Construido — falta correr la migración y probar |
+| A4 | Personalizar color de gráficas: seleccionar una barra/porción y que el color solo cambie esa, no toda la gráfica. | `question-chart.tsx`/`question-card.tsx`: se reemplaza el "color base que recolorea todo" por selección puntual (clic en barra/porción/leyenda/fila de tabla) + color por opción (`colorOverrides`). | ✅ Corregido |
+| A5 | Al abandonar una encuesta y volver a entrar a la misma, aparecen precargadas las respuestas de la encuesta abandonada. | Causa raíz: el motor de encuestas (`app/preview/survey/page.tsx`) guarda un borrador de respuestas en curso en `localStorage` (`surveyPreviewAnswers_<surveyId>`) y solo lo borra al **enviar** la encuesta — nunca al abandonarla. Al reabrir la misma encuesta, el borrador viejo se precarga solo. Corregido: `handleAbandon` en `app/portal-encuestador/encuesta/[surveyId]/page.tsx` ahora borra ese borrador al registrar el abandono. | ✅ Corregido |

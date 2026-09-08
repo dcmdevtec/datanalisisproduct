@@ -151,6 +151,26 @@ export default function PortalEncuestadorSurveyPage() {
     }
   }, [assignment, router, toast])
 
+  // Bug reportado 08/09/2026: "cuando entro a realizar otra encuesta me salen
+  // las opciones seleccionadas que fueron abandonadas". Causa raíz: el motor
+  // de encuestas (SurveyPreviewPage) guarda el borrador de respuestas en
+  // curso en localStorage bajo `surveyPreviewAnswers_${surveyId}` (ver
+  // clearStoredPreviewAnswers en app/preview/survey/page.tsx) y solo lo borra
+  // cuando la encuesta se ENVÍA — nunca cuando se abandona. Al abandonar y
+  // volver a entrar a la MISMA encuesta (mismo surveyId, misma clave), el
+  // motor la encuentra en localStorage y la precarga como si fuera un
+  // borrador propio a retomar. Se borra acá, en el momento del abandono, para
+  // que la siguiente vez arranque en blanco. inferredSurveyId dentro del
+  // motor se calcula del segmento de la URL después de "encuesta" — para esta
+  // ruta (/portal-encuestador/encuesta/[surveyId]) es este mismo `surveyId`.
+  const clearAbandonedDraft = useCallback(() => {
+    try {
+      localStorage.removeItem(`surveyPreviewAnswers_${surveyId}`)
+    } catch {
+      // best-effort — no bloquea el flujo de abandono si localStorage falla
+    }
+  }, [surveyId])
+
   // Botón "Abandonar encuesta": cierra el segmento de audio de la encuesta
   // (ligándolo al response_id de abandono), registra outcome='abandonada' y
   // vuelve al dashboard, retomando la grabación de fondo del turno.
@@ -165,15 +185,17 @@ export default function PortalEncuestadorSurveyPage() {
       const json = await res.json().catch(() => ({}))
       await recording.endSurveySegment(json?.response_id)
       recording.setLocationEnabled(true) // se sale de la encuesta — retoma el tracking de fondo aunque esta encuesta lo tuviera desactivado
+      clearAbandonedDraft()
       toast({ title: "Encuesta abandonada", description: "Se registró el abandono." })
       router.push("/portal-encuestador")
     } catch (err) {
       console.error(err)
       await recording.endSurveySegment()
       recording.setLocationEnabled(true)
+      clearAbandonedDraft()
       router.push("/portal-encuestador")
     }
-  }, [assignment, recording, router, toast])
+  }, [assignment, recording, router, toast, clearAbandonedDraft])
 
   // Al enviar la encuesta completa (outcome='efectiva', ya seteado por
   // defecto en /api/responses): cierra el segmento de audio ligándolo al
