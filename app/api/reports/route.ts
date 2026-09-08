@@ -1043,7 +1043,14 @@ export async function GET(request: NextRequest) {
           .map((r: any) => r.respondent_id as string)
       )
     ]
-    const surveyorByRespondentId: Record<string, { name: string | null; supervisor_id: string | null }> = {}
+    // OJO: se guarda también `id` (la PK real de surveyors) — es la clave que
+    // hay que usar para agrupar en surveyorMap más abajo. `respondent_id` en
+    // responses es el auth user_id (igual a surveyors.user_id), NO surveyors.id;
+    // si se agrupa por respondent_id, un encuestador que además tenga respuestas
+    // vía assignment_id (agrupadas por surveyors.id) queda partido en dos filas
+    // distintas — duplica "Total Encuestadores" y reparte mal sus indicadores
+    // de rendimiento (bug detectado en reunión 2026-09-07, ítems #14/#28/#29).
+    const surveyorByRespondentId: Record<string, { id: string; name: string | null; supervisor_id: string | null }> = {}
     if (respondentIdsNeedingSurveyor.length > 0) {
       const { data: byUserId } = await admin
         .from("surveyors")
@@ -1051,7 +1058,7 @@ export async function GET(request: NextRequest) {
         .in("user_id", respondentIdsNeedingSurveyor)
       const resolvedIds = new Set<string>()
       for (const s of (byUserId as any[]) || []) {
-        surveyorByRespondentId[s.user_id] = { name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
+        surveyorByRespondentId[s.user_id] = { id: s.id, name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
         resolvedIds.add(s.user_id)
       }
       const remaining = respondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
@@ -1061,7 +1068,7 @@ export async function GET(request: NextRequest) {
           .select("id, name, supervisor_id")
           .in("id", remaining)
         for (const s of (byLegacyId as any[]) || []) {
-          surveyorByRespondentId[s.id] = { name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
+          surveyorByRespondentId[s.id] = { id: s.id, name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
         }
       }
     }
@@ -1089,7 +1096,9 @@ export async function GET(request: NextRequest) {
         : null
       const sid = (ssz?.surveyor_id as string | undefined)
         ?? (!r.assignment_id ? (r as any).metadata?.surveyor_id : undefined)
-        ?? (respondentSurveyor ? (r as any).respondent_id : undefined)
+        // Usar el id canónico de surveyors resuelto arriba, no r.respondent_id
+        // (que es el auth user_id) — evita duplicar al encuestador en el reporte.
+        ?? (respondentSurveyor ? respondentSurveyor.id : undefined)
       if (!sid) continue
       // Inicializar si no existía (respuestas sin SSZ en el filtro actual)
       if (!surveyorMap[sid]) {
