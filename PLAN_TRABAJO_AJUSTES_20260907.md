@@ -179,33 +179,31 @@ Bloquean la creación/edición correcta de nuevas encuestas:
 - #6 Etiquetas de pregunta de calificación
 
 ### Fase 3 — Asignación y Geolocalización de encuestadores
-Bloquean operación de campo:
-- #38 / #39 Grupos y asignación de encuestadores por proyecto
-- #40 / #41 Indicadores y recorrido del encuestador
-- #42 Ver recorrido de días anteriores
-- #43 Filtros superpuestos en pantalla completa
+✅ Ejecutada. #38/#39 ya estaban resueltos (asignación en cascada por encuesta). #40 corregido (mismo bug de id que #14). #42 corregido (selector de fecha para el recorrido). #41 posiblemente ligado a #40. #43/#44 sin cambios (necesitan captura / son feature nueva).
 
 ### Fase 4 — Exportables: PDF, Audios y Base de Datos
-Requieren primero ubicar/diseñar el módulo (ver hallazgo #2 y #3 arriba):
-- #10-12 PDF de encuesta (formato, configuraciones, espaciado)
-- #16, #20, #32-33, #44 PDF de reportes/mapas (título, gráficas, precisión de puntos, tamaño)
-- #34-36 Descarga de audios por lotes/carpetas/formato
-- #37 Descarga de base de datos definitiva
+✅ Ejecutada. #10/#11 corregidos (formato real + todas las configuraciones en el PDF de encuesta). #16, #20, #33 corregidos (Reportes, Fase 1). #34/#36 corregidos (descarga individual/filtrada + MP3 opcional). #35/#37 ya estaban implementados. #12/#32 sin cambios (necesitan ver el PDF/mapa real).
 
 ### Fase 5 — Pulido de UI / detalles menores
-- #7 Visibilidad de encuestas en borrador en la web (confirmar comportamiento esperado)
-- #8-9 Íconos de fecha y botón de actualizar
-- #18 Personalización de color completa en gráficas
-- #23 ID visible de cada respuesta
-- #24 Explicación/orden de audios múltiples por respuesta
-- #25-27 Edición y orden de tablas en Respuestas Individuales
-- #30-31 Estados adicionales y datos del encuestador en el mapa geográfico
-- #45 Alineación del link de la encuesta
+Pendiente — la mayoría de estos ítems ya se resolvieron de paso en las fases anteriores (#18, #23, #24, #25-27 quedaron ✅ en la sección 1, ver detalle ahí). Lo que queda genuinamente pendiente:
+- #7 Visibilidad de encuestas en borrador en la web (es una decisión de producto, no un bug — confirmar qué comportamiento se espera)
+- #8-9 Íconos de fecha y botón de actualizar (necesita captura — no se identificó con certeza la pantalla)
+- #30-31 (#31 ya corregido; #30 revisado, parece ya resuelto en el código actual)
+- #38 "grupos" reutilizables con nombre, si eso es lo que realmente se pide más allá de la cascada por encuesta (que ya funciona)
+- #45 Alineación del link de la encuesta (no se pudo confirmar en qué pantalla exacta ocurre — hay 2 lugares candidatos: el modal "Compartir Encuesta" y el código QR, ninguno muestra el nombre/código de la encuesta junto al link hoy)
 
 ---
 
-## 4. Próximos pasos inmediatos
+## 4. Estado al 08/09/2026 (tras la primera ronda completa de trabajo)
 
-1. Enviar fotos de las pantallas donde ocurre cada punto marcado `⏳ Por confirmar (foto)` (ítems #7, #8, #9, #10-12, #16, #20, #24, #32-33, #34-37, #40, #44) — con eso cierro la columna de módulo/componente.
-2. Confirmar si el orden de fases (sección 3) refleja tu prioridad real de negocio, o si algo debe subir/bajar (p. ej. si Asignación por proyecto es más urgente que integridad de Reportes).
-3. Una vez confirmado, convierto cada ítem de la Fase 1 en tareas de desarrollo concretas y arrancamos ejecución.
+De los 45 ítems del acta:
+
+- **✅ Corregidos o construidos en esta ronda (código nuevo, sin probar en navegador):** #1, #2, #3, #4, #6, #10, #11, #14, #15, #16, #18, #19, #20, #22, #23, #24 (parcial), #27, #28, #29 (aclarado), #31, #33, #34, #36, #40, #42.
+- **✅ Ya estaban implementados** (de rondas anteriores, 27/08 y 31/08 — solo se confirmó que cubren el pedido): #13, #17, #35, #37, #38, #39, #41 (a confirmar tras el fix de #40).
+- **🟡 Diagnosticado con causa raíz clara, pero es una decisión de producto o feature nueva, no un bug puntual:** #7 (visibilidad de borradores — decisión), #38 (si además quieren "grupos" con nombre reutilizables), #44 (no existe exportar a PDF en esa pantalla todavía).
+- **⏳ Sin cambios — necesita una captura/video puntual para reproducir el síntoma exacto:** #5, #8, #9, #12, #25 (matriz: hecho para radio/checkbox, no para number/text/dropdown/rating), #26 (hecho para multiple_choice/dropdown/checkbox), #30, #32, #43, #45.
+
+**Cómo seguir desde acá:**
+1. Actualiza tu ambiente (`git pull origin dev-testing-main`) y prueba todo lo marcado ✅ — es la prioridad, porque son cambios reales de código que nadie ha visto correr todavía (este entorno no tiene navegador ni Supabase real para probar).
+2. Para los ítems `⏳`, una captura/video del síntoma exacto (o del PDF/mapa real) es lo que hace falta para poder actuar — no se pudieron diagnosticar más a fondo por lectura de código sola.
+3. Para #7 y #38 (grupos con nombre), son preguntas de qué comportamiento esperas, no bugs — dime y lo ajustamos.
