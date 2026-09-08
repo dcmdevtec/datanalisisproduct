@@ -191,6 +191,13 @@ export function QuestionEditor({
   const [matrixBulkText, setMatrixBulkText] = useState<string>("")
   const [showMatrixRowBulk, setShowMatrixRowBulk] = useState<boolean>(false)
   const [matrixRowBulkText, setMatrixRowBulkText] = useState<string>("")
+  // Bulk-add para las opciones de la lista desplegable POR COLUMNA en matriz
+  // tipo "select" (acta 07/09/2026, ítem #3: "hizo falta manera masiva las
+  // opciones de la lista desplegable en la pregunta Matriz – lista
+  // desplegable"). Una sola columna abierta a la vez, como el resto de estos
+  // bulk-add (showMatrixBulk/showMatrixRowBulk arriba).
+  const [showColOptionBulk, setShowColOptionBulk] = useState<number | null>(null)
+  const [colOptionBulkText, setColOptionBulkText] = useState<string>("")
   // Subida de imagen/video adjunto a la pregunta (question.image / columna
   // questions.file_url) — se muestra arriba del enunciado sin importar el
   // tipo de pregunta, para poder armar encuestas "a partir de un video".
@@ -1581,25 +1588,84 @@ export function QuestionEditor({
                                 </Button>
                               </div>
                             ))}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const newColOptions = allColOptions ? [...allColOptions] : []
-                                while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
-                                const opts = [
-                                  ...(newColOptions[colIdx] || ["Opción 1"]),
-                                  `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`,
-                                ]
-                                newColOptions[colIdx] = opts
-                                onUpdateQuestion(sectionId, question.id, "config", {
-                                  ...question.config,
-                                  matrixColOptions: newColOptions,
-                                })
-                              }}
-                            >
-                              <Plus className="h-4 w-4 mr-2" /> Agregar opción
-                            </Button>
+                            <div className="flex items-start gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const newColOptions = allColOptions ? [...allColOptions] : []
+                                  while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                                  const opts = [
+                                    ...(newColOptions[colIdx] || ["Opción 1"]),
+                                    `Opción ${(newColOptions[colIdx]?.length || 1) + 1}`,
+                                  ]
+                                  newColOptions[colIdx] = opts
+                                  onUpdateQuestion(sectionId, question.id, "config", {
+                                    ...question.config,
+                                    matrixColOptions: newColOptions,
+                                  })
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-2" /> Agregar opción
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setShowColOptionBulk((cur) => (cur === colIdx ? null : colIdx))
+                                  setColOptionBulkText("")
+                                }}
+                              >
+                                Múltiples
+                              </Button>
+                            </div>
+
+                            {showColOptionBulk === colIdx && (
+                              <div className="mt-2">
+                                <Textarea
+                                  value={colOptionBulkText}
+                                  onChange={(e) => setColOptionBulkText(e.target.value)}
+                                  placeholder={`Pega una opción por línea (ej. Opción A\nOpción B\nOpción C)`}
+                                  rows={4}
+                                />
+                                <div className="flex gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      const lines = colOptionBulkText
+                                        .split("\n")
+                                        .map((l) => l.trim())
+                                        .filter((l) => l.length > 0)
+                                      if (lines.length > 0) {
+                                        const newColOptions = allColOptions ? [...allColOptions] : []
+                                        while (newColOptions.length <= colIdx) newColOptions.push(["Opción 1"])
+                                        const existing = newColOptions[colIdx] || []
+                                        // Si todavía tiene el placeholder por defecto sin editar, se
+                                        // reemplaza en vez de agregar detrás ("Opción 1" + las pegadas).
+                                        const base = existing.length === 1 && existing[0] === "Opción 1" ? [] : existing
+                                        newColOptions[colIdx] = [...base, ...lines]
+                                        onUpdateQuestion(sectionId, question.id, "config", {
+                                          ...question.config,
+                                          matrixColOptions: newColOptions,
+                                        })
+                                        setColOptionBulkText("")
+                                        setShowColOptionBulk(null)
+                                      }
+                                    }}
+                                  >
+                                    Agregar opciones
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => { setColOptionBulkText(""); setShowColOptionBulk(null) }}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </>
                         )}
                     </div>
@@ -1816,6 +1882,26 @@ export function QuestionEditor({
                         {emoji}
                       </button>
                       <span className="text-xs text-muted-foreground">{(question.config?.ratingMin ?? 1) + idx}</span>
+                      {/* Etiqueta de texto por valor de la escala (acta 07/09/2026,
+                          ítem #6: "pregunta de calificación, pendiente de las
+                          etiquetas") — antes solo se podía elegir un emoji por
+                          valor, sin texto (ej. "Muy insatisfecho" / "Excelente"). */}
+                      <Input
+                        value={(Array.isArray(question.config?.ratingLabels) ? question.config.ratingLabels[idx] : "") || ""}
+                        onChange={(e) => {
+                          const max = question.config?.ratingMax ?? 5
+                          const min = question.config?.ratingMin ?? 1
+                          const labels: string[] = Array.isArray(question.config?.ratingLabels)
+                            ? [...question.config.ratingLabels]
+                            : Array.from({ length: max - min + 1 }, () => "")
+                          labels[idx] = e.target.value
+                          const newConfig = { ...question.config, ratingLabels: labels }
+                          onUpdateQuestion(sectionId, question.id, "config", newConfig)
+                          debouncedAutoSave({ ...question, config: newConfig }, sectionId, surveyId)
+                        }}
+                        placeholder="Etiqueta (opcional)"
+                        className="w-24 h-7 text-xs mt-1"
+                      />
                       {showEmojiPicker === idx && (
                         <div className="absolute z-50 mt-2">
                           <EmojiPicker

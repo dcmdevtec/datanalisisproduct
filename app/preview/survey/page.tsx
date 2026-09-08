@@ -2371,30 +2371,39 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             const emojis = Array.isArray(question.config?.ratingEmojis)
               ? question.config.ratingEmojis
               : Array.from({ length: max - min + 1 }, (_, i) => ["😞", "😐", "😊", "😁", "😍"][i] || "⭐");
+            // Etiquetas de texto por valor (acta 07/09/2026, #6) — opcionales,
+            // configuradas en el builder junto al emoji de cada valor.
+            const ratingLabels: string[] = Array.isArray(question.config?.ratingLabels) ? question.config.ratingLabels : [];
             return (
-              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                <span className="text-xs sm:text-sm text-muted-foreground">{min}</span>
+              <div className="flex flex-wrap items-start gap-2 sm:gap-4">
+                <span className="text-xs sm:text-sm text-muted-foreground mt-2 sm:mt-3">{min}</span>
                 <div className="flex flex-wrap gap-1">
                   {emojis.map((emoji, idx) => {
                     const value = min + idx;
                     const isActive = answers[question.id] === value;
+                    const label = ratingLabels[idx];
                     return (
                       <button
                         key={value}
                         type="button"
                         onClick={() => handleAnswerChange(question.id, value)}
-                        className={`p-1.5 sm:p-2 rounded-lg transition-colors text-xl sm:text-2xl ${isActive
+                        className={`flex flex-col items-center gap-0.5 p-1.5 sm:p-2 rounded-lg transition-colors max-w-[80px] ${isActive
                           ? "bg-primary text-primary-foreground scale-110 shadow-lg"
                           : "bg-muted hover:bg-muted/80"
                           }`}
-                        aria-label={`Valoración ${value}`}
+                        aria-label={label ? `Valoración ${value} — ${label}` : `Valoración ${value}`}
                       >
-                        {typeof emoji === 'object' && emoji !== null ? (emoji as any).image || (emoji as any).label : emoji}
+                        <span className="text-xl sm:text-2xl">
+                          {typeof emoji === 'object' && emoji !== null ? (emoji as any).image || (emoji as any).label : emoji}
+                        </span>
+                        {label && (
+                          <span className="text-[10px] sm:text-xs leading-tight text-center whitespace-normal">{label}</span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
-                <span className="text-xs sm:text-sm text-muted-foreground">{max}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground mt-2 sm:mt-3">{max}</span>
               </div>
             );
           }
@@ -3256,11 +3265,24 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   ))}
                 </div>
 
-                {/* ── DESKTOP: tabla horizontal ── */}
+                {/* ── DESKTOP: tabla horizontal ──
+                    Acta 07/09/2026, ítem #4: "las tablas matriz quedan muy
+                    extensas y toca hacer scroll y el enunciado queda perdido
+                    arriba". Con muchas filas, antes la tabla crecía sin límite
+                    de alto y el usuario terminaba haciendo scroll de TODA la
+                    página — el encabezado de columnas (y el enunciado, más
+                    arriba) quedaban fuera de vista. A partir de 8 filas se
+                    acota el alto de la tabla con scroll interno propio y el
+                    encabezado de columnas queda "inmovilizado" (sticky) —
+                    matrices cortas se ven exactamente igual que antes. */}
                 <div className="hidden sm:block overflow-x-auto">
-                  <div className="min-w-full bg-white rounded-lg shadow-sm ring-1 ring-gray-100 overflow-hidden border border-gray-100">
+                  <div
+                    className={`min-w-full bg-white rounded-lg shadow-sm ring-1 ring-gray-100 border border-gray-100 ${
+                      matrixRows.length > 8 ? "max-h-[65vh] overflow-y-auto" : "overflow-hidden"
+                    }`}
+                  >
                     <table className="w-full divide-y divide-gray-200" style={{ tableLayout: 'auto' }}>
-                      <thead className="bg-gray-50">
+                      <thead className={matrixRows.length > 8 ? "bg-gray-50 sticky top-0 z-10 shadow-sm" : "bg-gray-50"}>
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 w-2/5">Preguntas</th>
                           {matrixCols.map((col: any, idx: any) => (
