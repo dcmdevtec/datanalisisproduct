@@ -1390,6 +1390,13 @@ export function CreateSurveyForProjectPageContent() {
     assignedZones: [],
   })
   const [surveyStatus, setSurveyStatus] = useState<string>("draft")
+  // ID único de encuesta (ej. "ENC-2026-0001") — pedido 08/09/2026. Lo genera
+  // la base de datos al crear la encuesta (trigger assign_survey_code, ver
+  // db/migrations/2026-09-08_add_survey_code.sql); acá solo se refleja/edita
+  // mientras surveyStatus === "draft" — una vez activa, otro trigger
+  // (prevent_survey_code_change) ignora cualquier intento de cambiarlo sin
+  // importar qué camino de guardado lo intente.
+  const [surveyCode, setSurveyCode] = useState<string>("")
 
   const [allSurveyors, setAllSurveyors] = useState<Surveyor[]>([])
   const [allZones, setAllZones] = useState<Zone[]>([])
@@ -1495,7 +1502,10 @@ export function CreateSurveyForProjectPageContent() {
           if (!error && data?.[0]) {
             setCurrentSurveyId(data[0].id)
             setIsEditMode(true)
-            debugLog("✅ Encuesta creada automáticamente con ID:", data[0].id)
+            // El trigger assign_survey_code() ya generó el código al insertar
+            // (ver migración) — .select() lo devuelve de inmediato.
+            setSurveyCode(data[0].code || "")
+            debugLog("✅ Encuesta creada automáticamente con ID:", data[0].id, "código:", data[0].code)
           }
         } else {
           // Pasa por la API (no supabase directo) para que, si el estado
@@ -1511,6 +1521,10 @@ export function CreateSurveyForProjectPageContent() {
               deadline: deadline || null,
               status: surveyStatus,
               settings: settings || {},
+              // Solo importa mientras sigue en "draft" — una vez activa, el
+              // trigger prevent_survey_code_change() en la base de datos
+              // ignora cualquier valor distinto al ya guardado.
+              code: surveyCode || undefined,
             }),
           })
           if (!res.ok) {
@@ -1519,8 +1533,14 @@ export function CreateSurveyForProjectPageContent() {
           }
           debugLog("✅ Título/descripción actualizados en background")
         }
-      } catch (e) {
+      } catch (e: any) {
         debugWarn("Error en auto-save de título:", e)
+        // El resto de este autoguardado es silencioso a propósito, pero un
+        // choque de código de encuesta sí necesita avisarle a la persona —
+        // typeó algo intencional que no se pudo guardar.
+        if (typeof e?.message === "string" && e.message.includes("ID ya está en uso")) {
+          toast({ title: "ID repetido", description: e.message, variant: "destructive" })
+        }
       }
     }, 1500)
     return () => { if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current) }
@@ -2207,6 +2227,7 @@ export function CreateSurveyForProjectPageContent() {
         .select(
           `
           id,
+          code,
           title,
           description,
           status,
@@ -2264,6 +2285,7 @@ export function CreateSurveyForProjectPageContent() {
       setStartDate(surveyData.start_date ? surveyData.start_date.split("T")[0] : "")
       setDeadline(surveyData.deadline ? surveyData.deadline.split("T")[0] : "")
       setSurveyStatus(surveyData.status || "draft")
+      setSurveyCode(surveyData.code || "")
 
       debugLog("📊 Datos de la encuesta cargados:", {
         title: surveyData.title,
@@ -3030,6 +3052,65 @@ export function CreateSurveyForProjectPageContent() {
                         placeholder="Ej: Encuesta de satisfacción del cliente"
                         className="text-lg"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="survey-code" className="text-base font-medium">
+                        ID de la encuesta
+                      </Label>
+                      {surveyStatus === "draft" ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="survey-code"
+                              value={surveyCode}
+                              onChange={(e) => setSurveyCode(e.target.value.toUpperCase())}
+                              placeholder={currentSurveyId ? "Generando..." : "Se genera al guardar la encuesta"}
+                              disabled={!currentSurveyId}
+                              className="w-fit font-mono"
+                            />
+                            {surveyCode && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(surveyCode)
+                                    toast({ title: "Copiado", description: surveyCode })
+                                  } catch { /* ignore */ }
+                                }}
+                                title="Copiar ID"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Lo genera el sistema automáticamente. Mientras la encuesta esté en "Prueba" lo puedes
+                            editar; en cuanto la actives queda fijo para siempre y no se puede repetir con otra encuesta.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="font-mono text-lg font-semibold border rounded-md px-3 py-2 bg-muted/40 w-fit">
+                            {surveyCode || "—"}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(surveyCode)
+                                toast({ title: "Copiado", description: surveyCode })
+                              } catch { /* ignore */ }
+                            }}
+                            title="Copiar ID"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="description" className="text-base font-medium">

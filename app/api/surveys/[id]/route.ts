@@ -65,7 +65,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // console.log(`PUT /api/surveys/${id} - Actualizando encuesta`)
 
     const body = await request.json()
-    const { title, description, questions, settings, deadline, status, start_date } = body
+    const { title, description, questions, settings, deadline, status, start_date, code } = body
 
     const { data: existingSurvey, error: surveyCheckError } = await supabase
       .from("surveys")
@@ -88,6 +88,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // ID único de encuesta (ítem pedido 08/09/2026, "ENC-2026-0001"): se
+    // genera solo (trigger assign_survey_code() en el INSERT, ver migración
+    // db/migrations/2026-09-08_add_survey_code.sql) y, mientras la encuesta
+    // sigue en "draft", el usuario puede editarlo desde el tab Detalles — se
+    // manda acá igual que cualquier otro campo. Una vez la encuesta deja de
+    // estar en "draft", el trigger prevent_survey_code_change() en la propia
+    // base de datos ignora cualquier cambio a este campo (revierte al valor
+    // ya guardado) sin importar por qué camino llegue el UPDATE — no hace
+    // falta duplicar esa regla acá.
     const { data: updatedSurvey, error: updateError } = await supabase
       .from("surveys")
       .update({
@@ -97,13 +106,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         deadline,
         status,
         ...(start_date !== undefined ? { start_date } : {}),
+        ...(code !== undefined ? { code } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
       .select()
       .single()
 
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (updateError) {
+      // 23505 = unique_violation — el código que se intentó poner ya lo
+      // tiene otra encuesta (constraint surveys_code_unique_idx).
+      if ((updateError as any).code === "23505") {
+        return NextResponse.json({ error: "Ese ID ya está en uso por otra encuesta. Elige otro." }, { status: 409 })
+      }
+      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
 
     if (questions?.length > 0) {
       const { error: deleteError } = await supabase.from("questions").delete().eq("survey_id", id)
