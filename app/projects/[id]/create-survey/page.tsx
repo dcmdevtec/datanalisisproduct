@@ -3665,6 +3665,22 @@ export function CreateSurveyForProjectPageContent() {
   )
 }
 
+// Bug crítico reportado en reunión 07/09/2026 (ítem #2): "cuando se abandona
+// la encuesta quedan las preguntas grabadas para la siguiente encuesta".
+// Causa raíz: <CreateSurveyForProjectPageContent> no tenía `key`, así que al
+// navegar por router.push() entre "editar encuesta A" (?surveyId=A) y "crear
+// encuesta nueva" (sin surveyId) —o entre dos encuestas distintas del mismo
+// proyecto— Next.js App Router reutiliza la MISMA instancia del componente en
+// vez de desmontarla, y todo su useState (sections, surveyTitle,
+// currentSurveyId, etc.) queda con los datos de la encuesta anterior. Se fuerza
+// el remount (reset total de estado) con un `key` atado al surveyId de la URL:
+// cambia el surveyId → cambia el key → React desmonta y monta desde cero.
+function CreateSurveyForProjectPageKeyed() {
+  const searchParams = useSearchParams()
+  const surveyIdParam = searchParams.get("surveyId")
+  return <CreateSurveyForProjectPageContent key={surveyIdParam ?? "new"} />
+}
+
 export default function CreateSurveyForProjectPage() {
   return (
     <Suspense
@@ -3674,7 +3690,7 @@ export default function CreateSurveyForProjectPage() {
         </div>
       }
     >
-      <CreateSurveyForProjectPageContent />
+      <CreateSurveyForProjectPageKeyed />
     </Suspense>
   )
 }
