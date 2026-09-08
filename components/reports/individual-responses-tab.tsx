@@ -51,11 +51,28 @@ interface DetailQuestion {
   type: string
   answer: string
   rawAnswer?: any
+  // Opciones válidas de la pregunta (multiple_choice/dropdown/checkbox) —
+  // acta 07/09/2026, ítem #26: restringe la edición a estas, no texto libre.
+  options?: any[] | null
   matrixRows?: string[] | null
   matrixCols?: string[] | null
+  // "radio" (una opción por fila) | "checkbox" (varias) | otro (solo lectura)
+  matrixCellType?: string
   audioUrl: string | null
   fileUrls?: { name: string; url: string | null; type: string; path?: string }[]
   answerId?: string
+}
+
+// Tipos de opción fija editables con selector (radio/checklist) en vez de
+// texto libre. El resto (text, number, date, scale, etc.) sigue con Textarea.
+const CHOICE_TYPES_SINGLE = ["multiple_choice", "dropdown"]
+const CHOICE_TYPES_MULTI = ["checkbox"]
+
+// Mismo helper que components/question-editor.tsx (options puede venir como
+// string plano o como {label, value, ...}).
+function getOptionLabel(opt: any): string {
+  if (opt && typeof opt === "object") return String(opt.label ?? opt.value ?? "")
+  return String(opt ?? "")
 }
 
 interface DetailResponse {
@@ -175,7 +192,11 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
   const [deletingResponse, setDeletingResponse] = useState(false)
   // ── Editar respuesta a una pregunta puntual (reunión 2026-08-27) ────────────
   const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null)
-  const [editingValue, setEditingValue] = useState("")
+  // string para edición de texto libre; string[] para checkbox (selección múltiple)
+  const [editingValue, setEditingValue] = useState<string | string[]>("")
+  // Edición de matriz (ítem #25): objeto completo {rowIdx: columna(s)} — una
+  // fila de `answers` cubre TODA la matriz, no una celda suelta.
+  const [editingMatrixValue, setEditingMatrixValue] = useState<Record<string, any>>({})
   const [savingAnswer, setSavingAnswer] = useState(false)
 
   // ── Search within sheet questions ───────────────────────────────────────────
@@ -279,12 +300,65 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
         toast({ title: "Error al guardar", description: body?.error || "No se pudo guardar el cambio", variant: "destructive" })
         return
       }
+      // answer es el texto mostrado en la lista — cuando editingValue es un
+      // array (checkbox), se muestra unido por coma, igual que extractValue()
+      // en el detalle/reportes lo haría para un arreglo de valores.
+      const displayAnswer = Array.isArray(editingValue) ? editingValue.join(", ") : editingValue
       setDetail((prev) => {
         if (!prev) return prev
         return {
           ...prev,
           questions: prev.questions.map((q) =>
-            q.answerId === answerId ? { ...q, answer: editingValue, rawAnswer: editingValue } : q
+            q.answerId === answerId ? { ...q, answer: displayAnswer, rawAnswer: editingValue } : q
+          ),
+        }
+      })
+      toast({ title: "Respuesta actualizada" })
+      setEditingAnswerId(null)
+    } catch {
+      toast({ title: "Error de red", description: "No se pudo guardar el cambio", variant: "destructive" })
+    } finally {
+      setSavingAnswer(false)
+    }
+  }
+
+  // ── Guardar edición de una matriz completa (ítem #25) ────────────────────────
+  // A diferencia de handleSaveAnswer, acá se reemplaza el objeto ENTERO de la
+  // matriz (una fila de `answers` cubre todas las filas/columnas), no un
+  // valor suelto — editingMatrixValue ya viene keyed por índice de fila.
+  const handleSaveMatrixAnswer = async (responseId: string, answerId: string, q: DetailQuestion) => {
+    setSavingAnswer(true)
+    try {
+      const res = await fetch(`/api/reports/individual/${responseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answerId, value: editingMatrixValue }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast({ title: "Error al guardar", description: body?.error || "No se pudo guardar el cambio", variant: "destructive" })
+        return
+      }
+      // Resumen de texto para "answer" (usado por hasAnswer/ícono de estado) —
+      // la tabla de solo lectura sigue leyendo rawAnswer directamente.
+      const cellType = q.matrixCellType || "radio"
+      const summary = (q.matrixRows || [])
+        .map((row, rowIdx) => {
+          const cell = editingMatrixValue[String(rowIdx)]
+          if (cell === undefined || cell === null || cell === "") return null
+          const labels = Array.isArray(cell)
+            ? cell.map((v) => (typeof v === "number" ? q.matrixCols?.[v] ?? String(v) : String(v)))
+            : [typeof cell === "number" ? q.matrixCols?.[cell] ?? String(cell) : String(cell)]
+          return `${row}: ${labels.join("/")}`
+        })
+        .filter(Boolean)
+        .join(" · ")
+      setDetail((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          questions: prev.questions.map((qq) =>
+            qq.answerId === answerId ? { ...qq, answer: summary, rawAnswer: { ...editingMatrixValue } } : qq
           ),
         }
       })
@@ -922,15 +996,48 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
                             <p className="text-sm font-medium leading-snug text-foreground pt-0.5 flex-1">
                               {q.text}
                             </p>
-                            {/* Editar respuesta (reunión 2026-08-27) — solo para
-                                tipos de valor simple; matrix/location/file
-                                necesitan su propio editor, fuera de alcance acá. */}
-                            {q.answerId && !["matrix", "location", "file", "image_upload"].includes(q.type) && editingAnswerId !== q.answerId && (
+                            {/* Editar respuesta (reunión 2026-08-27, ampliado 07/09/2026 #25) —
+                                location/file/image_upload necesitan su propio editor, fuera de
+                                alcance acá. matrix ahora sí es editable, pero solo cuando el tipo
+                                de celda es radio/checkbox (los otros — number/text/dropdown/rating
+                                — se quedan de solo lectura, igual que antes). */}
+                            {q.answerId
+                              && !["location", "file", "image_upload"].includes(q.type)
+                              && !(q.type === "matrix" && !["radio", "checkbox"].includes(q.matrixCellType || "radio"))
+                              && editingAnswerId !== q.answerId && (
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-foreground"
-                                onClick={() => { setEditingAnswerId(q.answerId!); setEditingValue(q.answer || "") }}
+                                onClick={() => {
+                                  setEditingAnswerId(q.answerId!)
+                                  if (q.type === "matrix" && q.matrixRows?.length) {
+                                    // Normaliza el rawAnswer (keyed por índice O por texto de fila,
+                                    // ver comentario de "BUG 2026-08-28" más abajo en el renderer de
+                                    // solo lectura) a SIEMPRE keyed por índice, que es lo que este
+                                    // editor y el guardado usan.
+                                    const raw = (q.rawAnswer as Record<string, any>) || {}
+                                    const normalized: Record<string, any> = {}
+                                    q.matrixRows.forEach((row, rowIdx) => {
+                                      const cellValue = raw[String(rowIdx)] ?? raw[row]
+                                      if (cellValue !== undefined) normalized[String(rowIdx)] = cellValue
+                                    })
+                                    setEditingMatrixValue(normalized)
+                                  }
+                                  // Ítem #26: para preguntas de opción fija se precarga el valor
+                                  // actual en el formato que el selector espera (array para
+                                  // checkbox, string para single-select); el resto sigue como texto libre.
+                                  else if (CHOICE_TYPES_MULTI.includes(q.type)) {
+                                    const current = Array.isArray(q.rawAnswer)
+                                      ? q.rawAnswer.map((v: any) => getOptionLabel(v))
+                                      : (q.answer ? q.answer.split(",").map((s) => s.trim()).filter(Boolean) : [])
+                                    setEditingValue(current)
+                                  } else if (CHOICE_TYPES_SINGLE.includes(q.type)) {
+                                    setEditingValue(getOptionLabel(q.rawAnswer) || q.answer || "")
+                                  } else {
+                                    setEditingValue(q.answer || "")
+                                  }
+                                }}
                                 title="Editar respuesta"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -940,15 +1047,121 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
 
                           {/* Respuesta */}
                           <div className="ml-9">
-                            {editingAnswerId === q.answerId ? (
+                            {editingAnswerId === q.answerId && q.type === "matrix" && q.matrixRows?.length && q.matrixCols?.length ? (
+                              /* Editor de matriz (ítem #25) — tabla filas × columnas con
+                                 radio/checkbox según matrixCellType. */
                               <div className="space-y-2">
-                                <Textarea
-                                  value={editingValue}
-                                  onChange={(e) => setEditingValue(e.target.value)}
-                                  rows={3}
-                                  className="text-sm"
-                                  autoFocus
-                                />
+                                <div className="overflow-x-auto rounded-lg border">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted/50">
+                                        <th className="text-left font-medium px-2 py-1.5 border-b"> </th>
+                                        {q.matrixCols.map((col) => (
+                                          <th key={col} className="text-center font-medium px-2 py-1.5 border-b border-l whitespace-nowrap">
+                                            {col}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {q.matrixRows.map((row, rowIdx) => {
+                                        const cellType = q.matrixCellType || "radio"
+                                        const cellValue = editingMatrixValue[String(rowIdx)]
+                                        return (
+                                          <tr key={row} className="even:bg-muted/20">
+                                            <td className="px-2 py-1.5 border-b font-medium text-foreground/80">{row}</td>
+                                            {q.matrixCols!.map((col, colIdx) => {
+                                              const checked = cellType === "checkbox"
+                                                ? Array.isArray(cellValue) && cellValue.includes(colIdx)
+                                                : cellValue === col
+                                              return (
+                                                <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                                  <input
+                                                    type={cellType === "checkbox" ? "checkbox" : "radio"}
+                                                    name={`matrix-${q.answerId}-${rowIdx}`}
+                                                    checked={checked}
+                                                    onChange={() => {
+                                                      setEditingMatrixValue((prev) => {
+                                                        const next = { ...prev }
+                                                        if (cellType === "checkbox") {
+                                                          const cur = Array.isArray(next[String(rowIdx)]) ? next[String(rowIdx)] : []
+                                                          next[String(rowIdx)] = checked
+                                                            ? cur.filter((v: number) => v !== colIdx)
+                                                            : [...cur, colIdx]
+                                                        } else {
+                                                          next[String(rowIdx)] = col
+                                                        }
+                                                        return next
+                                                      })
+                                                    }}
+                                                  />
+                                                </td>
+                                              )
+                                            })}
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    disabled={savingAnswer}
+                                    onClick={() => handleSaveMatrixAnswer(detail.id, q.answerId!, q)}
+                                  >
+                                    {savingAnswer ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+                                    Guardar
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setEditingAnswerId(null)} disabled={savingAnswer}>
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : editingAnswerId === q.answerId ? (
+                              <div className="space-y-2">
+                                {/* Ítem #26 (acta 07/09/2026): para multiple_choice/dropdown/checkbox
+                                    se restringe a las opciones reales de la pregunta (radio o
+                                    checklist) en vez de texto libre — evita guardar respuestas
+                                    inconsistentes con lo que la encuesta permite. El resto de
+                                    tipos (texto, número, fecha, etc.) sigue con texto libre. */}
+                                {q.options && q.options.length > 0 && (CHOICE_TYPES_SINGLE.includes(q.type) || CHOICE_TYPES_MULTI.includes(q.type)) ? (
+                                  <div className="space-y-1.5 rounded-md border p-2.5 bg-muted/20">
+                                    {q.options.map((opt, oi) => {
+                                      const label = getOptionLabel(opt)
+                                      const isMulti = CHOICE_TYPES_MULTI.includes(q.type)
+                                      const checked = isMulti
+                                        ? Array.isArray(editingValue) && editingValue.includes(label)
+                                        : editingValue === label
+                                      return (
+                                        <label key={oi} className="flex items-center gap-2 text-sm cursor-pointer">
+                                          <input
+                                            type={isMulti ? "checkbox" : "radio"}
+                                            name={`edit-${q.answerId}`}
+                                            checked={checked}
+                                            onChange={() => {
+                                              if (isMulti) {
+                                                const cur = Array.isArray(editingValue) ? editingValue : []
+                                                setEditingValue(checked ? cur.filter((v) => v !== label) : [...cur, label])
+                                              } else {
+                                                setEditingValue(label)
+                                              }
+                                            }}
+                                          />
+                                          {label}
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                ) : (
+                                  <Textarea
+                                    value={Array.isArray(editingValue) ? editingValue.join(", ") : editingValue}
+                                    onChange={(e) => setEditingValue(e.target.value)}
+                                    rows={3}
+                                    className="text-sm"
+                                    autoFocus
+                                  />
+                                )}
                                 <div className="flex gap-2">
                                   <Button
                                     size="sm"

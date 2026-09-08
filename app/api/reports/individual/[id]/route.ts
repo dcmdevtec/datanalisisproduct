@@ -165,8 +165,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             orderNum: q.order_num ?? 0,
             answer: extractValue(a.value, q.type),
             rawAnswer: a.value,
+            // Ítem #26 (acta 07/09/2026): opciones válidas de la pregunta,
+            // para que el frontend restrinja la edición a un selector en vez
+            // de texto libre (ver individual-responses-tab.tsx).
+            options: q.options || null,
             matrixRows: q.matrix_rows || q.settings?.matrixRows || null,
             matrixCols: q.matrix_cols || q.settings?.matrixCols || null,
+            // Ítem #25 (acta 07/09/2026): tipo de celda de la matriz — solo
+            // "radio" (una opción por fila) y "checkbox" (varias por fila)
+            // tienen editor en el frontend; el resto (number/text/dropdown/
+            // rating) se muestra de solo lectura, igual que antes.
+            matrixCellType: q.settings?.matrixCellType || "radio",
             audioUrl: audio?.remoteUrl ?? null,
             fileUrls,
           }
@@ -325,12 +334,68 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // otra respuesta se podría sobreescribir desde este endpoint.
     const { data: answerRow, error: fetchError } = await admin
       .from("answers")
-      .select("id, response_id")
+      .select("id, response_id, question_id, questions(type, options, matrix_rows, matrix_cols, settings)")
       .eq("id", answerId)
       .maybeSingle()
 
     if (fetchError || !answerRow || (answerRow as any).response_id !== responseId) {
       return NextResponse.json({ error: "La respuesta no pertenece a esta encuesta" }, { status: 404 })
+    }
+
+    // Acta 07/09/2026, ítem #26: "cada pregunta se podría modificar,
+    // únicamente con las opciones de respuestas creadas para esa pregunta" —
+    // antes se podía guardar cualquier texto libre para CUALQUIER tipo de
+    // pregunta. Para las de opción fija (multiple_choice/dropdown de una sola
+    // respuesta, checkbox de varias), se valida server-side que lo enviado
+    // sea (o esté compuesto únicamente por) opciones reales de esa pregunta —
+    // el frontend ya restringe la UI a un selector/checklist (ver
+    // components/reports/individual-responses-tab.tsx), esto es la
+    // salvaguarda por si alguien pega el request a mano.
+    const question = (answerRow as any).questions as {
+      type: string; options: any[] | null
+      matrix_rows: string[] | null; matrix_cols: string[] | null; settings: any
+    } | null
+    if (question && ["multiple_choice", "dropdown", "checkbox"].includes(question.type)) {
+      const validLabels = new Set(
+        (question.options || []).map((opt: any) => String(opt && typeof opt === "object" ? (opt.label ?? opt.value ?? "") : opt ?? ""))
+      )
+      const submitted: string[] = Array.isArray(body.value) ? body.value.map((v: any) => String(v)) : [String(body.value)]
+      const invalid = submitted.filter((v) => !validLabels.has(v))
+      if (invalid.length > 0) {
+        return NextResponse.json(
+          { error: `Valor no válido para esta pregunta: ${invalid.join(", ")}. Debe ser una de las opciones configuradas.` },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Ítem #25 (acta 07/09/2026): editor de tablas matriz — value acá es el
+    // objeto COMPLETO de la matriz (una fila de `answers` cubre todas las
+    // filas/columnas), keyed por índice de fila. Se valida que cada celda
+    // seleccionada corresponda a una columna real de la matriz — incluso
+    // aunque el frontend ya restrinja la UI a filas/columnas configuradas.
+    if (question?.type === "matrix") {
+      const matrixCols: string[] = question.matrix_cols || question.settings?.matrixCols || []
+      const cellType = question.settings?.matrixCellType || "radio"
+      if (typeof body.value !== "object" || body.value === null || Array.isArray(body.value)) {
+        return NextResponse.json({ error: "El valor de una matriz debe ser un objeto {fila: columna(s)}" }, { status: 400 })
+      }
+      if ((cellType === "radio" || cellType === "checkbox") && matrixCols.length > 0) {
+        for (const cellValue of Object.values(body.value as Record<string, any>)) {
+          const values = Array.isArray(cellValue) ? cellValue : [cellValue]
+          for (const v of values) {
+            // radio guarda el TEXTO de columna; checkbox guarda el ÍNDICE
+            // (ver mismo formato leído en components/reports/individual-responses-tab.tsx)
+            const label = typeof v === "number" ? matrixCols[v] : v
+            if (label !== undefined && label !== null && label !== "" && !matrixCols.includes(String(label))) {
+              return NextResponse.json(
+                { error: `Columna no válida en la matriz: ${label}` },
+                { status: 400 }
+              )
+            }
+          }
+        }
+      }
     }
 
     const { error: updateError } = await admin
