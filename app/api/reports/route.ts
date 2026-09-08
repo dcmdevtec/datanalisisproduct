@@ -3,6 +3,34 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
 
+// Colombia no observa horario de verano — offset fijo UTC-5 todo el año, pero
+// calculamos con Intl (zona real "America/Bogota") en vez de restar 5h a mano
+// por si esto corre alguna vez en un entorno con reglas DST distintas.
+// created_at se guarda en UTC; usar Date.getHours()/getDay() da la hora LOCAL
+// DEL SERVIDOR (en Vercel/Node eso normalmente es UTC), no la de Bogotá — eso
+// es justo el bug reportado en la reunión 07/09/2026 (#15: "hice la encuesta
+// a las 3pm y aparece a las 8pm" = exactamente el desfase de 5h UTC-5).
+const BOGOTA_TZ = "America/Bogota"
+const bogotaHourFormatter = new Intl.DateTimeFormat("en-US", { timeZone: BOGOTA_TZ, hour: "2-digit", hourCycle: "h23" })
+const bogotaDayOfWeekFormatter = new Intl.DateTimeFormat("en-US", { timeZone: BOGOTA_TZ, weekday: "short" })
+const bogotaDayKeyFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: BOGOTA_TZ, year: "numeric", month: "2-digit", day: "2-digit" })
+
+function bogotaHour(dateStr: string): number {
+  return Number(bogotaHourFormatter.format(new Date(dateStr)))
+}
+
+// "YYYY-MM-DD" en hora de Bogotá (en-CA da formato ISO por defecto)
+function bogotaDayKey(dateStr: string): string {
+  return bogotaDayKeyFormatter.format(new Date(dateStr))
+}
+
+const WEEKDAY_EN_TO_ES: Record<string, string> = {
+  Sun: "Dom", Mon: "Lun", Tue: "Mar", Wed: "Mié", Thu: "Jue", Fri: "Vie", Sat: "Sáb",
+}
+function bogotaDayOfWeekEs(dateStr: string): string {
+  return WEEKDAY_EN_TO_ES[bogotaDayOfWeekFormatter.format(new Date(dateStr))] ?? "?"
+}
+
 // Extract a displayable string from a JSONB answer value
 function extractValue(val: any): string | string[] {
   if (val === null || val === undefined) return ""
@@ -414,7 +442,14 @@ export async function GET(request: NextRequest) {
           .map((r: any) => r.respondent_id as string)
       )
     ]
-    const geoSurveyorNameByRespondentId: Record<string, string | null> = {}
+    // Mismo bug que geoSurveyorNameByRespondentId corregido más abajo en
+    // surveyorByRespondentId (ítem #14): acá también hacía falta el id
+    // canónico de surveyors, no solo el nombre — sin él, los puntos del mapa
+    // quedaban etiquetados con surveyorId = respondent_id (auth user_id), que
+    // no calza con surveyor_locations.surveyor_id ni con el filtro "Encuestador"
+    // del mapa (acta 07/09/2026, ítem #31: "no está tomando la información del
+    // encuestador").
+    const geoSurveyorByRespondentId: Record<string, { id: string; name: string | null }> = {}
     if (geoRespondentIdsNeedingSurveyor.length > 0) {
       const { data: byUserId } = await admin
         .from("surveyors")
@@ -422,13 +457,13 @@ export async function GET(request: NextRequest) {
         .in("user_id", geoRespondentIdsNeedingSurveyor)
       const resolvedIds = new Set<string>()
       for (const s of (byUserId as any[]) || []) {
-        geoSurveyorNameByRespondentId[s.user_id] = s.name ?? null
+        geoSurveyorByRespondentId[s.user_id] = { id: s.id, name: s.name ?? null }
         resolvedIds.add(s.user_id)
       }
       const remaining = geoRespondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
       if (remaining.length > 0) {
         const { data: byLegacyId } = await admin.from("surveyors").select("id, name").in("id", remaining)
-        for (const s of (byLegacyId as any[]) || []) geoSurveyorNameByRespondentId[s.id] = s.name ?? null
+        for (const s of (byLegacyId as any[]) || []) geoSurveyorByRespondentId[s.id] = { id: s.id, name: s.name ?? null }
       }
     }
 
@@ -446,9 +481,10 @@ export async function GET(request: NextRequest) {
           if (metaId && geoSurveyorNameByMetaId[metaId] !== undefined) {
             surveyorId = metaId
             surveyorName = geoSurveyorNameByMetaId[metaId]
-          } else if ((r as any).respondent_id && geoSurveyorNameByRespondentId[(r as any).respondent_id] !== undefined) {
-            surveyorId = (r as any).respondent_id
-            surveyorName = geoSurveyorNameByRespondentId[(r as any).respondent_id]
+          } else if ((r as any).respondent_id && geoSurveyorByRespondentId[(r as any).respondent_id] !== undefined) {
+            const resolved = geoSurveyorByRespondentId[(r as any).respondent_id]
+            surveyorId = resolved.id
+            surveyorName = resolved.name
           }
         }
         const startedAt = (r as any).started_at ?? null
@@ -755,20 +791,22 @@ export async function GET(request: NextRequest) {
       if (total > 0) nps = Math.round(((promoters - detractors) / total) * 1000) / 10
     }
 
-    // Responses timeline
+    // Responses timeline — agrupado por día en hora de Bogotá (no UTC): una
+    // respuesta de las 11pm en Bogotá es 4am UTC del día siguiente, así que
+    // agrupar por fecha UTC la corría de día.
     const responsesByDay: Record<string, number> = {}
     for (const r of responses) {
-      const day = new Date(r.created_at).toISOString().slice(0, 10)
+      const day = bogotaDayKey(r.created_at)
       responsesByDay[day] = (responsesByDay[day] || 0) + 1
     }
     const responsesTimeline = Object.entries(responsesByDay)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }))
 
-    // Responses by hour of day (0–23)
+    // Responses by hour of day (0–23), en hora de Bogotá (ver bogotaHour arriba)
     const responsesByHour = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }))
     for (const r of responses) {
-      const h = new Date(r.created_at).getHours()
+      const h = bogotaHour(r.created_at)
       responsesByHour[h].count++
     }
     const peakHour = responsesByHour.reduce((best, cur) => cur.count > best.count ? cur : best, responsesByHour[0]).hour
@@ -832,7 +870,7 @@ export async function GET(request: NextRequest) {
       questionMap[q.id].answers.push(a.value)
       const parentResponse = responseById[a.response_id]
       if (parentResponse?.created_at) {
-        questionMap[q.id].days.push(new Date(parentResponse.created_at).toISOString().slice(0, 10))
+        questionMap[q.id].days.push(bogotaDayKey(parentResponse.created_at))
       }
     }
 
@@ -1165,8 +1203,8 @@ export async function GET(request: NextRequest) {
     const responsesByDayOfWeek: Record<string, number> = {}
     const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
     for (const r of responses) {
-      const dayIdx = new Date(r.created_at).getDay()
-      responsesByDayOfWeek[dayNames[dayIdx]] = (responsesByDayOfWeek[dayNames[dayIdx]] || 0) + 1
+      const dayEs = bogotaDayOfWeekEs(r.created_at)
+      responsesByDayOfWeek[dayEs] = (responsesByDayOfWeek[dayEs] || 0) + 1
     }
     const dailyDistribution = dayNames.map((d) => ({ day: d, count: responsesByDayOfWeek[d] || 0 }))
 

@@ -263,15 +263,19 @@ function ReportsPageContent() {
     setExporting(tab)
     try {
       const periodLabel = dateFrom || dateTo ? `${dateFrom || "inicio"}_a_${dateTo || "hoy"}` : "todo"
+      // Título de la encuesta filtrada, para que el PDF diga a qué encuesta
+      // corresponde (ítem #16, acta 07/09/2026) — null cuando el filtro está
+      // en "Todas las encuestas", que addHeader() interpreta y rotula así.
+      const surveyTitle = selectedSurveyTitleForExport
       switch (tab) {
         case "summary":
-          await exportSummary(data, periodLabel)
+          await exportSummary(data, periodLabel, surveyTitle)
           break
         case "responses":
-          await exportResponses(data, periodLabel)
+          await exportResponses(data, periodLabel, surveyTitle)
           break
         case "performance":
-          await exportPerformance(data, periodLabel)
+          await exportPerformance(data, periodLabel, surveyTitle)
           break
         case "geographic":
           // El mapa oculto de exportación (ver #export-geographic más abajo)
@@ -284,7 +288,7 @@ function ReportsPageContent() {
           // criterio pragmático que el resto de esta exportación: si algo no
           // llegó a tiempo, la captura sigue sin eso en vez de fallar).
           await new Promise((resolve) => setTimeout(resolve, 2500))
-          await exportGeographic(data, periodLabel)
+          await exportGeographic(data, periodLabel, surveyTitle)
           break
       }
       toast({ title: "Exportado", description: "El reporte se descargó correctamente" })
@@ -367,6 +371,14 @@ function ReportsPageContent() {
   // página (las 5 pestañas), no solo de una tabla puntual.
   const isScoped = !!searchParams.get("survey")
   const scopedSurveyTitle = isScoped ? data?.surveys?.find((s) => s.id === selectedSurvey)?.title : null
+  // Para el PDF exportado (a diferencia de scopedSurveyTitle, que solo aplica
+  // llegando por "Ver reporte" con ?survey=): el título de la encuesta
+  // seleccionada por el filtro "Encuesta" del propio /reports, sin importar
+  // cómo se llegó a la página. Antes el PDF nunca mostraba a qué encuesta
+  // correspondía (acta 07/09/2026, ítem #16: "no aparece el título de la Encuesta").
+  const selectedSurveyTitleForExport = selectedSurvey !== "all"
+    ? (data?.surveys?.find((s) => s.id === selectedSurvey)?.title ?? null)
+    : null
 
   return (
     <DashboardLayout>
@@ -838,11 +850,27 @@ function ReportsPageContent() {
                   </CardContent>
                 </Card>
 
-                {/* ── Rendimiento por encuesta (se mantiene, ya existía) ── */}
+                {/* ── Rendimiento por encuesta (se mantiene, ya existía) ──
+                    "Tasa" acá es % de respuestas que llegaron a status="completed"
+                    (el encuestado terminó de contestar el formulario) — NO es lo
+                    mismo que "Tasa de Respuestas Efectivas" (arriba, tarjeta "Tasa
+                    Global", y en Rendimiento por Encuestador), que exige además
+                    que el outcome haya sido clasificado como "efectiva" (no
+                    incidencia/descalificada). Antes ambas decían solo "Tasa" sin
+                    distinción, así que una encuesta con 100% de respuestas
+                    "completadas" pero mayoría clasificadas como incidencia/
+                    descalificada mostraba 100% acá y un % mucho menor en
+                    "Tasa Global" — el cliente lo reportó como indicadores que
+                    "no cuadran" (acta 07/09/2026, ítem #29), cuando en realidad
+                    miden cosas distintas. Se aclara con label y descripción. */}
                 <Card data-export-chart>
                   <CardHeader>
                     <CardTitle>Rendimiento por Encuesta</CardTitle>
-                    <CardDescription>Respuestas, completación y tiempo promedio por encuesta</CardDescription>
+                    <CardDescription>
+                      Respuestas, completación y tiempo promedio por encuesta — &quot;Tasa de finalización&quot;: % que
+                      terminó de responder el formulario (distinto de &quot;Tasa de Respuestas Efectivas&quot;, que además
+                      exige que no haya sido incidencia ni descalificada)
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {(data?.performance?.surveyPerformance?.length ?? 0) === 0 ? (
@@ -853,7 +881,7 @@ function ReportsPageContent() {
                           <div className="col-span-5">Encuesta</div>
                           <div className="col-span-2 text-center">Respuestas</div>
                           <div className="col-span-2 text-center">Completadas</div>
-                          <div className="col-span-2 text-center">Tasa</div>
+                          <div className="col-span-2 text-center" title="% que llegó a status completado — no confundir con Tasa de Respuestas Efectivas">Tasa Finaliz.</div>
                           <div className="col-span-1 text-center">Tiempo</div>
                         </div>
                         <div className="divide-y">

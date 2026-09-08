@@ -37,10 +37,56 @@ const DEFAULT_PALETTE = [
   "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#06b6d4",
 ]
 
-function buildPalette(baseColor?: string): string[] {
+function hexToHsl(hex: string): [number, number, number] {
+  const m = hex.replace("#", "")
+  const r = parseInt(m.slice(0, 2), 16) / 255
+  const g = parseInt(m.slice(2, 4), 16) / 255
+  const b = parseInt(m.slice(4, 6), 16) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  let h = 0, s = 0
+  const l = (max + min) / 2
+  const d = max - min
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)); break
+      case g: h = (b - r) / d + 2; break
+      default: h = (r - g) / d + 4
+    }
+    h *= 60
+  }
+  return [h, s * 100, l * 100]
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const sN = s / 100, lN = l / 100
+  const k = (n: number) => (n + h / 30) % 12
+  const a = sN * Math.min(lN, 1 - lN)
+  const f = (n: number) => lN - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+  const toHex = (n: number) => Math.round(f(n) * 255).toString(16).padStart(2, "0")
+  return `#${toHex(0)}${toHex(8)}${toHex(4)}`
+}
+
+// Al elegir un color base (#18 reunión 07/09/2026: "solo permite personalizar
+// parte de la gráfica"), antes solo se recoloreaba la primera barra/porción y
+// el resto quedaba con la paleta por defecto (azul, ámbar, rojo...) sin
+// relación con lo elegido. Ahora se genera una escala completa de tonos del
+// mismo color (variando el brillo) para que TODA la gráfica refleje la
+// personalización, manteniendo cada serie distinguible.
+function buildPalette(baseColor?: string, count: number = 10): string[] {
   if (!baseColor) return DEFAULT_PALETTE
-  // Use the base color as the first entry and build analogous shades for the rest
-  return [baseColor, ...DEFAULT_PALETTE.filter((c) => c !== baseColor)]
+  const [h, s, l] = hexToHsl(baseColor)
+  const n = Math.max(count, 1)
+  if (n === 1) return [baseColor]
+  return Array.from({ length: n }, (_, i) => {
+    // La primera barra/porción es EXACTAMENTE el color elegido (lo que el
+    // cliente espera al hacer clic en un color); el resto alterna tonos más
+    // claros/oscuros del mismo matiz, en vez de mezclar colores sin relación.
+    if (i === 0) return baseColor
+    const step = Math.ceil(i / 2) * 12
+    const lightness = i % 2 === 1 ? Math.min(85, l + step) : Math.max(15, l - step)
+    return hslToHex(h, Math.max(s, 35), lightness)
+  })
 }
 
 // Tooltip reutilizable con estilos CSS-var para que funcione en dark mode
@@ -171,6 +217,15 @@ function BarsVertical({ distribution, showLabels, palette }: { distribution: Dis
     )
   }
 
+  // Pedido en reunión 07/09/2026 (#19): las barras deben mostrar número Y
+  // porcentaje visibles en el gráfico, no solo el número (el porcentaje ya
+  // estaba pero únicamente en el tooltip al pasar el mouse).
+  const ValueLabel = ({ x, y, width, value, index }: any) => (
+    <text x={x + width / 2} y={y} dy={-6} textAnchor="middle" fontSize={10} fill="hsl(var(--muted-foreground))">
+      {value} ({formatPercent(distribution[index]?.percentage ?? 0)})
+    </text>
+  )
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <BarChart data={distribution} margin={{ top: 8, right: 8, left: -8, bottom: 60 }}>
@@ -184,7 +239,7 @@ function BarsVertical({ distribution, showLabels, palette }: { distribution: Dis
         />
         <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
-        <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? { position: "top", fontSize: 10, fill: "hsl(var(--muted-foreground))" } : false}>
+        <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? <ValueLabel /> : false}>
           {distribution.map((_, i) => (
             <Cell key={i} fill={palette[i % palette.length]} />
           ))}
@@ -209,9 +264,17 @@ function BarsHorizontal({ distribution, showLabels, palette }: { distribution: D
     )
   }
 
+  // Ver nota en BarsVertical (#19, reunión 07/09/2026): número + porcentaje
+  // visibles en la barra, no solo al hacer hover.
+  const ValueLabel = ({ x, y, width, height, value, index }: any) => (
+    <text x={x + width + 6} y={y + height / 2} dy={4} textAnchor="start" fontSize={10} fill="hsl(var(--muted-foreground))">
+      {value} ({formatPercent(distribution[index]?.percentage ?? 0)})
+    </text>
+  )
+
   return (
     <ResponsiveContainer width="100%" height={Math.max(200, distribution.length * 44)}>
-      <BarChart data={distribution} layout="vertical" margin={{ top: 4, right: 48, left: 0, bottom: 4 }}>
+      <BarChart data={distribution} layout="vertical" margin={{ top: 4, right: 72, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
         <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
         <YAxis
@@ -221,7 +284,7 @@ function BarsHorizontal({ distribution, showLabels, palette }: { distribution: D
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
-        <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? { position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" } : false}>
+        <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? <ValueLabel /> : false}>
           {distribution.map((_, i) => (
             <Cell key={i} fill={palette[i % palette.length]} />
           ))}
@@ -286,7 +349,7 @@ function Trend({ timeline, showLabels }: { timeline: TimelinePoint[]; showLabels
 }
 
 export function QuestionChart({ type, distribution, timeline, showLabels, baseColor }: QuestionChartProps) {
-  const palette = buildPalette(baseColor)
+  const palette = buildPalette(baseColor, distribution.length || 10)
   if (type === "trend") return <Trend timeline={timeline || []} showLabels={showLabels} />
   if (distribution.length === 0) {
     return (

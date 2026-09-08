@@ -242,7 +242,14 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
   }, [isFileQuestion, question.questionId, surveyId])
 
   return (
-    <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
+    // data-export-chart: sin esto, exportResponses() (app/lib/export-report.ts)
+    // no encontraba NINGÚN gráfico dentro de #export-responses y el PDF de
+    // "Análisis de Resultados" salía solo con la tabla, sin las gráficas
+    // (acta 07/09/2026, ítem #20: "no descarga las gráficas"). Los botones de
+    // la barra de controles se excluyen de la captura con
+    // data-html2canvas-ignore (ver bloque "Controls" más abajo) para que la
+    // imagen quede limpia (solo título + gráfica + tabla, sin UI interactiva).
+    <div className="border rounded-xl overflow-hidden bg-card shadow-sm" data-export-chart>
       {/* Header */}
       <div className="flex items-start gap-3 px-4 py-3 bg-muted/30 border-b">
         <span className="flex-shrink-0 mt-0.5 w-6 h-6 rounded-full bg-[#18b0a4]/10 text-[#18b0a4] text-xs font-bold flex items-center justify-center">
@@ -277,7 +284,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
         <div className="px-4 py-4 space-y-4">
           {/* Controls — ocultar para matrices y archivos */}
           {!isFileQuestion && !isMatrixQuestion && hasDistribution && (
-            <div className="flex flex-wrap gap-2 items-center pb-3 border-b">
+            <div className="flex flex-wrap gap-2 items-center pb-3 border-b" data-html2canvas-ignore="true">
               {/* Chart type buttons */}
               <div className="flex gap-1 flex-wrap">
                 {CHART_OPTIONS.map(({ value, label, icon: Icon }) => (

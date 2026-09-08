@@ -79,25 +79,41 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   return images
 }
 
-function newDoc(): jsPDF {
-  return new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" })
+function newDoc(orientation: "portrait" | "landscape" = "portrait"): jsPDF {
+  return new jsPDF({ orientation, unit: "pt", format: "a4" })
 }
 
-// Encabezado común: título, sección, fecha de generación y período — mismo
-// contenido que antes tenía cada .xlsx en su fila de cabecera.
-function addHeader(doc: jsPDF, tab: string, period: string): number {
+// Encabezado común: título, sección, encuesta filtrada, fecha de generación
+// y período — mismo contenido que antes tenía cada .xlsx en su fila de
+// cabecera. Centrado (antes salía pegado a la izquierda, "corrido") y ahora
+// incluye el nombre de la encuesta cuando el filtro no está en "Todas las
+// encuestas" (acta 07/09/2026, ítem #16: "no aparece el título de la Encuesta,
+// además se puede centrar un poco más").
+function addHeader(doc: jsPDF, tab: string, period: string, surveyTitle?: string | null): number {
   const pageWidth = doc.internal.pageSize.getWidth()
+  const centerX = pageWidth / 2
+  const bannerHeight = surveyTitle ? 74 : 60
   doc.setFillColor(TEAL)
-  doc.rect(0, 0, pageWidth, 60, "F")
+  doc.rect(0, 0, pageWidth, bannerHeight, "F")
   doc.setTextColor("#ffffff")
   doc.setFontSize(16)
   doc.setFont("helvetica", "bold")
-  doc.text("Reporte de Encuestas — Datanalisis", 40, 30)
-  doc.setFontSize(10)
+  doc.text("Reporte de Encuestas — Datanalisis", centerX, 24, { align: "center" })
+  let subY = 40
+  if (surveyTitle) {
+    doc.setFontSize(12)
+    doc.text(surveyTitle, centerX, subY, { align: "center", maxWidth: pageWidth - 80 })
+    subY += 18
+  }
+  doc.setFontSize(9.5)
   doc.setFont("helvetica", "normal")
-  doc.text(`${tabTitles[tab] || tab}  ·  Generado el ${new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" })}  ·  Período: ${periodLabels[period] || period}`, 40, 48)
+  const scopeLabel = surveyTitle ? "" : "Todas las encuestas  ·  "
+  doc.text(
+    `${tabTitles[tab] || tab}  ·  ${scopeLabel}Generado el ${new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" })}  ·  Período: ${periodLabels[period] || period}`,
+    centerX, subY, { align: "center" }
+  )
   doc.setTextColor("#111111")
-  return 80
+  return bannerHeight + 20
 }
 
 // Agrega una imagen (captura de gráfico) ajustada al ancho de página,
@@ -206,7 +222,7 @@ function drawNativeLegend(doc: jsPDF, legend: NonNullable<ChartCapture["legend"]
 // medida del contenido real en vez de usar A4 fijo, calculando el alto total
 // ANTES de crear el documento (las imágenes ya traen su tamaño real desde
 // html2canvas a scale:3, para que el texto salga nítido).
-export async function exportSummary(data: any, period: string) {
+export async function exportSummary(data: any, period: string, surveyTitle?: string | null) {
   const contentWidth = 750
   const margin = 40
   const gap = 16
@@ -216,13 +232,16 @@ export async function exportSummary(data: any, period: string) {
   const rows = layoutRows(chartImages, contentWidth, gap)
   const rowsTotalHeight = rows.reduce((sum, row) => sum + row.height + gap, 0)
 
-  const headerHeight = 80
+  // El banner crece ~34pt cuando se muestra el nombre de la encuesta (ver
+  // addHeader) — hay que reservarle el mismo espacio acá, porque esta página
+  // se dimensiona a medida ANTES de dibujar nada.
+  const headerHeight = surveyTitle ? 114 : 80
   const bottomMargin = 40
   const totalHeight = Math.ceil(headerHeight + rowsTotalHeight + bottomMargin)
 
   const doc = new jsPDF({ unit: "pt", format: [pageWidth, Math.max(totalHeight, 200)] })
 
-  let y = addHeader(doc, "summary", period)
+  let y = addHeader(doc, "summary", period, surveyTitle)
 
   for (const row of rows) {
     let x = margin
@@ -258,9 +277,9 @@ export async function exportSummary(data: any, period: string) {
 }
 
 // ======================== ANÁLISIS DE RESULTADOS ========================
-export async function exportResponses(data: any, period: string) {
+export async function exportResponses(data: any, period: string, surveyTitle?: string | null) {
   const doc = newDoc()
-  let y = addHeader(doc, "responses", period)
+  let y = addHeader(doc, "responses", period, surveyTitle)
   const breakdowns = data.responses?.questionBreakdowns || []
 
   y = addSectionTitle(doc, `Análisis por pregunta (${breakdowns.length})`, y)
@@ -300,9 +319,9 @@ export async function exportResponses(data: any, period: string) {
 }
 
 // ======================== RENDIMIENTO ========================
-export async function exportPerformance(data: any, period: string) {
+export async function exportPerformance(data: any, period: string, surveyTitle?: string | null) {
   const doc = newDoc()
-  let y = addHeader(doc, "performance", period)
+  let y = addHeader(doc, "performance", period, surveyTitle)
   const perf = data.performance
 
   y = addSectionTitle(doc, "Encuestadores", y)
@@ -346,9 +365,14 @@ export async function exportPerformance(data: any, period: string) {
 }
 
 // ======================== GEOGRÁFICO ========================
-export async function exportGeographic(data: any, period: string) {
-  const doc = newDoc()
-  let y = addHeader(doc, "geographic", period)
+export async function exportGeographic(data: any, period: string, surveyTitle?: string | null) {
+  // Horizontal (antes portrait, igual que las demás pestañas): el mapa es
+  // contenido ancho por naturaleza — en A4 vertical quedaba angosto/pequeño.
+  // Ítem #33 (acta 07/09/2026): "se puede mejorar la descarga del PDF, más
+  // grande". No toca newDoc() por defecto porque Rendimiento/Análisis
+  // (tablas) sí están mejor en vertical.
+  const doc = newDoc("landscape")
+  let y = addHeader(doc, "geographic", period, surveyTitle)
   const geo = data.geographic
 
   y = addSectionTitle(doc, "Zonas — detalle", y)
