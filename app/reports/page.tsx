@@ -810,7 +810,12 @@ function ReportsPageContent() {
                     <CardContent className="pt-4 px-4 pb-4">
                       <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Encuestadores</p>
                       <div className="text-3xl font-bold">{data?.performance?.surveyorPerformance?.length ?? 0}</div>
-                      <p className="text-xs text-muted-foreground mt-1">con asignaciones</p>
+                      {/* surveyorPerformance ya viene filtrado a totalRegistros > 0 (ver
+                          app/api/reports/route.ts) — el texto decía "con asignaciones" pero
+                          en realidad cuenta encuestadores CON RESPUESTAS, no todos los
+                          asignados. Corregido para no confundir al cliente (acta 07/09/2026,
+                          ítems #14/#28: "los indicadores no cuadran"). */}
+                      <p className="text-xs text-muted-foreground mt-1">con respuestas</p>
                     </CardContent>
                   </Card>
                   <Card>
