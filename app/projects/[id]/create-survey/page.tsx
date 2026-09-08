@@ -482,13 +482,27 @@ function SortableSection({
 
   const [showSkipLogicModal, setShowSkipLogicModal] = useState(false)
 
+  // BUG CRÍTICO (reportado 08/09/2026: "la lógica de salto funciona en el
+  // preview pero no donde el encuestador resuelve la encuesta"): estos dos
+  // handlers llamaban directo a setSections (vía updateSectionSkipLogic/
+  // removeSectionSkipLogic, ver funciones standalone más abajo), SIN pasar
+  // por onUpdateSection (=updateSection), que es el único camino que además
+  // marca sectionSaveStates[id] = "not-saved". Sin esa marca, el autosave
+  // (que solo mira sectionSaveStates) nunca detectaba el cambio de lógica de
+  // salto como pendiente — el "Preview" sí lo mostraba bien porque lee el
+  // estado en memoria (localStorage con los datos ya en pantalla, sin pasar
+  // por la base de datos), pero la lógica de salto nunca llegaba a guardarse
+  // en la base de datos a menos que la sección tuviera ADEMÁS otro cambio
+  // (editar el título, una pregunta, etc.) que sí marcara la sección como
+  // pendiente. El encuestador (que carga la encuesta desde la base de datos,
+  // no desde ese estado en memoria) nunca veía el salto configurado.
   const handleSkipLogicUpdate = (skipLogic: SectionSkipLogic) => {
-    updateSectionSkipLogic(section.id, skipLogic, setSections, sections)
+    onUpdateSection(section.id, "skipLogic", skipLogic)
     setShowSkipLogicModal(false)
   }
 
   const handleRemoveSkipLogic = () => {
-    removeSectionSkipLogic(section.id, setSections, sections)
+    onUpdateSection(section.id, "skipLogic", undefined)
   }
 
   return (
@@ -845,22 +859,11 @@ async function autoSaveQuestion(sectionId: string, question: Question, surveyId:
     return 'error';
   }
 }
-const updateSectionSkipLogic = (
-  sectionId: string,
-  skipLogic: SectionSkipLogic,
-  setSections: React.Dispatch<React.SetStateAction<SurveySection[]>>,
-  sections: SurveySection[],
-) => {
-  setSections(sections.map((section) => (section.id === sectionId ? { ...section, skipLogic } : section)))
-}
-
-const removeSectionSkipLogic = (
-  sectionId: string,
-  setSections: React.Dispatch<React.SetStateAction<SurveySection[]>>,
-  sections: SurveySection[],
-) => {
-  setSections(sections.map((section) => (section.id === sectionId ? { ...section, skipLogic: undefined } : section)))
-}
+// (updateSectionSkipLogic/removeSectionSkipLogic se eliminaron 08/09/2026 —
+// llamaban a setSections directo, sin pasar por onUpdateSection/updateSection,
+// que es lo único que marca sectionSaveStates[id] = "not-saved" para que el
+// autosave detecte el cambio. Ver handleSkipLogicUpdate/handleRemoveSkipLogic
+// más arriba, que ahora usan onUpdateSection(section.id, "skipLogic", ...).)
 
 // Función para actualizar referencias en la lógica de salto cuando cambian los IDs
 const updateSkipLogicReferences = (sections: SurveySection[], oldId: string, newId: string) => {

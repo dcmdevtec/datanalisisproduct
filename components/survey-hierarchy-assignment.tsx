@@ -15,14 +15,29 @@ import {
 
 // Reunión 2026-08-27 ("Asignación"): antes se elegían encuestadores
 // directo de una lista plana de TODOS los encuestadores activos del
-// sistema. Ahora la asignación va en cascada Coordinador -> Supervisor ->
-// Encuestadores, porque el mismo encuestador puede caer bajo un supervisor
-// distinto según la encuesta ("pueden haber coordinadores en otra encuesta
-// con otros supervisores y otros encuestadores"). El coordinador/supervisor
-// elegidos acá se guardan junto con cada encuestador seleccionado (ver
-// survey_surveyor_zones.coordinator_id/supervisor_id en migration.sql), sin
-// tocar el organigrama global de cada usuario (surveyors.supervisor_id /
-// users.coordinator_id), que solo se usa para PRECARGAR el filtro.
+// sistema. Se agregó Coordinador/Supervisor porque el mismo encuestador
+// puede caer bajo un supervisor distinto según la encuesta ("pueden haber
+// coordinadores en otra encuesta con otros supervisores y otros
+// encuestadores"). El coordinador/supervisor elegidos acá se guardan junto
+// con cada encuestador seleccionado (ver
+// survey_surveyor_zones.coordinator_id/supervisor_id en migration.sql).
+//
+// Ajuste 08/09/2026: al principio Coordinador/Supervisor FILTRABAN la
+// cascada usando el organigrama global de cada usuario
+// (surveyors.supervisor_id / users.coordinator_id, el que se fija al
+// crear/editar el usuario en Usuarios/Encuestadores) — elegir un
+// coordinador solo mostraba los supervisores ya ligados a él desde su
+// creación, y elegir un supervisor solo mostraba los encuestadores ya
+// ligados a él. Si alguien no se había asociado a otro al crearse (o se
+// quería una combinación distinta para ESTA encuesta/proyecto en
+// particular), nunca aparecía como opción — justo lo que se pidió evitar:
+// "no quiero que se asocien los usuarios a otro [al crearlos], quiero que
+// en la creación solo se le asigne el rol, y que al asignar salgan todos
+// los supervisores/coordinadores/encuestadores para poder escoger el que
+// sea". Ahora Coordinador y Supervisor son selects independientes (todas
+// las opciones siempre) que solo quedan como ETIQUETA de referencia junto
+// a cada encuestador marcado — no restringen qué encuestadores se pueden
+// ver ni elegir.
 
 export interface HierarchyCoordinator { id: string; name: string | null }
 export interface HierarchySupervisor { id: string; name: string | null; coordinatorId: string | null }
@@ -56,13 +71,21 @@ export function SurveyHierarchyAssignment({
   const [coordinatorId, setCoordinatorId] = React.useState<string>("")
   const [supervisorId, setSupervisorId] = React.useState<string>("")
 
-  const supervisorsForCoordinator = coordinatorId
-    ? supervisors.filter((s) => s.coordinatorId === coordinatorId)
-    : []
-
-  const surveyorsForSupervisor = supervisorId
-    ? surveyors.filter((s) => s.supervisorId === supervisorId)
-    : []
+  // Pedido explícito (08/09/2026): la jerarquía global de un usuario
+  // (surveyors.supervisor_id / users.coordinator_id, la que se fija al
+  // crearlo en Usuarios/Encuestadores) NO debe restringir a quién se puede
+  // asignar acá. Antes, elegir un coordinador solo mostraba los supervisores
+  // que YA tenían ese coordinador asignado desde su creación, y elegir un
+  // supervisor solo mostraba los encuestadores YA ligados a él — si alguien
+  // no se había asociado a otro al crearse (o se quería reasignar distinto
+  // para ESTA encuesta/proyecto), nunca aparecía como opción. Ahora salen
+  // TODOS los supervisores y TODOS los encuestadores siempre, sin importar
+  // su jerarquía global — se puede escoger cualquiera para esta encuesta en
+  // particular. La jerarquía global sigue precargando el filtro SOLO como
+  // atajo cuando existe (ver supervisorsForCoordinator/surveyorsForSupervisor
+  // más abajo, ya no filtran, solo listan todo).
+  const supervisorsForCoordinator = supervisors
+  const surveyorsForSupervisor = surveyors
 
   const assignedIds = new Set(assignments.map((a) => a.surveyorId))
 
@@ -113,14 +136,17 @@ export function SurveyHierarchyAssignment({
         </div>
       )}
 
-      {/* Cascada: Coordinador -> Supervisor -> Encuestadores */}
+      {/* Coordinador / Supervisor: ahora son solo la ETIQUETA que se guarda
+          junto a los encuestadores marcados abajo (para esta encuesta en
+          particular) — ya no filtran ni se bloquean entre sí. Se puede
+          elegir cualquier combinación, o ninguna. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Select
           value={coordinatorId}
-          onValueChange={(v) => { setCoordinatorId(v); setSupervisorId("") }}
+          onValueChange={setCoordinatorId}
         >
           <SelectTrigger>
-            <SelectValue placeholder="1. Elegir coordinador..." />
+            <SelectValue placeholder="Coordinador (opcional)..." />
           </SelectTrigger>
           <SelectContent>
             {coordinators.length === 0 && (
@@ -135,14 +161,13 @@ export function SurveyHierarchyAssignment({
         <Select
           value={supervisorId}
           onValueChange={setSupervisorId}
-          disabled={!coordinatorId}
         >
           <SelectTrigger>
-            <SelectValue placeholder="2. Elegir supervisor..." />
+            <SelectValue placeholder="Supervisor (opcional)..." />
           </SelectTrigger>
           <SelectContent>
-            {coordinatorId && supervisorsForCoordinator.length === 0 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground">Este coordinador no tiene supervisores</div>
+            {supervisorsForCoordinator.length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground">Sin supervisores registrados</div>
             )}
             {supervisorsForCoordinator.map((s) => (
               <SelectItem key={s.id} value={s.id}>{s.name || "Sin nombre"}</SelectItem>
@@ -151,33 +176,27 @@ export function SurveyHierarchyAssignment({
         </Select>
       </div>
 
-      {/* 3. Encuestadores del supervisor elegido */}
-      {supervisorId && (
-        <div className="border rounded-md divide-y max-h-56 overflow-y-auto">
-          {surveyorsForSupervisor.length === 0 ? (
-            <p className="text-xs text-muted-foreground px-3 py-3">Este supervisor no tiene encuestadores a cargo.</p>
-          ) : (
-            surveyorsForSupervisor.map((s) => (
-              <label key={s.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/40">
-                <Checkbox
-                  checked={assignedIds.has(s.id)}
-                  onCheckedChange={(checked) => toggleSurveyor(s.id, checked === true)}
-                />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{s.name || "Sin nombre"}</p>
-                  <p className="text-xs text-muted-foreground truncate">{s.email}</p>
-                </div>
-              </label>
-            ))
-          )}
-        </div>
-      )}
-
-      {!coordinatorId && (
-        <p className="text-xs text-muted-foreground italic">
-          Elegí un coordinador y un supervisor para ver sus encuestadores.
-        </p>
-      )}
+      {/* Encuestadores — TODOS, sin importar de quién dependan globalmente;
+          marcar uno lo asigna a esta encuesta con el coordinador/supervisor
+          elegidos arriba (si se eligió alguno) como referencia. */}
+      <div className="border rounded-md divide-y max-h-56 overflow-y-auto">
+        {surveyorsForSupervisor.length === 0 ? (
+          <p className="text-xs text-muted-foreground px-3 py-3">No hay encuestadores registrados.</p>
+        ) : (
+          surveyorsForSupervisor.map((s) => (
+            <label key={s.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/40">
+              <Checkbox
+                checked={assignedIds.has(s.id)}
+                onCheckedChange={(checked) => toggleSurveyor(s.id, checked === true)}
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{s.name || "Sin nombre"}</p>
+                <p className="text-xs text-muted-foreground truncate">{s.email}</p>
+              </div>
+            </label>
+          ))
+        )}
+      </div>
     </div>
   )
 }
