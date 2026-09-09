@@ -92,7 +92,11 @@ function PieOrDonut({
     )
   }
 
-  const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }: any) => {
+  // Ítem 09/09/2026: "mostrar número absoluto y porcentaje en todas las
+  // gráficas" — la torta/anillo ya lo mostraba en tooltip y leyenda, pero
+  // la etiqueta fija sobre la porción solo traía el %. Se agrega el
+  // absoluto (mismo formato "N (P%)" que ya usan las barras).
+  const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, value }: any) => {
     // Solo mostrar etiqueta si la porción es >= 8%
     if (percent < 0.08) return null
     const RADIAN = Math.PI / 180
@@ -105,10 +109,10 @@ function PieOrDonut({
         fill="#fff"
         textAnchor="middle"
         dominantBaseline="central"
-        fontSize={12}
+        fontSize={11}
         fontWeight={600}
       >
-        {`${Math.round(percent * 100)}%`}
+        {`${value} (${formatPercent(percent * 100)})`}
       </text>
     )
   }
