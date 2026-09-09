@@ -2396,6 +2396,20 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             const btnStyle = isLargeRange
               ? { width: `calc(${100 / scaleRange}% - 2px)`, minWidth: '28px', height: '32px' }
               : {};
+            // Ítem 09/09/2026: "en una escala de 1 a 20, la etiqueta inicial
+            // debe quedar junto al primer valor y la final junto al
+            // último". Con rangos grandes los valores se acomodan en una
+            // grilla de varias filas (ver más abajo) — una simple etiqueta
+            // "min ... max" de ancho completo debajo de TODA la grilla
+            // quedaba descuadrada apenas el rango no llenaba filas
+            // completas de 10 (ej. 1-15: la última fila solo tiene 5
+            // columnas, pero la etiqueta "max" seguía pegada al borde
+            // derecho del contenedor completo, no de esa fila más corta).
+            // Se calculan las columnas/filas reales de la grilla para poner
+            // cada etiqueta en la MISMA celda donde cae su valor.
+            const gridColumns = Math.min(scaleRange, 10);
+            const gridRows = Math.ceil(scaleRange / gridColumns);
+            const lastRowColumns = scaleRange - gridColumns * (gridRows - 1);
 
             return (
               <div className="space-y-3">
@@ -2448,10 +2462,31 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                   </div>
                 )}
                 {(minLabel || maxLabel) && (
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{minLabel}</span>
-                    <span>{maxLabel}</span>
-                  </div>
+                  isLargeRange ? (
+                    // Misma grilla que los valores — cada etiqueta cae en la
+                    // celda exacta de su valor (primero/último), sin importar
+                    // si la última fila queda incompleta.
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+                        gridTemplateRows: `repeat(${gridRows}, auto)`,
+                      }}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {minLabel && (
+                        <span style={{ gridColumn: 1, gridRow: 1 }} className="text-left">{minLabel}</span>
+                      )}
+                      {maxLabel && (
+                        <span style={{ gridColumn: lastRowColumns, gridRow: gridRows }} className="text-right">{maxLabel}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{minLabel}</span>
+                      <span>{maxLabel}</span>
+                    </div>
+                  )
                 )}
               </div>
             )
