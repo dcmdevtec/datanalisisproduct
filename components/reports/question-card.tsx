@@ -10,7 +10,7 @@ import {
   Eye, EyeOff, Table2, ChevronDown, ChevronUp, X,
   Download, Loader2, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react"
-import { QuestionChart, DEFAULT_PALETTE, type ChartType, type DistributionItem, type TimelinePoint } from "./question-chart"
+import { QuestionChart, DEFAULT_PALETTE, colorFor, type ChartType, type DistributionItem, type TimelinePoint } from "./question-chart"
 import { formatPercent } from "@/lib/format"
 
 export interface MatrixBreakdown {
@@ -248,6 +248,23 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
     return sort.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
   }
 
+  // Ítem 09/09/2026: en torta/anillo, question-chart.tsx excluye su propia
+  // leyenda de la captura de html2canvas (data-html2canvas-ignore, ver ese
+  // archivo) — sin este data-export-legend, exportResponses()
+  // (app/lib/export-report.ts) no tenía cómo redibujarla y la tarjeta salía
+  // sin leyenda ("componentes salen corto") en el PDF de "Análisis de
+  // Resultados". Mismo criterio que summary-content.tsx: se arma acá con los
+  // mismos colores que ve la gráfica (colorFor + colorOverrides).
+  const isPieOrDonut = settings.chartType === "pie" || settings.chartType === "donut"
+  const exportLegend = isPieOrDonut && settings.showLabels && hasDistribution
+    ? JSON.stringify(sortedDistribution.map((d, i) => ({
+        label: d.label,
+        count: d.count,
+        percentage: d.percentage,
+        color: colorFor(d.label, i, settings.colorOverrides),
+      })))
+    : undefined
+
   useEffect(() => {
     if (!isFileQuestion || !surveyId || !question.questionId) return
     setFileLoading(true)
@@ -268,7 +285,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
     // la barra de controles se excluyen de la captura con
     // data-html2canvas-ignore (ver bloque "Controls" más abajo) para que la
     // imagen quede limpia (solo título + gráfica + tabla, sin UI interactiva).
-    <div className="border rounded-xl overflow-hidden bg-card shadow-sm" data-export-chart>
+    <div className="border rounded-xl overflow-hidden bg-card shadow-sm" data-export-chart data-export-legend={exportLegend}>
       {/* Header */}
       <div className="flex items-start gap-3 px-4 py-3 bg-muted/30 border-b">
         <span className="flex-shrink-0 mt-0.5 w-6 h-6 rounded-full bg-[#18b0a4]/10 text-[#18b0a4] text-xs font-bold flex items-center justify-center">

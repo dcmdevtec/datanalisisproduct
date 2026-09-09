@@ -118,21 +118,44 @@ function addHeader(doc: jsPDF, tab: string, period: string, surveyTitle?: string
 
 // Agrega una imagen (captura de gráfico) ajustada al ancho de página,
 // paginando automáticamente si no entra en lo que queda de la página actual.
-function addImageFitted(doc: jsPDF, img: { dataUrl: string; width: number; height: number }, y: number): number {
+//
+// Ítem 09/09/2026: los gráficos de torta/anillo excluyen su leyenda de la
+// captura de html2canvas (ver data-html2canvas-ignore en question-chart.tsx)
+// porque el motor de captura no medía bien ese texto — hasta ahora solo
+// exportSummary() sabía redibujarla con texto real de jsPDF a partir de
+// `legend` (ChartCapture), así que en "Análisis de Resultados", "Rendimiento"
+// y "Geográfico" esas tarjetas salían SIN leyenda ("componentes salen
+// corto"). Mismo criterio acá: si la captura trae `legend`, se dibuja debajo
+// de la imagen con drawNativeLegend + un marco de tarjeta, igual que
+// exportSummary(). `maxWidth` (si la captura lo trae, ver
+// data-export-max-width) limita el ancho de dibujo para no estirar de más
+// donuts angostos — se centra dentro del ancho de página disponible.
+function addImageFitted(doc: jsPDF, img: ChartCapture, y: number): number {
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 40
-  const maxWidth = pageWidth - margin * 2
+  const maxContentWidth = pageWidth - margin * 2
+  const w = Math.min(maxContentWidth, img.maxWidth ?? maxContentWidth)
+  const xOffset = margin + (maxContentWidth - w) / 2
   const ratio = img.height / img.width
-  const w = maxWidth
   const h = w * ratio
+  const legendH = legendHeight(img)
+  const totalH = h + legendH
 
-  if (y + h > pageHeight - margin) {
+  if (y + totalH > pageHeight - margin) {
     doc.addPage()
     y = margin
   }
-  doc.addImage(img.dataUrl, "PNG", margin, y, w, h)
-  return y + h + 16
+  doc.addImage(img.dataUrl, "PNG", xOffset, y, w, h)
+  if (img.legend?.length) {
+    // Sin el marco extra que sí dibuja exportSummary(): acá la imagen
+    // capturada YA trae su propio borde de tarjeta (el div data-export-chart
+    // de question-card.tsx tiene className con borde, a diferencia del div
+    // "pelado" que arma summary-content.tsx para su donut) — agregar otro
+    // marco encima duplicaría el borde.
+    drawNativeLegend(doc, img.legend, xOffset + 16, y + h + LEGEND_TOP_GAP, w - 32)
+  }
+  return y + totalH + 16
 }
 
 function addSectionTitle(doc: jsPDF, title: string, y: number): number {

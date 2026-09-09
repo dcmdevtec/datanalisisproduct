@@ -191,11 +191,17 @@ export default function ReportsGeoMap({
   const [enabledOutcomes, setEnabledOutcomes] = useState<Set<string>>(
     () => new Set(initialEnabledOutcomes ?? ALL_OUTCOMES),
   )
+  // Ítem 09/09/2026: si al desmarcar queda el set vacío (se desmarcaron
+  // todos), en vez de dejar el mapa sin nada visible y obligar a marcar uno
+  // por uno de nuevo, se restaura la selección completa — el checkbox que
+  // se acaba de clickear queda como el único marcado (el mismo criterio que
+  // "clic en el último = reiniciar" evita el estado "todo apagado").
   const toggleOutcome = (t: string) => {
     setEnabledOutcomes((prev) => {
       const next = new Set(prev)
       if (next.has(t)) next.delete(t)
       else next.add(t)
+      if (next.size === 0) return new Set(ALL_OUTCOMES)
       return next
     })
   }
@@ -850,9 +856,12 @@ export default function ReportsGeoMap({
         </div>
       </div>
 
-      {/* Contador de puntos */}
+      {/* Contador de puntos — corrido a la derecha del control de zoom nativo
+          de Leaflet (esquina superior izquierda, ~10-40px): antes quedaba
+          en top-3 left-3, justo encima de los botones +/-, tapándolos por
+          completo (ítem 09/09/2026, "no me dejan ampliar"). */}
       {filteredPoints.length > 0 && (
-        <div className="absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-1.5">
+        <div className="absolute top-3 left-16 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-1.5">
           <p className="text-xs text-gray-600">
             <span className="font-bold text-gray-800">{filteredPoints.length.toLocaleString()}</span>{" "}
             {filteredPoints.some(p => p.source === "surveyor") ? "ubicaciones de encuestadores" : "respuestas georeferenciadas"}

@@ -49,7 +49,11 @@ export const DEFAULT_PALETTE = [
 // una barra/porción puntual y que el color elegido cambie SOLO esa, no todas.
 // `colorOverrides` guarda esos colores puntuales por label; el resto de
 // barras conserva la paleta por defecto (o su propio override, si tiene uno).
-function colorFor(label: string, index: number, overrides?: Record<string, string>): string {
+// Exportada (09/09/2026) para que question-card.tsx pueda armar el mismo
+// data-export-legend que summary-content.tsx — así el color de cada fila de
+// la leyenda dibujada en el PDF coincide exactamente con el de la porción/
+// barra en pantalla (incluye colorOverrides).
+export function colorFor(label: string, index: number, overrides?: Record<string, string>): string {
   return overrides?.[label] || DEFAULT_PALETTE[index % DEFAULT_PALETTE.length]
 }
 

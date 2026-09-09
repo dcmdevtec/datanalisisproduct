@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { MapContainer, TileLayer, Marker, Popup, Polygon, Polyline, useMap } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -291,11 +292,11 @@ export default function TrackingMap({
   const surveyorsWithLocation = surveyors.filter((s) => s.current_location)
   const selectedSurveyor = surveyorsWithLocation.find((s) => s.id === selectedSurveyorId)
 
-  return (
+  const mapContent = (
     <div
       className={
         isFullscreen
-          ? "fixed inset-0 z-[2000] rounded-none overflow-hidden"
+          ? "fixed inset-0 z-[2000] rounded-none overflow-hidden bg-white"
           : "relative h-full w-full rounded-lg overflow-hidden z-0"
       }
     >
@@ -485,4 +486,17 @@ export default function TrackingMap({
       </div>
     </div>
   )
+
+  // Ítem 09/09/2026: "en pantalla completa muestra unos filtros encima" — el
+  // wrapper "fixed inset-0" quedaba anidado dentro del layout de la página
+  // (Card/Tabs/etc.), así que otros elementos del propio layout (filtros,
+  // headers) terminaban pintándose por encima según el orden/contexto de
+  // apilamiento local. Sacarlo por portal directo a document.body garantiza
+  // que en pantalla completa el mapa quede realmente por encima de TODO el
+  // resto de la página, sin depender de la jerarquía donde esté montado.
+  if (isFullscreen && typeof document !== "undefined") {
+    return createPortal(mapContent, document.body)
+  }
+
+  return mapContent
 }
