@@ -348,6 +348,20 @@ export async function GET(request: NextRequest) {
     const assignmentById: Record<string, any> = {}
     for (const a of assignments) assignmentById[a.id] = a
 
+    // Ítem 09/09/2026 ("Total Encuestadores en 0 con respuestas reales"): un
+    // response CON assignment_id pero cuya fila de survey_surveyor_zones ya
+    // no resuelve (reasignación de zona que no sincronizó bien el survey_id,
+    // fila borrada, etc.) se quedaba SIN encuestador para siempre en varias
+    // secciones de este endpoint — sus fallbacks (metadata.surveyor_id,
+    // respondent_id) estaban condicionados a `!r.assignment_id`, es decir
+    // "solo si nunca hubo assignment_id", no "solo si el que había no
+    // resolvió". El endpoint de Respuestas Individuales
+    // (/api/reports/individual) sí encadena los tres métodos sin ese candado
+    // y por eso mostraba el encuestador correcto mientras acá se perdía. Se
+    // usa este helper (assignment presente pero no resuelto CUENTA igual que
+    // "no había assignment") en vez de `!r.assignment_id` en cada fallback.
+    const unresolvedAssignment = (r: any) => !r.assignment_id || !assignmentById[r.assignment_id]
+
     // === GEOGRAPHIC DATA (siempre, independiente de si hay respuestas) ===
     const zoneResponseMapEarly: Record<string, { name: string; responseCount: number; completedCount: number }> = {}
     for (const a of assignments) {
@@ -435,10 +449,16 @@ export async function GET(request: NextRequest) {
     // ~952). Se replica acá el mismo fallback en dos pasos: metadata.surveyor_id
     // (APK) y luego respondent_id (sesión web, mismo criterio que
     // resolveCurrentSurveyor() en lib/portal-encuestador/auth.ts).
+    // Ítem 09/09/2026: mismo bug que "Total Encuestadores" en Rendimiento —
+    // un assignment_id presente pero cuya fila de survey_surveyor_zones ya no
+    // resuelve (reasignación de zona, fila borrada) bloqueaba estos fallbacks
+    // porque estaban condicionados a `!r.assignment_id` en vez de a si el
+    // assignment realmente resolvió. Se usa unresolvedAssignment() (ver
+    // definición en la sección de Rendimiento) en los tres puntos de abajo.
     const geoMetaSurveyorIds = [
       ...new Set(
         responses
-          .filter((r: any) => !r.assignment_id && r.metadata?.surveyor_id)
+          .filter((r: any) => unresolvedAssignment(r) && r.metadata?.surveyor_id)
           .map((r: any) => r.metadata.surveyor_id as string)
       )
     ]
@@ -451,7 +471,7 @@ export async function GET(request: NextRequest) {
     const geoRespondentIdsNeedingSurveyor = [
       ...new Set(
         responses
-          .filter((r: any) => !r.assignment_id && !r.metadata?.surveyor_id && r.respondent_id)
+          .filter((r: any) => unresolvedAssignment(r) && !r.metadata?.surveyor_id && r.respondent_id)
           .map((r: any) => r.respondent_id as string)
       )
     ]
@@ -489,7 +509,11 @@ export async function GET(request: NextRequest) {
         const assignment = r.assignment_id ? assignmentById[r.assignment_id] : null
         let surveyorName = (assignment?.surveyors as any)?.name ?? null
         let surveyorId = assignment?.surveyor_id ?? null
-        if (!surveyorId && !r.assignment_id) {
+        // Ítem 09/09/2026: antes exigía también `!r.assignment_id` — un
+        // assignment_id presente pero no resuelto (ver unresolvedAssignment)
+        // bloqueaba estos fallbacks igual que en Rendimiento. Basta con que
+        // el lookup por assignment no haya dado surveyorId.
+        if (!surveyorId) {
           const metaId = (r as any).metadata?.surveyor_id as string | undefined
           if (metaId && geoSurveyorNameByMetaId[metaId] !== undefined) {
             surveyorId = metaId
@@ -1058,6 +1082,9 @@ export async function GET(request: NextRequest) {
       lastResponseAt: string | null
     }> = {}
 
+    // unresolvedAssignment() ya definido más arriba (justo después de armar
+    // assignmentById) — se reusa acá para el mismo criterio de fallback.
+
     // Encuestadores por metadata.surveyor_id (APK): la APK siempre manda
     // assignment_id=null (ver SurveyDetailScreen.tsx), así que sin este
     // fallback ninguna respuesta de la APK se contaba en "Rendimiento por
@@ -1065,7 +1092,7 @@ export async function GET(request: NextRequest) {
     const metaSurveyorIds = [
       ...new Set(
         responses
-          .filter((r: any) => !r.assignment_id && r.metadata?.surveyor_id)
+          .filter((r: any) => unresolvedAssignment(r) && r.metadata?.surveyor_id)
           .map((r: any) => r.metadata.surveyor_id as string)
       )
     ]
@@ -1090,7 +1117,7 @@ export async function GET(request: NextRequest) {
     const respondentIdsNeedingSurveyor = [
       ...new Set(
         responses
-          .filter((r: any) => !r.assignment_id && !r.metadata?.surveyor_id && r.respondent_id)
+          .filter((r: any) => unresolvedAssignment(r) && !r.metadata?.surveyor_id && r.respondent_id)
           .map((r: any) => r.respondent_id as string)
       )
     ]
@@ -1141,12 +1168,12 @@ export async function GET(request: NextRequest) {
     // Contar outcomes y tiempo promedio desde responses
     for (const r of responses) {
       const ssz = r.assignment_id ? assignmentById[r.assignment_id] : null
-      const metaSurveyor = !r.assignment_id ? surveyorByMetaId[(r as any).metadata?.surveyor_id] : null
-      const respondentSurveyor = (!r.assignment_id && !metaSurveyor && (r as any).respondent_id)
+      const metaSurveyor = !ssz ? surveyorByMetaId[(r as any).metadata?.surveyor_id] : null
+      const respondentSurveyor = (!ssz && !metaSurveyor && (r as any).respondent_id)
         ? surveyorByRespondentId[(r as any).respondent_id] ?? null
         : null
       const sid = (ssz?.surveyor_id as string | undefined)
-        ?? (!r.assignment_id ? (r as any).metadata?.surveyor_id : undefined)
+        ?? (!ssz ? (r as any).metadata?.surveyor_id : undefined)
         // Usar el id canónico de surveyors resuelto arriba, no r.respondent_id
         // (que es el auth user_id) — evita duplicar al encuestador en el reporte.
         ?? (respondentSurveyor ? respondentSurveyor.id : undefined)
