@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireRole, type AuthedUser } from "@/lib/api-auth"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { bogotaStartOfDayUTC } from "@/lib/bogota-time"
 
 // Resuelve a qué surveyor_id tiene acceso este usuario (reunión 2026-08-27,
 // "Jerarquías y roles"). null = admin, sin restricción. [] = supervisor o
@@ -215,14 +216,15 @@ export async function GET(request: Request) {
 
     // Reunión 2026-08-27: "Cada punto de encuestador debe estar identificado
     // con Total de registros, Efectivas y Hora de inicio de la primera
-    // encuesta del día". Se calcula sobre las respuestas de HOY (00:00 en
-    // adelante, hora del servidor) resolviendo el encuestador con el mismo
-    // criterio de 3 niveles que /api/reports/route.ts (assignment_id vía
-    // survey_surveyor_zones → metadata.surveyor_id de la APK →
-    // respondent_id de la web autenticada).
-    const startOfDay = new Date()
-    startOfDay.setHours(0, 0, 0, 0)
-    const todayStatsBySurveyorId: Record<string, { total: number; efectivas: number; firstResponseAt: string | null }> = {}
+    // encuesta del día". Se calcula sobre las respuestas de HOY EN BOGOTÁ
+    // (09/09/2026: antes era 00:00 hora del servidor — normalmente UTC, 5h
+    // adelantada a Bogotá, así que "hoy" arrancaba con la tarde/noche de
+    // AYER colada de más; ver lib/bogota-time.ts) resolviendo el
+    // encuestador con el mismo criterio de 3 niveles que
+    // /api/reports/route.ts (assignment_id vía survey_surveyor_zones →
+    // metadata.surveyor_id de la APK → respondent_id de la web autenticada).
+    const startOfDay = bogotaStartOfDayUTC()
+    const todayStatsBySurveyorId: Record<string, { total: number; efectivas: number; firstResponseAt: string | null; lastResponseAt: string | null }> = {}
     if (surveyorIdsForLogout.length > 0) {
       const { data: sszRows } = await supabase
         .from("survey_surveyor_zones")
@@ -259,11 +261,12 @@ export async function GET(request: Request) {
           ?? (!r.assignment_id ? r.metadata?.surveyor_id : undefined)
           ?? (r.respondent_id ? (surveyorIdByUserId[r.respondent_id] ?? (surveyorIdsForLogout.includes(r.respondent_id) ? r.respondent_id : undefined)) : undefined)
         if (!sid || !surveyorIdsForLogout.includes(sid)) continue
-        if (!todayStatsBySurveyorId[sid]) todayStatsBySurveyorId[sid] = { total: 0, efectivas: 0, firstResponseAt: null }
+        if (!todayStatsBySurveyorId[sid]) todayStatsBySurveyorId[sid] = { total: 0, efectivas: 0, firstResponseAt: null, lastResponseAt: null }
         const entry = todayStatsBySurveyorId[sid]
         entry.total++
         if (resolveOutcome(r) === "efectiva") entry.efectivas++
         if (!entry.firstResponseAt || r.created_at < entry.firstResponseAt) entry.firstResponseAt = r.created_at
+        if (!entry.lastResponseAt || r.created_at > entry.lastResponseAt) entry.lastResponseAt = r.created_at
       }
     }
 
@@ -272,7 +275,7 @@ export async function GET(request: Request) {
       // Estado calculado siempre desde tiempo real, nunca desde el campo status de la vista
       const status = calcStatus(item, lastLogoutMap[item.surveyor_id])
       const in_app = isInApp(item)
-      const todayStats = todayStatsBySurveyorId[item.surveyor_id] ?? { total: 0, efectivas: 0, firstResponseAt: null }
+      const todayStats = todayStatsBySurveyorId[item.surveyor_id] ?? { total: 0, efectivas: 0, firstResponseAt: null, lastResponseAt: null }
 
       return {
         id: item.surveyor_id,
@@ -284,6 +287,7 @@ export async function GET(request: Request) {
         today_total_registros: todayStats.total,
         today_efectivas: todayStats.efectivas,
         today_first_response_at: todayStats.firstResponseAt,
+        today_last_response_at: todayStats.lastResponseAt,
         current_location: item.latitude && item.longitude ? {
           latitude: item.latitude,
           longitude: item.longitude,

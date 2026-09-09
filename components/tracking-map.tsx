@@ -18,6 +18,7 @@ interface SurveyorLocation {
   today_total_registros?: number
   today_efectivas?: number
   today_first_response_at?: string | null
+  today_last_response_at?: string | null
   current_location: {
     latitude: number
     longitude: number
@@ -383,6 +384,13 @@ export default function TrackingMap({
                     {surveyor.today_first_response_at && (
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <span>Inicio 1ra encuesta: {new Date(surveyor.today_first_response_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                    )}
+                    {/* Ítem 09/09/2026: "inicio de la primera encuesta y fin de la
+                        última deben corresponder al día seleccionado" */}
+                    {surveyor.today_last_response_at && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Última encuesta: {new Date(surveyor.today_last_response_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
                       </div>
                     )}
                     {surveyor.current_location.battery_level !== null && (

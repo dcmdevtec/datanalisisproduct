@@ -50,3 +50,19 @@ export function bogotaDateTime(dateStr: string): { date: string; time: string } 
     time: `${get("hour")}:${get("minute")}`,
   }
 }
+
+/**
+ * Instante UTC que corresponde a las 00:00:00 de HOY en Bogotá — para
+ * filtros tipo "respuestas de hoy" (`.gte("created_at", ...)`). Ítem
+ * 09/09/2026: "reiniciar diariamente los indicadores operativos... la
+ * primera y última hora deben ser del mismo día, no arrastrarse desde el
+ * día anterior". `new Date(); .setHours(0,0,0,0)` calcula la medianoche en
+ * la hora LOCAL DEL SERVIDOR (normalmente UTC) — como Bogotá es UTC-5, esa
+ * medianoche-servidor cae a las 7pm de AYER en Bogotá, así que "hoy" se
+ * armaba con 5 horas de la tarde/noche anterior coladas de más. Se
+ * construye la fecha explícitamente con el offset fijo de Bogotá
+ * ("-05:00") para que no dependa de en qué zona horaria corra el servidor.
+ */
+export function bogotaStartOfDayUTC(): Date {
+  return new Date(`${bogotaDayKey(new Date().toISOString())}T00:00:00-05:00`)
+}
