@@ -3313,6 +3313,16 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
         }
       }
 
+      // Ítem 09/09/2026: "fijar el enunciado y los encabezados de las
+      // matrices grandes — al desplazarse hacia abajo se pierden el
+      // enunciado y los encabezados". Los encabezados de columna de la
+      // matriz ya quedaban fijos (thead sticky, >8 filas, ver más arriba) —
+      // pero el ENUNCIADO de la pregunta vive fuera de esa tabla y se
+      // perdía igual al hacer scroll de la página. Se fija también cuando
+      // la pregunta es una matriz grande.
+      const isLargeMatrixQuestion = question.type === "matrix"
+        && ((question.config?.matrixRows || question.matrixRows || []).length > 8)
+
       return (
         <div key={question.id} id={`question-${question.id}`} className="preview-content px-4 py-5 border-b border-gray-100 last:border-b-0 sm:px-8 sm:py-8 sm:mb-0 sm:border-2 sm:rounded-2xl sm:border-gray-200/60 sm:bg-gradient-to-br sm:from-white sm:via-gray-50/50 sm:to-green-50/30 sm:hover:shadow-lg sm:transition-shadow sm:duration-200">
           <style jsx global>{`
@@ -3328,7 +3338,7 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             }
           `}</style>
           {/* Header de la pregunta */}
-          <div className="flex items-start gap-2 sm:gap-4 mb-4 sm:mb-6">
+          <div className={`flex items-start gap-2 sm:gap-4 mb-4 sm:mb-6 ${isLargeMatrixQuestion ? "sticky top-0 z-20 bg-white/95 backdrop-blur-sm py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 sm:rounded-t-2xl" : ""}`}>
             <div className="flex-shrink-0">
               <div
                 className="w-8 h-8 sm:w-12 sm:h-12 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-sm sm:text-lg font-bold shadow-lg"
