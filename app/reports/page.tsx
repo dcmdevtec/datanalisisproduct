@@ -25,6 +25,7 @@ import { QuestionChart, type ChartType } from "@/components/reports/question-cha
 import { QuestionCard } from "@/components/reports/question-card"
 import { IndividualResponsesTab } from "@/components/reports/individual-responses-tab"
 import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/components/reports/sortable-performance-table"
+import { SortableTable } from "@/components/reports/sortable-table"
 import { AudiosTab } from "@/components/reports/audios-tab"
 import { ShareReportModal } from "@/components/reports/share-report-modal"
 import type { ReportData } from "./shared"
@@ -891,40 +892,31 @@ function ReportsPageContent() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {(data?.performance?.surveyPerformance?.length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground py-8 text-center">No hay respuestas registradas</p>
-                    ) : (
-                      <div className="rounded-md border overflow-hidden">
-                        <div className="grid grid-cols-12 p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
-                          <div className="col-span-5">Encuesta</div>
-                          <div className="col-span-2 text-center">Respuestas</div>
-                          <div className="col-span-2 text-center">Completadas</div>
-                          <div className="col-span-2 text-center" title="% que llegó a status completado — no confundir con Tasa de Respuestas Efectivas">Tasa Finaliz.</div>
-                          <div className="col-span-1 text-center">Tiempo</div>
-                        </div>
-                        <div className="divide-y">
-                          {data!.performance.surveyPerformance.map((s, i) => (
-                            <div key={i} className="grid grid-cols-12 px-3 py-3 items-center hover:bg-muted/20 transition-colors">
-                              <div className="col-span-5 font-medium text-sm truncate pr-3" title={s.title}>{s.title}</div>
-                              <div className="col-span-2 text-center text-sm">{s.totalResponses}</div>
-                              <div className="col-span-2 text-center text-sm">{s.completedResponses}</div>
-                              <div className="col-span-2 text-center">
-                                <span className="inline-flex items-center gap-1">
-                                  <span
-                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                    style={{ background: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}
-                                  />
-                                  <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
-                                    {formatPercent(s.completionRate)}
-                                  </span>
-                                </span>
-                              </div>
-                              <div className="col-span-1 text-center text-xs text-muted-foreground font-mono">{s.avgTime}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <SortableTable
+                      rows={data?.performance?.surveyPerformance ?? []}
+                      emptyMessage="No hay respuestas registradas"
+                      defaultSortKey="totalResponses"
+                      rowKey={(s) => s.title}
+                      columns={[
+                        { key: "title", label: "Encuesta", align: "left", sortable: true,
+                          render: (s) => <span className="font-medium text-sm truncate block max-w-[280px]" title={s.title}>{s.title}</span> },
+                        { key: "totalResponses", label: "Respuestas", align: "center",
+                          render: (s) => <span className="text-sm">{s.totalResponses}</span> },
+                        { key: "completedResponses", label: "Completadas", align: "center",
+                          render: (s) => <span className="text-sm">{s.completedResponses}</span> },
+                        { key: "completionRate", label: "Tasa Finaliz.", align: "center",
+                          render: (s) => (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }} />
+                              <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
+                                {formatPercent(s.completionRate)}
+                              </span>
+                            </span>
+                          ) },
+                        { key: "avgTime", label: "Tiempo", align: "center", sortable: false,
+                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.avgTime}</span> },
+                      ]}
+                    />
                   </CardContent>
                 </Card>
 
@@ -1136,28 +1128,22 @@ function ReportsPageContent() {
                             <CardDescription>Tasa de finalización por zona</CardDescription>
                           </CardHeader>
                           <CardContent>
-                            <div className="rounded-md border">
-                              <div className="grid grid-cols-4 p-3 font-medium border-b text-sm">
-                                <div>Zona</div>
-                                <div className="text-center">Asignaciones</div>
-                                <div className="text-center">Completadas</div>
-                                <div className="text-center">Tasa</div>
-                              </div>
-                              <div className="divide-y">
-                                {data!.geographic.zoneBreakdown.map((z, i) => (
-                                  <div key={i} className="grid grid-cols-4 p-3 items-center text-sm">
-                                    <div>{z.zone}</div>
-                                    <div className="text-center">{z.responseCount}</div>
-                                    <div className="text-center">{z.completedCount}</div>
-                                    <div className="text-center">
-                                      <span className={z.completionRate >= 80 ? "text-green-600 font-medium" : z.completionRate >= 50 ? "text-orange-500 font-medium" : "text-red-500 font-medium"}>
-                                        {formatPercent(z.completionRate)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
+                            <SortableTable
+                              rows={data!.geographic.zoneBreakdown}
+                              defaultSortKey="responseCount"
+                              rowKey={(z) => z.zone}
+                              columns={[
+                                { key: "zone", label: "Zona", align: "left", render: (z) => z.zone },
+                                { key: "responseCount", label: "Asignaciones", align: "center", render: (z) => z.responseCount },
+                                { key: "completedCount", label: "Completadas", align: "center", render: (z) => z.completedCount },
+                                { key: "completionRate", label: "Tasa", align: "center",
+                                  render: (z) => (
+                                    <span className={z.completionRate >= 80 ? "text-green-600 font-medium" : z.completionRate >= 50 ? "text-orange-500 font-medium" : "text-red-500 font-medium"}>
+                                      {formatPercent(z.completionRate)}
+                                    </span>
+                                  ) },
+                              ]}
+                            />
                           </CardContent>
                         </Card>
                       </div>
