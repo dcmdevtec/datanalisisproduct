@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Download, FileAudio, AlertCircle, Play } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Loader2, Download, FileAudio, AlertCircle, Play, ChevronDown, ChevronRight } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
 // Pestaña "Audios" (reunión 2026-08-27): descarga en un solo ZIP todas las
@@ -13,13 +14,15 @@ import { useToast } from "@/components/ui/use-toast"
 // app/api/surveys/[id]/audios/zip/route.ts.
 //
 // Ítem #34 (acta 07/09/2026): "solo tengo la opción de descargar todos los
-// audios... con más de mil audios, ¿cuánto demorará?". Antes solo se
-// mostraba el conteo total y un botón "descargar todo". Ahora se listan las
-// grabaciones reales (ya venían con URL firmada individual desde
-// /api/surveys/[id]/recordings, solo no se usaban), agrupadas por
-// encuestador, con reproducción/descarga individual y filtros de
-// fecha/encuestador para el ZIP — así se puede pedir un subconjunto
-// manejable en vez de todo de una vez.
+// audios... con más de mil audios, ¿cuánto demorará?". Ítem 09/09/2026:
+// "crear un repositorio jerárquico para descargar audios — estructura
+// sugerida: encuesta → fecha → encuestador → audios. Permitir seleccionar
+// mediante casillas exactamente qué carpetas o audios descargar — necesario
+// para proyectos con miles de encuestas; 'Descargar todo' no es práctico".
+// La lista plana agrupada por encuestador (fix anterior, #34) se convierte
+// acá en un árbol Fecha → Encuestador → grabación, con casillas en cascada
+// en cada nivel — marcar una fecha marca todos sus encuestadores/audios, y
+// viceversa hacia arriba (parcial = indeterminado).
 interface Recording {
   id: string
   surveyorId: string | null
@@ -57,19 +60,32 @@ function formatDuration(secs: number | null): string {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
+// Estado de una casilla contenedora (fecha, o encuestador dentro de una
+// fecha) según cuántos de sus descendientes están marcados.
+function groupCheckState(ids: string[], selected: Set<string>): boolean | "indeterminate" {
+  if (ids.length === 0) return false
+  const selectedCount = ids.filter((id) => selected.has(id)).length
+  if (selectedCount === 0) return false
+  if (selectedCount === ids.length) return true
+  return "indeterminate"
+}
+
 export function AudiosTab({ surveyId }: AudiosTabProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [hint, setHint] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
-  const [filterDate, setFilterDate] = useState<string>("all")
   const [filterSurveyorId, setFilterSurveyorId] = useState<string>("all")
   // Ítem #36 (acta 07/09/2026): formato del ZIP — "webm" (el que grabó el
   // navegador, sin recodificar) o "mp3" (más compatible, requiere ffmpeg en
   // el servidor; si la conversión falla para algún archivo, ese queda en su
   // formato original en vez de perderse).
   const [format, setFormat] = useState<"webm" | "mp3">("webm")
+  // Árbol: qué grabaciones están marcadas para el ZIP, y qué fechas están
+  // expandidas (todas por defecto — con pocas fechas es lo más cómodo).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -87,13 +103,6 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
     return () => { cancelled = true }
   }, [surveyId])
 
-  // Opciones de filtro derivadas de las grabaciones reales — solo se ofrecen
-  // fechas/encuestadores que efectivamente tienen audios.
-  const availableDates = useMemo(() => {
-    const dates = new Set(recordings.map((r) => (r.startedAt || "").slice(0, 10)).filter(Boolean))
-    return Array.from(dates).sort().reverse()
-  }, [recordings])
-
   const availableSurveyors = useMemo(() => {
     const map = new Map<string, string>()
     for (const r of recordings) if (r.surveyorId) map.set(r.surveyorId, r.surveyorName)
@@ -101,34 +110,62 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
   }, [recordings])
 
   const filteredRecordings = useMemo(() => {
-    return recordings.filter((r) => {
-      const matchDate = filterDate === "all" || (r.startedAt || "").slice(0, 10) === filterDate
-      const matchSurveyor = filterSurveyorId === "all" || r.surveyorId === filterSurveyorId
-      return matchDate && matchSurveyor
-    })
-  }, [recordings, filterDate, filterSurveyorId])
+    return recordings.filter((r) => filterSurveyorId === "all" || r.surveyorId === filterSurveyorId)
+  }, [recordings, filterSurveyorId])
 
-  // Agrupadas por encuestador para que la lista sea manejable con cientos de
-  // grabaciones (mismo criterio de agrupación que ya usaba el conteo).
-  const groupedBySurveyor = useMemo(() => {
-    const groups = new Map<string, Recording[]>()
+  // Árbol Fecha → Encuestador → grabaciones (orden: fecha más reciente
+  // primero, encuestador alfabético dentro de cada fecha).
+  const tree = useMemo(() => {
+    const byDate = new Map<string, Map<string, Recording[]>>()
     for (const r of filteredRecordings) {
-      const key = r.surveyorName || "Sin asignar"
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(r)
+      const dateKey = (r.startedAt || "").slice(0, 10) || "Sin fecha"
+      const surveyorKey = r.surveyorName || "Sin asignar"
+      if (!byDate.has(dateKey)) byDate.set(dateKey, new Map())
+      const bySurveyor = byDate.get(dateKey)!
+      if (!bySurveyor.has(surveyorKey)) bySurveyor.set(surveyorKey, [])
+      bySurveyor.get(surveyorKey)!.push(r)
     }
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+    return Array.from(byDate.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, bySurveyor]) => ({
+        date,
+        surveyors: Array.from(bySurveyor.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([surveyorName, recs]) => ({ surveyorName, recordings: recs })),
+      }))
   }, [filteredRecordings])
 
+  const toggleIds = (ids: string[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) checked ? next.add(id) : next.delete(id)
+      return next
+    })
+  }
+
+  const toggleDateCollapsed = (date: string) => {
+    setCollapsedDates((prev) => {
+      const next = new Set(prev)
+      next.has(date) ? next.delete(date) : next.add(date)
+      return next
+    })
+  }
+
+  const selectAllVisible = () => toggleIds(filteredRecordings.map((r) => r.id), true)
+  const clearSelection = () => toggleIds(filteredRecordings.map((r) => r.id), false)
+
   const handleDownloadZip = async () => {
+    if (selectedIds.size === 0) {
+      toast({ title: "Nada seleccionado", description: "Marca al menos una fecha, encuestador o grabación para descargar.", variant: "destructive" })
+      return
+    }
     setDownloading(true)
     const loadingToast = toast({ title: "Generando ZIP...", description: "Descargando y empaquetando los audios, puede tardar unos segundos." })
     try {
       const qs = new URLSearchParams()
-      if (filterDate !== "all") qs.set("date", filterDate)
-      if (filterSurveyorId !== "all") qs.set("surveyorId", filterSurveyorId)
+      qs.set("recordingIds", Array.from(selectedIds).join(","))
       if (format === "mp3") qs.set("format", "mp3")
-      const res = await fetch(`/api/surveys/${surveyId}/audios/zip${qs.toString() ? `?${qs.toString()}` : ""}`)
+      const res = await fetch(`/api/surveys/${surveyId}/audios/zip?${qs.toString()}`)
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         toast({ title: "No se pudo descargar", description: body?.error || "Error al generar el ZIP de audios.", variant: "destructive" })
@@ -151,8 +188,6 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
     }
   }
 
-  const hasFilter = filterDate !== "all" || filterSurveyorId !== "all"
-
   return (
     <Card>
       <CardHeader>
@@ -160,8 +195,8 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
           <FileAudio className="h-5 w-5 text-[#18b0a4]" /> Audios de la encuesta
         </CardTitle>
         <CardDescription>
-          Reproduce o descarga grabaciones puntuales, o descárgalas todas (o por fecha/encuestador) en un ZIP
-          organizado por Proyecto / Encuesta / Fecha / Encuestador.
+          Reproduce grabaciones puntuales, o marca casillas por fecha, encuestador o audio individual y descarga
+          exactamente esa selección en un ZIP organizado por Proyecto / Encuesta / Fecha / Encuestador.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -179,19 +214,12 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <p className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{filteredRecordings.length}</span> de{" "}
-                <span className="font-semibold text-foreground">{recordings.length}</span> grabación
-                {recordings.length !== 1 ? "es" : ""}
-                {hasFilter ? " (con el filtro aplicado)" : ""}.
+                <span className="font-semibold text-foreground">{selectedIds.size}</span> seleccionada
+                {selectedIds.size !== 1 ? "s" : ""} de{" "}
+                <span className="font-semibold text-foreground">{filteredRecordings.length}</span> grabación
+                {filteredRecordings.length !== 1 ? "es" : ""}.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
-                <Select value={filterDate} onValueChange={setFilterDate}>
-                  <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Fecha" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las fechas</SelectItem>
-                    {availableDates.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                  </SelectContent>
-                </Select>
                 <Select value={filterSurveyorId} onValueChange={setFilterSurveyorId}>
                   <SelectTrigger className="h-8 w-[180px] text-xs"><SelectValue placeholder="Encuestador" /></SelectTrigger>
                   <SelectContent>
@@ -206,46 +234,74 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
                     <SelectItem value="mp3">MP3</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={handleDownloadZip} disabled={downloading} size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" onClick={selectAllVisible} className="text-xs">Seleccionar todo</Button>
+                <Button variant="ghost" size="sm" onClick={clearSelection} className="text-xs">Limpiar</Button>
+                <Button onClick={handleDownloadZip} disabled={downloading || selectedIds.size === 0} size="sm" className="gap-2">
                   {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {downloading ? "Generando ZIP..." : hasFilter ? "Descargar filtrado (ZIP)" : "Descargar todos (ZIP)"}
+                  {downloading ? "Generando ZIP..." : `Descargar selección (${selectedIds.size})`}
                 </Button>
               </div>
             </div>
 
-            <div className="rounded-md border divide-y max-h-96 overflow-y-auto">
-              {groupedBySurveyor.map(([surveyorName, recs]) => (
-                <div key={surveyorName}>
-                  <div className="px-3 py-1.5 bg-muted/40 text-xs font-semibold text-muted-foreground">
-                    {surveyorName} · {recs.length} grabación{recs.length !== 1 ? "es" : ""}
-                  </div>
-                  {recs.map((r) => (
-                    <div key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                      <Play className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                      <span className="text-xs text-muted-foreground w-32 flex-shrink-0">
-                        {r.startedAt ? new Date(r.startedAt).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—"}
+            <div className="rounded-md border divide-y max-h-[32rem] overflow-y-auto">
+              {tree.map(({ date, surveyors }) => {
+                const dateIds = surveyors.flatMap((s) => s.recordings.map((r) => r.id))
+                const dateState = groupCheckState(dateIds, selectedIds)
+                const collapsed = collapsedDates.has(date)
+                return (
+                  <div key={date}>
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 text-sm font-semibold">
+                      <button type="button" onClick={() => toggleDateCollapsed(date)} className="text-muted-foreground hover:text-foreground">
+                        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </button>
+                      <Checkbox checked={dateState} onCheckedChange={(v) => toggleIds(dateIds, v === true)} />
+                      <span>{date}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        · {dateIds.length} grabación{dateIds.length !== 1 ? "es" : ""}
                       </span>
-                      {/* A qué intento pertenece — ver comentario en la interfaz Recording */}
-                      {r.outcome && (
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${OUTCOME_CLASS[r.outcome] || "bg-muted text-muted-foreground"}`}>
-                          {OUTCOME_LABEL[r.outcome] || r.outcome}
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground w-14 flex-shrink-0 font-mono">{formatDuration(r.durationSecs)}</span>
-                      {r.audioUrl ? (
-                        <audio controls src={r.audioUrl} className="h-8 flex-1 min-w-0" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic flex-1">Sin archivo disponible</span>
-                      )}
-                      {r.audioUrl && (
-                        <a href={r.audioUrl} download={r.fileName} title="Descargar esta grabación">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"><Download className="h-3.5 w-3.5" /></Button>
-                        </a>
-                      )}
                     </div>
-                  ))}
-                </div>
-              ))}
+                    {!collapsed && surveyors.map(({ surveyorName, recordings: recs }) => {
+                      const surveyorIds = recs.map((r) => r.id)
+                      const surveyorState = groupCheckState(surveyorIds, selectedIds)
+                      return (
+                        <div key={`${date}-${surveyorName}`}>
+                          <div className="flex items-center gap-2 pl-8 pr-3 py-1.5 bg-muted/25 text-xs font-semibold text-muted-foreground">
+                            <Checkbox checked={surveyorState} onCheckedChange={(v) => toggleIds(surveyorIds, v === true)} />
+                            <span>{surveyorName}</span>
+                            <span className="font-normal">· {recs.length} grabación{recs.length !== 1 ? "es" : ""}</span>
+                          </div>
+                          {recs.map((r) => (
+                            <div key={r.id} className="flex items-center gap-3 pl-14 pr-3 py-2 text-sm">
+                              <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={(v) => toggleIds([r.id], v === true)} />
+                              <Play className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                              <span className="text-xs text-muted-foreground w-16 flex-shrink-0">
+                                {r.startedAt ? new Date(r.startedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                              </span>
+                              {/* A qué intento pertenece — ver comentario en la interfaz Recording */}
+                              {r.outcome && (
+                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${OUTCOME_CLASS[r.outcome] || "bg-muted text-muted-foreground"}`}>
+                                  {OUTCOME_LABEL[r.outcome] || r.outcome}
+                                </span>
+                              )}
+                              <span className="text-xs text-muted-foreground w-14 flex-shrink-0 font-mono">{formatDuration(r.durationSecs)}</span>
+                              {r.audioUrl ? (
+                                <audio controls src={r.audioUrl} className="h-8 flex-1 min-w-0" />
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic flex-1">Sin archivo disponible</span>
+                              )}
+                              {r.audioUrl && (
+                                <a href={r.audioUrl} download={r.fileName} title="Descargar esta grabación">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"><Download className="h-3.5 w-3.5" /></Button>
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

@@ -43,6 +43,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { searchParams } = new URL(request.url)
     const dateFilter = searchParams.get("date") // YYYY-MM-DD, opcional
     const surveyorIdFilter = searchParams.get("surveyorId") // opcional
+    // Ítem 09/09/2026: "crear un repositorio jerárquico para descargar
+    // audios — encuesta → fecha → encuestador → audios, permitir
+    // seleccionar mediante casillas exactamente qué carpetas o audios
+    // descargar". date/surveyorId (arriba) solo soportan UN valor cada
+    // uno — no alcanza para una selección de árbol con casillas (varias
+    // fechas y/o encuestadores sueltos a la vez). recordingIds, cuando
+    // viene, manda sobre esos dos filtros: es la lista exacta de
+    // surveyor_recordings.id que el árbol dejó marcados.
+    const recordingIdsParam = searchParams.get("recordingIds") // CSV de ids, opcional
+    const recordingIdsFilter = recordingIdsParam ? recordingIdsParam.split(",").filter(Boolean) : null
     // Ítem #36 (acta 07/09/2026): "¿en qué otro formato podemos guardar estos
     // audios? Que no sea webm" — opcional, default se mantiene en el formato
     // original grabado por el navegador (webm/opus) para no romper nada para
@@ -78,7 +88,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq("scope", "survey")
       .eq("upload_status", "uploaded")
       .not("storage_path", "is", null)
-    if (surveyorIdFilter) recordingsQuery = recordingsQuery.eq("surveyor_id", surveyorIdFilter)
+    if (recordingIdsFilter) recordingsQuery = recordingsQuery.in("id", recordingIdsFilter)
+    else if (surveyorIdFilter) recordingsQuery = recordingsQuery.eq("surveyor_id", surveyorIdFilter)
 
     const { data: recordingsRaw, error: recordingsError } = await recordingsQuery
 
@@ -91,7 +102,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // la misma que usa el nombre de carpeta más abajo (started_at, o el
     // created_at de la respuesta si no hay started_at) — filtrar acá antes
     // evita descargar/procesar grabaciones que no van a incluirse en el ZIP.
-    const recordings = dateFilter
+    // No aplica cuando ya se filtró por recordingIds explícitos (selección
+    // de árbol) — ahí la selección YA es exacta, filtrar de nuevo por fecha
+    // podría excluir algo que el usuario marcó a propósito.
+    const recordings = dateFilter && !recordingIdsFilter
       ? (recordingsRaw || []).filter((r: any) => {
           const response = responseById.get(r.response_id)
           const effectiveDate = (r.started_at || response?.created_at || "").slice(0, 10)
@@ -131,7 +145,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           // criterio de ventana (30 min) que app/api/reports/individual/[id]/route.ts.
           let preRows: { storage_path: string; started_at: string | null }[] = []
           if (rec.shift_id && rec.started_at) {
-            const lowerBound = new Date(new Date(rec.started_at).getTime() - 30 * 60 * 1000).toISOString()
+            // Ítem 09/09/2026 (mismo fix que app/api/reports/individual/[id]/route.ts):
+            // acota la ventana al final del intento anterior de este mismo
+            // turno, si hay uno, para no mezclar audio "de antes" de un
+            // intento abandonado previo con el de esta grabación.
+            let lowerBound = new Date(new Date(rec.started_at).getTime() - 30 * 60 * 1000).toISOString()
+            const { data: prevAttempt } = await admin
+              .from("surveyor_recordings")
+              .select("ended_at")
+              .eq("shift_id", rec.shift_id)
+              .eq("scope", "survey")
+              .neq("id", rec.id)
+              .lt("started_at", rec.started_at)
+              .gte("started_at", lowerBound)
+              .order("started_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            if ((prevAttempt as any)?.ended_at && (prevAttempt as any).ended_at > lowerBound) {
+              lowerBound = (prevAttempt as any).ended_at
+            }
             const { data } = await admin
               .from("surveyor_recordings")
               .select("storage_path, started_at")
@@ -197,10 +229,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const webStream = Readable.toWeb(archive as unknown as Readable) as ReadableStream
 
-    const filterSuffix = [dateFilter, surveyorIdFilter ? surveyorNameById.get(surveyorIdFilter) : null]
-      .filter(Boolean)
-      .map((s) => sanitize(String(s)))
-      .join("_")
+    const filterSuffix = recordingIdsFilter
+      ? "seleccion"
+      : [dateFilter, surveyorIdFilter ? surveyorNameById.get(surveyorIdFilter) : null]
+          .filter(Boolean)
+          .map((s) => sanitize(String(s)))
+          .join("_")
     const zipFilename = `audios_${sanitize(surveyName)}${filterSuffix ? `_${filterSuffix}` : ""}.zip`
     return new NextResponse(webStream, {
       headers: {
