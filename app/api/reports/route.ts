@@ -194,11 +194,7 @@ export async function GET(request: NextRequest) {
     // puede tener su PROPIO coordinador/supervisor por fila
     // (survey_surveyor_zones.coordinator_id/supervisor_id — ver
     // migration.sql), distinto del global, porque el mismo encuestador
-    // puede caer bajo otro supervisor según la encuesta. Cuando hay una
-    // encuesta puntual seleccionada Y un filtro de supervisor/coordinador
-    // activo, se UNE el resultado global con lo que diga la asignación de
-    // ESTA encuesta específica — así un supervisor ve su equipo real de
-    // esta encuesta aunque difiera de su equipo global.
+    // puede caer bajo otro supervisor según la encuesta.
     if (surveyFilter !== "all" && (coordinatorFilter !== "all" || supervisorFilter !== "all")) {
       // cast a any: coordinator_id/supervisor_id son columnas nuevas (ver
       // migration.sql) que todavía no están en el tipo generado de Supabase
@@ -210,7 +206,22 @@ export async function GET(request: NextRequest) {
       const { data: perSurveyRows } = await perSurveyQuery
       const perSurveyIds = ((perSurveyRows as any[]) || []).map((r) => r.surveyor_id).filter(Boolean)
       if (perSurveyIds.length > 0) {
-        hierarchySurveyorIds = [...new Set([...(hierarchySurveyorIds ?? []), ...perSurveyIds])]
+        // Ítem 09/09/2026: "cada coordinador o supervisor solo debe
+        // visualizar el grupo que tenga asignado dentro de ese proyecto" —
+        // cuando quien mira el reporte es el propio supervisor/coordinador
+        // (supervisorFilter/coordinatorFilter forzados arriba a su propio
+        // id, no elegidos a mano por un admin inspeccionando), su equipo
+        // GLOBAL deja de importar para esta encuesta puntual: ve
+        // exactamente su equipo asignado acá, ni más ni menos (antes se
+        // UNÍA con el global, lo que le dejaba ver gente que no tiene
+        // nada que ver con este proyecto). Un admin filtrando a mano por
+        // "Supervisor: Juan" para inspeccionar sigue viendo la unión —
+        // ese caso no es "verse a sí mismo", es una herramienta de
+        // admin, y no conviene sorprenderlo restringiendo de más.
+        const isSelfScoped = auth.user.role === "supervisor" || auth.user.role === "coordinator"
+        hierarchySurveyorIds = isSelfScoped
+          ? perSurveyIds
+          : [...new Set([...(hierarchySurveyorIds ?? []), ...perSurveyIds])]
       }
     }
 
