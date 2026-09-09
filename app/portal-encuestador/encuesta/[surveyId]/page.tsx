@@ -9,7 +9,7 @@ import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
 import { IncidenceScreen } from "@/components/portal-encuestador/incidence-screen"
 import { AbandonSurveyButton } from "@/components/portal-encuestador/abandon-survey-button"
 import { useToast } from "@/components/ui/use-toast"
-import { loadSurveyIntoPreviewStorage } from "@/lib/survey-preview-data"
+import { loadSurveyIntoPreviewStorage, normalizeSurveyAnswers } from "@/lib/survey-preview-data"
 import { Loader2 } from "lucide-react"
 
 // Renderer real de encuestas — se carga dinámico (sin SSR) igual que en
@@ -204,10 +204,22 @@ export default function PortalEncuestadorSurveyPage() {
     if (!assignment) return
     try {
       const location = await getBestEffortLocation()
+      // Ítem 09/09/2026: "la encuesta abandonada debe conservar lo
+      // alcanzado a responder, no aparecer vacía" — se lee el borrador que
+      // el motor de encuestas ya venía guardando en vivo en localStorage
+      // (surveyPreviewAnswers_${surveyId}, ver clearAbandonedDraft arriba)
+      // y se normaliza al mismo formato que usa el envío final.
+      let answers: { question_id: string; value: any }[] = []
+      try {
+        const draft = localStorage.getItem(`surveyPreviewAnswers_${surveyId}`)
+        if (draft) answers = normalizeSurveyAnswers(JSON.parse(draft))
+      } catch {
+        // best-effort — un borrador ilegible no debe bloquear el abandono
+      }
       const res = await fetch("/api/portal-encuestador/responses/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "abandonada", location }),
+        body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "abandonada", location, answers }),
       })
       const json = await res.json().catch(() => ({}))
       await recording.endSurveySegment(json?.response_id)

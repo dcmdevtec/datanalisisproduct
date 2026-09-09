@@ -19,11 +19,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const { assignmentId, outcome, incidenceType, location } = body as {
+    const { assignmentId, outcome, incidenceType, location, answers } = body as {
       assignmentId?: string
       outcome?: string
       incidenceType?: string
       location?: any
+      // Ítem 09/09/2026: "la encuesta abandonada debe conservar lo
+      // alcanzado a responder, no aparecer vacía". [{question_id, value}] —
+      // mismo formato que arma normalizeSurveyAnswers() (lib/survey-preview-data.ts)
+      // a partir del borrador en localStorage justo antes de abandonar (ver
+      // handleAbandon en app/portal-encuestador/encuesta/[surveyId]/page.tsx).
+      // Solo aplica a "abandonada" — una incidencia se reporta ANTES de
+      // empezar a responder, nunca hay nada que guardar ahí.
+      answers?: { question_id: string; value: any }[]
     }
 
     if (!assignmentId) {
@@ -74,6 +82,41 @@ export async function POST(request: NextRequest) {
     if (error || !responseData) {
       console.error("Error creando respuesta de incidencia/abandono:", error)
       return NextResponse.json({ error: error?.message || "No se pudo registrar" }, { status: 500 })
+    }
+
+    // Ítem 09/09/2026: guardar lo alcanzado a responder antes de abandonar
+    // — mismo criterio de validación que /api/responses (POST): solo se
+    // insertan question_id que realmente pertenecen a ESTA encuesta, el
+    // resto se descarta en silencio (defensivo, no bloquea el registro del
+    // abandono si algo viene mal formado). Mejor esfuerzo: un error acá no
+    // debe hacer fallar el abandono en sí — la encuesta ya quedó registrada
+    // como abandonada, perder algunas respuestas sueltas es preferible a
+    // que el encuestador quede atascado sin poder salir de la pantalla.
+    if (Array.isArray(answers) && answers.length > 0) {
+      const candidateIds = Array.from(
+        new Set(answers.filter((a) => typeof a?.question_id === "string").map((a) => a.question_id))
+      )
+      const { data: existingQuestions } = await admin
+        .from("questions")
+        .select("id")
+        .eq("survey_id", assignment.survey_id)
+        .in("id", candidateIds)
+      const existingIds = new Set(((existingQuestions as any[]) || []).map((q) => q.id))
+
+      const answersToInsert = answers
+        .filter((a) => typeof a?.question_id === "string" && existingIds.has(a.question_id))
+        .map((a) => ({
+          response_id: responseData.id,
+          question_id: a.question_id,
+          value: a.value === undefined ? null : (typeof a.value === "object" ? a.value : { value: a.value }),
+        }))
+
+      if (answersToInsert.length > 0) {
+        const { error: answersError } = await admin.from("answers").insert(answersToInsert)
+        if (answersError) {
+          console.error("Error guardando respuestas parciales de abandono:", answersError)
+        }
+      }
     }
 
     return NextResponse.json({ success: true, response_id: responseData.id })

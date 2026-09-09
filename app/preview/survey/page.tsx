@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback, useRef } from "react"
+import { normalizeSurveyAnswers } from "@/lib/survey-preview-data"
 // Utilidad para extraer fuentes de un HTML
 function extractFontFamilies(html: string): string[] {
   if (!html) return [];
@@ -1046,72 +1047,12 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     const docNumKey = surveyId ? `respondent_document_number_${surveyId}` : "respondent_document_number"
     const nameKey = surveyId ? `respondent_name_${surveyId}` : "respondent_name"
 
-    // Filter answers to only include valid UUID question_ids (for questions that actually exist in the database)
-    // Also consolidate matrix-related keys (e.g., ${uuid}_0, ${uuid}_0_1) into their parent UUID
-    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i
-    const uuidPrefixRegex = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_/i
-
-    const normalizedAnswers: { [questionId: string]: any } = {}
-    const matrixAnswers: { [matrixId: string]: any } = {}
-
-    // First pass: collect pure UUID answers and identify matrix cell/row keys
-    for (const [key, value] of Object.entries(answers)) {
-      if (uuidRegex.test(key)) {
-        // Pure UUID - keep it
-        normalizedAnswers[key] = value
-      } else {
-        // Check if it's a matrix-related key (contains a UUID prefix)
-        const match = key.match(uuidPrefixRegex)
-        if (match && match[1]) {
-          const matrixId = match[1]
-          if (!matrixAnswers[matrixId]) {
-            matrixAnswers[matrixId] = {}
-          }
-          // Store the composite key data under the matrix ID
-          const suffix = key.substring(matrixId.length + 1) // Remove UUID and underscore
-          matrixAnswers[matrixId][suffix] = value
-        }
-      }
-    }
-
-    // Second pass: add matrix answers (grouped by matrix question ID)
-    for (const [matrixId, matrixData] of Object.entries(matrixAnswers)) {
-      if (!normalizedAnswers[matrixId]) {
-        normalizedAnswers[matrixId] = matrixData
-        continue
-      }
-      // BUG (auditoría 2026-07-29): "Otro, especificar" guarda la selección
-      // bajo answers[question.id] (a veces el marcador literal "__other__",
-      // a veces un array que lo incluye, a veces una opción normal cuyo
-      // label contiene "otro") y el texto libre bajo answers[`${question.id}_other`].
-      // Como normalizedAnswers[matrixId] ya existía desde el primer pase (la
-      // selección), esta rama nunca se ejecutaba y el texto que la persona
-      // escribió se descartaba silenciosamente — quedaba guardado el literal
-      // "__other__" en vez de su respuesta real. Se fusiona aquí en vez de
-      // sobreescribir, para no perder ni la selección ni el texto libre.
-      const otherText = matrixData && typeof matrixData === 'object' ? (matrixData as any).other : undefined
-      if (typeof otherText === 'string' && otherText.trim().length > 0) {
-        const current = normalizedAnswers[matrixId]
-        if (current === '__other__') {
-          // Único valor era el marcador "otro": el texto libre ES la respuesta.
-          normalizedAnswers[matrixId] = otherText
-        } else if (Array.isArray(current) && current.includes('__other__')) {
-          // Selección múltiple: sustituye el marcador por el texto libre,
-          // conservando el resto de opciones marcadas.
-          normalizedAnswers[matrixId] = current.map((v: any) => (v === '__other__' ? otherText : v))
-        } else if (typeof current === 'string' || Array.isArray(current)) {
-          // Opción regular con texto adicional (su label contiene "otro"):
-          // conserva la opción seleccionada y anexa el texto libre.
-          normalizedAnswers[matrixId] = { value: current, otherText }
-        }
-        // Si current no calza con ninguno de los casos anteriores (p.ej. ya
-        // es un objeto de celdas de matriz real), se deja intacto para no
-        // romper otros tipos de pregunta que usan esta misma consolidación.
-      }
-    }
-
-    const validAnswers = Object.entries(normalizedAnswers)
-      .map(([question_id, value]) => ({ question_id, value }))
+    // Filtra answers a solo question_ids UUID válidos y consolida las claves
+    // de matriz (${uuid}_0, ${uuid}_0_1, ...) bajo su UUID padre — lógica
+    // extraída a normalizeSurveyAnswers() (09/09/2026) para poder
+    // reutilizarla también al abandonar una encuesta a medias (ver
+    // handleAbandon en app/portal-encuestador/encuesta/[surveyId]/page.tsx).
+    const validAnswers = normalizeSurveyAnswers(answers)
 
     if (validAnswers.length === 0) {
       console.warn('⚠️ No valid answers to submit (all question_ids appear to be composite keys)')
@@ -1122,8 +1063,6 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
     // Debug: log answer normalization
     console.log('📊 Answer normalization:', {
       originalCount: Object.keys(answers).length,
-      uuidAnswers: Object.keys(normalizedAnswers).length,
-      matrixQuestions: Object.keys(matrixAnswers).length,
       validAnswersToSubmit: validAnswers.length,
     })
 

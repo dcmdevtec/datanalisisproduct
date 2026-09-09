@@ -122,3 +122,59 @@ export async function loadSurveyIntoPreviewStorage(surveyId: string): Promise<
     return { ok: false, reason: "error", message: "Error de conexión" }
   }
 }
+
+// Convierte el estado plano `answers` del motor de encuestas (keyed por
+// UUID de pregunta simple, o por claves compuestas de matriz —
+// `${uuid}_${rowIdx}` / `${uuid}_${rowIdx}_${colIdx}`, ver
+// app/preview/survey/page.tsx) al arreglo [{question_id, value}] que espera
+// el backend. Extraída de submitResponsesInner() (09/09/2026, ítem
+// "guardar respuestas parciales al abandonar") para poder reutilizarla
+// también al abandonar una encuesta a medias — antes esa lógica vivía
+// SOLO dentro del envío final, así que no había forma de armar el payload
+// de las respuestas ya contestadas cuando el encuestador abandonaba.
+export function normalizeSurveyAnswers(answers: Record<string, any>): { question_id: string; value: any }[] {
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i
+  const uuidPrefixRegex = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_/i
+
+  const normalizedAnswers: { [questionId: string]: any } = {}
+  const matrixAnswers: { [matrixId: string]: any } = {}
+
+  // Primer pase: recolecta respuestas de UUID puro e identifica claves de matriz.
+  for (const [key, value] of Object.entries(answers)) {
+    if (uuidRegex.test(key)) {
+      normalizedAnswers[key] = value
+    } else {
+      const match = key.match(uuidPrefixRegex)
+      if (match && match[1]) {
+        const matrixId = match[1]
+        if (!matrixAnswers[matrixId]) matrixAnswers[matrixId] = {}
+        const suffix = key.substring(matrixId.length + 1)
+        matrixAnswers[matrixId][suffix] = value
+      }
+    }
+  }
+
+  // Segundo pase: agrega las respuestas de matriz (agrupadas por ID de pregunta).
+  for (const [matrixId, matrixData] of Object.entries(matrixAnswers)) {
+    if (!normalizedAnswers[matrixId]) {
+      normalizedAnswers[matrixId] = matrixData
+      continue
+    }
+    // "Otro, especificar": ver comentario original en
+    // app/preview/survey/page.tsx (auditoría 2026-07-29) — se fusiona en vez
+    // de sobreescribir para no perder ni la selección ni el texto libre.
+    const otherText = matrixData && typeof matrixData === 'object' ? (matrixData as any).other : undefined
+    if (typeof otherText === 'string' && otherText.trim().length > 0) {
+      const current = normalizedAnswers[matrixId]
+      if (current === '__other__') {
+        normalizedAnswers[matrixId] = otherText
+      } else if (Array.isArray(current) && current.includes('__other__')) {
+        normalizedAnswers[matrixId] = current.map((v: any) => (v === '__other__' ? otherText : v))
+      } else if (typeof current === 'string' || Array.isArray(current)) {
+        normalizedAnswers[matrixId] = { value: current, otherText }
+      }
+    }
+  }
+
+  return Object.entries(normalizedAnswers).map(([question_id, value]) => ({ question_id, value }))
+}
