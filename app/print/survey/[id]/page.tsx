@@ -291,35 +291,55 @@ export default function PrintSurveyPage() {
 
       {sections.map((section) => {
         const qs = questionsBySection.get(section.id) || []
+        // Ítem pedido 09/09/2026: "evitar que el título de una sección quede
+        // separado de su primera pregunta — si no hay espacio suficiente al
+        // final de una página, el título debe pasar a la siguiente página
+        // junto con la primera pregunta". El header de sección y el resto de
+        // preguntas eran hermanos sueltos — nada impedía que Chromium
+        // insertara el salto de página justo entre ambos. Se agrupan el
+        // header + la primera pregunta en un solo bloque break-inside-avoid
+        // (mismo mecanismo que ya usa cada QuestionBlock individual, línea
+        // 123) para que Chromium los trate como una unidad indivisible al
+        // paginar el PDF.
+        const [firstQuestion, ...restQuestions] = qs
+        const sectionHeader = (
+          <div className="bg-[#e6f7f6] rounded px-3 py-2 mb-4">
+            {section.title_html ? (
+              <div className="text-sm font-bold text-[#18b0a4]" dangerouslySetInnerHTML={{ __html: section.title_html }} />
+            ) : (
+              <p className="text-sm font-bold text-[#18b0a4]">{section.title || "Sección"}</p>
+            )}
+            {/* section.description es HTML enriquecido (mismo campo que
+                "Descripción de la sección" en el editor), no texto plano
+                — mostrarlo como texto dejaba ver las etiquetas <p>/<strong>
+                literales en el PDF. */}
+            {section.description && (
+              <div className="text-xs text-gray-500 mt-0.5" dangerouslySetInnerHTML={{ __html: section.description }} />
+            )}
+            {/* Salto de sección (ítem #11) — solo se muestra cuando no es el
+                comportamiento por defecto ("continuar a la siguiente"). */}
+            {section.skip_logic?.enabled && section.skip_logic.action && section.skip_logic.action !== "next_section" && (
+              <p className="text-xs text-[#0d7d74] mt-1 font-medium">
+                Al finalizar esta sección: {section.skip_logic.action === "specific_section"
+                  ? `saltar a "${sectionTitle(sections, section.skip_logic.targetSectionId)}"`
+                  : SKIP_ACTION_LABELS[section.skip_logic.action] || section.skip_logic.action}
+              </p>
+            )}
+          </div>
+        )
         return (
           <div key={section.id} className="mb-8">
-            <div className="bg-[#e6f7f6] rounded px-3 py-2 mb-4">
-              {section.title_html ? (
-                <div className="text-sm font-bold text-[#18b0a4]" dangerouslySetInnerHTML={{ __html: section.title_html }} />
-              ) : (
-                <p className="text-sm font-bold text-[#18b0a4]">{section.title || "Sección"}</p>
-              )}
-              {/* section.description es HTML enriquecido (mismo campo que
-                  "Descripción de la sección" en el editor), no texto plano
-                  — mostrarlo como texto dejaba ver las etiquetas <p>/<strong>
-                  literales en el PDF. */}
-              {section.description && (
-                <div className="text-xs text-gray-500 mt-0.5" dangerouslySetInnerHTML={{ __html: section.description }} />
-              )}
-              {/* Salto de sección (ítem #11) — solo se muestra cuando no es el
-                  comportamiento por defecto ("continuar a la siguiente"). */}
-              {section.skip_logic?.enabled && section.skip_logic.action && section.skip_logic.action !== "next_section" && (
-                <p className="text-xs text-[#0d7d74] mt-1 font-medium">
-                  Al finalizar esta sección: {section.skip_logic.action === "specific_section"
-                    ? `saltar a "${sectionTitle(sections, section.skip_logic.targetSectionId)}"`
-                    : SKIP_ACTION_LABELS[section.skip_logic.action] || section.skip_logic.action}
-                </p>
-              )}
-            </div>
-            {qs.map((q) => {
-              const idx = globalIndex++
-              return <QuestionBlock key={q.id} question={q} index={idx} sections={sections} />
-            })}
+            {firstQuestion ? (
+              <div className="break-inside-avoid">
+                {sectionHeader}
+                <QuestionBlock question={firstQuestion} index={globalIndex++} sections={sections} />
+              </div>
+            ) : (
+              sectionHeader
+            )}
+            {restQuestions.map((q) => (
+              <QuestionBlock key={q.id} question={q} index={globalIndex++} sections={sections} />
+            ))}
           </div>
         )
       })}
