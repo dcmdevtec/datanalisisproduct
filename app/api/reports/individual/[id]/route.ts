@@ -163,6 +163,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             text: q.text || "Sin texto",
             type: q.type,
             orderNum: q.order_num ?? 0,
+            sectionId: q.section_id ?? null,
             answer: extractValue(a.value, q.type),
             rawAnswer: a.value,
             // Ítem #26 (acta 07/09/2026): opciones válidas de la pregunta,
@@ -180,7 +181,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             fileUrls,
           }
         })
-    )).sort((a, b) => a.orderNum - b.orderNum)
+    )).sort((a, b) => a.orderNum - b.orderNum) // se re-ordena abajo con el criterio correcto (sección → orden)
+
+    // Bug reportado 09/09/2026: "el orden de las preguntas están saliendo
+    // desordenadas... en detalle de la encuesta individual". Causa raíz:
+    // order_num de `questions` es correlativo DENTRO de cada sección (0,1,2...
+    // se repite en cada sección, ver create-survey/page.tsx), no global. El
+    // sort de arriba solo comparaba orderNum entre preguntas de TODAS las
+    // secciones — con encuestas de más de una sección, preguntas con el mismo
+    // orderNum (ej. la primera de la sección 1 y la primera de la sección 2)
+    // quedaban en el orden en que Supabase las devolvió, no en el orden real
+    // del builder. Mismo fix que ya tiene app/api/reports/route.ts
+    // (questionBreakdowns): ordenar primero por order_num de la SECCIÓN y
+    // luego por order_num de la pregunta dentro de ella.
+    let sectionOrderById: Record<string, number> = {}
+    if (r.survey_id) {
+      const { data: sectionsForOrder } = await admin
+        .from("survey_sections")
+        .select("id, order_num")
+        .eq("survey_id", r.survey_id)
+      for (const s of (sectionsForOrder as any[]) || []) sectionOrderById[s.id] = s.order_num ?? 0
+    }
+    questions.sort((a, b) => {
+      const sa = a.sectionId ? (sectionOrderById[a.sectionId] ?? 0) : 0
+      const sb = b.sectionId ? (sectionOrderById[b.sectionId] ?? 0) : 0
+      if (sa !== sb) return sa - sb
+      return a.orderNum - b.orderNum
+    })
 
     const durationSecs = (r.completed_at && r.started_at)
       ? Math.max(0, Math.round((new Date(r.completed_at).getTime() - new Date(r.started_at).getTime()) / 1000))
