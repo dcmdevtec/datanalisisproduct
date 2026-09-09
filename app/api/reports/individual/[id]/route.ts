@@ -263,7 +263,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq("scope", "survey")
         .eq("upload_status", "uploaded")
         .limit(1)
-        .maybeSingle() as { data: { shift_id: string | null; storage_path: string; duration_secs: number | null; started_at: string | null } | null }
+        .maybeSingle() as { data: { id: string; shift_id: string | null; storage_path: string; duration_secs: number | null; started_at: string | null } | null }
 
       if (recRow?.storage_path) {
         const { data: signed } = await admin.storage
@@ -277,7 +277,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       if (recRow?.shift_id && recRow.started_at) {
-        const lowerBound = new Date(new Date(recRow.started_at).getTime() - 30 * 60 * 1000).toISOString()
+        // Ítem 09/09/2026: "debe quedar claro a qué encuesta o intento
+        // pertenece cada audio — esto puede pasar porque el encuestador
+        // entra, sale o abandona varias veces". Causa raíz: el límite de
+        // abajo (30 min hacia atrás) es una ventana FIJA, sin importar si
+        // en esos 30 min hubo un intento ANTERIOR de este mismo turno (una
+        // encuesta abandonada, por ejemplo) — sus segmentos scope='shift'
+        // quedaban mezclados como si fueran "antes de iniciar ESTA
+        // encuesta", cuando en realidad pertenecían al intento previo. Se
+        // acota el límite inferior al final del segmento scope='survey'
+        // anterior más reciente de este mismo turno (si existe uno) —
+        // así cada clip "antes de iniciar" solo puede pertenecer a UN
+        // intento. Si no hay un intento previo cerca, se conserva la
+        // ventana fija de 30 min como estaba.
+        let lowerBound = new Date(new Date(recRow.started_at).getTime() - 30 * 60 * 1000).toISOString()
+        const { data: prevAttempt } = await (admin as any)
+          .from("surveyor_recordings")
+          .select("ended_at")
+          .eq("shift_id", recRow.shift_id)
+          .eq("scope", "survey")
+          .not("id", "eq", recRow.id)
+          .lt("started_at", recRow.started_at)
+          .gte("started_at", lowerBound)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle() as { data: { ended_at: string | null } | null }
+        if (prevAttempt?.ended_at && prevAttempt.ended_at > lowerBound) {
+          lowerBound = prevAttempt.ended_at
+        }
         const { data: preRows } = await (admin as any)
           .from("surveyor_recordings")
           .select("storage_path, duration_secs, started_at")

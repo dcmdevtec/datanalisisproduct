@@ -24,10 +24,26 @@ interface Recording {
   id: string
   surveyorId: string | null
   surveyorName: string
+  // outcome (09/09/2026): "debe quedar claro a qué encuesta o intento
+  // pertenece cada audio — esto puede ocurrir porque el encuestador entra,
+  // sale o abandona varias veces". Ya venía en la respuesta de la API, solo
+  // no se mostraba — es lo único que distingue, para un mismo encuestador,
+  // el audio de un intento abandonado del de la encuesta que sí completó.
+  outcome: "efectiva" | "incidencia" | "abandonada" | "descalificado" | null
   startedAt: string | null
   durationSecs: number | null
   audioUrl: string | null
   fileName: string
+}
+
+const OUTCOME_LABEL: Record<string, string> = {
+  efectiva: "Efectiva", incidencia: "Incidencia", abandonada: "Abandonada", descalificado: "Descalificada",
+}
+const OUTCOME_CLASS: Record<string, string> = {
+  efectiva: "bg-emerald-100 text-emerald-700",
+  incidencia: "bg-red-100 text-red-700",
+  abandonada: "bg-amber-100 text-amber-700",
+  descalificado: "bg-purple-100 text-purple-700",
 }
 
 interface AudiosTabProps {
@@ -209,6 +225,12 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
                       <span className="text-xs text-muted-foreground w-32 flex-shrink-0">
                         {r.startedAt ? new Date(r.startedAt).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—"}
                       </span>
+                      {/* A qué intento pertenece — ver comentario en la interfaz Recording */}
+                      {r.outcome && (
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${OUTCOME_CLASS[r.outcome] || "bg-muted text-muted-foreground"}`}>
+                          {OUTCOME_LABEL[r.outcome] || r.outcome}
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground w-14 flex-shrink-0 font-mono">{formatDuration(r.durationSecs)}</span>
                       {r.audioUrl ? (
                         <audio controls src={r.audioUrl} className="h-8 flex-1 min-w-0" />
