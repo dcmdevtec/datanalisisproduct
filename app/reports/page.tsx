@@ -1055,7 +1055,19 @@ function ReportsPageContent() {
                     usuario tenía elegidos al tocar "Descargar PDF", no
                     siempre con todo Colombia activado y sin ruta. */}
                 {exporting === "geographic" && (
-                  <div style={{ position: "fixed", top: 0, left: -9999, width: 860 }} data-export-chart>
+                  // Ítem 09/09/2026: "corregir la captura del mapa en el PDF —
+                  // el mapa descargado aparece desplazado". Causa probable:
+                  // `left: -9999px` deja este contenedor MUY lejos de
+                  // cualquier coordenada real del viewport — Leaflet calcula
+                  // el pane de tiles/marcadores con transforms relativos a su
+                  // propio tamaño/posición, y html2canvas (que también
+                  // depende de coordenadas de viewport) termina rasterizando
+                  // esos dos sistemas con un offset distinto entre sí. Se
+                  // deja en una posición real (0,0), oculto con opacity/
+                  // pointer-events en vez de con un desplazamiento extremo —
+                  // mismo resultado (invisible, no interactivo) sin sacarlo
+                  // del rango de coordenadas que ambos motores calculan igual.
+                  <div style={{ position: "fixed", top: 0, left: 0, width: 860, opacity: 0, pointerEvents: "none", zIndex: -1 }} data-export-chart>
                     <ReportsGeoMap
                       zonePolygons={data?.geographic?.zonePolygons ?? []}
                       responsePoints={data?.geographic?.responsePoints ?? []}

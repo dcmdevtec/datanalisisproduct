@@ -604,14 +604,25 @@ export default function ReportsGeoMap({
     // el tipo de respuesta (verde=efectiva, amarillo=abandonada, rojo=incidencia);
     // para puntos sin clasificación (rastro de encuestador) se usa gris neutro.
     if (showPoints && filteredPoints.length > 0) {
+      // Ítem 09/09/2026: "reducir el tamaño de los puntos y limpiar
+      // elementos innecesarios — con un volumen alto de encuestas, los
+      // marcadores actuales pueden impedir la lectura del mapa". Radio fijo
+      // en píxeles (no cambia con el zoom — Leaflet lo mantiene legible sin
+      // importar el nivel de acercamiento), pero se reduce el tamaño BASE
+      // según cuántos puntos hay que dibujar a la vez, para que no se tapen
+      // entre sí en zonas muy densas.
+      const pointRadius = filteredPoints.length > 500 ? 3.5
+        : filteredPoints.length > 200 ? 4.5
+        : filteredPoints.length > 50 ? 5.5
+        : 7
       for (const p of filteredPoints) {
         const color = p.outcome ? outcomeColor[p.outcome] : "#94a3b8"
 
         const circle = L.circleMarker([p.lat, p.lng], {
-          radius: 7,
+          radius: pointRadius,
           fillColor: color,
           color: "#fff",
-          weight: 1.5,
+          weight: pointRadius > 5 ? 1.5 : 1,
           opacity: 1,
           fillOpacity: 0.9,
         })
