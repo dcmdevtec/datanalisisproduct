@@ -94,6 +94,20 @@ function ReportsPageContent() {
   // Panel de herramientas avanzadas (filtro + tabla cruzada) — colapsable
   const [showAdvancedPanel, setShowAdvancedPanel] = useState(false)
 
+  // Pestaña activa — antes era no controlada (defaultValue), pasa a
+  // controlada para poder cambiarla programáticamente desde el botón "Ver
+  // encuesta" del mapa (ver handleViewResponseFromMap más abajo, ítem
+  // 09/09/2026).
+  const [activeTab, setActiveTab] = useState("summary")
+  // Id de respuesta a abrir en "Respuestas Individuales" al llegar desde ese
+  // botón — IndividualResponsesTab lo consume y avisa de vuelta (onOpened)
+  // para no reabrir el mismo modal si el usuario vuelve a esa pestaña luego.
+  const [mapOpenResponseId, setMapOpenResponseId] = useState<string | null>(null)
+  const handleViewResponseFromMap = useCallback((responseId: string) => {
+    setMapOpenResponseId(responseId)
+    setActiveTab("individual")
+  }, [])
+
   // Filtro avanzado (slide 21): "filtrar las gráficas según lo que contestaron
   // en una pregunta en particular". Se aplica a todo el reporte vía filterParams.
   const [advancedFilterQuestionId, setAdvancedFilterQuestionId] = useState<string>("")
@@ -520,7 +534,7 @@ function ReportsPageContent() {
           </p>
         </div>
 
-        <Tabs defaultValue="summary" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="summary">Resumen</TabsTrigger>
             <TabsTrigger value="responses">Análisis de resultados</TabsTrigger>
@@ -784,7 +798,11 @@ function ReportsPageContent() {
           {/* El título de la encuesta ya se muestra como encabezado global de
               toda la página (arriba, cuando isScoped) — no se repite acá. */}
           <TabsContent value="individual" className="space-y-6">
-            <IndividualResponsesTab filterParams={filterParams} />
+            <IndividualResponsesTab
+              filterParams={filterParams}
+              openResponseId={mapOpenResponseId}
+              onOpenResponseHandled={() => setMapOpenResponseId(null)}
+            />
           </TabsContent>
 
           {/* ==================== RENDIMIENTO ==================== */}
@@ -1010,6 +1028,7 @@ function ReportsPageContent() {
                       hasActiveSurveyorFilter={selectedSurveyor !== "all"}
                       hasSurveySelected={selectedSurvey !== "all"}
                       onFilterStateChange={setGeoExportFilterState}
+                      onViewResponse={handleViewResponseFromMap}
                     />
                   </CardContent>
                 </Card>

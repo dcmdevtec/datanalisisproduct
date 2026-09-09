@@ -80,6 +80,12 @@ interface ReportsGeoMapProps {
     selectedRouteSurveyorIds: string[]
     cityPresetIdx: number
   }) => void
+  // Ítem 09/09/2026: el botón "Ver encuesta" del popup de un punto de
+  // respuesta llama a esto con el id real de `responses` — app/reports/page.tsx
+  // lo usa para cambiar a la pestaña "Respuestas Individuales" y abrir el
+  // mismo modal de detalle que esa pestaña, en vez de dibujar la ruta GPS
+  // (que ya tiene su propio control "Ver ruta" en el panel del mapa).
+  onViewResponse?: (responseId: string) => void
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
@@ -152,6 +158,7 @@ export default function ReportsGeoMap({
   initialSelectedRouteSurveyorIds,
   initialCityPresetIdx,
   onFilterStateChange,
+  onViewResponse,
 }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -503,12 +510,6 @@ export default function ReportsGeoMap({
     }
   }
 
-  const drawRoute = (L: any, map: any, p: ResponsePoint) => {
-    if (!p.surveyorId || !p.startedAt || !p.completedAt) return
-    setSelectedRouteSurveyorIds((prev) => new Set(prev).add(p.surveyorId as string))
-    return drawRouteForSurveyor(L, map, p.surveyorId, p.startedAt, p.completedAt)
-  }
-
   const renderLayers = async (L: any, map: any) => {
     if (!map) return
 
@@ -616,8 +617,15 @@ export default function ReportsGeoMap({
         })
 
         const isSurveyorTrace = p.source === "surveyor"
-        const canShowRoute = !isSurveyorTrace && !!p.surveyorId && !!p.startedAt && !!p.completedAt
-        const routeBtnId = `ver-ruta-${p.id ?? `${p.lat}-${p.lng}`}`
+        // Ítem pedido 09/09/2026: el botón del popup llevaba a "Ver ruta del
+        // encuestador", redundante con el control "Ver ruta" del panel de la
+        // derecha (que ya filtra por encuestador/fecha) — y el cliente
+        // esperaba que un punto de RESPUESTA lo llevara a esa respuesta, no a
+        // la ruta GPS. Se reemplaza por "Ver encuesta", que abre el mismo
+        // modal de detalle que usa la pestaña "Respuestas Individuales" (ver
+        // onViewResponse, resuelto en app/reports/page.tsx).
+        const canOpenResponse = !isSurveyorTrace && !!p.id && !!onViewResponse
+        const viewBtnId = `ver-encuesta-${p.id ?? `${p.lat}-${p.lng}`}`
         const popupHtml = isSurveyorTrace
           ? `
           <div style="font-family:system-ui,sans-serif;font-size:12px;min-width:160px">
@@ -634,16 +642,16 @@ export default function ReportsGeoMap({
               ${p.respondentPhone ? `<div style="color:#555">Teléfono: <strong>${p.respondentPhone}</strong></div>` : ""}
               <div style="color:#555">Duración: <strong>${formatDuration(p.durationSecs)}</strong></div>
               <div style="color:#888;font-size:11px;margin-top:2px">${new Date(p.createdAt).toLocaleString("es-CO")}</div>
-              ${canShowRoute ? `<button id="${routeBtnId}" style="margin-top:6px;padding:4px 8px;font-size:11px;font-weight:600;color:#18b0a4;background:#18b0a41a;border:1px solid #18b0a4;border-radius:6px;cursor:pointer">Ver ruta del encuestador</button>` : ""}
+              ${canOpenResponse ? `<button id="${viewBtnId}" style="margin-top:6px;padding:4px 8px;font-size:11px;font-weight:600;color:#18b0a4;background:#18b0a41a;border:1px solid #18b0a4;border-radius:6px;cursor:pointer">Ver encuesta</button>` : ""}
             </div>
           </div>`
 
         circle.bindPopup(popupHtml, { maxWidth: 220 })
-        if (canShowRoute) {
+        if (canOpenResponse) {
           circle.on("popupopen", () => {
-            const btn = document.getElementById(routeBtnId)
+            const btn = document.getElementById(viewBtnId)
             if (!btn) return
-            btn.addEventListener("click", () => drawRoute(L, map, p), { once: true })
+            btn.addEventListener("click", () => onViewResponse!(p.id as string), { once: true })
           })
         }
         circle.addTo(map)

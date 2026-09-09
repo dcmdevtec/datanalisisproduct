@@ -173,10 +173,17 @@ function StatChip({ icon: Icon, value, label, color = "default" }: {
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface IndividualResponsesTabProps {
   filterParams: URLSearchParams
+  // Ítem 09/09/2026: abrir directamente el detalle de una respuesta al
+  // llegar desde el botón "Ver encuesta" del mapa (pestaña Geográfico, ver
+  // app/reports/page.tsx). onOpenResponseHandled avisa que ya se consumió,
+  // para que el padre limpie el id y no se reabra si el usuario vuelve a
+  // pasar por esta pestaña sin haber pedido abrir nada.
+  openResponseId?: string | null
+  onOpenResponseHandled?: () => void
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabProps) {
+export function IndividualResponsesTab({ filterParams, openResponseId, onOpenResponseHandled }: IndividualResponsesTabProps) {
   // ── List state ──────────────────────────────────────────────────────────────
   const [items,   setItems]   = useState<ListItem[]>([])
   const [total,   setTotal]   = useState(0)
@@ -389,6 +396,16 @@ export function IndividualResponsesTab({ filterParams }: IndividualResponsesTabP
       setDetailLoading(false)
     }
   }
+
+  // Abre el detalle pedido desde afuera (botón "Ver encuesta" del mapa) apenas
+  // llega un id — y avisa al padre que ya se consumió, para que no se reabra
+  // solo si el usuario vuelve a esta pestaña después.
+  useEffect(() => {
+    if (!openResponseId) return
+    openDetail(openResponseId)
+    onOpenResponseHandled?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openResponseId])
 
   // ── Filtros locales sobre la página cargada ──────────────────────────────────
   const [tableSearch,      setTableSearch]      = useState("")
