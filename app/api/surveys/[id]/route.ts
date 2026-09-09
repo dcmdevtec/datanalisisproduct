@@ -15,16 +15,28 @@ function getSupabaseClient() {
 // directamente a esta ruta para renderizar el formulario — gatearla rompería
 // el flujo público de toma de encuesta. Exponer preguntas/opciones no es
 // sensible por sí solo (a diferencia de datos de usuarios/ubicación/mensajes).
+// Ítem 09/09/2026: "usar el código interno en el enlace de la encuesta —
+// reemplazar o complementar el identificador técnico largo del enlace con
+// el código interno acordado". En vez de reemplazar el UUID (rompería
+// cualquier link ya compartido), se COMPLEMENTA: /encuesta/ENC-2026-0001
+// funciona igual que /encuesta/<uuid> — esta ruta detecta cuál de los dos
+// le llegó y resuelve por la columna correspondiente. `code` no es un UUID
+// válido, así que hay que decidir ANTES de consultar (un .eq("id", ...)
+// con un valor no-UUID revienta en Postgres con un error de tipo, no un
+// 404 limpio).
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = getSupabaseClient()
   try {
     const { id } = await params
     // console.log(`GET /api/surveys/${id} - Obteniendo encuesta`)
 
+    const isUuid = UUID_REGEX.test(id)
     const { data, error } = await supabase
       .from("surveys")
       .select(`
-    *, 
+    *,
     questions (*),
     survey_sections (*),
     projects (
@@ -36,7 +48,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     )
   `)
-      .eq("id", id)
+      // Cast a any: "code" es una columna nueva (ver
+      // db/migrations/2026-09-08_add_survey_code.sql) que .eq() todavía no
+      // acepta en el tipo generado de Supabase.
+      .eq(isUuid ? "id" : ("code" as any), isUuid ? id : id.toUpperCase())
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

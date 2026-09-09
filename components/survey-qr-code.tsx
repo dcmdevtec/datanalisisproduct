@@ -10,6 +10,12 @@ import { useState } from "react"
 interface SurveyQRCodeProps {
   surveyId: string
   surveyTitle?: string
+  // Código interno (ENC-2026-0001) — ítem 09/09/2026: "usar el código
+  // interno en el enlace de la encuesta". Si viene, el link/QR usa el
+  // código en vez del UUID (más corto y legible); /api/surveys/[id] ya
+  // resuelve ambos (ver app/api/surveys/[id]/route.ts). Opcional: encuestas
+  // creadas antes de correr la migración del código siguen con el UUID.
+  surveyCode?: string | null
   size?: number
   className?: string
 }
@@ -17,16 +23,18 @@ interface SurveyQRCodeProps {
 export function SurveyQRCode({
   surveyId,
   surveyTitle,
+  surveyCode,
   size = 200,
   className,
 }: SurveyQRCodeProps) {
   const qrRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
 
+  const linkId = surveyCode || surveyId
   const publicUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/encuesta/${surveyId}`
-      : `/encuesta/${surveyId}`
+      ? `${window.location.origin}/encuesta/${linkId}`
+      : `/encuesta/${linkId}`
 
   const handleCopy = useCallback(async () => {
     try {

@@ -56,9 +56,15 @@ interface EditSurveySettingsModalProps {
   onCopyPreview?: () => void
   onSave: (newSettings: SurveySettings) => void
   surveyId?: string
+  // Código interno (ENC-2026-0001) — ítem 09/09/2026: "usar el código
+  // interno en el enlace de la encuesta". Cuando existe, el enlace público
+  // compartido (input, botón copiar, QR, WhatsApp) usa el código en vez
+  // del UUID largo — /api/surveys/[id] resuelve ambos.
+  surveyCode?: string | null
 }
 
-export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, previewUrl, onCopyPreview, onSave, surveyId }: EditSurveySettingsModalProps) {
+export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, previewUrl, onCopyPreview, onSave, surveyId, surveyCode }: EditSurveySettingsModalProps) {
+  const publicLinkId = surveyCode || surveyId
   // Ensure distributionMethods is always an array
   const getSafeSettings = (settings: SurveySettings): SurveySettings => ({
     ...settings,
@@ -245,14 +251,14 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, prev
                     <div className="flex items-center gap-2">
                       <Input
                         readOnly
-                        value={typeof window !== "undefined" ? `${window.location.origin}/encuesta/${surveyId}` : `/encuesta/${surveyId}`}
+                        value={typeof window !== "undefined" ? `${window.location.origin}/encuesta/${publicLinkId}` : `/encuesta/${publicLinkId}`}
                         className="text-sm bg-slate-50"
                       />
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={async () => {
-                          const url = `${window.location.origin}/encuesta/${surveyId}`
+                          const url = `${window.location.origin}/encuesta/${publicLinkId}`
                           try {
                             await navigator.clipboard.writeText(url)
                           } catch { /* ignore */ }
@@ -267,7 +273,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, prev
                   {editedSettings.distributionMethods?.includes("qr_code") && (
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold text-slate-700">Código QR</h4>
-                      <SurveyQRCode surveyId={surveyId} size={180} />
+                      <SurveyQRCode surveyId={surveyId!} surveyCode={surveyCode} size={180} />
                     </div>
                   )}
 
@@ -279,7 +285,7 @@ export function EditSurveySettingsModal({ isOpen, onClose, currentSettings, prev
                         variant="outline"
                         className="w-full border-green-300 text-green-700 hover:bg-green-50"
                         onClick={() => {
-                          const url = `${window.location.origin}/encuesta/${surveyId}`
+                          const url = `${window.location.origin}/encuesta/${publicLinkId}`
                           const text = encodeURIComponent(`¡Hola! Te invito a responder esta encuesta: ${url}`)
                           window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer")
                         }}
