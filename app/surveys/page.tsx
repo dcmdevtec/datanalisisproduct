@@ -35,6 +35,7 @@ import { CreateProjectModal } from "@/components/create-project-modal"
 type Survey = {
   id: string
   title: string
+  code?: string | null
   description: string | null
   status: string
   created_at: string
@@ -191,6 +192,7 @@ function SurveysPageContent() {
         `
         id,
         title,
+        code,
         description,
         status,
         created_at,
@@ -678,6 +680,11 @@ function SurveysPageContent() {
                           <div className="truncate max-w-[120px] sm:max-w-[150px] lg:max-w-[200px]" title={survey.title}>
                             {survey.title}
                           </div>
+                          {/* Código interno (09/09/2026): "mostrar nombre y
+                              código interno en todas las vistas" */}
+                          {survey.code && (
+                            <div className="text-[11px] font-mono font-normal text-muted-foreground">{survey.code}</div>
+                          )}
                         </TableCell>
                         <TableCell className="text-gray-700 px-2 sm:px-4 hidden sm:table-cell">
                           <div className="truncate max-w-[100px] lg:max-w-[150px]" title={survey.projects?.name || "N/A"}>
@@ -764,9 +771,14 @@ function SurveysPageContent() {
                   <div key={survey.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-[#18b0a4]/20 p-4 sm:p-5 flex flex-col min-h-[320px]">
                     {/* Header */}
                     <div className="mb-4">
-                      <h3 className="font-bold text-[#18b0a4] text-base sm:text-lg leading-tight mb-2" title={survey.title}>
+                      <h3 className="font-bold text-[#18b0a4] text-base sm:text-lg leading-tight mb-1" title={survey.title}>
                         {survey.title.length > 30 ? `${survey.title.substring(0, 30)}...` : survey.title}
                       </h3>
+                      {/* Código interno (09/09/2026): "mostrar nombre y código
+                          interno en todas las vistas" */}
+                      {survey.code && (
+                        <p className="text-[11px] font-mono text-muted-foreground mb-2">{survey.code}</p>
+                      )}
                       <div className="space-y-1">
                         <p className="text-sm text-gray-600">
                           <span className="font-medium text-gray-900">Proyecto:</span>

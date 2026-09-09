@@ -385,14 +385,22 @@ function ReportsPageContent() {
   // el nombre de esa encuesta pasa a ser el encabezado principal de TODA la
   // página (las 5 pestañas), no solo de una tabla puntual.
   const isScoped = !!searchParams.get("survey")
-  const scopedSurveyTitle = isScoped ? data?.surveys?.find((s) => s.id === selectedSurvey)?.title : null
+  // "Título (CÓDIGO)" (09/09/2026): "mostrar nombre y código interno en
+  // todas las vistas y reportes — incluir nombre de la encuesta + código
+  // interno/ID en títulos, reportes, PDF y demás pantallas donde sea
+  // necesario identificarla". code puede venir null en encuestas creadas
+  // antes de correr la migración del código — se omite el paréntesis en
+  // ese caso en vez de mostrar "(null)".
+  const formatSurveyTitleWithCode = (survey?: { title: string; code?: string | null } | null) =>
+    survey ? (survey.code ? `${survey.title} (${survey.code})` : survey.title) : null
+  const scopedSurveyTitle = isScoped ? formatSurveyTitleWithCode(data?.surveys?.find((s) => s.id === selectedSurvey)) : null
   // Para el PDF exportado (a diferencia de scopedSurveyTitle, que solo aplica
   // llegando por "Ver reporte" con ?survey=): el título de la encuesta
   // seleccionada por el filtro "Encuesta" del propio /reports, sin importar
   // cómo se llegó a la página. Antes el PDF nunca mostraba a qué encuesta
   // correspondía (acta 07/09/2026, ítem #16: "no aparece el título de la Encuesta").
   const selectedSurveyTitleForExport = selectedSurvey !== "all"
-    ? (data?.surveys?.find((s) => s.id === selectedSurvey)?.title ?? null)
+    ? formatSurveyTitleWithCode(data?.surveys?.find((s) => s.id === selectedSurvey))
     : null
 
   return (

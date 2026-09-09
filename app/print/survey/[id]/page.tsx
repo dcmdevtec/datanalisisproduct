@@ -51,6 +51,7 @@ interface SectionRow {
 interface SurveyRow {
   id: string
   title: string
+  code?: string | null
   description?: string | null
   status?: string
   created_at?: string
@@ -280,7 +281,12 @@ export default function PrintSurveyPage() {
     <div data-print-ready="true" className="bg-white text-gray-900 max-w-3xl mx-auto p-8">
       <div className="flex items-center justify-between border-b-2 border-[#18b0a4] pb-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#18b0a4]">{survey.title}</h1>
+          {/* Código interno junto al título (09/09/2026): "mostrar nombre y
+              código interno en todas las vistas y reportes... PDF" */}
+          <h1 className="text-2xl font-bold text-[#18b0a4]">
+            {survey.title}
+            {survey.code && <span className="text-gray-400 font-normal"> ({survey.code})</span>}
+          </h1>
           {survey.description && <p className="text-sm text-gray-500 mt-1">{survey.description}</p>}
         </div>
         {logo && (

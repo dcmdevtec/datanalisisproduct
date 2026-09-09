@@ -154,7 +154,9 @@ export async function GET(request: NextRequest) {
     // --- Load companies, projects, surveys for cascading filter dropdowns ---
     const { data: allCompanies } = await admin.from("companies").select("id, name").order("name")
     const { data: allProjects } = await admin.from("projects").select("id, name, company_id").order("name")
-    const { data: allSurveys } = await admin.from("surveys").select("id, title, project_id").order("created_at", { ascending: false })
+    // code (09/09/2026): "mostrar nombre y código interno en todas las
+    // vistas y reportes" — ver db/migrations/2026-09-08_add_survey_code.sql.
+    const { data: allSurveys } = await admin.from("surveys").select("id, title, project_id, code").order("created_at", { ascending: false })
     // Encuestadores para el selector de filtro (slide 19).
     const { data: allSurveyors } = await admin
       .from("surveyors")
@@ -577,7 +579,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
         projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
-        surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id })),
+        surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id, code: s.code ?? null })),
         surveyors: (allSurveyors || []).map((s: any) => ({ id: s.id, name: s.name, supervisorId: s.supervisor_id })),
         supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
         coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
