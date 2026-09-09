@@ -17,6 +17,31 @@ import { Loader2 } from "lucide-react"
 // (localStorage, MediaRecorder indirectamente vía el portal, etc).
 const SurveyPreviewPage = dynamic(() => import("@/app/preview/survey/page"), { ssr: false })
 
+// Ítem 09/09/2026: "el mapa muestra principalmente efectivas y
+// descalificadas — debe incluir también incidencias y abandonadas". Causa
+// raíz: al abandonar o reportar una incidencia, este componente NUNCA
+// mandaba `location` en el body de /api/portal-encuestador/responses/finish
+// (a diferencia de una encuesta completada, donde app/preview/survey/page.tsx
+// sí captura la ubicación al enviar) — esas respuestas quedaban SIEMPRE sin
+// coordenadas, y el mapa (que filtra por `r.location` existente, ver
+// app/api/reports/route.ts) nunca podía mostrarlas sin importar el filtro de
+// tipo elegido. Mejor esfuerzo: no bloquea el abandono/incidencia si el
+// permiso de ubicación fue denegado o no hay señal a tiempo (mismo patrón
+// que preview/survey/page.tsx).
+function getBestEffortLocation(): Promise<{ lat: number; lng: number } | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      resolve(null)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+    )
+  })
+}
+
 type Stage = "loading" | "incidence" | "survey" | "denied" | "not-found"
 
 interface AssignmentInfo {
@@ -137,10 +162,11 @@ export default function PortalEncuestadorSurveyPage() {
   const handleReportIncidence = useCallback(async (reason: string) => {
     if (!assignment) return
     try {
+      const location = await getBestEffortLocation()
       const res = await fetch("/api/portal-encuestador/responses/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "incidencia", incidenceType: reason }),
+        body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "incidencia", incidenceType: reason, location }),
       })
       if (!res.ok) throw new Error("No se pudo registrar la incidencia")
       toast({ title: "Incidencia registrada", description: reason })
@@ -177,10 +203,11 @@ export default function PortalEncuestadorSurveyPage() {
   const handleAbandon = useCallback(async () => {
     if (!assignment) return
     try {
+      const location = await getBestEffortLocation()
       const res = await fetch("/api/portal-encuestador/responses/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "abandonada" }),
+        body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "abandonada", location }),
       })
       const json = await res.json().catch(() => ({}))
       await recording.endSurveySegment(json?.response_id)
