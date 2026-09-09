@@ -49,7 +49,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
 
     const survey = (assignment as any).surveys
-    if (!survey || survey.status !== "active") {
+    // Mismo criterio que /api/portal-encuestador/surveys (09/09/2026): las
+    // encuestas en "draft" (Prueba) también deben poder tomarse desde el
+    // portal si están asignadas — no solo listarse.
+    if (!survey || (survey.status !== "active" && survey.status !== "draft")) {
       return NextResponse.json({ error: "Esta encuesta ya no está activa" }, { status: 404 })
     }
 

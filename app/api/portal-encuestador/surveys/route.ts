@@ -45,7 +45,14 @@ export async function GET() {
 
     for (const row of (rows as any[]) || []) {
       const survey = row.surveys
-      if (!survey || survey.status !== "active") continue // solo encuestas activas en campo
+      // Ítem pedido 09/09/2026: "Mostrar en la web las encuestas que están en
+      // estado 'Prueba' — deben mostrarse también las encuestas en prueba que
+      // estén asignadas y dentro de su rango de fechas". Antes solo dejaba
+      // pasar "active" — el equipo no podía probar una encuesta en campo
+      // antes de activarla (lo que además borra las respuestas de prueba, ver
+      // app/api/surveys/[id]/route.ts). draft y active se tratan igual de
+      // ahí en adelante (mismo chequeo de start_date abajo).
+      if (!survey || (survey.status !== "active" && survey.status !== "draft")) continue
 
       // CORRECCIÓN (2026-08-12): encuestas con fecha de inicio futura no deben
       // aparecer en el portal aunque su status sea "active". La plataforma admin
