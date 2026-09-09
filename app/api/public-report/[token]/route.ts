@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { createHash } from "crypto"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { bogotaDayKey } from "@/lib/bogota-time"
 
 function hashPassword(pw: string): string {
   return createHash("sha256").update(pw).digest("hex")
@@ -211,7 +212,9 @@ export async function GET(
   // Timeline
   const responsesByDay: Record<string, number> = {}
   for (const r of responses) {
-    const day = new Date(r.created_at).toISOString().slice(0, 10)
+    // Fecha calendario en hora de Bogotá, no UTC del servidor (09/09/2026,
+    // mismo bug que #15 en reports/route.ts — ver lib/bogota-time.ts).
+    const day = bogotaDayKey(r.created_at)
     responsesByDay[day] = (responsesByDay[day] || 0) + 1
   }
   const responsesTimeline = Object.entries(responsesByDay)
@@ -234,7 +237,7 @@ export async function GET(
     questionMap[q.id].answers.push(a.value)
     const parentResponse = responseById[a.response_id]
     if (parentResponse?.created_at) {
-      questionMap[q.id].days.push(new Date(parentResponse.created_at).toISOString().slice(0, 10))
+      questionMap[q.id].days.push(bogotaDayKey(parentResponse.created_at))
     }
   }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { bogotaDayKey } from "@/lib/bogota-time"
 
 // Endpoint PÚBLICO (sin auth) para la vista de resultados compartible de UNA
 // encuesta (pptx slide 21: "compartir un link para que la persona que lo tenga
@@ -105,7 +106,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       questionMap[q.id].answers.push(a.value)
       const parentResponse = responseById[a.response_id]
       if (parentResponse?.created_at) {
-        questionMap[q.id].days.push(new Date(parentResponse.created_at).toISOString().slice(0, 10))
+        // Fecha calendario en hora de Bogotá, no UTC del servidor (09/09/2026,
+        // mismo bug que #15 en reports/route.ts — ver lib/bogota-time.ts).
+        questionMap[q.id].days.push(bogotaDayKey(parentResponse.created_at))
       }
     }
 

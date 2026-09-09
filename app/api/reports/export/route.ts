@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import * as XLSX from "xlsx"
 import { requireRole } from "@/lib/api-auth"
+import { bogotaDayKey, bogotaDayIndex, bogotaDateTime } from "@/lib/bogota-time"
 
 function extractValue(val: any): string {
   if (val === null || val === undefined) return ""
@@ -140,7 +141,9 @@ export async function GET(request: NextRequest) {
       // Sheet: Responses timeline (chart data)
       const timelineCounts: Record<string, number> = {}
       for (const r of responses || []) {
-        const d = new Date(r.created_at).toISOString().slice(0, 10)
+        // Fecha calendario en hora de Bogotá (09/09/2026), no UTC del servidor
+        // — ver lib/bogota-time.ts.
+        const d = bogotaDayKey(r.created_at)
         timelineCounts[d] = (timelineCounts[d] || 0) + 1
       }
       const timelineRows: any[][] = [["Fecha", "Respuestas"]]
@@ -227,13 +230,15 @@ export async function GET(request: NextRequest) {
         const surveyTitle = (r.surveys as any)?.title || surveyTitleMap[r.survey_id] || ""
         const projectId = (r.surveys as any)?.project_id || ""
         const proj = projectMap[projectId]
-        const date = new Date(r.created_at)
+        // Fecha/hora en Bogotá, no en la hora local del servidor (09/09/2026,
+        // mismo bug que #15 — ver lib/bogota-time.ts).
+        const { date: dateStr, time: timeStr } = bogotaDateTime(r.created_at)
         const row: any[] = [
           i + 1, surveyTitle, proj?.name || "", proj?.company || "",
           r.respondent_name || "Anónimo", r.respondent_document_type || "", r.respondent_document_number || "",
           r.status === "completed" ? "Completada" : "Incompleta",
-          date.toLocaleDateString("es-CO"),
-          date.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+          dateStr,
+          timeStr,
         ]
         const ra = answersByResponse[r.id] || {}
         for (const q of questionList) row.push(ra[q.id] || "")
@@ -366,7 +371,9 @@ export async function GET(request: NextRequest) {
       const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
       const dayCounts: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
       for (const r of responses || []) {
-        const dayIndex = new Date(r.created_at).getDay()
+        // Día de la semana en Bogotá, no en la hora local del servidor
+        // (09/09/2026 — ver lib/bogota-time.ts).
+        const dayIndex = bogotaDayIndex(r.created_at)
         dayCounts[dayIndex] = (dayCounts[dayIndex] || 0) + 1
       }
       const dayRows: any[][] = [["Día de la Semana", "Respuestas"]]
