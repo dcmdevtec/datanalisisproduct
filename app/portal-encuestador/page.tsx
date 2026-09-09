@@ -230,22 +230,42 @@ export default function PortalEncuestadorPage() {
   // Cierra el turno de grabación al cerrar sesión y limpia el consentimiento
   // para que la próxima sesión vea la pantalla de nuevo (con el micrófono ya
   // autorizado por el navegador, es solo una confirmación visual).
-  const handleSignOut = async () => {
+  //
+  // Ítem 09/09/2026 (revisión): se había bloqueado este botón mientras la
+  // jornada estaba activa, pero el force-logout remoto del supervisor/admin
+  // depende de un ping cada ~60s y no es en tiempo real — bloquear sin poder
+  // avisar de inmediato no aportaba nada. Ahora el encuestador SIEMPRE puede
+  // cerrar su sesión; si lo hace con el turno activo POR SU PROPIA CUENTA
+  // (no cuando es el force-logout remoto del admin/supervisor, ver más abajo)
+  // se avisa a su supervisor + todos los admins por mensajería (ver
+  // /api/portal-encuestador/self-logout-alert). El aviso se dispara ANTES de
+  // endShift()/signOut() para que todavía haya sesión autenticada válida; si
+  // falla, no bloquea el cierre de sesión (solo queda logueado en servidor).
+  const handleSignOut = async (opts?: { remote?: boolean }) => {
+    const jornadaActiva = recording.status === "recording-shift" || recording.status === "recording-survey"
+    if (jornadaActiva && !opts?.remote) {
+      try {
+        await fetch("/api/portal-encuestador/self-logout-alert", { method: "POST" })
+      } catch {
+        // No bloquear el cierre de sesión si la alerta falla.
+      }
+    }
     setConsentGiven(false)
     await recording.endShift()
     await signOut()
   }
 
-  // Ítem 09/09/2026: "el encuestador no debería poder cerrar su propia
-  // sesión — solo el supervisor/admin remotamente desde la lista de
-  // encuestadores". El aviso llega por el ping periódico de ubicación (ver
-  // lib/portal-encuestador/use-location-tracking.ts, forceLogout) — apenas
-  // se recibe, se cierra la sesión local de inmediato, sin esperar a que el
-  // encuestador haga nada.
+  // Ítem 09/09/2026: force-logout remoto solicitado por el supervisor/admin
+  // desde la lista de encuestadores. El aviso llega por el ping periódico de
+  // ubicación (ver lib/portal-encuestador/use-location-tracking.ts,
+  // forceLogout) — apenas se recibe, se cierra la sesión local de inmediato.
+  // Nota: este mecanismo NO es en tiempo real (depende del ping de ~60s);
+  // se mantiene como best-effort, mientras que el cierre de sesión propio
+  // del encuestador ya no depende de esto (ver handleSignOut arriba).
   useEffect(() => {
     if (!recording.locationStatus.forceLogout) return
     toast({ title: "Sesión cerrada", description: "Un administrador o supervisor cerró tu sesión de forma remota." })
-    handleSignOut()
+    handleSignOut({ remote: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording.locationStatus.forceLogout])
 
@@ -338,23 +358,15 @@ export default function PortalEncuestadorPage() {
                 )}
               </Button>
             </Link>
-            {/* Ítem 09/09/2026: "una vez iniciada la jornada, el encuestador
-                no debería poder cerrar su propia sesión — solo el
-                supervisor/admin remotamente". Mientras la grabación del
-                turno está activa, el botón queda deshabilitado; solo vuelve
-                a permitir cerrar sesión manualmente si el turno terminó
-                (status "idle") o el micrófono fue denegado (no hay jornada
-                real en curso que proteger). */}
+            {/* Ítem 09/09/2026 (revisión): ya no se bloquea este botón con la
+                jornada activa — ver nota en handleSignOut arriba. Si el
+                turno está activo, el cierre de sesión dispara además una
+                alerta a supervisor/admin. */}
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleSignOut}
-              disabled={recording.status === "recording-shift" || recording.status === "recording-survey"}
-              title={
-                recording.status === "recording-shift" || recording.status === "recording-survey"
-                  ? "No puedes cerrar tu sesión con la jornada activa — solo tu supervisor o un administrador puede hacerlo remotamente"
-                  : "Cerrar sesión"
-              }
+              onClick={() => handleSignOut()}
+              title="Cerrar sesión"
             >
               <LogOut className="h-4 w-4" />
             </Button>
