@@ -25,6 +25,13 @@ export interface LocationTrackingResult {
   currentZoneId: string | null
   currentZoneName: string | null
   isInZone: boolean
+  // Ítem 09/09/2026 ("el encuestador no debería poder cerrar su propia
+  // sesión — solo el supervisor/admin remotamente"): true cuando el ping
+  // de ubicación más reciente trajo force_logout — ver
+  // POST /api/surveyors/[id]/force-logout y app/api/location/route.ts.
+  // El consumidor (app/portal-encuestador/page.tsx) debe cerrar la sesión
+  // apenas esto pase a true.
+  forceLogout: boolean
 }
 
 // Pregunta del usuario (2026-07-29): "[el mapa de encuestadores activo/
@@ -62,6 +69,7 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
   const [currentZoneId, setCurrentZoneId] = useState<string | null>(null)
   const [currentZoneName, setCurrentZoneName] = useState<string | null>(null)
   const [isInZone, setIsInZone] = useState<boolean>(false)
+  const [forceLogout, setForceLogout] = useState<boolean>(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSurveyIdRef = useRef<string | null | undefined>(activeSurveyId)
   useEffect(() => {
@@ -79,6 +87,7 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
       setCurrentZoneId(null)
       setCurrentZoneName(null)
       setIsInZone(false)
+      setForceLogout(false)
       return
     }
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -114,6 +123,7 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
               setCurrentZoneName(loc?.zone?.name ?? null)
               setIsInZone(!!loc?.is_in_zone)
               setTrackingStatus("active")
+              if (body?.force_logout) setForceLogout(true)
             })
             .catch((err) => {
               console.error("[location-tracking] Error de red enviando ubicación:", err)
@@ -138,5 +148,5 @@ export function useLocationTracking(status: RecordingStatus, activeSurveyId?: st
     }
   }, [status, enabled])
 
-  return { status: trackingStatus, currentZoneId, currentZoneName, isInZone }
+  return { status: trackingStatus, currentZoneId, currentZoneName, isInZone, forceLogout }
 }

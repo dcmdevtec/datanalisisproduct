@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, Edit, Trash2, UserPlus, MapPin, RefreshCw, Users, Radio, MessageSquare, Send } from "lucide-react"
+import { Search, Loader2, Edit, Trash2, UserPlus, MapPin, RefreshCw, Users, Radio, MessageSquare, Send, LogOut } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
@@ -326,6 +326,36 @@ export default function SurveyorsPage() {
       })
     } finally {
       setIsSendingMessage(false)
+    }
+  }
+
+  // Ítem 09/09/2026: "una vez iniciada la jornada, el encuestador no
+  // debería poder cerrar su propia sesión — solo el supervisor o
+  // administrador podría cerrarla remotamente desde la lista de
+  // encuestadores". Ver POST /api/surveyors/[id]/force-logout — el portal
+  // del encuestador la recoge en su próximo ping de ubicación (hasta 60s
+  // de margen, no es instantáneo) y se cierra sola.
+  const [forceLoggingOutId, setForceLoggingOutId] = useState<string | null>(null)
+  const handleForceLogout = async (target: SurveyorLocation) => {
+    setForceLoggingOutId(target.id)
+    try {
+      const res = await fetch(`/api/surveyors/${target.id}/force-logout`, { method: "POST" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || "No se pudo cerrar la sesión")
+      }
+      toast({
+        title: "Cierre de sesión solicitado",
+        description: `${target.name} quedará desconectado en los próximos segundos.`,
+      })
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.message || "No se pudo cerrar la sesión remotamente",
+        variant: "destructive",
+      })
+    } finally {
+      setForceLoggingOutId(null)
     }
   }
 
@@ -886,6 +916,26 @@ export default function SurveyorsPage() {
                               >
                                 <MessageSquare className="h-4 w-4" />
                               </Button>
+                              {/* Cerrar sesión remota (09/09/2026) — solo tiene sentido
+                                  ofrecerla si el encuestador está activo/en la app; si
+                                  ya está offline no hay sesión que cerrar. */}
+                              {(surveyor.status === "active" || (surveyor as any).in_app === true) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 shrink-0 text-red-600 hover:text-red-700"
+                                  title={`Cerrar sesión de ${surveyor.name} remotamente`}
+                                  disabled={forceLoggingOutId === surveyor.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleForceLogout(surveyor)
+                                  }}
+                                >
+                                  {forceLoggingOutId === surveyor.id
+                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                    : <LogOut className="h-4 w-4" />}
+                                </Button>
+                              )}
 
                               <div className="flex flex-col items-end gap-1">
                                 <Badge

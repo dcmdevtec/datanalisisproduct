@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider"
 import supabase from "@/lib/supabase/client"
 import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
 import { getPendingCount, flushQueue } from "@/lib/offline-queue"
+import { useToast } from "@/components/ui/use-toast"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,6 +45,7 @@ export default function PortalEncuestadorPage() {
   const { user, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
   const recording = useRecordingContext()
+  const { toast } = useToast()
 
   const [roleChecked, setRoleChecked] = useState(false)
   const [isSurveyor, setIsSurveyor] = useState(false)
@@ -234,6 +236,19 @@ export default function PortalEncuestadorPage() {
     await signOut()
   }
 
+  // Ítem 09/09/2026: "el encuestador no debería poder cerrar su propia
+  // sesión — solo el supervisor/admin remotamente desde la lista de
+  // encuestadores". El aviso llega por el ping periódico de ubicación (ver
+  // lib/portal-encuestador/use-location-tracking.ts, forceLogout) — apenas
+  // se recibe, se cierra la sesión local de inmediato, sin esperar a que el
+  // encuestador haga nada.
+  useEffect(() => {
+    if (!recording.locationStatus.forceLogout) return
+    toast({ title: "Sesión cerrada", description: "Un administrador o supervisor cerró tu sesión de forma remota." })
+    handleSignOut()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording.locationStatus.forceLogout])
+
   // Nota: el listener de "pagehide" para cerrar el turno vive ahora dentro
   // de useShiftRecording (lib/portal-encuestador/use-shift-recording.ts),
   // no aquí — así sigue activo aunque el encuestador esté en una encuesta
@@ -323,7 +338,24 @@ export default function PortalEncuestadorPage() {
                 )}
               </Button>
             </Link>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+            {/* Ítem 09/09/2026: "una vez iniciada la jornada, el encuestador
+                no debería poder cerrar su propia sesión — solo el
+                supervisor/admin remotamente". Mientras la grabación del
+                turno está activa, el botón queda deshabilitado; solo vuelve
+                a permitir cerrar sesión manualmente si el turno terminó
+                (status "idle") o el micrófono fue denegado (no hay jornada
+                real en curso que proteger). */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              disabled={recording.status === "recording-shift" || recording.status === "recording-survey"}
+              title={
+                recording.status === "recording-shift" || recording.status === "recording-survey"
+                  ? "No puedes cerrar tu sesión con la jornada activa — solo tu supervisor o un administrador puede hacerlo remotamente"
+                  : "Cerrar sesión"
+              }
+            >
               <LogOut className="h-4 w-4" />
             </Button>
           </div>

@@ -115,9 +115,16 @@ export async function POST(request: Request) {
     })
 
     // Verificar que el encuestador existe
-    const { data: surveyor, error: surveyorError } = await supabase
+    // force_logout_requested_at (09/09/2026): ver POST /api/surveyors/[id]/force-logout —
+    // este ping periódico es el canal por el que el portal se entera de que
+    // un admin/supervisor le pidió cerrar sesión remotamente.
+    // Cast a any: force_logout_requested_at es una columna nueva (ver
+    // db/migrations/2026-09-09_add_surveyor_force_logout.sql) que todavía
+    // no existe en los tipos generados de Supabase — mismo patrón ya usado
+    // en el resto del proyecto para columnas nuevas.
+    const { data: surveyor, error: surveyorError } = await (supabase as any)
       .from("surveyors")
-      .select("id, name, status")
+      .select("id, name, status, force_logout_requested_at")
       .eq("id", surveyor_id)
       .single()
 
@@ -133,6 +140,17 @@ export async function POST(request: Request) {
       await supabase
         .from("surveyors")
         .update({ status: "active" })
+        .eq("id", surveyor_id)
+    }
+
+    // Cierre de sesión remoto pedido por un admin/supervisor (09/09/2026):
+    // se consume y limpia en el mismo request — set-y-consume, sin
+    // necesitar un endpoint de confirmación aparte.
+    const forceLogout = !!surveyor.force_logout_requested_at
+    if (forceLogout) {
+      await (supabase as any)
+        .from("surveyors")
+        .update({ force_logout_requested_at: null })
         .eq("id", surveyor_id)
     }
 
@@ -199,6 +217,9 @@ export async function POST(request: Request) {
         is_in_zone: location.is_in_zone,
         zone: zoneInfo,
       },
+      // Campo nuevo y aditivo — un consumidor que no lo conozca (APK
+      // vieja) simplemente lo ignora.
+      force_logout: forceLogout,
     }, { status: 201 })
 
   } catch (error: any) {
