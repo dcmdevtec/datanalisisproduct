@@ -172,11 +172,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             options: q.options || null,
             matrixRows: q.matrix_rows || q.settings?.matrixRows || null,
             matrixCols: q.matrix_cols || q.settings?.matrixCols || null,
-            // Ítem #25 (acta 07/09/2026): tipo de celda de la matriz — solo
-            // "radio" (una opción por fila) y "checkbox" (varias por fila)
-            // tienen editor en el frontend; el resto (number/text/dropdown/
-            // rating) se muestra de solo lectura, igual que antes.
+            // Ítem #25 (acta 07/09/2026, ampliado 09/09/2026): tipo de celda
+            // de la matriz. Ahora TODOS los tipos tienen editor en el
+            // frontend (antes solo radio/checkbox) — select necesita las
+            // opciones por columna, rating necesita la escala.
             matrixCellType: q.settings?.matrixCellType || "radio",
+            matrixColOptions: q.settings?.matrixColOptions || null,
+            matrixRatingScale: q.settings?.matrixRatingScale || 5,
             audioUrl: audio?.remoteUrl ?? null,
             fileUrls,
           }
@@ -420,6 +422,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
                 { status: 400 }
               )
             }
+          }
+        }
+      }
+      // Ítem 09/09/2026: celda tipo "select" (lista desplegable) — cada
+      // celda guarda el texto elegido de matrixColOptions[colIdx], keyed por
+      // "rowIdx_colIdx" (mismo formato que arma app/preview/survey/page.tsx
+      // al consolidar answers[`${questionId}_${row}_${col}`] al enviar).
+      const matrixColOptions: string[][] | null = question.settings?.matrixColOptions || null
+      if (cellType === "select" && matrixColOptions) {
+        for (const [cellKey, cellValue] of Object.entries(body.value as Record<string, any>)) {
+          if (cellValue === undefined || cellValue === null || cellValue === "") continue
+          const colIdx = Number(String(cellKey).split("_")[1])
+          const validOptions = matrixColOptions[colIdx]
+          if (Number.isFinite(colIdx) && Array.isArray(validOptions) && !validOptions.map(String).includes(String(cellValue))) {
+            return NextResponse.json(
+              { error: `Opción no válida en la matriz: ${cellValue}` },
+              { status: 400 }
+            )
           }
         }
       }

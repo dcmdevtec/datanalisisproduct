@@ -56,8 +56,15 @@ interface DetailQuestion {
   options?: any[] | null
   matrixRows?: string[] | null
   matrixCols?: string[] | null
-  // "radio" (una opción por fila) | "checkbox" (varias) | otro (solo lectura)
+  // "radio" (una opción por fila) | "checkbox" (varias) | "select" (lista
+  // desplegable, una por celda) | "text" | "number" | "rating" | "ranking" —
+  // desde 09/09/2026 todos tienen editor (antes solo radio/checkbox).
   matrixCellType?: string
+  // Opciones por columna, solo para matrixCellType "select" (ver
+  // components/question-editor.tsx, config.matrixColOptions).
+  matrixColOptions?: string[][] | null
+  // Escala (número de estrellas), solo para matrixCellType "rating".
+  matrixRatingScale?: number
   audioUrl: string | null
   fileUrls?: { name: string; url: string | null; type: string; path?: string }[]
   answerId?: string
@@ -351,12 +358,23 @@ export function IndividualResponsesTab({ filterParams, openResponseId, onOpenRes
       const cellType = q.matrixCellType || "radio"
       const summary = (q.matrixRows || [])
         .map((row, rowIdx) => {
-          const cell = editingMatrixValue[String(rowIdx)]
-          if (cell === undefined || cell === null || cell === "") return null
-          const labels = Array.isArray(cell)
-            ? cell.map((v) => (typeof v === "number" ? q.matrixCols?.[v] ?? String(v) : String(v)))
-            : [typeof cell === "number" ? q.matrixCols?.[cell] ?? String(cell) : String(cell)]
-          return `${row}: ${labels.join("/")}`
+          if (cellType === "radio" || cellType === "checkbox") {
+            const cell = editingMatrixValue[String(rowIdx)]
+            if (cell === undefined || cell === null || cell === "") return null
+            const labels = Array.isArray(cell)
+              ? cell.map((v) => (typeof v === "number" ? q.matrixCols?.[v] ?? String(v) : String(v)))
+              : [typeof cell === "number" ? q.matrixCols?.[cell] ?? String(cell) : String(cell)]
+            return `${row}: ${labels.join("/")}`
+          }
+          // select/text/number/rating/ranking: una celda por columna, keyed
+          // "rowIdx_colIdx" (mismo formato que arma app/preview/survey/page.tsx).
+          const cellLabels = (q.matrixCols || [])
+            .map((col, colIdx) => {
+              const v = editingMatrixValue[`${rowIdx}_${colIdx}`]
+              return v !== undefined && v !== null && v !== "" ? `${col}=${v}` : null
+            })
+            .filter(Boolean)
+          return cellLabels.length > 0 ? `${row}: ${cellLabels.join(", ")}` : null
         })
         .filter(Boolean)
         .join(" · ")
@@ -1013,14 +1031,13 @@ export function IndividualResponsesTab({ filterParams, openResponseId, onOpenRes
                             <p className="text-sm font-medium leading-snug text-foreground pt-0.5 flex-1">
                               {q.text}
                             </p>
-                            {/* Editar respuesta (reunión 2026-08-27, ampliado 07/09/2026 #25) —
+                            {/* Editar respuesta (reunión 2026-08-27, ampliado 07/09/2026 #25,
+                                y 09/09/2026: ya no se limita a radio/checkbox — select/text/
+                                number/rating/ranking también son editables) —
                                 location/file/image_upload necesitan su propio editor, fuera de
-                                alcance acá. matrix ahora sí es editable, pero solo cuando el tipo
-                                de celda es radio/checkbox (los otros — number/text/dropdown/rating
-                                — se quedan de solo lectura, igual que antes). */}
+                                alcance acá. */}
                             {q.answerId
                               && !["location", "file", "image_upload"].includes(q.type)
-                              && !(q.type === "matrix" && !["radio", "checkbox"].includes(q.matrixCellType || "radio"))
                               && editingAnswerId !== q.answerId && (
                               <Button
                                 variant="ghost"
@@ -1029,17 +1046,25 @@ export function IndividualResponsesTab({ filterParams, openResponseId, onOpenRes
                                 onClick={() => {
                                   setEditingAnswerId(q.answerId!)
                                   if (q.type === "matrix" && q.matrixRows?.length) {
-                                    // Normaliza el rawAnswer (keyed por índice O por texto de fila,
-                                    // ver comentario de "BUG 2026-08-28" más abajo en el renderer de
-                                    // solo lectura) a SIEMPRE keyed por índice, que es lo que este
-                                    // editor y el guardado usan.
                                     const raw = (q.rawAnswer as Record<string, any>) || {}
-                                    const normalized: Record<string, any> = {}
-                                    q.matrixRows.forEach((row, rowIdx) => {
-                                      const cellValue = raw[String(rowIdx)] ?? raw[row]
-                                      if (cellValue !== undefined) normalized[String(rowIdx)] = cellValue
-                                    })
-                                    setEditingMatrixValue(normalized)
+                                    const cellType = q.matrixCellType || "radio"
+                                    if (cellType === "radio" || cellType === "checkbox") {
+                                      // Normaliza el rawAnswer (keyed por índice O por texto de
+                                      // fila, ver comentario de "BUG 2026-08-28" más abajo en el
+                                      // renderer de solo lectura) a SIEMPRE keyed por índice, que
+                                      // es lo que este editor y el guardado usan.
+                                      const normalized: Record<string, any> = {}
+                                      q.matrixRows.forEach((row, rowIdx) => {
+                                        const cellValue = raw[String(rowIdx)] ?? raw[row]
+                                        if (cellValue !== undefined) normalized[String(rowIdx)] = cellValue
+                                      })
+                                      setEditingMatrixValue(normalized)
+                                    } else {
+                                      // select/text/number/rating/ranking (09/09/2026): ya vienen
+                                      // keyed por "rowIdx_colIdx" (ver app/preview/survey/page.tsx),
+                                      // se copian tal cual.
+                                      setEditingMatrixValue({ ...raw })
+                                    }
                                   }
                                   // Ítem #26: para preguntas de opción fija se precarga el valor
                                   // actual en el formato que el selector espera (array para
@@ -1088,29 +1113,95 @@ export function IndividualResponsesTab({ filterParams, openResponseId, onOpenRes
                                           <tr key={row} className="even:bg-muted/20">
                                             <td className="px-2 py-1.5 border-b font-medium text-foreground/80">{row}</td>
                                             {q.matrixCols!.map((col, colIdx) => {
-                                              const checked = cellType === "checkbox"
-                                                ? Array.isArray(cellValue) && cellValue.includes(colIdx)
-                                                : cellValue === col
+                                              // radio/checkbox: una selección por FILA (cellValue
+                                              // keyed por rowIdx). El resto: un valor por CELDA
+                                              // (keyed por "rowIdx_colIdx", mismo formato que arma
+                                              // app/preview/survey/page.tsx al enviar) — ver #25/#15.
+                                              if (cellType === "checkbox" || cellType === "radio") {
+                                                const checked = cellType === "checkbox"
+                                                  ? Array.isArray(cellValue) && cellValue.includes(colIdx)
+                                                  : cellValue === col
+                                                return (
+                                                  <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                                    <input
+                                                      type={cellType === "checkbox" ? "checkbox" : "radio"}
+                                                      name={`matrix-${q.answerId}-${rowIdx}`}
+                                                      checked={checked}
+                                                      onChange={() => {
+                                                        setEditingMatrixValue((prev) => {
+                                                          const next = { ...prev }
+                                                          if (cellType === "checkbox") {
+                                                            const cur = Array.isArray(next[String(rowIdx)]) ? next[String(rowIdx)] : []
+                                                            next[String(rowIdx)] = checked
+                                                              ? cur.filter((v: number) => v !== colIdx)
+                                                              : [...cur, colIdx]
+                                                          } else {
+                                                            next[String(rowIdx)] = col
+                                                          }
+                                                          return next
+                                                        })
+                                                      }}
+                                                    />
+                                                  </td>
+                                                )
+                                              }
+                                              const cellKey = `${rowIdx}_${colIdx}`
+                                              const value = editingMatrixValue[cellKey]
+                                              const setCell = (v: any) => setEditingMatrixValue((prev) => ({ ...prev, [cellKey]: v }))
+                                              if (cellType === "select") {
+                                                const colOptions = q.matrixColOptions?.[colIdx] || []
+                                                return (
+                                                  <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                                    <select
+                                                      className="w-full max-w-[130px] border rounded px-1 py-0.5 bg-background text-xs"
+                                                      value={value ?? ""}
+                                                      onChange={(e) => setCell(e.target.value)}
+                                                    >
+                                                      <option value="">—</option>
+                                                      {colOptions.map((opt, oi) => (
+                                                        <option key={oi} value={opt}>{opt}</option>
+                                                      ))}
+                                                    </select>
+                                                  </td>
+                                                )
+                                              }
+                                              if (cellType === "rating") {
+                                                const stars = Number(q.matrixRatingScale || 5)
+                                                return (
+                                                  <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                                    <div className="flex gap-0.5 justify-center">
+                                                      {Array.from({ length: stars }, (_, i) => (
+                                                        <button
+                                                          key={i}
+                                                          type="button"
+                                                          className={`text-sm ${Number(value) === i + 1 ? "text-yellow-500" : "text-muted-foreground/40"}`}
+                                                          onClick={() => setCell(i + 1)}
+                                                        >★</button>
+                                                      ))}
+                                                    </div>
+                                                  </td>
+                                                )
+                                              }
+                                              if (cellType === "ranking") {
+                                                return (
+                                                  <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                                    <input
+                                                      type="number" min={1} max={q.matrixRows!.length}
+                                                      className="w-14 border rounded px-1 py-0.5 text-center bg-background text-xs"
+                                                      value={value ?? ""}
+                                                      onChange={(e) => setCell(e.target.value)}
+                                                    />
+                                                  </td>
+                                                )
+                                              }
+                                              // text / number
                                               return (
                                                 <td key={col} className="text-center px-2 py-1.5 border-b border-l">
                                                   <input
-                                                    type={cellType === "checkbox" ? "checkbox" : "radio"}
-                                                    name={`matrix-${q.answerId}-${rowIdx}`}
-                                                    checked={checked}
-                                                    onChange={() => {
-                                                      setEditingMatrixValue((prev) => {
-                                                        const next = { ...prev }
-                                                        if (cellType === "checkbox") {
-                                                          const cur = Array.isArray(next[String(rowIdx)]) ? next[String(rowIdx)] : []
-                                                          next[String(rowIdx)] = checked
-                                                            ? cur.filter((v: number) => v !== colIdx)
-                                                            : [...cur, colIdx]
-                                                        } else {
-                                                          next[String(rowIdx)] = col
-                                                        }
-                                                        return next
-                                                      })
-                                                    }}
+                                                    type={cellType === "number" ? "number" : "text"}
+                                                    className="w-full max-w-[110px] border rounded px-1 py-0.5 bg-background text-xs"
+                                                    value={value ?? ""}
+                                                    onChange={(e) => setCell(e.target.value)}
                                                   />
                                                 </td>
                                               )
@@ -1240,31 +1331,51 @@ export function IndividualResponsesTab({ filterParams, openResponseId, onOpenRes
                                   </thead>
                                   <tbody>
                                     {q.matrixRows.map((row, rowIdx) => {
-                                      // BUG (2026-08-28): el editor de matriz guarda la
-                                      // selección bajo `${questionId}_${rowIdx}` (ÍNDICE de
-                                      // fila, no el texto), y el valor de la celda es el
-                                      // texto de columna para "radio" pero el ÍNDICE de
-                                      // columna para "checkbox" (ver case "radio"/"checkbox"
-                                      // en app/preview/survey/page.tsx). Buscar por el
-                                      // texto exacto de la fila (como antes) nunca
-                                      // encontraba nada — la tabla salía siempre vacía.
-                                      // Se intenta primero por índice (formato real) y se
-                                      // deja el texto de fila como fallback por si algún
-                                      // origen de datos distinto (ej. legado) sí guardó así.
+                                      const cellType = q.matrixCellType || "radio"
                                       const raw = q.rawAnswer as Record<string, any> | undefined
-                                      const cellValue = raw?.[String(rowIdx)] ?? raw?.[row]
-                                      const rawList = Array.isArray(cellValue) ? cellValue : cellValue !== undefined && cellValue !== null && cellValue !== "" ? [cellValue] : []
-                                      const selectedLabels = rawList.map((v) =>
-                                        typeof v === "number" ? (q.matrixCols![v] ?? String(v)) : String(v)
-                                      )
+                                      // radio/checkbox: BUG (2026-08-28) — el editor de matriz
+                                      // guarda la selección bajo `${questionId}_${rowIdx}` (ÍNDICE
+                                      // de fila, no el texto), y el valor de la celda es el texto
+                                      // de columna para "radio" pero el ÍNDICE de columna para
+                                      // "checkbox" (ver case "radio"/"checkbox" en
+                                      // app/preview/survey/page.tsx). Buscar por el texto exacto
+                                      // de la fila (como antes) nunca encontraba nada. Se intenta
+                                      // primero por índice (formato real) y se deja el texto de
+                                      // fila como fallback por si algún origen de datos distinto
+                                      // (ej. legado) sí guardó así.
+                                      if (cellType === "radio" || cellType === "checkbox") {
+                                        const cellValue = raw?.[String(rowIdx)] ?? raw?.[row]
+                                        const rawList = Array.isArray(cellValue) ? cellValue : cellValue !== undefined && cellValue !== null && cellValue !== "" ? [cellValue] : []
+                                        const selectedLabels = rawList.map((v) =>
+                                          typeof v === "number" ? (q.matrixCols![v] ?? String(v)) : String(v)
+                                        )
+                                        return (
+                                          <tr key={row} className="even:bg-muted/20">
+                                            <td className="px-2 py-1.5 border-b font-medium text-foreground/80">{row}</td>
+                                            {q.matrixCols!.map((col) => (
+                                              <td key={col} className="text-center px-2 py-1.5 border-b border-l">
+                                                {selectedLabels.includes(col) ? <Check className="h-3.5 w-3.5 mx-auto text-emerald-600" /> : null}
+                                              </td>
+                                            ))}
+                                          </tr>
+                                        )
+                                      }
+                                      // select/text/number/rating/ranking (09/09/2026): un valor
+                                      // por CELDA, keyed "rowIdx_colIdx" — antes esta rama caía en
+                                      // el mismo grid de checkmarks de arriba y salía siempre vacía
+                                      // (el valor real nunca calzaba con un texto de columna).
                                       return (
                                         <tr key={row} className="even:bg-muted/20">
                                           <td className="px-2 py-1.5 border-b font-medium text-foreground/80">{row}</td>
-                                          {q.matrixCols!.map((col) => (
-                                            <td key={col} className="text-center px-2 py-1.5 border-b border-l">
-                                              {selectedLabels.includes(col) ? <Check className="h-3.5 w-3.5 mx-auto text-emerald-600" /> : null}
-                                            </td>
-                                          ))}
+                                          {q.matrixCols!.map((col, colIdx) => {
+                                            const v = raw?.[`${rowIdx}_${colIdx}`]
+                                            const display = v === undefined || v === null || v === "" ? "—" : cellType === "rating" ? "★".repeat(Number(v)) : String(v)
+                                            return (
+                                              <td key={col} className="text-center px-2 py-1.5 border-b border-l text-foreground/80">
+                                                {display}
+                                              </td>
+                                            )
+                                          })}
                                         </tr>
                                       )
                                     })}
