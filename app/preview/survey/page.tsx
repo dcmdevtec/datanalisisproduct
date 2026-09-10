@@ -2412,7 +2412,19 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
             const lastRowColumns = scaleRange - gridColumns * (gridRows - 1);
 
             return (
-              <div className="space-y-3">
+              <div className="space-y-1.5">
+                {/* Ítem 10/09/2026: "el mínimo aparece abajo, la gente puede
+                    creer que no empieza desde el 1" — la etiqueta mínima
+                    ("malo") ahora va ARRIBA, pegada encima del valor 1
+                    (siempre en la primera columna, primera fila, así que le
+                    basta con alinearse a la izquierda del contenedor). La
+                    etiqueta máxima ("bueno") se queda abajo, pegada debajo
+                    del último valor real — ver el cálculo de gridColumns/
+                    lastRowColumns más abajo para que caiga en su columna
+                    exacta aunque la última fila quede incompleta. */}
+                {minLabel && (
+                  <div className="text-xs text-muted-foreground text-left">{minLabel}</div>
+                )}
                 {isLargeRange ? (
                   // Grid uniforme para rangos grandes (ej: 1-20 → 10 columnas, 2 filas perfectas)
                   <div className="w-full">
@@ -2438,6 +2450,17 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                         </button>
                       ))}
                     </div>
+                    {maxLabel && (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+                        }}
+                        className="text-xs text-muted-foreground"
+                      >
+                        <span style={{ gridColumn: lastRowColumns }} className="text-right">{maxLabel}</span>
+                      </div>
+                    )}
                     {answers[question.id] !== undefined && (
                       <div className="mt-2 text-sm font-medium text-center" style={{ color: themeColors.primary }}>
                         Seleccionado: {answers[question.id]}
@@ -2445,48 +2468,26 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
                     )}
                   </div>
                 ) : (
-                  <div className="flex gap-1 justify-between">
-                    {scaleValues.map((scale) => (
-                      <button
-                        key={scale}
-                        type="button"
-                        onClick={() => handleAnswerChange(question.id, scale)}
-                        className={`${btnClass} ${answers[question.id] === scale
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "bg-muted hover:bg-muted/80"
-                        }`}
-                      >
-                        {scale}
-                      </button>
-                    ))}
+                  <div>
+                    <div className="flex gap-1 justify-between">
+                      {scaleValues.map((scale) => (
+                        <button
+                          key={scale}
+                          type="button"
+                          onClick={() => handleAnswerChange(question.id, scale)}
+                          className={`${btnClass} ${answers[question.id] === scale
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "bg-muted hover:bg-muted/80"
+                          }`}
+                        >
+                          {scale}
+                        </button>
+                      ))}
+                    </div>
+                    {maxLabel && (
+                      <div className="text-xs text-muted-foreground text-right">{maxLabel}</div>
+                    )}
                   </div>
-                )}
-                {(minLabel || maxLabel) && (
-                  isLargeRange ? (
-                    // Misma grilla que los valores — cada etiqueta cae en la
-                    // celda exacta de su valor (primero/último), sin importar
-                    // si la última fila queda incompleta.
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
-                        gridTemplateRows: `repeat(${gridRows}, auto)`,
-                      }}
-                      className="text-xs text-muted-foreground"
-                    >
-                      {minLabel && (
-                        <span style={{ gridColumn: 1, gridRow: 1 }} className="text-left">{minLabel}</span>
-                      )}
-                      {maxLabel && (
-                        <span style={{ gridColumn: lastRowColumns, gridRow: gridRows }} className="text-right">{maxLabel}</span>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{minLabel}</span>
-                      <span>{maxLabel}</span>
-                    </div>
-                  )
                 )}
               </div>
             )
