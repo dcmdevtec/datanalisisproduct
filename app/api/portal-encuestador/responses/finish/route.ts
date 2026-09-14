@@ -64,7 +64,19 @@ export async function POST(request: NextRequest) {
 
     const insertPayload: any = {
       survey_id: assignment.survey_id,
-      respondent_id: null,
+      // Ítem 14/09/2026: "las abandonadas/incidencias no aparecen en
+      // Rendimiento por Encuestador, solo las descalificadas" — acá se
+      // guardaba `respondent_id: null` a propósito (no hay respondiente
+      // encuestado en una incidencia/abandono), pero /api/reports lo usa
+      // TAMBIÉN como respaldo para identificar al ENCUESTADOR cuando
+      // assignment_id no resuelve (ver unresolvedAssignment() ahí — pasa,
+      // por ejemplo, si la fila de survey_surveyor_zones fue reasignada a
+      // otra zona/encuesta después de creado este registro, cambiando su
+      // survey_id). Los envíos que SÍ pasan por /api/responses (efectiva/
+      // descalificado) guardan `respondent_id = session.user.id` con ese
+      // mismo fin — acá replicamos el mismo criterio con el id del
+      // encuestador autenticado (surveyor.userId), no del encuestado.
+      respondent_id: surveyor.userId,
       location: location || null,
       status: "completed",
       completed_at: new Date().toISOString(),
