@@ -28,6 +28,7 @@ import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/compone
 import { SortableTable } from "@/components/reports/sortable-table"
 import { AudiosTab } from "@/components/reports/audios-tab"
 import { ShareReportModal } from "@/components/reports/share-report-modal"
+import { bogotaDayKey } from "@/lib/bogota-time"
 import type { ReportData } from "./shared"
 import { formatPercent } from "@/lib/format"
 import {
@@ -76,8 +77,14 @@ function ReportsPageContent() {
   const [selectedCoordinator, setSelectedCoordinator] = useState<string>("all")
   const [selectedTipo, setSelectedTipo] = useState<string>("all")
   // Rango de fechas real (pptx slide 19), reemplaza el selector de "período" fijo.
-  const [dateFrom, setDateFrom] = useState<string>("")
-  const [dateTo, setDateTo] = useState<string>("")
+  // Ítem 14/09/2026: "quiero que el filtro de fecha por defecto siempre
+  // cargue el día actual al entrar" — antes arrancaba vacío (todo el
+  // histórico). Se inicializa con el día de HOY en hora de Bogotá (mismo
+  // criterio de zona horaria que el resto de Reportes); "Limpiar filtros"
+  // sigue dejándolo vacío (todo el tiempo) si el usuario lo pide a mano.
+  const todayBogota = bogotaDayKey(new Date().toISOString())
+  const [dateFrom, setDateFrom] = useState<string>(todayBogota)
+  const [dateTo, setDateTo] = useState<string>(todayBogota)
 
   // Constructor de informes: configuración por pregunta (tipo gráfica, etiquetas, tabla)
   const [questionSettings, setQuestionSettings] = useState<Record<string, { chartType: ChartType; showLabels: boolean; showTable: boolean }>>({})
