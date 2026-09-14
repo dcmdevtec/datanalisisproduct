@@ -159,7 +159,14 @@ function PieOrDonut({
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            {/* Ítem 14/09/2026: el tooltip de Recharts sigue el cursor por
+                defecto — en un anillo (donut) angosto (tarjeta chica/
+                celular) terminaba cayendo justo sobre el total centrado de
+                abajo, tapándolo. `position={{ y: 0 }}` fija SOLO el eje Y al
+                borde superior del gráfico (el X sigue siguiendo el cursor,
+                cerca de la porción), lo que lo saca por completo de la zona
+                del total sin importar el ancho del contenedor. */}
+            <Tooltip content={<CustomTooltip />} position={{ y: 0 }} />
           </PieChart>
         </ResponsiveContainer>
         {/* Total centrado — overlay CSS, evita coordenadas SVG frágiles */}
