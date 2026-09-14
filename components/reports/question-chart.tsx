@@ -230,8 +230,18 @@ function BarsVertical({
   )
 
   return (
+    // Ítem 14/09/2026: "los decimales quedan cortos, no caben en el
+    // gráfico" — la etiqueta valor+porcentaje (ValueLabel, ej. "12 (33,3%)")
+    // se dibuja 6px arriba de cada barra; con solo 8px de margen superior,
+    // apenas la barra más alta se acercaba al techo del SVG (frecuente
+    // cuando una opción concentra la mayoría de respuestas), el texto se
+    // recortaba contra el borde del contenedor. El margen izquierdo NEGATIVO
+    // (-8) tenía el mismo problema para la etiqueta de la PRIMERA barra
+    // (más ancha que la barra en sí). Se amplían los tres márgenes — el
+    // recorte ocurre en el SVG, así que esto también arregla la captura que
+    // usan las exportaciones a PDF (mismo DOM).
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={distribution} margin={{ top: 8, right: 8, left: -8, bottom: 60 }}>
+      <BarChart data={distribution} margin={{ top: 24, right: 12, left: 12, bottom: 60 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
         <XAxis
           dataKey="label"
@@ -240,7 +250,15 @@ function BarsVertical({
           textAnchor="end"
           interval={0}
         />
-        <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+        <YAxis
+          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+          allowDecimals={false}
+          // Headroom extra sobre la barra más alta — el "nice rounding" por
+          // defecto de Recharts a veces deja el dominio EXACTO al valor
+          // máximo (ej. si ya es un número "redondo"), sin nada de aire para
+          // la etiqueta que se dibuja arriba de la barra.
+          domain={[0, (max: number) => Math.ceil((max || 1) * 1.2)]}
+        />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
         <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? <ValueLabel /> : false}>
           {distribution.map((d, i) => (
@@ -295,8 +313,14 @@ function BarsHorizontal({
   )
 
   return (
+    // Ítem 14/09/2026: mismo problema que BarsVertical — la etiqueta
+    // valor+porcentaje (ej. "120 (100,0%)") se dibuja a la derecha de cada
+    // barra; con 72px de margen apenas alcanzaba para números largos (3
+    // cifras + "100,0%"), así que el texto se recortaba contra el borde
+    // derecho del SVG. También afecta la captura que usan las exportaciones
+    // a PDF (mismo DOM).
     <ResponsiveContainer width="100%" height={Math.max(200, distribution.length * 44)}>
-      <BarChart data={distribution} layout="vertical" margin={{ top: 4, right: 72, left: 0, bottom: 4 }}>
+      <BarChart data={distribution} layout="vertical" margin={{ top: 4, right: 92, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
         <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
         <YAxis
