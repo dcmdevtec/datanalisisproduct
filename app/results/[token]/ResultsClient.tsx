@@ -68,7 +68,12 @@ const CHART_COLORS = ["#18b0a4", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#1
 
 const RADIAN = Math.PI / 180
 function RenderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) {
-  if (percent < 0.05) return null
+  // Ítem 14/09/2026: mismo fix que components/reports/question-chart.tsx —
+  // con umbrales bajos, dos porciones chicas y adyacentes terminan con sus
+  // etiquetas superpuestas entre sí (cada una en el ángulo medio de un arco
+  // angosto). Se sube de 5% a 15%; la leyenda de abajo sigue mostrando el
+  // detalle de esas porciones sin ese riesgo.
+  if (percent < 0.15) return null
   const radius = innerRadius + (outerRadius - innerRadius) * 0.55
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
   const y = cy + radius * Math.sin(-midAngle * RADIAN)
