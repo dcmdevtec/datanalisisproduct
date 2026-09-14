@@ -1252,77 +1252,18 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
       return
     }
 
-    // Verificar skip logic de la sección actual
-    if (currentSection.skip_logic?.enabled) {
-      const skipLogic = currentSection.skip_logic
-
-      // Manejar estructura con "action"
-      if (skipLogic.action) {
-        try {
-          // Verificar si es una acción de finalizar encuesta
-          if (skipLogic.action === "end_survey") {
-
-            // Finalizar encuesta inmediatamente
-            setSubmissionStatus("idle")
-            const ok = await submitResponses()
-            if (ok) {
-              setSubmissionStatus("success")
-              setShowFinishedDialog(true)
-            } else {
-              setSubmissionStatus("error")
-            }
-            return // Salir después de finalizar
-          }
-
-          // Si es salto a sección específica
-          if (skipLogic.action === "specific_section" && skipLogic.targetSectionId) {
-
-            const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === skipLogic.targetSectionId)
-            if (foundSectionIndex !== -1) {
-              // Registrar en historial para que "Atrás" pueda volver aquí
-              setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
-              setCurrentSectionIndex(foundSectionIndex)
-              return // Salir después de aplicar el salto de sección
-            } else {
-              console.warn(`⚠️ Sección objetivo "${skipLogic.targetSectionId}" no encontrada`)
-            }
-          }
-        } catch (error) {
-          console.error(`❌ Error aplicando skip logic de sección "${currentSection.title}":`, error)
-        }
-      }
-
-      // Mantener compatibilidad con estructura anterior (target_section_id)
-      const { target_section_id } = skipLogic
-      if (target_section_id) {
-        try {
-          // Verificar si es una acción de finalizar encuesta
-          if (target_section_id === "END_SURVEY") {
-            // Finalizar encuesta inmediatamente (no registrar historial — es fin)
-            setSubmissionStatus("idle")
-            const ok = await submitResponses()
-            if (ok) {
-              setSubmissionStatus("success")
-              setShowFinishedDialog(true)
-            } else {
-              setSubmissionStatus("error")
-            }
-            return // Salir después de finalizar
-          }
-
-          // Si hay una sección objetivo, calcular el índice
-          const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === target_section_id)
-          if (foundSectionIndex !== -1) {
-            // Registrar en historial para que "Atrás" pueda volver aquí
-            setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
-            setCurrentSectionIndex(foundSectionIndex)
-            return // Salir después de aplicar el salto de sección
-          }
-        } catch (error) {
-          console.error(`❌ Error aplicando skip logic de sección "${currentSection.title}":`, error)
-        }
-      }
-    }
+    // Ítem 10/09/2026: "la encuesta tiene dos saltos, uno en la sección y
+    // otro en la pregunta — verifica que ambos funcionen". Antes el salto de
+    // SECCIÓN (incondicional: siempre next_section/specific_section/
+    // end_survey, ver SectionSkipLogicConfig.tsx — no depende de ninguna
+    // respuesta) se evaluaba PRIMERO y salía con `return` apenas tenía una
+    // acción distinta de "next_section" — así que si esa misma sección
+    // también tenía un salto de PREGUNTA (condicional, ej. "No → Descalificar
+    // y terminar"), ese salto de pregunta NUNCA se llegaba a evaluar: el de
+    // sección lo pisaba siempre, sin importar qué se hubiera respondido.
+    // Ahora se evalúan primero los saltos de PREGUNTA (más específicos/
+    // condicionales) y solo si ninguno aplicó se cae al salto de SECCIÓN
+    // (el "qué pasa por defecto al terminar esta sección").
 
     // Verificar skip logic en todas las preguntas de la sección actual
     for (const question of currentSection.questions) {
@@ -1442,6 +1383,81 @@ function PreviewSurveyPageContent({ assignmentId, onSubmitted }: PreviewSurveyPa
               console.error(`❌ Error evaluando lógica de salto para pregunta "${question.text}":`, error)
             }
           }
+        }
+      }
+    }
+
+    // Ningún salto de PREGUNTA aplicó — ahora sí, verificar el salto de la
+    // SECCIÓN actual (el "qué pasa por defecto" configurado en
+    // SectionSkipLogicConfig.tsx). Movido acá desde el principio de la
+    // función — ver comentario arriba.
+    if (currentSection.skip_logic?.enabled) {
+      const skipLogic = currentSection.skip_logic
+
+      // Manejar estructura con "action"
+      if (skipLogic.action) {
+        try {
+          // Verificar si es una acción de finalizar encuesta
+          if (skipLogic.action === "end_survey") {
+
+            // Finalizar encuesta inmediatamente
+            setSubmissionStatus("idle")
+            const ok = await submitResponses()
+            if (ok) {
+              setSubmissionStatus("success")
+              setShowFinishedDialog(true)
+            } else {
+              setSubmissionStatus("error")
+            }
+            return // Salir después de finalizar
+          }
+
+          // Si es salto a sección específica
+          if (skipLogic.action === "specific_section" && skipLogic.targetSectionId) {
+
+            const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === skipLogic.targetSectionId)
+            if (foundSectionIndex !== -1) {
+              // Registrar en historial para que "Atrás" pueda volver aquí
+              setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
+              setCurrentSectionIndex(foundSectionIndex)
+              return // Salir después de aplicar el salto de sección
+            } else {
+              console.warn(`⚠️ Sección objetivo "${skipLogic.targetSectionId}" no encontrada`)
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Error aplicando skip logic de sección "${currentSection.title}":`, error)
+        }
+      }
+
+      // Mantener compatibilidad con estructura anterior (target_section_id)
+      const { target_section_id } = skipLogic
+      if (target_section_id) {
+        try {
+          // Verificar si es una acción de finalizar encuesta
+          if (target_section_id === "END_SURVEY") {
+            // Finalizar encuesta inmediatamente (no registrar historial — es fin)
+            setSubmissionStatus("idle")
+            const ok = await submitResponses()
+            if (ok) {
+              setSubmissionStatus("success")
+              setShowFinishedDialog(true)
+            } else {
+              setSubmissionStatus("error")
+            }
+            return // Salir después de finalizar
+          }
+
+          // Si hay una sección objetivo, calcular el índice
+          const foundSectionIndex = surveyData?.sections.findIndex(s => s.id === target_section_id)
+          if (foundSectionIndex !== -1) {
+            // Registrar en historial para que "Atrás" pueda volver aquí
+            setSkipLogicHistory((prev) => [...prev, currentSectionIndex as any])
+            setCurrentSectionIndex(foundSectionIndex)
+            return // Salir después de aplicar el salto de sección
+          }
+        } catch (error) {
+          console.error(`❌ Error aplicando skip logic de sección "${currentSection.title}":`, error)
         }
       }
     }
