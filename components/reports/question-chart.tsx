@@ -101,8 +101,16 @@ function PieOrDonut({
   // la etiqueta fija sobre la porción solo traía el %. Se agrega el
   // absoluto (mismo formato "N (P%)" que ya usan las barras).
   const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, value }: any) => {
-    // Solo mostrar etiqueta si la porción es >= 8%
-    if (percent < 0.08) return null
+    // Ítem 14/09/2026: "algunos números se pierden" — con el umbral de 8%,
+    // dos porciones chicas y ADYACENTES (ej. Incidencias 10% + Efectivas
+    // 10%, una al lado de la otra) quedaban lo bastante angostas como para
+    // que sus dos etiquetas de texto se superpusieran entre sí (cada una
+    // cae en el ángulo medio de un arco de ~36°, muy cerca de su vecina) —
+    // el resultado se veía como un número cortado/ilegible. Se sube el
+    // umbral a 15%: esas porciones se quedan sin número encima, pero ya
+    // están igual de claras (sin superposición posible) en la leyenda de
+    // abajo, que siempre las muestra.
+    if (percent < 0.15) return null
     const RADIAN = Math.PI / 180
     const radius = innerRadius + (outerRadius - innerRadius) * 0.55
     const x = cx + radius * Math.cos(-midAngle * RADIAN)
