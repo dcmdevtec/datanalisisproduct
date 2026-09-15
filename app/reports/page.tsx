@@ -1094,11 +1094,22 @@ function ReportsPageContent() {
                   // propio tamaño/posición, y html2canvas (que también
                   // depende de coordenadas de viewport) termina rasterizando
                   // esos dos sistemas con un offset distinto entre sí. Se
-                  // deja en una posición real (0,0), oculto con opacity/
-                  // pointer-events en vez de con un desplazamiento extremo —
-                  // mismo resultado (invisible, no interactivo) sin sacarlo
-                  // del rango de coordenadas que ambos motores calculan igual.
-                  <div style={{ position: "fixed", top: 0, left: 0, width: 860, opacity: 0, pointerEvents: "none", zIndex: -1 }} data-export-chart>
+                  // deja en una posición real (0,0) en vez de un
+                  // desplazamiento extremo.
+                  //
+                  // Ítem 15/09/2026: "el PDF sigue sin mostrar el mapa" — acá
+                  // estaba el segundo motivo (además del CORS de los tiles,
+                  // ver reports-geo-map.tsx): se ocultaba con `opacity: 0`,
+                  // pero html2canvas captura el DOM tal como el navegador lo
+                  // PINTA — un elemento con opacity:0 se renderiza
+                  // literalmente invisible/transparente, así que la captura
+                  // salía en blanco sin importar que el mapa sí hubiera
+                  // cargado. Se saca opacity del todo y se oculta solo con
+                  // z-index negativo (queda detrás del contenido real de la
+                  // página, que sí es opaco) + pointer-events:none — invisible
+                  // para el usuario, pero con opacidad real de 1 para que
+                  // html2canvas lo capture normal.
+                  <div style={{ position: "fixed", top: 0, left: 0, width: 860, pointerEvents: "none", zIndex: -1 }} data-export-chart>
                     <ReportsGeoMap
                       zonePolygons={data?.geographic?.zonePolygons ?? []}
                       responsePoints={data?.geographic?.responsePoints ?? []}

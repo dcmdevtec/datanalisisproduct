@@ -330,9 +330,27 @@ export default function ReportsGeoMap({
         // Mismo tile que components/tracking-map.tsx (encuestador) — antes este
         // mapa usaba CartoDB Positron (gris pálido), que el cliente reportó
         // como "se ve en negativo" al compararlo con el mapa de tracking.
-        const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        //
+        // Ítem 15/09/2026: "el PDF sigue sin mostrar el mapa" — la causa real
+        // (no solo de tiempo, como se creyó en el fix anterior) es que
+        // tile.openstreetmap.org NO manda headers CORS (Access-Control-
+        // Allow-Origin) en sus tiles. Con crossOrigin:true (obligatorio para
+        // que html2canvas pueda leer el canvas sin SecurityError) el
+        // navegador simplemente RECHAZA cada tile — nunca cargan, sin
+        // importar cuánto se espere; el tile layer igual dispara 'load'
+        // porque Leaflet cuenta los intentos fallidos como "terminados", así
+        // que el mapa queda con los tiles en blanco pero el resto del código
+        // "cree" que ya terminó de cargar. Por eso la copia oculta de
+        // exportación (crossOriginTiles=true) usa un servidor que SÍ manda
+        // esos headers (CartoDB Voyager — estilo a color, no el Positron gris
+        // que ya se había descartado); el mapa VISIBLE en pantalla sigue
+        // igual que siempre, sin crossOrigin, con el tile real de OSM.
+        const tileUrl = crossOriginTiles
+          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        const tileLayer = L.tileLayer(tileUrl, {
           maxZoom: 19,
-          subdomains: "abc",
+          subdomains: crossOriginTiles ? "abcd" : "abc",
           ...(crossOriginTiles ? { crossOrigin: true } : {}),
         }).addTo(map)
 
