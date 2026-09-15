@@ -61,6 +61,14 @@ function ReportsPageContent() {
     selectedRouteSurveyorIds: string[]
     cityPresetIdx: number
   } | null>(null)
+  // Ítem 15/09/2026: "el PDF del mapa a veces sale en blanco" — handleExport
+  // esperaba un tiempo FIJO (2.5s) antes de capturar la copia oculta del
+  // mapa, sin garantía de que los tiles (siempre se piden de nuevo por red,
+  // ver crossOriginTiles) ya hubieran terminado de pintarse. Este ref guarda
+  // el "resolve" de la promesa que handleExport arma al exportar — la copia
+  // oculta del mapa lo dispara vía su prop onReady cuando de verdad terminó
+  // de dibujar zonas/puntos/ruta Y los tiles.
+  const geoMapReadyResolveRef = useRef<(() => void) | null>(null)
   const [data, setData] = useState<ReportData | null>(null)
   const [selectedCompany, setSelectedCompany] = useState<string>("all")
   const [selectedProject, setSelectedProject] = useState<string>("all")
@@ -301,15 +309,31 @@ function ReportsPageContent() {
           break
         case "geographic":
           // El mapa oculto de exportación (ver #export-geographic más abajo)
-          // recién se monta cuando exporting pasa a "geographic" — antes de
-          // capturarlo con html2canvas hay que darle tiempo a Leaflet de
-          // inicializar, a los tiles de bajar por red, Y (si había una ruta
-          // seleccionada) a /api/reports/route-trace de resolver. No hay
-          // forma limpia de "esperar a que termine de cargar" sin reescribir
-          // el mapa entero a promesas, así que se usa una espera fija (mismo
-          // criterio pragmático que el resto de esta exportación: si algo no
-          // llegó a tiempo, la captura sigue sin eso en vez de fallar).
-          await new Promise((resolve) => setTimeout(resolve, 2500))
+          // recién se monta cuando exporting pasa a "geographic". Antes se
+          // esperaba un tiempo FIJO (2.5s) antes de capturarlo con
+          // html2canvas — sin garantía real de que Leaflet ya hubiera
+          // terminado de inicializar, dibujar zonas/puntos/ruta (si
+          // /api/reports/route-trace tardaba) y, sobre todo, de que los
+          // tiles (con crossOrigin, siempre se piden de nuevo por red, sin
+          // caché del mapa visible) ya hubieran bajado. Con red lenta esa
+          // espera no alcanzaba y el PDF salía con el mapa en blanco (ítem
+          // 15/09/2026). Ahora se espera la señal real: ReportsGeoMap llama
+          // a onReady() cuando todo eso terminó (con su propio resguardo
+          // interno de 5s para el tile 'load'). geoMapReadyResolveRef se
+          // deja listo ANTES de que el estado se re-renderice y monte el
+          // mapa oculto, así no importa cuánto tarde React en montarlo. Se
+          // agrega además un tope de 10s acá por si algo quedara colgado.
+          await new Promise<void>((resolve) => {
+            let done = false
+            const finish = () => {
+              if (done) return
+              done = true
+              geoMapReadyResolveRef.current = null
+              resolve()
+            }
+            geoMapReadyResolveRef.current = finish
+            setTimeout(finish, 10000)
+          })
           await exportGeographic(data, periodLabel, surveyTitle)
           break
       }
@@ -1086,6 +1110,7 @@ function ReportsPageContent() {
                       initialShowPoints={geoExportFilterState?.showPoints}
                       initialSelectedRouteSurveyorIds={geoExportFilterState?.selectedRouteSurveyorIds}
                       initialCityPresetIdx={geoExportFilterState?.cityPresetIdx}
+                      onReady={() => geoMapReadyResolveRef.current?.()}
                     />
                   </div>
                 )}

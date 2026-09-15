@@ -86,6 +86,17 @@ interface ReportsGeoMapProps {
   // mismo modal de detalle que esa pestaña, en vez de dibujar la ruta GPS
   // (que ya tiene su propio control "Ver ruta" en el panel del mapa).
   onViewResponse?: (responseId: string) => void
+  // Ítem 15/09/2026: "el PDF del mapa a veces sale en blanco" — app/reports/
+  // page.tsx capturaba la copia oculta de exportación tras una espera FIJA
+  // (2.5s), sin ninguna garantía real de que los tiles (con crossOrigin,
+  // así que nunca reusan la caché del mapa visible — siempre se piden de
+  // nuevo por red) ya hubieran terminado de pintarse. Con red lenta, la
+  // captura llegaba antes de que aparecieran, y el PDF salía con el mapa en
+  // blanco. Este callback se dispara UNA vez que el mapa está realmente
+  // listo para capturarse: polígonos/puntos ya dibujados, ruta pre-
+  // seleccionada (si la había) ya resuelta, Y el tile layer disparó su
+  // propio evento 'load' (todos los tiles visibles ya bajaron o fallaron).
+  onReady?: () => void
 }
 
 // Devuelve color hex basado en tasa de completación (rojo → amarillo → verde)
@@ -159,6 +170,7 @@ export default function ReportsGeoMap({
   initialCityPresetIdx,
   onFilterStateChange,
   onViewResponse,
+  onReady,
 }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -318,11 +330,23 @@ export default function ReportsGeoMap({
         // Mismo tile que components/tracking-map.tsx (encuestador) — antes este
         // mapa usaba CartoDB Positron (gris pálido), que el cliente reportó
         // como "se ve en negativo" al compararlo con el mapa de tracking.
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           subdomains: "abc",
           ...(crossOriginTiles ? { crossOrigin: true } : {}),
         }).addTo(map)
+
+        // Ítem 15/09/2026 (ver onReady en props): Leaflet dispara 'load' en
+        // el tile layer cuando TODOS los tiles visibles ya bajaron (o
+        // fallaron) — es la única señal real de que el mapa terminó de
+        // pintarse. Se resuelve también con un timeout corto de resguardo
+        // (5s) por si ese evento no llega a disparar en algún caso raro
+        // (mejor exportar con tiles a medio cargar que dejar la promesa
+        // colgada para siempre).
+        const tilesLoaded = new Promise<void>((resolve) => {
+          tileLayer.once("load", () => resolve())
+          setTimeout(resolve, 5000)
+        })
 
         // Atribución pequeña en esquina
         L.control.attribution({ position: "bottomright", prefix: false })
@@ -355,8 +379,17 @@ export default function ReportsGeoMap({
             await drawRouteForSurveyor(L, map, surveyorId, from, to, color)
           }
         }
+
+        // Todo lo que depende de datos (zonas/puntos/ruta) ya se dibujó
+        // arriba — solo falta confirmar que los tiles también terminaron.
+        await tilesLoaded
+        onReady?.()
       } catch (err) {
         console.error("Error inicializando mapa de reportes:", err)
+        // No dejar a quien esté esperando onReady() colgado para siempre si
+        // algo de lo anterior falló (ej. el fetch de la ruta) — mejor
+        // capturar el mapa como haya quedado que no capturarlo nunca.
+        onReady?.()
       }
     }
 
