@@ -46,6 +46,46 @@ interface ChartCapture {
   legend?: { label: string; count: number; percentage: number; color: string }[]
 }
 
+// Ítem 15/09/2026: el mapa exportado necesita DOS pasadas de html2canvas
+// combinadas — ningún modo único sirve solo. El renderer POR DEFECTO
+// reconstruye el DOM "a mano" y por eso pierde el contenido SVG de Leaflet
+// (el pane con las zonas/puntos/rutas, que vive con su propio CSS transform
+// translate3d dentro del mapa paneado) — confirmado con una prueba aislada:
+// perdía el marcador de prueba al 100%, sin error. `foreignObjectRendering`
+// (le pide al navegador que dibuje el DOM tal cual, vía <foreignObject> de
+// SVG) sí resuelve ese transform y saca bien zonas/puntos/rutas — pero en
+// producción, contra tiles que vienen de una petición de red real (no un
+// data URL embebido como en la prueba aislada), ese modo no logra traer las
+// imágenes de los tiles — quedan en blanco (se ve el gris de fondo por
+// defecto de Leaflet). Cada modo tiene el defecto que al otro le falta, así
+// que se capturan los dos y se combinan: tiles de la pasada normal, con
+// zonas/puntos/rutas de la pasada foreignObject (fondo transparente, tiles
+// ocultos) dibujados encima.
+async function captureMapComposite(card: HTMLElement, scale: number): Promise<HTMLCanvasElement> {
+  const baseOpts = { scale, useCORS: true, logging: false, scrollX: 0, scrollY: 0 } as const
+
+  const tilesCanvas = await html2canvas(card, { ...baseOpts, backgroundColor: "#ffffff" })
+
+  const overlayCanvas = await html2canvas(card, {
+    ...baseOpts,
+    backgroundColor: null,
+    foreignObjectRendering: true,
+    onclone: (_doc: Document, el: HTMLElement) => {
+      el.style.background = "transparent"
+      el.querySelectorAll<HTMLElement>(".leaflet-container").forEach((c) => { c.style.background = "transparent" })
+      el.querySelectorAll<HTMLElement>(".leaflet-tile-pane").forEach((p) => { p.style.display = "none" })
+    },
+  })
+
+  const merged = document.createElement("canvas")
+  merged.width = tilesCanvas.width
+  merged.height = tilesCanvas.height
+  const ctx = merged.getContext("2d")!
+  ctx.drawImage(tilesCanvas, 0, 0)
+  ctx.drawImage(overlayCanvas, 0, 0)
+  return merged
+}
+
 async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   const container = document.getElementById(containerId)
   if (!container) return []
@@ -53,35 +93,17 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   const images: ChartCapture[] = []
   for (const card of Array.from(cards)) {
     try {
-      // Ítem 15/09/2026: "las rutas y los puntos del mapa siguen bugueados en
-      // el PDF" — la causa real (independiente de todo lo ya corregido sobre
-      // tiles/CORS/animaciones) es que el renderer POR DEFECTO de html2canvas
-      // (el que reconstruye el DOM "a mano", nodo por nodo) directamente NO
-      // captura el contenido SVG de Leaflet (el pane que dibuja los puntos y
-      // las rutas) cuando el mapa fue paneado — ese pane queda con su propio
-      // CSS transform (translate3d) y html2canvas lo pierde por completo, sin
-      // ni un error: el mapa base (tiles, que son <img> normales) sale bien,
-      // pero los puntos/rutas (SVG) simplemente no aparecen. Confirmado con
-      // una prueba aislada (Leaflet + html2canvas en un mapa paneado): el
-      // renderer por defecto perdía el marcador de prueba al 100%; con
-      // `foreignObjectRendering: true` apareció a menos de 1px del lugar
-      // correcto. Ese modo le pide al navegador que dibuje el DOM tal cual
-      // (vía <foreignObject> de SVG) en vez de que html2canvas lo reconstruya
-      // a mano, así que los transforms de Leaflet los resuelve el motor de
-      // renderizado real del navegador, no una reimplementación aproximada.
-      // Se activa solo para la tarjeta marcada como mapa (data-export-map) —
-      // el resto de gráficas (barras/torta) ya salían bien con el renderer
-      // por defecto y no hace falta arriesgar un cambio de comportamiento ahí.
       const isMap = card.hasAttribute("data-export-map")
-      const canvas = await html2canvas(card, {
-        scale: 3,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        ...(isMap ? { foreignObjectRendering: true } : {}),
-      })
+      const canvas = isMap
+        ? await captureMapComposite(card, 3)
+        : await html2canvas(card, {
+            scale: 3,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+            scrollX: 0,
+            scrollY: 0,
+          })
       const layout = card.getAttribute("data-export-layout") === "half" ? "half" : "full"
       const maxWidthAttr = card.getAttribute("data-export-max-width")
       const maxWidth = maxWidthAttr ? Number(maxWidthAttr) : undefined
