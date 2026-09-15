@@ -342,11 +342,19 @@ export default function ReportsGeoMap({
         // que el mapa queda con los tiles en blanco pero el resto del código
         // "cree" que ya terminó de cargar. Por eso la copia oculta de
         // exportación (crossOriginTiles=true) usa un servidor que SÍ manda
-        // esos headers (CartoDB Voyager — estilo a color, no el Positron gris
-        // que ya se había descartado); el mapa VISIBLE en pantalla sigue
-        // igual que siempre, sin crossOrigin, con el tile real de OSM.
+        // esos headers (CartoDB); el mapa VISIBLE en pantalla sigue igual
+        // que siempre, sin crossOrigin, con el tile real de OSM.
+        //
+        // "voyager_nolabels" en vez de "voyager" a secas ("sale horrible"):
+        // el estilo Voyager con etiquetas dibuja nombres de ciudad/región en
+        // letras enormes y pálidas que, a los zooms que usa este mapa,
+        // terminan tapando todo el contenido (ver captura del reporte). Sin
+        // esas etiquetas queda un mapa a color limpio, sin el efecto
+        // "marca de agua" — las zonas/puntos/rutas ya traen su propio label
+        // dibujado aparte (ver renderLayers), así que no hace falta el
+        // nombre de calle/ciudad de fondo para que el mapa siga siendo útil.
         const tileUrl = crossOriginTiles
-          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
           : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         const tileLayer = L.tileLayer(tileUrl, {
           maxZoom: 19,
@@ -366,9 +374,14 @@ export default function ReportsGeoMap({
           setTimeout(resolve, 5000)
         })
 
-        // Atribución pequeña en esquina
+        // Atribución pequeña en esquina — créditos reales según el proveedor
+        // de tiles que se esté usando (ver tileUrl arriba).
         L.control.attribution({ position: "bottomright", prefix: false })
-          .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>')
+          .addAttribution(
+            crossOriginTiles
+              ? '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
+              : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          )
           .addTo(map)
 
         await renderLayers(L, map)
