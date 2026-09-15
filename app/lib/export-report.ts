@@ -53,8 +53,26 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   const images: ChartCapture[] = []
   for (const card of Array.from(cards)) {
     try {
-      // scale 3 (antes 2) — a mayor resolución de captura, texto más nítido
-      // al imprimir la imagen a ancho completo/medio en el PDF.
+      // Ítem 15/09/2026: "las rutas y los puntos del mapa siguen bugueados en
+      // el PDF" — la causa real (independiente de todo lo ya corregido sobre
+      // tiles/CORS/animaciones) es que el renderer POR DEFECTO de html2canvas
+      // (el que reconstruye el DOM "a mano", nodo por nodo) directamente NO
+      // captura el contenido SVG de Leaflet (el pane que dibuja los puntos y
+      // las rutas) cuando el mapa fue paneado — ese pane queda con su propio
+      // CSS transform (translate3d) y html2canvas lo pierde por completo, sin
+      // ni un error: el mapa base (tiles, que son <img> normales) sale bien,
+      // pero los puntos/rutas (SVG) simplemente no aparecen. Confirmado con
+      // una prueba aislada (Leaflet + html2canvas en un mapa paneado): el
+      // renderer por defecto perdía el marcador de prueba al 100%; con
+      // `foreignObjectRendering: true` apareció a menos de 1px del lugar
+      // correcto. Ese modo le pide al navegador que dibuje el DOM tal cual
+      // (vía <foreignObject> de SVG) en vez de que html2canvas lo reconstruya
+      // a mano, así que los transforms de Leaflet los resuelve el motor de
+      // renderizado real del navegador, no una reimplementación aproximada.
+      // Se activa solo para la tarjeta marcada como mapa (data-export-map) —
+      // el resto de gráficas (barras/torta) ya salían bien con el renderer
+      // por defecto y no hace falta arriesgar un cambio de comportamiento ahí.
+      const isMap = card.hasAttribute("data-export-map")
       const canvas = await html2canvas(card, {
         scale: 3,
         useCORS: true,
@@ -62,6 +80,7 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
         logging: false,
         scrollX: 0,
         scrollY: 0,
+        ...(isMap ? { foreignObjectRendering: true } : {}),
       })
       const layout = card.getAttribute("data-export-layout") === "half" ? "half" : "full"
       const maxWidthAttr = card.getAttribute("data-export-max-width")
