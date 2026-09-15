@@ -388,7 +388,11 @@ export default function ReportsGeoMap({
         map = L.map(containerRef.current, {
           center: COLOMBIA_CENTER,
           zoom: COLOMBIA_ZOOM,
-          zoomControl: true,
+          // Ítem 15/09/2026: "que no salga al exportar" — el control de
+          // zoom nativo de Leaflet no tiene sentido en la copia oculta de
+          // exportación (no es interactiva); en vez de ocultarlo con
+          // data-html2canvas-ignore, directamente no se crea ahí.
+          zoomControl: !crossOriginTiles,
           attributionControl: false,
           maxBounds: COLOMBIA_BOUNDS,
           maxBoundsViscosity: 1.0,
@@ -1015,8 +1019,12 @@ export default function ReportsGeoMap({
         <canvas ref={overlayCanvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 450 }} />
       )}
 
-      {/* Controles de capa — esquina superior derecha */}
-      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
+      {/* Controles de capa — esquina superior derecha. Ítem 15/09/2026: "que
+          no salgan al exportar" — son controles de interacción (zoom,
+          delimitar por ciudad, elegir ruta) sin sentido en un PDF estático;
+          data-html2canvas-ignore los excluye SOLO de la captura, el mapa
+          visible los sigue mostrando igual que siempre. */}
+      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5" data-html2canvas-ignore="true">
         <button
           onClick={() => setIsFullscreen((v) => !v)}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border bg-white border-gray-200 text-gray-700 transition-all hover:bg-gray-50"
@@ -1147,9 +1155,11 @@ export default function ReportsGeoMap({
       {/* Contador de puntos — corrido a la derecha del control de zoom nativo
           de Leaflet (esquina superior izquierda, ~10-40px): antes quedaba
           en top-3 left-3, justo encima de los botones +/-, tapándolos por
-          completo (ítem 09/09/2026, "no me dejan ampliar"). */}
+          completo (ítem 09/09/2026, "no me dejan ampliar"). Ítem 15/09/2026:
+          "que no salga al exportar" — data-html2canvas-ignore, ver
+          comentario junto a los controles de capa arriba. */}
       {filteredPoints.length > 0 && (
-        <div className="absolute top-3 left-16 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-1.5">
+        <div className="absolute top-3 left-16 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg border shadow-md px-3 py-1.5" data-html2canvas-ignore="true">
           <p className="text-xs text-gray-600">
             <span className="font-bold text-gray-800">{filteredPoints.length.toLocaleString()}</span>{" "}
             {filteredPoints.some(p => p.source === "surveyor") ? "ubicaciones de encuestadores" : "respuestas georeferenciadas"}
