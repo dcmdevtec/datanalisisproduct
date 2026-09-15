@@ -60,6 +60,7 @@ function ReportsPageContent() {
     showPoints: boolean
     selectedRouteSurveyorIds: string[]
     cityPresetIdx: number
+    mapView: { center: [number, number]; zoom: number } | null
   } | null>(null)
   // Ítem 15/09/2026: "el PDF del mapa a veces sale en blanco" — handleExport
   // esperaba un tiempo FIJO (2.5s) antes de capturar la copia oculta del
@@ -1127,6 +1128,7 @@ function ReportsPageContent() {
                       initialShowPoints={geoExportFilterState?.showPoints}
                       initialSelectedRouteSurveyorIds={geoExportFilterState?.selectedRouteSurveyorIds}
                       initialCityPresetIdx={geoExportFilterState?.cityPresetIdx}
+                      initialMapView={geoExportFilterState?.mapView}
                       onReady={() => geoMapReadyResolveRef.current?.()}
                     />
                   </div>

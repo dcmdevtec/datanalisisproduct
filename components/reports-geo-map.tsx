@@ -67,6 +67,16 @@ interface ReportsGeoMapProps {
   // ignoraba la delimitación elegida. Se agrega como initial* más, mismo
   // patrón que los demás filtros.
   initialCityPresetIdx?: number
+  // Ítem 15/09/2026: "si le doy zoom manual (arrastrar/scroll, no el
+  // dropdown de ciudad) y exporto, ¿eso también sale en el PDF?" — hasta
+  // ahora no: el encuadre manual del mapa visible es un estado interno de
+  // Leaflet (centro/zoom) que nunca se copiaba a la copia oculta de
+  // exportación, la cual siempre recalculaba su propio auto-fit. Mismo
+  // patrón initial* que los demás filtros: arranca la copia oculta en el
+  // encuadre EXACTO que tenía el mapa visible al tocar "Descargar PDF" —
+  // sea que haya llegado ahí por auto-fit, por el dropdown de ciudad, o por
+  // arrastre/scroll manual del usuario.
+  initialMapView?: { center: [number, number]; zoom: number } | null
   // El mapa VISIBLE usa esto para avisarle a app/reports/page.tsx cuál es su
   // filtro actual cada vez que cambia — así, al momento de exportar, el
   // padre ya tiene a mano qué pasarle como initial* de arriba a la copia
@@ -79,6 +89,7 @@ interface ReportsGeoMapProps {
     showPoints: boolean
     selectedRouteSurveyorIds: string[]
     cityPresetIdx: number
+    mapView: { center: [number, number]; zoom: number } | null
   }) => void
   // Ítem 09/09/2026: el botón "Ver encuesta" del popup de un punto de
   // respuesta llama a esto con el id real de `responses` — app/reports/page.tsx
@@ -216,6 +227,7 @@ export default function ReportsGeoMap({
   initialShowPoints,
   initialSelectedRouteSurveyorIds,
   initialCityPresetIdx,
+  initialMapView,
   onFilterStateChange,
   onViewResponse,
   onReady,
@@ -247,6 +259,11 @@ export default function ReportsGeoMap({
   // Delimitar el mapa por ciudad/municipio (ver CITY_PRESETS) en vez de
   // siempre mostrar todo el país.
   const [cityPresetIdx, setCityPresetIdx] = useState(initialCityPresetIdx ?? 0)
+  // Ítem 15/09/2026: encuadre manual (centro+zoom) del mapa VISIBLE — se
+  // actualiza en cada 'moveend' (ver init()) y se reporta vía
+  // onFilterStateChange, igual que los demás filtros, para que la copia
+  // oculta de exportación pueda arrancar en el mismo encuadre exacto.
+  const [mapView, setMapView] = useState<{ center: [number, number]; zoom: number } | null>(null)
   // Filtro por tipo (slide 24): checkboxes multi-selección, todos activos por defecto.
   // Los puntos sin outcome (ej. rastro GPS del portal encuestador) siempre se
   // muestran — el filtro solo aplica a respuestas ya clasificadas.
@@ -288,9 +305,10 @@ export default function ReportsGeoMap({
       showPoints,
       selectedRouteSurveyorIds: [...selectedRouteSurveyorIds],
       cityPresetIdx,
+      mapView,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabledOutcomes, showZones, showPoints, selectedRouteSurveyorIds, cityPresetIdx])
+  }, [enabledOutcomes, showZones, showPoints, selectedRouteSurveyorIds, cityPresetIdx, mapView])
 
   // Ítem 15/09/2026: "evita posibles bugs — que solo muestre por
   // encuestador individual, no permita seleccionar más de dos" — cada ruta
@@ -412,6 +430,20 @@ export default function ReportsGeoMap({
 
         mapRef.current = map
 
+        // Ítem 15/09/2026: reporta el encuadre (centro+zoom) del mapa
+        // VISIBLE cada vez que termina de moverse — auto-fit, dropdown de
+        // ciudad, o arrastre/scroll manual del usuario, cualquiera sea la
+        // causa — para que la copia oculta de exportación pueda arrancar en
+        // el mismo encuadre exacto (ver initialMapView/onFilterStateChange).
+        // Solo en el mapa visible: la copia de exportación no necesita
+        // reportarse a sí misma.
+        if (!crossOriginTiles) {
+          map.on("moveend", () => {
+            const c = map.getCenter()
+            setMapView({ center: [c.lat, c.lng], zoom: map.getZoom() })
+          })
+        }
+
         // Ítem 15/09/2026 (2da vuelta): "bug inesperado — se repiten los
         // puntos arriba en el océano" — con el canvas propio ya dibujando
         // bien zonas/puntos/rutas (ver drawOverlayCanvas), export-report.ts
@@ -496,6 +528,17 @@ export default function ReportsGeoMap({
             const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
             await drawRouteForSurveyor(L, map, surveyorId, from, to, color)
           }
+        }
+
+        // Ítem 15/09/2026: "si le doy zoom manual y exporto, ¿sale igual en
+        // el PDF?" — initialMapView (ver props) trae el ÚLTIMO encuadre
+        // reportado por el mapa visible; se aplica acá, DESPUÉS de todos los
+        // demás auto-fits (datos, ciudad, ruta) de arriba, para que sea la
+        // palabra final — mirror exacto de lo que el usuario tenía en
+        // pantalla al tocar "Descargar PDF", sin importar cómo llegó ahí.
+        if (crossOriginTiles && initialMapView) {
+          map.setView(initialMapView.center, initialMapView.zoom, { animate: false })
+          drawOverlayCanvas()
         }
 
         // Ítem 15/09/2026 (2da vuelta): "el mapa exportado sale con partes
