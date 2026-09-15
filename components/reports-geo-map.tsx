@@ -336,10 +336,16 @@ export default function ReportsGeoMap({
   // pidiendo /api/reports/route-trace y redibujando el mapa sin parar,
   // hasta trabar/colgar la pestaña. Memoizado para que la referencia solo
   // cambie cuando los datos o el filtro de tipo realmente cambian.
-  const filteredPoints = useMemo(
-    () => responsePoints.filter((p) => !p.outcome || enabledOutcomes.has(p.outcome)),
-    [responsePoints, enabledOutcomes]
-  )
+  const filteredPoints = useMemo(() => {
+    const byOutcome = responsePoints.filter((p) => !p.outcome || enabledOutcomes.has(p.outcome))
+    // Ítem 15/09/2026: "al seleccionar la ruta de un encuestador, que
+    // desaparezcan los puntos de los demás — que solo se vea a él" — con
+    // una o más rutas activas (tope de 2, ver MAX_SIMULTANEOUS_ROUTES), el
+    // mapa se limita a los puntos de esos encuestadores puntuales; sin esto,
+    // la ruta quedaba enterrada entre las respuestas de todos los demás.
+    if (selectedRouteSurveyorIds.size === 0) return byOutcome
+    return byOutcome.filter((p) => p.surveyorId && selectedRouteSurveyorIds.has(p.surveyorId))
+  }, [responsePoints, enabledOutcomes, selectedRouteSurveyorIds])
 
   // Encuestadores disponibles para el selector de ruta (dedupe por id).
   const surveyorOptions = Array.from(
