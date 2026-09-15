@@ -65,15 +65,24 @@ interface ChartCapture {
 // Ítem 15/09/2026 (2da vuelta): "los puntos quedan un poco corridos" — la
 // pasada foreignObject no solo dibujaba las zonas/puntos/rutas de Leaflet,
 // sino TAMBIÉN los controles/leyenda/contador (son divs de React, hermanos
-// del contenedor de Leaflet dentro de la misma tarjeta) — esos ya salen
-// bien en la pasada de tiles, así que al componer las dos quedaban
-// duplicados encima uno del otro (se veía "Respuestas"/"Ver ruta..." dos
-// veces), y esa duplicación era lo que hacía ver los puntos como corridos.
-// Se oculta en el clon de esta pasada todo lo que NO sea el propio
-// contenedor de Leaflet, y dentro de éste, también los controles nativos
-// de Leaflet (zoom, atribución) — solo quedan los panes con contenido
-// geográfico real (zonas/puntos/rutas), que es lo único que esta pasada
-// necesita aportar.
+// del contenedor de Leaflet — pero NO hijos directos de `card`: en
+// app/reports/page.tsx la tarjeta oculta de exportación envuelve a
+// <ReportsGeoMap>, cuyo propio div raíz es el que de verdad contiene, como
+// hijos directos SUYOS, tanto el div de Leaflet como los paneles de
+// controles/leyenda/contador) — esos ya salen bien en la pasada de tiles,
+// así que al componer las dos quedaban duplicados encima uno del otro (se
+// veía "Respuestas"/"Ver ruta..." dos veces), y esa duplicación era lo que
+// hacía ver los puntos como corridos.
+//
+// (3ra vuelta, mismo síntoma tras el primer intento de este fix): ese
+// primer intento ocultaba los HIJOS DIRECTOS DE `card` que no contuvieran
+// `.leaflet-container` — pero como el contenedor de Leaflet queda un nivel
+// más adentro (dentro del div raíz de ReportsGeoMap), ese único hijo de
+// `card` SÍ lo contenía como descendiente, así que nunca se ocultaba nada
+// y los paneles seguían duplicándose. La forma correcta, sin asumir cuántos
+// niveles de wrapper hay: ubicar el `.leaflet-container` donde sea que
+// esté, y ocultar a sus hermanos REALES (los hijos de SU padre directo) —
+// eso alcanza a los paneles sin importar la profundidad de anidamiento.
 async function captureMapComposite(card: HTMLElement, scale: number): Promise<HTMLCanvasElement> {
   const baseOpts = { scale, useCORS: true, logging: false, scrollX: 0, scrollY: 0 } as const
 
@@ -85,11 +94,12 @@ async function captureMapComposite(card: HTMLElement, scale: number): Promise<HT
     foreignObjectRendering: true,
     onclone: (_doc: Document, el: HTMLElement) => {
       el.style.background = "transparent"
-      Array.from(el.children).forEach((child) => {
-        if (!(child instanceof HTMLElement)) return
-        const isMapContainer = child.matches(".leaflet-container") || !!child.querySelector(".leaflet-container")
-        if (!isMapContainer) child.style.display = "none"
-      })
+      const leafletContainer = el.querySelector<HTMLElement>(".leaflet-container")
+      if (leafletContainer?.parentElement) {
+        Array.from(leafletContainer.parentElement.children).forEach((sibling) => {
+          if (sibling !== leafletContainer && sibling instanceof HTMLElement) sibling.style.display = "none"
+        })
+      }
       el.querySelectorAll<HTMLElement>(".leaflet-container").forEach((c) => { c.style.background = "transparent" })
       el.querySelectorAll<HTMLElement>(".leaflet-tile-pane").forEach((p) => { p.style.display = "none" })
       el.querySelectorAll<HTMLElement>(".leaflet-control-container").forEach((c) => { c.style.display = "none" })
