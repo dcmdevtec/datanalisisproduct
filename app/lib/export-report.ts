@@ -46,99 +46,20 @@ interface ChartCapture {
   legend?: { label: string; count: number; percentage: number; color: string }[]
 }
 
-// Ítem 15/09/2026: el mapa exportado necesita DOS pasadas de html2canvas
-// combinadas — ningún modo único sirve solo. El renderer POR DEFECTO
-// reconstruye el DOM "a mano" y por eso pierde el contenido SVG de Leaflet
-// (el pane con las zonas/puntos/rutas, que vive con su propio CSS transform
-// translate3d dentro del mapa paneado) — confirmado con una prueba aislada:
-// perdía el marcador de prueba al 100%, sin error. `foreignObjectRendering`
-// (le pide al navegador que dibuje el DOM tal cual, vía <foreignObject> de
-// SVG) sí resuelve ese transform y saca bien zonas/puntos/rutas — pero en
-// producción, contra tiles que vienen de una petición de red real (no un
-// data URL embebido como en la prueba aislada), ese modo no logra traer las
-// imágenes de los tiles — quedan en blanco (se ve el gris de fondo por
-// defecto de Leaflet). Cada modo tiene el defecto que al otro le falta, así
-// que se capturan los dos y se combinan: tiles de la pasada normal, con
-// zonas/puntos/rutas de la pasada foreignObject (fondo transparente, tiles
-// ocultos) dibujados encima.
-//
-// Ítem 15/09/2026 (2da vuelta): "los puntos quedan un poco corridos" — la
-// pasada foreignObject no solo dibujaba las zonas/puntos/rutas de Leaflet,
-// sino TAMBIÉN los controles/leyenda/contador (son divs de React, hermanos
-// del contenedor de Leaflet — pero NO hijos directos de `card`: en
-// app/reports/page.tsx la tarjeta oculta de exportación envuelve a
-// <ReportsGeoMap>, cuyo propio div raíz es el que de verdad contiene, como
-// hijos directos SUYOS, tanto el div de Leaflet como los paneles de
-// controles/leyenda/contador) — esos ya salen bien en la pasada de tiles,
-// así que al componer las dos quedaban duplicados encima uno del otro (se
-// veía "Respuestas"/"Ver ruta..." dos veces), y esa duplicación era lo que
-// hacía ver los puntos como corridos.
-//
-// (3ra vuelta, mismo síntoma tras el primer intento de este fix): ese
-// primer intento ocultaba los HIJOS DIRECTOS DE `card` que no contuvieran
-// `.leaflet-container` — pero como el contenedor de Leaflet queda un nivel
-// más adentro (dentro del div raíz de ReportsGeoMap), ese único hijo de
-// `card` SÍ lo contenía como descendiente, así que nunca se ocultaba nada
-// y los paneles seguían duplicándose. La forma correcta, sin asumir cuántos
-// niveles de wrapper hay: ubicar el `.leaflet-container` donde sea que
-// esté, y ocultar a sus hermanos REALES (los hijos de SU padre directo) —
-// eso alcanza a los paneles sin importar la profundidad de anidamiento.
-// Ítem 15/09/2026 (4ta vuelta): con los paneles ya sin duplicar, el usuario
-// mandó una captura del mapa VISIBLE al lado del PDF exportado y el punto
-// seguía cayendo notablemente más al norte en el PDF (cerca de "La Playa")
-// que en el mapa real (pegado a Barranquilla). Se reprodujo con una prueba
-// aislada que replica el salto de zoom real (país completo → ciudad, vía
-// fitBounds — no el paneo chico de pruebas anteriores) y quedó claro que el
-// renderer POR DEFECTO NO es "todo o nada" con el pane SVG de Leaflet como
-// parecía con un paneo chico: a este zoom/escala SÍ llega a dibujar ALGO del
-// overlay, pero en una posición completamente distinta (un "fantasma"). Al
-// componer, ese fantasma (de la pasada de tiles) y el punto real (de la
-// pasada foreignObject) quedaban ambos en el canvas final, y lo que se veía
-// como "el punto corrido" en realidad era una MEZCLA de dos manchas verdes
-// superpuestas en lugares distintos. La pasada de tiles ahora oculta
-// también el pane de overlay/marcadores — sin eso no hay forma de confiar
-// en que el renderer por defecto se abstenga de dibujar algo ahí.
-async function captureMapComposite(card: HTMLElement, scale: number): Promise<HTMLCanvasElement> {
-  const baseOpts = { scale, useCORS: true, logging: false, scrollX: 0, scrollY: 0 } as const
-
-  const tilesCanvas = await html2canvas(card, {
-    ...baseOpts,
-    backgroundColor: "#ffffff",
-    onclone: (_doc: Document, el: HTMLElement) => {
-      el.querySelectorAll<HTMLElement>(".leaflet-overlay-pane").forEach((p) => { p.style.display = "none" })
-      el.querySelectorAll<HTMLElement>(".leaflet-marker-pane").forEach((p) => { p.style.display = "none" })
-      el.querySelectorAll<HTMLElement>(".leaflet-popup-pane").forEach((p) => { p.style.display = "none" })
-      el.querySelectorAll<HTMLElement>(".leaflet-shadow-pane").forEach((p) => { p.style.display = "none" })
-    },
-  })
-
-  const overlayCanvas = await html2canvas(card, {
-    ...baseOpts,
-    backgroundColor: null,
-    foreignObjectRendering: true,
-    onclone: (_doc: Document, el: HTMLElement) => {
-      el.style.background = "transparent"
-      const leafletContainer = el.querySelector<HTMLElement>(".leaflet-container")
-      if (leafletContainer?.parentElement) {
-        Array.from(leafletContainer.parentElement.children).forEach((sibling) => {
-          if (sibling !== leafletContainer && sibling instanceof HTMLElement) sibling.style.display = "none"
-        })
-      }
-      el.querySelectorAll<HTMLElement>(".leaflet-container").forEach((c) => { c.style.background = "transparent" })
-      el.querySelectorAll<HTMLElement>(".leaflet-tile-pane").forEach((p) => { p.style.display = "none" })
-      el.querySelectorAll<HTMLElement>(".leaflet-control-container").forEach((c) => { c.style.display = "none" })
-    },
-  })
-
-  const merged = document.createElement("canvas")
-  merged.width = tilesCanvas.width
-  merged.height = tilesCanvas.height
-  const ctx = merged.getContext("2d")!
-  ctx.drawImage(tilesCanvas, 0, 0)
-  ctx.drawImage(overlayCanvas, 0, 0)
-  return merged
-}
-
+// Ítem 15/09/2026: tras varias vueltas intentando que html2canvas capture
+// bien el pane SVG de Leaflet (zonas/puntos/rutas) dentro del mapa
+// exportado — el renderer por defecto lo pierde o lo dibuja "fantasma" en
+// una posición equivocada; foreignObjectRendering lo resuelve pero no
+// siempre trae los tiles de red, y combinar ambas pasadas resultó frágil
+// (ver historial completo en git log de este archivo) — se abandonó por
+// completo esa vía. components/reports-geo-map.tsx ahora dibuja las
+// zonas/puntos/rutas a mano con Canvas 2D (ver drawOverlayCanvas ahí,
+// usando `map.latLngToContainerPoint()` — la misma matemática que Leaflet
+// usa internamente) sobre un <canvas> plano, sin ningún CSS transform
+// propio. Eso deja a la tarjeta del mapa con el mismo tipo de contenido que
+// cualquier otra tarjeta (imágenes + un canvas + divs planos), que
+// html2canvas en su modo normal ya capturaba de forma confiable en todas
+// las pruebas — ya no necesita ningún tratamiento especial.
 async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   const container = document.getElementById(containerId)
   if (!container) return []
@@ -146,17 +67,14 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   const images: ChartCapture[] = []
   for (const card of Array.from(cards)) {
     try {
-      const isMap = card.hasAttribute("data-export-map")
-      const canvas = isMap
-        ? await captureMapComposite(card, 3)
-        : await html2canvas(card, {
-            scale: 3,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            logging: false,
-            scrollX: 0,
-            scrollY: 0,
-          })
+      const canvas = await html2canvas(card, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+      })
       const layout = card.getAttribute("data-export-layout") === "half" ? "half" : "full"
       const maxWidthAttr = card.getAttribute("data-export-max-width")
       const maxWidth = maxWidthAttr ? Number(maxWidthAttr) : undefined

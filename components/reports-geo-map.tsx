@@ -124,6 +124,33 @@ const outcomeLabel: Record<string, string> = {
   descalificado: "Descalificada",
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace("#", "")
+  const r = parseInt(clean.substring(0, 2), 16)
+  const g = parseInt(clean.substring(2, 4), 16)
+  const b = parseInt(clean.substring(4, 6), 16)
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+// Solo el anillo exterior de cada polígono — suficiente para el relleno
+// aproximado de drawOverlayCanvas más abajo; las zonas de esta app son
+// bounding boxes simples, no hace falta soporte de huecos (holes).
+function extractPolygonRings(geometry: any): [number, number][][] {
+  if (!geometry) return []
+  if (geometry.type === "Polygon") {
+    return geometry.coordinates?.[0] ? [geometry.coordinates[0]] : []
+  }
+  if (geometry.type === "MultiPolygon") {
+    return (geometry.coordinates || []).map((poly: any) => poly?.[0]).filter(Boolean)
+  }
+  return []
+}
+
+// Debe coincidir con el `scale` que usa captureCharts() en
+// app/lib/export-report.ts al capturar la tarjeta de exportación — este
+// canvas se dibuja a esa densidad para no salir borroso en el PDF.
+const OVERLAY_CANVAS_SCALE = 3
+
 function formatDuration(secs: number | null | undefined): string {
   if (secs === null || secs === undefined) return "—"
   const m = Math.floor(secs / 60)
@@ -173,6 +200,9 @@ export default function ReportsGeoMap({
   onReady,
 }: ReportsGeoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  // Ítem 15/09/2026: canvas de overlay dibujado a mano (ver drawOverlayCanvas
+  // más abajo) — solo se usa/monta cuando crossOriginTiles=true.
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const mapRef = useRef<any>(null)
   const layersRef = useRef<any[]>([])
   // Ruta GPS aproximada de un punto individual (ver botón "Ver ruta" en su
@@ -420,6 +450,7 @@ export default function ReportsGeoMap({
         // Todo lo que depende de datos (zonas/puntos/ruta) ya se dibujó
         // arriba — solo falta confirmar que los tiles también terminaron.
         await tilesLoaded
+        drawOverlayCanvas()
         onReady?.()
       } catch (err) {
         console.error("Error inicializando mapa de reportes:", err)
@@ -481,6 +512,7 @@ export default function ReportsGeoMap({
         routeLayersRef.current.delete(id)
       }
     }
+    drawOverlayCanvas()
 
     const toDraw = [...selectedRouteSurveyorIds].filter((id) => !routeLayersRef.current.has(id))
     if (toDraw.length === 0) return
@@ -519,7 +551,18 @@ export default function ReportsGeoMap({
   // que cambien filteredPoints/zonePolygons.
   useEffect(() => {
     if (!mapRef.current) return
-    try { mapRef.current.fitBounds(CITY_PRESETS[cityPresetIdx].bounds, { animate: true }) } catch { }
+    const map = mapRef.current
+    // fitBounds acá usa animate:true (mapa visible) — dibujar el overlay
+    // solo al terminar el paneo (moveend), no antes, para no capturar una
+    // posición a medio camino en la copia oculta si esta encuesta arranca
+    // con un cityPresetIdx>0 (ver initialCityPresetIdx). El dibujo
+    // inmediato de abajo cubre el caso en que fitBounds no dispare
+    // 'moveend' por no haber movimiento real (ya estaba en esa posición).
+    try {
+      map.once("moveend", () => drawOverlayCanvas())
+      map.fitBounds(CITY_PRESETS[cityPresetIdx].bounds, { animate: true })
+    } catch { }
+    drawOverlayCanvas()
   }, [cityPresetIdx])
 
   // Permite cerrar pantalla completa con la tecla Escape
@@ -544,6 +587,7 @@ export default function ReportsGeoMap({
     const latlngs = points.map((pt) => [pt.lat, pt.lng])
     const polyline = L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
     routeLayersRef.current.set(surveyorId, polyline)
+    drawOverlayCanvas()
   }
 
   // Pide (si no está en caché) y dibuja la ruta GPS de un encuestador entre
@@ -586,6 +630,10 @@ export default function ReportsGeoMap({
         // inmediato, sin ventana donde capturar algo a medio mover. El mapa
         // VISIBLE (crossOriginTiles=false) conserva la animación de siempre.
         map.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 16, animate: !crossOriginTiles })
+        // drawCachedRoute (arriba) ya redibujó el overlay, pero con el
+        // encuadre ANTERIOR a este fitBounds — hay que volver a dibujar con
+        // la posición final para que no quede desalineado.
+        drawOverlayCanvas()
       }
     } catch (err) {
       console.error("Error cargando ruta del encuestador:", err)
@@ -596,6 +644,107 @@ export default function ReportsGeoMap({
         return next
       })
     }
+  }
+
+  // Ítem 15/09/2026 (5ta vuelta sobre este mismo problema): tras varias
+  // rondas intentando que html2canvas capture bien el pane SVG de Leaflet
+  // — foreignObjectRendering resuelve el transform pero no siempre trae los
+  // tiles de red; el renderer por defecto, a la escala real de zoom/paneo
+  // de producción, a veces dibuja un "fantasma" del overlay en un lugar
+  // equivocado (confirmado con una prueba aislada) — la solución realmente
+  // robusta es no depender en ABSOLUTO de que html2canvas entienda el pane
+  // SVG de Leaflet. Este canvas (solo para la copia oculta de exportación,
+  // crossOriginTiles=true) se redibuja a mano con Canvas 2D plano cada vez
+  // que cambian zonas/puntos/rutas o el encuadre del mapa, usando
+  // `map.latLngToContainerPoint()` — la MISMA matemática que Leaflet usa
+  // internamente para posicionar su propio pane SVG — así que es imposible
+  // que quede desalineado respecto a los tiles: ambos terminan
+  // posicionados según el mismo estado real del mapa en el momento del
+  // dibujo. Al ser un <canvas> plano (position:absolute con top/left fijos,
+  // sin ningún CSS transform propio) html2canvas lo captura con la misma
+  // confiabilidad con la que ya capturaba los tiles (<img> normales) — ver
+  // captureCharts() en app/lib/export-report.ts, que ya NO necesita ningún
+  // tratamiento especial para la tarjeta del mapa.
+  const drawOverlayCanvas = () => {
+    if (!crossOriginTiles) return
+    const canvas = overlayCanvasRef.current
+    const map = mapRef.current
+    if (!canvas || !map) return
+    const size = map.getSize()
+    if (!size || size.x === 0 || size.y === 0) return
+    canvas.width = size.x * OVERLAY_CANVAS_SCALE
+    canvas.height = size.y * OVERLAY_CANVAS_SCALE
+    canvas.style.width = `${size.x}px`
+    canvas.style.height = `${size.y}px`
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.save()
+    ctx.scale(OVERLAY_CANVAS_SCALE, OVERLAY_CANVAS_SCALE)
+
+    const toPoint = (lat: number, lng: number) => map.latLngToContainerPoint([lat, lng])
+
+    if (showZones) {
+      for (const zone of zonePolygons) {
+        if (!zone.geometry) continue
+        const color = completionColor(zone.completionRate)
+        for (const ring of extractPolygonRings(zone.geometry)) {
+          ctx.beginPath()
+          ring.forEach(([lng, lat]: [number, number], i: number) => {
+            const pt = toPoint(lat, lng)
+            if (i === 0) ctx.moveTo(pt.x, pt.y)
+            else ctx.lineTo(pt.x, pt.y)
+          })
+          ctx.closePath()
+          ctx.fillStyle = hexToRgba(color, 0.25)
+          ctx.fill()
+          ctx.strokeStyle = color
+          ctx.lineWidth = 2
+          ctx.globalAlpha = 0.85
+          ctx.stroke()
+          ctx.globalAlpha = 1
+        }
+      }
+    }
+
+    if (showPoints) {
+      const pointRadius = filteredPoints.length > 500 ? 3.5
+        : filteredPoints.length > 200 ? 4.5
+        : filteredPoints.length > 50 ? 5.5
+        : 7
+      for (const p of filteredPoints) {
+        const color = p.outcome ? outcomeColor[p.outcome] : "#94a3b8"
+        const pt = toPoint(p.lat, p.lng)
+        ctx.beginPath()
+        ctx.arc(pt.x, pt.y, pointRadius, 0, Math.PI * 2)
+        ctx.fillStyle = color
+        ctx.fill()
+        ctx.lineWidth = pointRadius > 5 ? 1.5 : 1
+        ctx.strokeStyle = "#ffffff"
+        ctx.stroke()
+      }
+    }
+
+    for (const [surveyorId, points] of routeDataCacheRef.current.entries()) {
+      if (!selectedRouteSurveyorIds.has(surveyorId) || points.length < 2) continue
+      const colorIdx = surveyorOptions.findIndex((s) => s.id === surveyorId)
+      const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
+      ctx.beginPath()
+      points.forEach((pt, i) => {
+        const c = toPoint(pt.lat, pt.lng)
+        if (i === 0) ctx.moveTo(c.x, c.y)
+        else ctx.lineTo(c.x, c.y)
+      })
+      ctx.strokeStyle = color
+      ctx.lineWidth = 4
+      ctx.globalAlpha = 0.85
+      ctx.setLineDash([6, 4])
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+    }
+
+    ctx.restore()
   }
 
   const renderLayers = async (L: any, map: any) => {
@@ -793,6 +942,8 @@ export default function ReportsGeoMap({
       const color = ROUTE_COLORS[colorIdx >= 0 ? colorIdx % ROUTE_COLORS.length : 0]
       drawRouteForSurveyor(L, map, surveyorId, from, to, color)
     }
+
+    drawOverlayCanvas()
   }
 
   if (!isClient) {
@@ -814,6 +965,16 @@ export default function ReportsGeoMap({
     >
       {/* Mapa */}
       <div ref={containerRef} className="w-full h-full" />
+
+      {/* Ítem 15/09/2026: capa de overlay dibujada a mano (ver
+          drawOverlayCanvas) — SOLO para la copia oculta de exportación.
+          Reemplaza la necesidad de que html2canvas entienda el pane SVG de
+          Leaflet (zonas/puntos/rutas), que demostró ser poco confiable a
+          las escalas reales de zoom/paneo. El mapa VISIBLE de siempre sigue
+          usando el pane nativo de Leaflet sin tocar nada. */}
+      {crossOriginTiles && (
+        <canvas ref={overlayCanvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 450 }} />
+      )}
 
       {/* Controles de capa — esquina superior derecha */}
       <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">

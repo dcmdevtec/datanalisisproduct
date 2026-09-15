@@ -1109,7 +1109,7 @@ function ReportsPageContent() {
                   // página, que sí es opaco) + pointer-events:none — invisible
                   // para el usuario, pero con opacidad real de 1 para que
                   // html2canvas lo capture normal.
-                  <div style={{ position: "fixed", top: 0, left: 0, width: 860, pointerEvents: "none", zIndex: -1 }} data-export-chart data-export-map>
+                  <div style={{ position: "fixed", top: 0, left: 0, width: 860, pointerEvents: "none", zIndex: -1 }} data-export-chart>
                     <ReportsGeoMap
                       zonePolygons={data?.geographic?.zonePolygons ?? []}
                       responsePoints={data?.geographic?.responsePoints ?? []}
