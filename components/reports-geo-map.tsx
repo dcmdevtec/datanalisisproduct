@@ -151,6 +151,27 @@ function extractPolygonRings(geometry: any): [number, number][][] {
 // canvas se dibuja a esa densidad para no salir borroso en el PDF.
 const OVERLAY_CANVAS_SCALE = 3
 
+// Espera a que el tile layer termine de bajar TODOS los tiles pendientes en
+// este momento (no cuando se creó el layer) — ver el comentario junto a su
+// uso en init() sobre por qué la señal vieja (un solo 'load' disparado justo
+// al crear el layer) se quedaba corta cuando el mapa hacía zoom a nivel de
+// calle después. `isLoading()` (Leaflet GridLayer) dice si hay tiles
+// pidiéndose ahora mismo; si no hay ninguno, resuelve de una.
+function waitForTilesIdle(tileLayer: any, timeoutMs = 10000): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => { if (settled) return; settled = true; resolve() }
+    try {
+      if (typeof tileLayer.isLoading === "function" && !tileLayer.isLoading()) {
+        finish()
+        return
+      }
+    } catch { }
+    tileLayer.once("load", finish)
+    setTimeout(finish, timeoutMs)
+  })
+}
+
 function formatDuration(secs: number | null | undefined): string {
   if (secs === null || secs === undefined) return "—"
   const m = Math.floor(secs / 60)
@@ -271,11 +292,24 @@ export default function ReportsGeoMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabledOutcomes, showZones, showPoints, selectedRouteSurveyorIds, cityPresetIdx])
 
+  // Ítem 15/09/2026: "evita posibles bugs — que solo muestre por
+  // encuestador individual, no permita seleccionar más de dos" — cada ruta
+  // seleccionada dispara su propio fetch a /api/reports/route-trace y hace
+  // zoom a nivel de calle (ver drawRouteForSurveyor); sin tope, muchas rutas
+  // a la vez multiplican esos pedidos y el encuadre final termina siendo un
+  // punto medio confuso entre todas — quedaba sin sentido leerlo. Tope de
+  // 2 simultáneas: alcanza para comparar dos encuestadores a la vez sin la
+  // maraña de tener varias rutas encimadas.
+  const MAX_SIMULTANEOUS_ROUTES = 2
   const toggleRouteSurveyor = (id: string) => {
     setSelectedRouteSurveyorIds((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        if (next.size >= MAX_SIMULTANEOUS_ROUTES) return prev
+        next.add(id)
+      }
       return next
     })
   }
@@ -401,18 +435,6 @@ export default function ReportsGeoMap({
           ...(crossOriginTiles ? { crossOrigin: true } : { subdomains: "abc" }),
         }).addTo(map)
 
-        // Ítem 15/09/2026 (ver onReady en props): Leaflet dispara 'load' en
-        // el tile layer cuando TODOS los tiles visibles ya bajaron (o
-        // fallaron) — es la única señal real de que el mapa terminó de
-        // pintarse. Se resuelve también con un timeout corto de resguardo
-        // (5s) por si ese evento no llega a disparar en algún caso raro
-        // (mejor exportar con tiles a medio cargar que dejar la promesa
-        // colgada para siempre).
-        const tilesLoaded = new Promise<void>((resolve) => {
-          tileLayer.once("load", () => resolve())
-          setTimeout(resolve, 5000)
-        })
-
         // Atribución pequeña en esquina — el tile sigue siendo de OSM en
         // ambos casos (con o sin el proxy propio de /api/tiles), así que el
         // crédito es el mismo para el mapa visible y para la exportación.
@@ -447,9 +469,20 @@ export default function ReportsGeoMap({
           }
         }
 
-        // Todo lo que depende de datos (zonas/puntos/ruta) ya se dibujó
-        // arriba — solo falta confirmar que los tiles también terminaron.
-        await tilesLoaded
+        // Ítem 15/09/2026 (2da vuelta): "el mapa exportado sale con partes
+        // grises" cuando hay una ruta seleccionada — la señal de "tiles
+        // listos" se armaba UNA sola vez, apenas se creaba el tile layer, a
+        // la vista inicial (todo el país, pocos tiles, carga rápida). Pero
+        // renderLayers() y drawRouteForSurveyor() (arriba) hacen zoom a
+        // nivel de calle para encuadrar los puntos/la ruta — eso pide un
+        // lote de tiles COMPLETAMENTE NUEVO (y mucho más grande) a nuestro
+        // proxy /api/tiles, que nunca se esperaba: el 'load' original ya
+        // había disparado (o el timeout de 5s ya había vencido) antes de
+        // que ese lote nuevo terminara de bajar. Se espera acá, DESPUÉS de
+        // que el encuadre final ya está fijado, con un timeout más generoso
+        // (10s — cada tile pasa por nuestro proxy, que hace su propio
+        // pedido a OpenStreetMap, así que toma más que un tile directo).
+        await waitForTilesIdle(tileLayer)
         drawOverlayCanvas()
         onReady?.()
       } catch (err) {
@@ -1034,15 +1067,21 @@ export default function ReportsGeoMap({
             {showRoutePicker && (
               <div className="absolute right-0 mt-1 w-56 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex flex-col gap-0.5">
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-1">
-                  Encuestadores (elegí varios)
+                  Encuestadores (máx. {MAX_SIMULTANEOUS_ROUTES} a la vez)
                 </p>
                 {surveyorOptions.map((s, idx) => {
                   const checked = selectedRouteSurveyorIds.has(s.id)
                   const color = ROUTE_COLORS[idx % ROUTE_COLORS.length]
+                  const atCap = !checked && selectedRouteSurveyorIds.size >= MAX_SIMULTANEOUS_ROUTES
                   return (
-                    <label key={s.id} className="flex items-center gap-2 px-1 py-1 rounded cursor-pointer hover:bg-gray-50 select-none">
+                    <label
+                      key={s.id}
+                      className={`flex items-center gap-2 px-1 py-1 rounded select-none ${atCap ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:bg-gray-50"}`}
+                      title={atCap ? `Ya elegiste ${MAX_SIMULTANEOUS_ROUTES} — destildá uno para cambiar` : undefined}
+                    >
                       <Checkbox
                         checked={checked}
+                        disabled={atCap}
                         onCheckedChange={() => toggleRouteSurveyor(s.id)}
                         className="h-3.5 w-3.5"
                         style={checked ? { borderColor: color, backgroundColor: color } : { borderColor: color }}
