@@ -335,12 +335,22 @@ function ReportsPageContent() {
             geoMapReadyResolveRef.current = finish
             setTimeout(finish, 10000)
           })
-          // Ítem 15/09/2026: "no muestra en el encabezado el nombre del
-          // encuestador" — el filtro "Encuestador" de arriba (selectedSurveyor)
-          // no se reflejaba en ningún lado del PDF geográfico.
-          const surveyorNameForExport = selectedSurveyor !== "all"
-            ? data?.surveyors?.find((s) => s.id === selectedSurveyor)?.name ?? null
-            : null
+          // Ítem 15/09/2026: "y el nombre del encuestador al seleccionar la
+          // ruta?" — el filtro "Encuestador" de arriba de la página
+          // (selectedSurveyor) es un filtro DISTINTO del selector "Ver
+          // ruta" dentro del propio mapa (selectedRouteSurveyorIds, vive en
+          // geoExportFilterState) — ninguno de los dos se reflejaba en el
+          // encabezado. Si hay ruta(s) seleccionada(s) en el mapa, esas son
+          // literalmente de quién es el contenido que se está exportando,
+          // así que tienen prioridad sobre el filtro general de la página.
+          const routeSurveyorNames = (geoExportFilterState?.selectedRouteSurveyorIds ?? [])
+            .map((id) => data?.geographic?.responsePoints?.find((p) => p.surveyorId === id)?.surveyorName)
+            .filter((n): n is string => !!n)
+          const surveyorNameForExport = routeSurveyorNames.length > 0
+            ? routeSurveyorNames.join(" y ")
+            : selectedSurveyor !== "all"
+              ? data?.surveyors?.find((s) => s.id === selectedSurveyor)?.name ?? null
+              : null
           await exportGeographic(data, periodLabel, surveyTitle, surveyorNameForExport)
           break
       }
