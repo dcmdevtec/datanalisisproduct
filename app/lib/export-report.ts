@@ -83,10 +83,34 @@ interface ChartCapture {
 // niveles de wrapper hay: ubicar el `.leaflet-container` donde sea que
 // esté, y ocultar a sus hermanos REALES (los hijos de SU padre directo) —
 // eso alcanza a los paneles sin importar la profundidad de anidamiento.
+// Ítem 15/09/2026 (4ta vuelta): con los paneles ya sin duplicar, el usuario
+// mandó una captura del mapa VISIBLE al lado del PDF exportado y el punto
+// seguía cayendo notablemente más al norte en el PDF (cerca de "La Playa")
+// que en el mapa real (pegado a Barranquilla). Se reprodujo con una prueba
+// aislada que replica el salto de zoom real (país completo → ciudad, vía
+// fitBounds — no el paneo chico de pruebas anteriores) y quedó claro que el
+// renderer POR DEFECTO NO es "todo o nada" con el pane SVG de Leaflet como
+// parecía con un paneo chico: a este zoom/escala SÍ llega a dibujar ALGO del
+// overlay, pero en una posición completamente distinta (un "fantasma"). Al
+// componer, ese fantasma (de la pasada de tiles) y el punto real (de la
+// pasada foreignObject) quedaban ambos en el canvas final, y lo que se veía
+// como "el punto corrido" en realidad era una MEZCLA de dos manchas verdes
+// superpuestas en lugares distintos. La pasada de tiles ahora oculta
+// también el pane de overlay/marcadores — sin eso no hay forma de confiar
+// en que el renderer por defecto se abstenga de dibujar algo ahí.
 async function captureMapComposite(card: HTMLElement, scale: number): Promise<HTMLCanvasElement> {
   const baseOpts = { scale, useCORS: true, logging: false, scrollX: 0, scrollY: 0 } as const
 
-  const tilesCanvas = await html2canvas(card, { ...baseOpts, backgroundColor: "#ffffff" })
+  const tilesCanvas = await html2canvas(card, {
+    ...baseOpts,
+    backgroundColor: "#ffffff",
+    onclone: (_doc: Document, el: HTMLElement) => {
+      el.querySelectorAll<HTMLElement>(".leaflet-overlay-pane").forEach((p) => { p.style.display = "none" })
+      el.querySelectorAll<HTMLElement>(".leaflet-marker-pane").forEach((p) => { p.style.display = "none" })
+      el.querySelectorAll<HTMLElement>(".leaflet-popup-pane").forEach((p) => { p.style.display = "none" })
+      el.querySelectorAll<HTMLElement>(".leaflet-shadow-pane").forEach((p) => { p.style.display = "none" })
+    },
+  })
 
   const overlayCanvas = await html2canvas(card, {
     ...baseOpts,
