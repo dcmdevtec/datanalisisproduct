@@ -342,35 +342,33 @@ export default function ReportsGeoMap({
         // mapa usaba CartoDB Positron (gris pálido), que el cliente reportó
         // como "se ve en negativo" al compararlo con el mapa de tracking.
         //
-        // Ítem 15/09/2026: "el PDF sigue sin mostrar el mapa" — la causa real
-        // (no solo de tiempo, como se creyó en el fix anterior) es que
-        // tile.openstreetmap.org NO manda headers CORS (Access-Control-
-        // Allow-Origin) en sus tiles. Con crossOrigin:true (obligatorio para
-        // que html2canvas pueda leer el canvas sin SecurityError) el
-        // navegador simplemente RECHAZA cada tile — nunca cargan, sin
-        // importar cuánto se espere; el tile layer igual dispara 'load'
-        // porque Leaflet cuenta los intentos fallidos como "terminados", así
-        // que el mapa queda con los tiles en blanco pero el resto del código
-        // "cree" que ya terminó de cargar. Por eso la copia oculta de
-        // exportación (crossOriginTiles=true) usa un servidor que SÍ manda
-        // esos headers (CartoDB); el mapa VISIBLE en pantalla sigue igual
-        // que siempre, sin crossOrigin, con el tile real de OSM.
-        //
-        // "voyager_nolabels" en vez de "voyager" a secas ("sale horrible"):
-        // el estilo Voyager con etiquetas dibuja nombres de ciudad/región en
-        // letras enormes y pálidas que, a los zooms que usa este mapa,
-        // terminan tapando todo el contenido (ver captura del reporte). Sin
-        // esas etiquetas queda un mapa a color limpio, sin el efecto
-        // "marca de agua" — las zonas/puntos/rutas ya traen su propio label
-        // dibujado aparte (ver renderLayers), así que no hace falta el
-        // nombre de calle/ciudad de fondo para que el mapa siga siendo útil.
+        // Ítem 15/09/2026 — historial de esta misma línea, para que quede
+        // constancia de por qué terminó así:
+        //   1. tile.openstreetmap.org (el de siempre): no manda headers CORS.
+        //      Con crossOrigin:true (obligatorio para que html2canvas pueda
+        //      leer el canvas sin SecurityError) el navegador rechaza cada
+        //      tile en silencio — Leaflet igual dispara 'load' (cuenta los
+        //      fallos como "terminado"), así que el mapa quedaba con los
+        //      tiles en blanco pase lo que pase.
+        //   2. Se probó CartoDB (sí manda CORS) — pero ahora exige API key
+        //      para uso anónimo; sin una, cada tile vuelve como una imagen
+        //      de error con "API KEY REQUIRED" superpuesto — de ahí que "se
+        //      viera horrible", no era un problema de estilo.
+        // Solución final, sin depender de ningún proveedor externo ni API
+        // key: /api/tiles/[z]/[x]/[y] (este mismo repo) pide el tile real a
+        // OpenStreetMap DEL LADO DEL SERVIDOR (sin problema de CORS ahí — es
+        // un fetch servidor-a-servidor) y lo reenvía con
+        // Access-Control-Allow-Origin: * en la respuesta. Mismo estilo
+        // exacto que el mapa visible (es el mismo tile de OSM), servido
+        // desde nuestro propio dominio para cumplir lo que el navegador
+        // exige con crossOrigin:true. El mapa VISIBLE sigue igual que
+        // siempre, pidiendo directo a OSM sin pasar por este proxy.
         const tileUrl = crossOriginTiles
-          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
+          ? "/api/tiles/{z}/{x}/{y}"
           : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         const tileLayer = L.tileLayer(tileUrl, {
           maxZoom: 19,
-          subdomains: crossOriginTiles ? "abcd" : "abc",
-          ...(crossOriginTiles ? { crossOrigin: true } : {}),
+          ...(crossOriginTiles ? { crossOrigin: true } : { subdomains: "abc" }),
         }).addTo(map)
 
         // Ítem 15/09/2026 (ver onReady en props): Leaflet dispara 'load' en
@@ -385,14 +383,11 @@ export default function ReportsGeoMap({
           setTimeout(resolve, 5000)
         })
 
-        // Atribución pequeña en esquina — créditos reales según el proveedor
-        // de tiles que se esté usando (ver tileUrl arriba).
+        // Atribución pequeña en esquina — el tile sigue siendo de OSM en
+        // ambos casos (con o sin el proxy propio de /api/tiles), así que el
+        // crédito es el mismo para el mapa visible y para la exportación.
         L.control.attribution({ position: "bottomright", prefix: false })
-          .addAttribution(
-            crossOriginTiles
-              ? '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
-              : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          )
+          .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>')
           .addTo(map)
 
         await renderLayers(L, map)

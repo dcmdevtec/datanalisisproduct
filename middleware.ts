@@ -61,9 +61,13 @@ export async function middleware(request: NextRequest) {
 }
 
 // Interceptar todas las rutas de la aplicación para mantener sesiones activas.
-// Las rutas de assets estáticos se excluyen automáticamente.
+// Las rutas de assets estáticos se excluyen automáticamente. /api/tiles/* (ver
+// ese route.ts, ítem 15/09/2026) también se excluye — es un simple proxy de
+// imágenes públicas hacia OpenStreetMap sin datos de sesión de por medio, y
+// una exportación de mapa puede pedir varias decenas de tiles: no tiene
+// sentido que cada uno dispare un refresh de sesión de Supabase acá.
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/tiles/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
