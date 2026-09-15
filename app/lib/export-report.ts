@@ -410,33 +410,42 @@ export async function exportGeographic(data: any, period: string, surveyTitle?: 
   let y = addHeader(doc, "geographic", period, surveyTitle)
   const geo = data.geographic
 
-  y = addSectionTitle(doc, "Zonas — detalle", y)
-  const totalZone = (geo?.zoneBreakdown || []).reduce((s: number, z: any) => s + z.responseCount, 0) || 1
-  let tAll = 0, tComp = 0
-  const rows = (geo?.zoneBreakdown || []).map((z: any) => {
-    const pending = z.responseCount - z.completedCount
-    const pct = Math.round((z.responseCount / totalZone) * 1000) / 10
-    tAll += z.responseCount
-    tComp += z.completedCount
-    return [z.zone, z.responseCount, z.completedCount, pending, formatPercent(z.completionRate), formatPercent(pct)]
-  })
-  autoTable(doc, {
-    startY: y,
-    margin: { left: 40, right: 40 },
-    head: [["Zona", "Asignaciones", "Completadas", "Pendientes", "Tasa Fin.", "% Total"]],
-    body: rows,
-    foot: rows.length > 0 ? [["TOTAL", tAll, tComp, tAll - tComp, tAll > 0 ? formatPercent(Math.round((tComp / tAll) * 1000) / 10) : "0%", "100,0%"]] : undefined,
-    headStyles: { fillColor: [24, 176, 164] },
-    footStyles: { fillColor: [230, 247, 246], textColor: [17, 17, 17], fontStyle: "bold" },
-    styles: { fontSize: 9 },
-  })
-  y = (doc as any).lastAutoTable.finalY + 24
+  // Ítem 15/09/2026: "elimina la hoja 1 porque sale en blanco — pasemos el
+  // mapa a la página 1, del resto quitá todo" — esta tabla se dibujaba
+  // SIEMPRE, aunque no hubiera ninguna zona en el filtro actual (ej.
+  // filtrando por un encuestador puntual, que no tiene desglose por zona).
+  // Vacía, seguía ocupando la página 1 completa (título + encabezado de
+  // tabla sin filas) y empujaba el mapa a la página 2, que además arrancaba
+  // casi en blanco. Ahora solo se dibuja si hay datos reales de zonas —
+  // cuando no los hay, el mapa pasa a ser lo primero después del
+  // encabezado, en la página 1.
+  const zoneBreakdown = geo?.zoneBreakdown || []
+  if (zoneBreakdown.length > 0) {
+    y = addSectionTitle(doc, "Zonas — detalle", y)
+    const totalZone = zoneBreakdown.reduce((s: number, z: any) => s + z.responseCount, 0) || 1
+    let tAll = 0, tComp = 0
+    const rows = zoneBreakdown.map((z: any) => {
+      const pending = z.responseCount - z.completedCount
+      const pct = Math.round((z.responseCount / totalZone) * 1000) / 10
+      tAll += z.responseCount
+      tComp += z.completedCount
+      return [z.zone, z.responseCount, z.completedCount, pending, formatPercent(z.completionRate), formatPercent(pct)]
+    })
+    autoTable(doc, {
+      startY: y,
+      margin: { left: 40, right: 40 },
+      head: [["Zona", "Asignaciones", "Completadas", "Pendientes", "Tasa Fin.", "% Total"]],
+      body: rows,
+      foot: [["TOTAL", tAll, tComp, tAll - tComp, tAll > 0 ? formatPercent(Math.round((tComp / tAll) * 1000) / 10) : "0%", "100,0%"]],
+      headStyles: { fillColor: [24, 176, 164] },
+      footStyles: { fillColor: [230, 247, 246], textColor: [17, 17, 17], fontStyle: "bold" },
+      styles: { fontSize: 9 },
+    })
+    y = (doc as any).lastAutoTable.finalY + 24
+  }
 
   const chartImages = await captureCharts("export-geographic")
-  if (chartImages.length > 0) {
-    y = addSectionTitle(doc, "Mapa y gráficos", y)
-    for (const img of chartImages) y = addImageFitted(doc, img, y)
-  }
+  for (const img of chartImages) y = addImageFitted(doc, img, y)
 
   download(doc, `geografico_${new Date().toISOString().slice(0, 10)}.pdf`)
 }
