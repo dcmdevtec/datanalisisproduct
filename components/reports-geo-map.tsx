@@ -323,6 +323,17 @@ export default function ReportsGeoMap({
           maxBounds: COLOMBIA_BOUNDS,
           maxBoundsViscosity: 1.0,
           minZoom: 5,
+          // Ítem 15/09/2026: en la copia oculta de exportación
+          // (crossOriginTiles=true) se apagan TODAS las animaciones de
+          // Leaflet — el fade de tiles nuevos y el paneo/zoom suave dejan
+          // el mapa en un estado visual "a medio camino" por unos cientos
+          // de ms, y si html2canvas captura justo ahí, el resultado se ve
+          // corrido/desalineado. Sin animación, cada cambio (fitBounds del
+          // preset de ciudad o de una ruta) se aplica de una sola vez, así
+          // que no hay ninguna ventana donde capturar algo a medio mover.
+          // El mapa VISIBLE (crossOriginTiles=false) conserva las
+          // animaciones normales — esto no le cambia nada.
+          ...(crossOriginTiles ? { fadeAnimation: false, zoomAnimation: false, markerZoomAnimation: false } : {}),
         })
 
         mapRef.current = map
@@ -567,7 +578,19 @@ export default function ReportsGeoMap({
       // evita saltar de una a otra y deja que el usuario navegue libremente.
       const layer = routeLayersRef.current.get(surveyorId)
       if (layer && routeLayersRef.current.size === 1) {
-        map.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 16 })
+        // Ítem 15/09/2026: "que la ruta/los puntos no salgan corridos" — en
+        // la copia oculta de exportación (crossOriginTiles=true) este
+        // fitBounds corría DENTRO de init(), antes de que onReady avisara
+        // que ya podía capturarse — pero con animate por defecto (true),
+        // Leaflet arranca una transición de paneo/zoom que tarda unos
+        // cientos de ms en asentarse. html2canvas podía terminar
+        // capturando a mitad de esa animación: el mapa base ya en su
+        // posición final, pero la ruta/el marcador todavía a mitad de
+        // camino — el efecto "corrido" que se ve en el PDF. Sin animación
+        // en la copia oculta, el encuadre queda en su posición final de
+        // inmediato, sin ventana donde capturar algo a medio mover. El mapa
+        // VISIBLE (crossOriginTiles=false) conserva la animación de siempre.
+        map.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 16, animate: !crossOriginTiles })
       }
     } catch (err) {
       console.error("Error cargando ruta del encuestador:", err)
