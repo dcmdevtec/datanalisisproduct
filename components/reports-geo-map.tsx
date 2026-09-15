@@ -412,6 +412,25 @@ export default function ReportsGeoMap({
 
         mapRef.current = map
 
+        // Ítem 15/09/2026 (2da vuelta): "bug inesperado — se repiten los
+        // puntos arriba en el océano" — con el canvas propio ya dibujando
+        // bien zonas/puntos/rutas (ver drawOverlayCanvas), export-report.ts
+        // volvió a capturar la tarjeta del mapa con html2canvas normal, sin
+        // ocultar nada — y el renderer por defecto, a estas escalas reales
+        // de zoom/paneo, sigue intentando dibujar el pane SVG nativo de
+        // Leaflet (el que sí queda vivo de fondo, aunque ya no lo
+        // necesitemos para exportar) y a veces lo hace en una posición
+        // completamente distinta — el mismo "fantasma" ya documentado en
+        // app/lib/export-report.ts (ver su historial de git). Como el
+        // canvas manual ya cubre todo lo que hace falta para exportar, ese
+        // pane nativo sencillamente sobra en la captura — se marca con
+        // data-html2canvas-ignore para que html2canvas ni lo intente.
+        if (crossOriginTiles) {
+          for (const paneName of ["overlayPane", "markerPane", "popupPane", "shadowPane"]) {
+            try { map.getPane(paneName)?.setAttribute("data-html2canvas-ignore", "true") } catch { }
+          }
+        }
+
         // Mismo tile que components/tracking-map.tsx (encuestador) — antes este
         // mapa usaba CartoDB Positron (gris pálido), que el cliente reportó
         // como "se ve en negativo" al compararlo con el mapa de tracking.

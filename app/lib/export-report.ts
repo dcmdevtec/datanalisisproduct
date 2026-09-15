@@ -101,7 +101,14 @@ function newDoc(orientation: "portrait" | "landscape" = "portrait"): jsPDF {
 // incluye el nombre de la encuesta cuando el filtro no está en "Todas las
 // encuestas" (acta 07/09/2026, ítem #16: "no aparece el título de la Encuesta,
 // además se puede centrar un poco más").
-function addHeader(doc: jsPDF, tab: string, period: string, surveyTitle?: string | null): number {
+// Ítem 15/09/2026: "no muestra en el encabezado el nombre del encuestador"
+// — cuando el filtro "Encuestador" (arriba de la página, distinto del
+// selector de ruta dentro del mapa) está en uno puntual, el encabezado solo
+// mostraba la encuesta, nunca a quién correspondía. `surveyorName` se suma
+// a la misma línea de metadatos (tab · encuesta/todas · encuestador ·
+// generado · período) en vez de agregar una fila nueva al banner, para no
+// tener que recalcular bannerHeight en los 4 exports que ya llaman a esto.
+function addHeader(doc: jsPDF, tab: string, period: string, surveyTitle?: string | null, surveyorName?: string | null): number {
   const pageWidth = doc.internal.pageSize.getWidth()
   const centerX = pageWidth / 2
   const bannerHeight = surveyTitle ? 74 : 60
@@ -120,8 +127,9 @@ function addHeader(doc: jsPDF, tab: string, period: string, surveyTitle?: string
   doc.setFontSize(9.5)
   doc.setFont("helvetica", "normal")
   const scopeLabel = surveyTitle ? "" : "Todas las encuestas  ·  "
+  const surveyorLabel = surveyorName ? `Encuestador: ${surveyorName}  ·  ` : ""
   doc.text(
-    `${tabTitles[tab] || tab}  ·  ${scopeLabel}Generado el ${new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" })}  ·  Período: ${periodLabels[period] || period}`,
+    `${tabTitles[tab] || tab}  ·  ${scopeLabel}${surveyorLabel}Generado el ${new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" })}  ·  Período: ${periodLabels[period] || period}`,
     centerX, subY, { align: "center" }
   )
   doc.setTextColor("#111111")
@@ -400,14 +408,14 @@ export async function exportPerformance(data: any, period: string, surveyTitle?:
 }
 
 // ======================== GEOGRÁFICO ========================
-export async function exportGeographic(data: any, period: string, surveyTitle?: string | null) {
+export async function exportGeographic(data: any, period: string, surveyTitle?: string | null, surveyorName?: string | null) {
   // Horizontal (antes portrait, igual que las demás pestañas): el mapa es
   // contenido ancho por naturaleza — en A4 vertical quedaba angosto/pequeño.
   // Ítem #33 (acta 07/09/2026): "se puede mejorar la descarga del PDF, más
   // grande". No toca newDoc() por defecto porque Rendimiento/Análisis
   // (tablas) sí están mejor en vertical.
   const doc = newDoc("landscape")
-  let y = addHeader(doc, "geographic", period, surveyTitle)
+  let y = addHeader(doc, "geographic", period, surveyTitle, surveyorName)
   const geo = data.geographic
 
   // Ítem 15/09/2026: "elimina la hoja 1 porque sale en blanco — pasemos el

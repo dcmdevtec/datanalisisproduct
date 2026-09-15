@@ -334,7 +334,13 @@ function ReportsPageContent() {
             geoMapReadyResolveRef.current = finish
             setTimeout(finish, 10000)
           })
-          await exportGeographic(data, periodLabel, surveyTitle)
+          // Ítem 15/09/2026: "no muestra en el encabezado el nombre del
+          // encuestador" — el filtro "Encuestador" de arriba (selectedSurveyor)
+          // no se reflejaba en ningún lado del PDF geográfico.
+          const surveyorNameForExport = selectedSurveyor !== "all"
+            ? data?.surveyors?.find((s) => s.id === selectedSurveyor)?.name ?? null
+            : null
+          await exportGeographic(data, periodLabel, surveyTitle, surveyorNameForExport)
           break
       }
       toast({ title: "Exportado", description: "El reporte se descargó correctamente" })
