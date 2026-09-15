@@ -61,6 +61,19 @@ interface ChartCapture {
 // que se capturan los dos y se combinan: tiles de la pasada normal, con
 // zonas/puntos/rutas de la pasada foreignObject (fondo transparente, tiles
 // ocultos) dibujados encima.
+//
+// Ítem 15/09/2026 (2da vuelta): "los puntos quedan un poco corridos" — la
+// pasada foreignObject no solo dibujaba las zonas/puntos/rutas de Leaflet,
+// sino TAMBIÉN los controles/leyenda/contador (son divs de React, hermanos
+// del contenedor de Leaflet dentro de la misma tarjeta) — esos ya salen
+// bien en la pasada de tiles, así que al componer las dos quedaban
+// duplicados encima uno del otro (se veía "Respuestas"/"Ver ruta..." dos
+// veces), y esa duplicación era lo que hacía ver los puntos como corridos.
+// Se oculta en el clon de esta pasada todo lo que NO sea el propio
+// contenedor de Leaflet, y dentro de éste, también los controles nativos
+// de Leaflet (zoom, atribución) — solo quedan los panes con contenido
+// geográfico real (zonas/puntos/rutas), que es lo único que esta pasada
+// necesita aportar.
 async function captureMapComposite(card: HTMLElement, scale: number): Promise<HTMLCanvasElement> {
   const baseOpts = { scale, useCORS: true, logging: false, scrollX: 0, scrollY: 0 } as const
 
@@ -72,8 +85,14 @@ async function captureMapComposite(card: HTMLElement, scale: number): Promise<HT
     foreignObjectRendering: true,
     onclone: (_doc: Document, el: HTMLElement) => {
       el.style.background = "transparent"
+      Array.from(el.children).forEach((child) => {
+        if (!(child instanceof HTMLElement)) return
+        const isMapContainer = child.matches(".leaflet-container") || !!child.querySelector(".leaflet-container")
+        if (!isMapContainer) child.style.display = "none"
+      })
       el.querySelectorAll<HTMLElement>(".leaflet-container").forEach((c) => { c.style.background = "transparent" })
       el.querySelectorAll<HTMLElement>(".leaflet-tile-pane").forEach((p) => { p.style.display = "none" })
+      el.querySelectorAll<HTMLElement>(".leaflet-control-container").forEach((c) => { c.style.display = "none" })
     },
   })
 
