@@ -23,6 +23,7 @@ import EditUserModal from "@/components/edit-user-modal"
 import { RolePermissionsTab } from "@/components/role-permissions-tab"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 
 type User = {
   id: string
@@ -50,6 +51,13 @@ export default function UsersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null)
+  // Ítem 29/09/2026: "agregar opción de eliminar usuario con su mensaje de
+  // confirmación, no quiero alerts" — mismo patrón de confirmación en dos
+  // pasos que ya usan app/zones/page.tsx y otras pantallas (guarda el
+  // usuario a borrar, abre el diálogo, y solo llama al DELETE si se confirma).
+  const [userToDelete, setUserToDelete] = useState<User | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const refreshUsers = async () => {
     setLoading(true)
@@ -102,6 +110,30 @@ export default function UsersPage() {
       toast({ title: "Error", description: err.message || String(err), variant: "destructive" })
     } finally {
       setTogglingStatusId(null)
+    }
+  }
+
+  const handleDeleteUser = (target: User) => {
+    setUserToDelete(target)
+    setShowDeleteDialog(true)
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return
+    setDeletingId(userToDelete.id)
+    try {
+      const res = await fetch(`/api/users?id=${userToDelete.id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "No se pudo eliminar el usuario")
+
+      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id))
+      toast({ title: "Usuario eliminado", description: `${userToDelete.name} fue eliminado correctamente.` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || String(err), variant: "destructive" })
+    } finally {
+      setDeletingId(null)
+      setShowDeleteDialog(false)
+      setUserToDelete(null)
     }
   }
 
@@ -232,6 +264,14 @@ export default function UsersPage() {
                           >
                             {user.status === "active" ? "Desactivar" : "Activar"}
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={deletingId === user.id}
+                            onClick={() => handleDeleteUser(user)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            Eliminar
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -333,6 +373,14 @@ export default function UsersPage() {
                                   >
                                     {user.status === "active" ? "Desactivar" : "Activar"}
                                   </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    disabled={deletingId === user.id}
+                                    onClick={() => handleDeleteUser(user)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    Eliminar
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </TableCell>
@@ -351,6 +399,17 @@ export default function UsersPage() {
               user={editingUser}
               onOpenChange={(open) => { if (!open) setEditingUser(null) }}
               onUpdated={() => refreshUsers()}
+            />
+
+            <ConfirmationDialog
+              isOpen={showDeleteDialog}
+              onClose={() => { setShowDeleteDialog(false); setUserToDelete(null) }}
+              onConfirm={confirmDeleteUser}
+              title="Confirmar eliminación de usuario"
+              description={`¿Estás seguro de que deseas eliminar a ${userToDelete?.name ?? "este usuario"} (${userToDelete?.email ?? ""})? Esta acción no se puede deshacer.`}
+              confirmText="Eliminar"
+              cancelText="Cancelar"
+              confirmVariant="destructive"
             />
           </TabsContent>
 

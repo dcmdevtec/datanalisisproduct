@@ -254,3 +254,49 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: err.message || "Unexpected error" }, { status: 500 })
   }
 }
+
+// DELETE /api/users?id=<uuid>
+//
+// Ítem 29/09/2026: no existía forma de eliminar un usuario, solo
+// desactivarlo (PATCH status). Mismo criterio de autorización que
+// POST/PATCH: solo admin. Deshace lo que hace POST, en orden inverso —
+// primero el mapping en user_roles, después el perfil en public.users, y
+// al final la cuenta de Supabase Auth — si algo intermedio falla, no queda
+// una cuenta de Auth "fantasma" sin perfil asociado.
+export async function DELETE(request: Request) {
+  const auth = await requireRole(["admin"])
+  if (!auth.ok) return auth.response
+
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get("id")
+  if (!id) {
+    return NextResponse.json({ error: "id es requerido" }, { status: 400 })
+  }
+
+  try {
+    const supabaseAdmin = createAdminClient()
+
+    const { error: roleDeleteError } = await supabaseAdmin.from("user_roles").delete().eq("user_id", id)
+    if (roleDeleteError) {
+      // No crítico — igual que en POST, esta tabla es solo de compatibilidad.
+      console.warn("Warning deleting from user_roles:", roleDeleteError.message)
+    }
+
+    const { error: profileDeleteError } = await supabaseAdmin.from("users").delete().eq("id", id)
+    if (profileDeleteError) {
+      console.error("Error deleting user profile:", profileDeleteError.message)
+      return NextResponse.json({ error: profileDeleteError.message }, { status: 500 })
+    }
+
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(id)
+    if (authDeleteError) {
+      console.error("Error deleting auth user:", authDeleteError.message)
+      return NextResponse.json({ error: authDeleteError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    console.error("Unexpected error in DELETE /api/users:", err.message)
+    return NextResponse.json({ error: err.message || "Unexpected error" }, { status: 500 })
+  }
+}
