@@ -1307,7 +1307,13 @@ function ReportsPageContent() {
                 </CardContent>
               </Card>
             ) : (
-              <AudiosTab surveyId={selectedSurvey} />
+              <AudiosTab
+                surveyId={selectedSurvey}
+                dateFrom={dateFrom || undefined}
+                dateTo={dateTo || undefined}
+                tipo={selectedTipo}
+                initialSurveyorId={selectedSurveyor !== "all" ? selectedSurveyor : undefined}
+              />
             )}
           </TabsContent>
         </Tabs>

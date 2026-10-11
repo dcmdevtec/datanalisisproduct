@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
+import { bogotaDayKey } from "@/lib/bogota-time"
+
+// Ítem "Nombre de los audios" (acta de ajustes 05/10/2026):
+// "[ENCUESTADOR] - [FECHA] - [CODIGO INTERNO] - [ESTADO DE ENCUESTA] -
+// [ID RESPUESTA INDIVIDUAL] - PARTE X". Antes era
+// "grabacion_<encuestador>_<id8>.ext", sin identificar la encuesta, el
+// estado del intento ni a cuál respuesta pertenece. OUTCOME_LABEL es la
+// misma etiqueta humana que ya usa components/reports/audios-tab.tsx.
+const OUTCOME_LABEL: Record<string, string> = {
+  efectiva: "Efectiva", incidencia: "Incidencia", abandonada: "Abandonada", descalificado: "Descalificada",
+}
+
+function sanitizeFilenamePart(s: string): string {
+  return s.replace(/[\\/:*?"<>|]+/g, "").trim()
+}
 
 // Lista las grabaciones de audio del portal de encuestador ligadas a ESTA
 // encuesta, para el módulo de detalle (app/surveys/[id]/page.tsx).
@@ -27,6 +42,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id: surveyId } = await params
     const admin = createAdminSupabase() as any
+
+    const { data: surveyRow } = await admin.from("surveys").select("code").eq("id", surveyId).maybeSingle()
+    const surveyCode: string | null = surveyRow?.code ?? null
 
     const { data: responses, error: responsesError } = await admin
       .from("responses")
@@ -104,6 +122,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .in("id", surveyorIds)
     const surveyorById = new Map<string, any>((surveyors || []).map((s: any) => [s.id, s]))
 
+    // PARTE X: orden de este segmento DENTRO de su propia respuesta (un
+    // mismo intento puede tener varios audios si el encuestador entró/salió
+    // varias veces — ver comentario arriba de surveyor_recordings). `recordings`
+    // ya viene ordenado por started_at desc; se ordena ascendente por
+    // response_id para numerar PARTE 1, 2, 3... en el orden real en que
+    // ocurrieron.
+    const partNumberByRecordingId = new Map<string, number>()
+    const byResponseId = new Map<string, any[]>()
+    for (const rec of recordings as any[]) {
+      if (!rec.response_id) continue
+      if (!byResponseId.has(rec.response_id)) byResponseId.set(rec.response_id, [])
+      byResponseId.get(rec.response_id)!.push(rec)
+    }
+    for (const group of byResponseId.values()) {
+      group.sort((a, b) => (a.started_at || "").localeCompare(b.started_at || ""))
+      group.forEach((rec, i) => partNumberByRecordingId.set(rec.id, i + 1))
+    }
+
     const items = await Promise.all(
       recordings.map(async (rec: any) => {
         let audioUrl: string | null = null
@@ -120,6 +156,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const surveyor = surveyorById.get(rec.surveyor_id)
         const response = responseById.get(rec.response_id)
         const ext = rec.storage_path ? rec.storage_path.split(".").pop() : "webm"
+        const surveyorLabel = sanitizeFilenamePart(surveyor?.name || surveyor?.email || "encuestador")
+        const dateLabel = rec.started_at ? bogotaDayKey(rec.started_at) : "sin-fecha"
+        const outcomeLabel = response?.outcome ? (OUTCOME_LABEL[response.outcome] || response.outcome) : "Sin-estado"
+        const partNumber = partNumberByRecordingId.get(rec.id) ?? 1
+        const fileNameParts = [surveyorLabel, dateLabel]
+        if (surveyCode) fileNameParts.push(sanitizeFilenamePart(surveyCode))
+        fileNameParts.push(outcomeLabel, rec.response_id || "sin-respuesta", `PARTE ${partNumber}`)
         return {
           id: rec.id,
           // surveyorId (auditoría 2026-07-29, "hay que organizar mejor" las
@@ -134,7 +177,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           endedAt: rec.ended_at,
           durationSecs: rec.duration_secs,
           audioUrl,
-          fileName: `grabacion_${(surveyor?.name || "encuestador").replace(/\s+/g, "_")}_${rec.id.slice(0, 8)}.${ext}`,
+          fileName: `${fileNameParts.join(" - ")}.${ext}`,
         }
       })
     )

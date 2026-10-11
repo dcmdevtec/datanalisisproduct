@@ -62,7 +62,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: survey } = await admin
       .from("surveys")
-      .select("id, title, project_id, projects(name)")
+      .select("id, title, code, project_id, projects(name)")
       .eq("id", surveyId)
       .maybeSingle()
 
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: responses } = await admin
       .from("responses")
-      .select("id, created_at")
+      .select("id, created_at, outcome")
       .eq("survey_id", surveyId)
 
     const responseIds = (responses || []).map((r: any) => r.id)
@@ -123,7 +123,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const projectName = (survey.projects as any)?.name || "Sin proyecto"
     const surveyName = survey.title || "Sin título"
+    const surveyCode: string | null = (survey as any).code ?? null
     const sanitize = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 80) || "Sin nombre"
+    // Ítem "Nombre de los audios" (acta 05/10/2026): mismo formato que ya
+    // usa /api/surveys/[id]/recordings — ver comentario ahí.
+    const OUTCOME_LABEL: Record<string, string> = {
+      efectiva: "Efectiva", incidencia: "Incidencia", abandonada: "Abandonada", descalificado: "Descalificada",
+    }
+    const buildBaseName = (surveyorName: string, dateStr: string, outcome: string | null, responseId: string) => {
+      const parts = [sanitize(surveyorName), dateStr]
+      if (surveyCode) parts.push(sanitize(surveyCode))
+      parts.push(outcome ? (OUTCOME_LABEL[outcome] || outcome) : "Sin-estado", responseId)
+      return parts.join(" - ")
+    }
 
     const archive = new ZipArchive({ zlib: { level: 6 } })
     archive.on("warning", (err: Error) => console.warn("[audios/zip] warning:", err))
@@ -206,18 +218,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Ítem #36: conversión opcional a mp3 — si falla, se deja el
               // webm ya fusionado en vez de perder el archivo.
               const mp3 = wantsMp3 ? await convertToMp3(merged, "webm") : null
-              const fileName = `grabacion_${rec.id.slice(0, 8)}.${mp3 ? "mp3" : "webm"}`
+              const baseName = buildBaseName(surveyorNameById.get(rec.surveyor_id) || "Sin asignar", dateStr, response?.outcome ?? null, rec.response_id)
+              const fileName = `${baseName} - PARTE 1.${mp3 ? "mp3" : "webm"}`
               archive.append(mp3 || merged, { name: `${folderBase}/${fileName}` })
               continue
             }
             console.error("[audios/zip] fusión falló para", rec.id, "— se dejan los clips sueltos")
           }
 
+          const baseName = buildBaseName(surveyorNameById.get(rec.surveyor_id) || "Sin asignar", dateStr, response?.outcome ?? null, rec.response_id)
           for (let idx = 0; idx < downloaded.length; idx++) {
             const seg = downloaded[idx]
-            const suffix = downloaded.length > 1 ? (idx < downloaded.length - 1 ? `_antes_${idx + 1}` : "") : ""
             const mp3 = wantsMp3 ? await convertToMp3(seg.buffer, seg.ext) : null
-            const fileName = `grabacion_${rec.id.slice(0, 8)}${suffix}.${mp3 ? "mp3" : seg.ext}`
+            const fileName = `${baseName} - PARTE ${idx + 1}.${mp3 ? "mp3" : seg.ext}`
             archive.append(mp3 || seg.buffer, { name: `${folderBase}/${fileName}` })
           }
         } catch (err) {

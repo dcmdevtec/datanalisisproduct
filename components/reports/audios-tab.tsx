@@ -51,6 +51,16 @@ const OUTCOME_CLASS: Record<string, string> = {
 
 interface AudiosTabProps {
   surveyId: string
+  // Ítem "Los filtros del repositorio de audios no funcionan" (acta
+  // 05/10/2026): el repositorio solo recibía `surveyId` — los filtros
+  // globales de Reportes (fecha/tipo) nunca le llegaban, así que cambiarlos
+  // arriba no afectaba en nada esta pestaña. `initialSurveyorId` alimenta
+  // el filtro de encuestador YA EXISTENTE acá dentro (solo al montar, el
+  // usuario sigue pudiendo cambiarlo libremente dentro de la pestaña).
+  dateFrom?: string
+  dateTo?: string
+  tipo?: string // all | efectiva | incidencia | abandonada | descalificado
+  initialSurveyorId?: string
 }
 
 function formatDuration(secs: number | null): string {
@@ -70,13 +80,17 @@ function groupCheckState(ids: string[], selected: Set<string>): boolean | "indet
   return "indeterminate"
 }
 
-export function AudiosTab({ surveyId }: AudiosTabProps) {
+export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId }: AudiosTabProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [hint, setHint] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
-  const [filterSurveyorId, setFilterSurveyorId] = useState<string>("all")
+  // Lazy initializer: solo lee initialSurveyorId UNA vez al montar — si el
+  // usuario cambia el filtro global después, no le pisa la selección que
+  // haya hecho dentro de esta pestaña (mismo criterio que initialMapView en
+  // components/reports-geo-map.tsx).
+  const [filterSurveyorId, setFilterSurveyorId] = useState<string>(() => initialSurveyorId ?? "all")
   // Ítem #36 (acta 07/09/2026): formato del ZIP — "webm" (el que grabó el
   // navegador, sin recodificar) o "mp3" (más compatible, requiere ffmpeg en
   // el servidor; si la conversión falla para algún archivo, ese queda en su
@@ -86,6 +100,12 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
   // expandidas (todas por defecto — con pocas fechas es lo más cómodo).
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set())
+  // Ítem "Pestaña para desplegar y minimizar los audios por encuestador.
+  // Actualmente tiene la pestaña para desplegar y minimizar por fecha"
+  // (acta 05/10/2026) — mismo mecanismo que collapsedDates, un nivel más
+  // abajo. Clave compuesta "fecha::encuestador" porque el mismo nombre de
+  // encuestador puede repetirse bajo varias fechas distintas.
+  const [collapsedSurveyors, setCollapsedSurveyors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -110,8 +130,15 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
   }, [recordings])
 
   const filteredRecordings = useMemo(() => {
-    return recordings.filter((r) => filterSurveyorId === "all" || r.surveyorId === filterSurveyorId)
-  }, [recordings, filterSurveyorId])
+    return recordings.filter((r) => {
+      if (filterSurveyorId !== "all" && r.surveyorId !== filterSurveyorId) return false
+      if (tipo && tipo !== "all" && r.outcome !== tipo) return false
+      const dateKey = (r.startedAt || "").slice(0, 10)
+      if (dateFrom && dateKey && dateKey < dateFrom) return false
+      if (dateTo && dateKey && dateKey > dateTo) return false
+      return true
+    })
+  }, [recordings, filterSurveyorId, tipo, dateFrom, dateTo])
 
   // Árbol Fecha → Encuestador → grabaciones (orden: fecha más reciente
   // primero, encuestador alfabético dentro de cada fecha).
@@ -147,6 +174,14 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
     setCollapsedDates((prev) => {
       const next = new Set(prev)
       next.has(date) ? next.delete(date) : next.add(date)
+      return next
+    })
+  }
+
+  const toggleSurveyorCollapsed = (key: string) => {
+    setCollapsedSurveyors((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }
@@ -263,14 +298,19 @@ export function AudiosTab({ surveyId }: AudiosTabProps) {
                     {!collapsed && surveyors.map(({ surveyorName, recordings: recs }) => {
                       const surveyorIds = recs.map((r) => r.id)
                       const surveyorState = groupCheckState(surveyorIds, selectedIds)
+                      const surveyorKey = `${date}::${surveyorName}`
+                      const surveyorCollapsed = collapsedSurveyors.has(surveyorKey)
                       return (
                         <div key={`${date}-${surveyorName}`}>
                           <div className="flex items-center gap-2 pl-8 pr-3 py-1.5 bg-muted/25 text-xs font-semibold text-muted-foreground">
+                            <button type="button" onClick={() => toggleSurveyorCollapsed(surveyorKey)} className="hover:text-foreground">
+                              {surveyorCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
                             <Checkbox checked={surveyorState} onCheckedChange={(v) => toggleIds(surveyorIds, v === true)} />
                             <span>{surveyorName}</span>
                             <span className="font-normal">· {recs.length} grabación{recs.length !== 1 ? "es" : ""}</span>
                           </div>
-                          {recs.map((r) => (
+                          {!surveyorCollapsed && recs.map((r) => (
                             <div key={r.id} className="flex items-center gap-3 pl-14 pr-3 py-2 text-sm">
                               <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={(v) => toggleIds([r.id], v === true)} />
                               <Play className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
