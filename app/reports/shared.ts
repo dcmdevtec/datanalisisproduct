@@ -6,7 +6,7 @@
 export interface ReportData {
   companies: { id: string; name: string }[]
   projects: { id: string; name: string; companyId: string }[]
-  surveys: { id: string; title: string; projectId: string }[]
+  surveys: { id: string; title: string; projectId: string; code?: string | null }[]
   surveyors: { id: string; name: string; supervisorId: string | null }[]
   supervisors?: { id: string; name: string }[]
   coordinators?: { id: string; name: string }[]
@@ -28,7 +28,7 @@ export interface ReportData {
     incidencias: number
     abandonadas: number
     descalificadas: number
-    incidenceBreakdown?: { type: string; label: string; count: number }[]
+    incidenceBreakdown?: { type: string; label: string; count: number; percentage: number }[]
     tasaRespuestasEfectivas: number
   }
   responses: {
@@ -54,15 +54,20 @@ export interface ReportData {
       name: string
       supervisorId: string | null
       supervisorName: string | null
+      coordinatorId: string | null
+      coordinatorName: string | null
       totalAssignments: number
       completedAssignments: number
       completionRate: number
       efectivas: number
       incidencias: number
       abandonadas: number
+      descalificadas: number
       totalRegistros: number
       tasaRespuestas: number
       avgTime: string
+      firstResponseAt: string | null
+      lastResponseAt: string | null
     }[]
     dailyDistribution: { day: string; count: number }[]
     surveyPerformance: {
@@ -71,6 +76,13 @@ export interface ReportData {
       completedResponses: number
       completionRate: number
       avgTime: string
+      efectivas: number
+      incidencias: number
+      abandonadas: number
+      descalificadas: number
+      tasaEfectivas: number
+      firstEfectivaAt: string | null
+      lastEfectivaAt: string | null
     }[]
   }
   geographic: {

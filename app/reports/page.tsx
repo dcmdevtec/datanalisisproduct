@@ -28,7 +28,7 @@ import { SortablePerformanceTable, type SurveyorPerformanceRow } from "@/compone
 import { SortableTable } from "@/components/reports/sortable-table"
 import { AudiosTab } from "@/components/reports/audios-tab"
 import { ShareReportModal } from "@/components/reports/share-report-modal"
-import { bogotaDayKey } from "@/lib/bogota-time"
+import { bogotaDayKey, bogotaDateTime } from "@/lib/bogota-time"
 import type { ReportData } from "./shared"
 import { formatPercent } from "@/lib/format"
 import {
@@ -308,13 +308,13 @@ function ReportsPageContent() {
       const surveyTitle = selectedSurveyTitleForExport
       switch (tab) {
         case "summary":
-          await exportSummary(data, periodLabel, surveyTitle)
+          await exportSummary(data, periodLabel, surveyTitle, projectNameForExport, surveyCodeForExport)
           break
         case "responses":
-          await exportResponses(data, periodLabel, surveyTitle)
+          await exportResponses(data, periodLabel, surveyTitle, projectNameForExport, surveyCodeForExport)
           break
         case "performance":
-          await exportPerformance(data, periodLabel, surveyTitle)
+          await exportPerformance(data, periodLabel, surveyTitle, projectNameForExport, surveyCodeForExport)
           break
         case "geographic":
           // El mapa oculto de exportación (ver #export-geographic más abajo)
@@ -359,7 +359,7 @@ function ReportsPageContent() {
             : selectedSurveyor !== "all"
               ? data?.surveyors?.find((s) => s.id === selectedSurveyor)?.name ?? null
               : null
-          await exportGeographic(data, periodLabel, surveyTitle, surveyorNameForExport)
+          await exportGeographic(data, periodLabel, surveyTitle, surveyorNameForExport, projectNameForExport, surveyCodeForExport)
           break
       }
       toast({ title: "Exportado", description: "El reporte se descargó correctamente" })
@@ -424,16 +424,18 @@ function ReportsPageContent() {
     name: s.name,
     supervisorId: s.supervisorId ?? null,
     supervisorName: s.supervisorName ?? null,
+    coordinatorId: s.coordinatorId ?? null,
+    coordinatorName: s.coordinatorName ?? null,
     totalRegistros: s.totalRegistros,
     incidencias: s.incidencias,
     abandonadas: s.abandonadas,
-    descalificadas: (s as any).descalificadas ?? 0,
+    descalificadas: s.descalificadas ?? 0,
     efectivas: s.efectivas,
     tasaRespuestas: s.tasaRespuestas,
     avgTime: s.avgTime ?? "—",
     completionRate: s.completionRate,
-    firstResponseAt: (s as any).firstResponseAt ?? null,
-    lastResponseAt: (s as any).lastResponseAt ?? null,
+    firstResponseAt: s.firstResponseAt ?? null,
+    lastResponseAt: s.lastResponseAt ?? null,
   }))
 
   // Si se llegó desde "Ver reporte" de una encuesta puntual (?survey=<id>),
@@ -458,6 +460,17 @@ function ReportsPageContent() {
   const selectedSurveyTitleForExport = selectedSurvey !== "all"
     ? formatSurveyTitleWithCode(data?.surveys?.find((s) => s.id === selectedSurvey))
     : null
+
+  // Ítem "nombre de los archivos PDF's" (acta 05/10/2026): "RESUMEN –
+  // [NOMBRE DEL PROYECTO] - [COD INTERNO]". Si hay una encuesta específica
+  // seleccionada se usa su proyecto + su código; si solo hay un proyecto
+  // seleccionado (sin encuesta puntual) se usa el nombre del proyecto solo.
+  // Con ambos filtros en "Todas" no hay un proyecto/código único que poner
+  // — buildExportFilename() cae de vuelta al nombre genérico con fecha.
+  const selectedSurveyForExport = selectedSurvey !== "all" ? data?.surveys?.find((s) => s.id === selectedSurvey) : null
+  const projectIdForExport = selectedSurveyForExport?.projectId ?? (selectedProject !== "all" ? selectedProject : null)
+  const projectNameForExport = projectIdForExport ? data?.projects?.find((p) => p.id === projectIdForExport)?.name ?? null : null
+  const surveyCodeForExport = selectedSurveyForExport?.code ?? null
 
   return (
     <DashboardLayout>
@@ -939,7 +952,7 @@ function ReportsPageContent() {
                 <Card data-export-chart>
                   <CardHeader>
                     <CardTitle>Rendimiento por Encuestador</CardTitle>
-                    <CardDescription>Click en cualquier columna para ordenar. Supervisor pendiente de asignación en el módulo de usuarios.</CardDescription>
+                    <CardDescription>Agrupado por Coordinador y Supervisor, con subtotales — click en el encabezado de una fila de grupo para desplegar/ocultar, y en cualquier columna numérica para ordenar los encuestadores dentro de cada grupo.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <SortablePerformanceTable rows={surveyorRows} />
@@ -992,6 +1005,20 @@ function ReportsPageContent() {
                           ) },
                         { key: "avgTime", label: "Tiempo", align: "center", sortable: false,
                           render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.avgTime}</span> },
+                        { key: "incidencias", label: "Incidencias", align: "center",
+                          render: (s) => <span className="text-sm">{s.incidencias}</span> },
+                        { key: "abandonadas", label: "Abandonadas", align: "center",
+                          render: (s) => <span className="text-sm">{s.abandonadas}</span> },
+                        { key: "descalificadas", label: "Descalificadas", align: "center",
+                          render: (s) => <span className="text-sm">{s.descalificadas}</span> },
+                        { key: "efectivas", label: "Efectivas", align: "center",
+                          render: (s) => <span className="text-sm font-medium">{s.efectivas}</span> },
+                        { key: "tasaEfectivas", label: "Tasa", align: "center",
+                          render: (s) => <span className="text-sm font-semibold" style={{ color: "#18b0a4" }}>{formatPercent(s.tasaEfectivas)}</span> },
+                        { key: "firstEfectivaAt", label: "Fecha inicial", align: "center", sortable: true,
+                          render: (s) => <span className="text-xs text-muted-foreground">{s.firstEfectivaAt ? bogotaDateTime(s.firstEfectivaAt).date : "—"}</span> },
+                        { key: "lastEfectivaAt", label: "Fecha final", align: "center", sortable: true,
+                          render: (s) => <span className="text-xs text-muted-foreground">{s.lastEfectivaAt ? bogotaDateTime(s.lastEfectivaAt).date : "—"}</span> },
                       ]}
                     />
                   </CardContent>

@@ -29,6 +29,15 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
   const summary = data?.summary
   const questionBreakdowns = data?.responses?.questionBreakdowns ?? []
 
+  // Ítem "Incidencias por motivo" (acta 05/10/2026): "no aparece el
+  // porcentaje" — mismo patrón de etiqueta valor+% ya usado en
+  // BarsHorizontal (components/reports/question-chart.tsx, #19 07/09/2026).
+  const incidenceValueLabel = ({ x, y, width, height, value, index }: any) => (
+    <text x={x + width + 6} y={y + height / 2} dy={4} textAnchor="start" fontSize={10} fill="hsl(var(--muted-foreground))">
+      {value} ({formatPercent(summary?.incidenceBreakdown?.[index]?.percentage ?? 0)})
+    </text>
+  )
+
   return (
     <div className="space-y-6">
       {/* ── Fila 1: KPIs de tipo de encuesta ── */}
@@ -144,7 +153,7 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
                 <BarChart
                   layout="vertical"
                   data={summary.incidenceBreakdown}
-                  margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
+                  margin={{ top: 4, right: 72, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
@@ -157,9 +166,12 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
                       fontSize: 12,
                       color: "hsl(var(--foreground))",
                     }}
-                    formatter={(value: any) => [value, "Incidencias"]}
+                    formatter={(value: any, _name: any, item: any) => [
+                      `${value} (${formatPercent(item?.payload?.percentage ?? 0)})`,
+                      "Incidencias",
+                    ]}
                   />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22} fill="#ef4444" />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22} fill="#ef4444" label={incidenceValueLabel} />
                 </BarChart>
               </ResponsiveContainer>
             )}

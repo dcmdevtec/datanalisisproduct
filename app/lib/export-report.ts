@@ -194,6 +194,23 @@ function download(doc: jsPDF, filename: string) {
   doc.save(filename)
 }
 
+// Ítem "Importante el nombre de los archivos PDF's" (acta de ajustes
+// 05/10/2026): "RESUMEN – [NOMBRE DEL PROYECTO] - [COD INTERNO]" (y
+// equivalentes para ANÁLISIS DE RESULTADOS/RENDIMIENTO/GEOGRÁFICO). Antes
+// era solo "resumen_2026-10-06.pdf" sin identificar a qué proyecto/encuesta
+// corresponde. Cuando no hay un proyecto/encuesta específico seleccionado
+// (filtro en "Todas"), cae de vuelta al nombre genérico con fecha.
+function buildExportFilename(prefix: string, projectName?: string | null, surveyCode?: string | null): string {
+  const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "").trim()
+  if (!projectName && !surveyCode) {
+    return `${prefix.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")}_${new Date().toISOString().slice(0, 10)}.pdf`
+  }
+  const parts = [prefix]
+  if (projectName) parts.push(safe(projectName))
+  if (surveyCode) parts.push(safe(surveyCode))
+  return `${parts.join(" - ")}.pdf`
+}
+
 // Agrupa las capturas en filas: dos "half" consecutivas van lado a lado
 // (horizontal); "full" (o una "half" que quedó sola, sin pareja) ocupa toda
 // la fila. Calcula de una vez el alto de cada fila para poder dimensionar la
@@ -265,7 +282,7 @@ function drawNativeLegend(doc: jsPDF, legend: NonNullable<ChartCapture["legend"]
 // medida del contenido real en vez de usar A4 fijo, calculando el alto total
 // ANTES de crear el documento (las imágenes ya traen su tamaño real desde
 // html2canvas a scale:3, para que el texto salga nítido).
-export async function exportSummary(data: any, period: string, surveyTitle?: string | null) {
+export async function exportSummary(data: any, period: string, surveyTitle?: string | null, projectName?: string | null, surveyCode?: string | null) {
   const contentWidth = 750
   const margin = 40
   const gap = 16
@@ -316,11 +333,11 @@ export async function exportSummary(data: any, period: string, surveyTitle?: str
     y += row.height + gap
   }
 
-  download(doc, `resumen_${new Date().toISOString().slice(0, 10)}.pdf`)
+  download(doc, buildExportFilename("RESUMEN", projectName, surveyCode))
 }
 
 // ======================== ANÁLISIS DE RESULTADOS ========================
-export async function exportResponses(data: any, period: string, surveyTitle?: string | null) {
+export async function exportResponses(data: any, period: string, surveyTitle?: string | null, projectName?: string | null, surveyCode?: string | null) {
   const doc = newDoc()
   let y = addHeader(doc, "responses", period, surveyTitle)
   const breakdowns = data.responses?.questionBreakdowns || []
@@ -358,11 +375,11 @@ export async function exportResponses(data: any, period: string, surveyTitle?: s
     for (const img of chartImages) y = addImageFitted(doc, img, y)
   }
 
-  download(doc, `analisis_resultados_${new Date().toISOString().slice(0, 10)}.pdf`)
+  download(doc, buildExportFilename("ANÁLISIS DE RESULTADOS", projectName, surveyCode))
 }
 
 // ======================== RENDIMIENTO ========================
-export async function exportPerformance(data: any, period: string, surveyTitle?: string | null) {
+export async function exportPerformance(data: any, period: string, surveyTitle?: string | null, projectName?: string | null, surveyCode?: string | null) {
   const doc = newDoc()
   let y = addHeader(doc, "performance", period, surveyTitle)
   const perf = data.performance
@@ -404,11 +421,11 @@ export async function exportPerformance(data: any, period: string, surveyTitle?:
     for (const img of chartImages) y = addImageFitted(doc, img, y)
   }
 
-  download(doc, `rendimiento_${new Date().toISOString().slice(0, 10)}.pdf`)
+  download(doc, buildExportFilename("RENDIMIENTO", projectName, surveyCode))
 }
 
 // ======================== GEOGRÁFICO ========================
-export async function exportGeographic(data: any, period: string, surveyTitle?: string | null, surveyorName?: string | null) {
+export async function exportGeographic(data: any, period: string, surveyTitle?: string | null, surveyorName?: string | null, projectName?: string | null, surveyCode?: string | null) {
   // Horizontal (antes portrait, igual que las demás pestañas): el mapa es
   // contenido ancho por naturaleza — en A4 vertical quedaba angosto/pequeño.
   // Ítem #33 (acta 07/09/2026): "se puede mejorar la descarga del PDF, más
@@ -455,5 +472,5 @@ export async function exportGeographic(data: any, period: string, surveyTitle?: 
   const chartImages = await captureCharts("export-geographic")
   for (const img of chartImages) y = addImageFitted(doc, img, y)
 
-  download(doc, `geografico_${new Date().toISOString().slice(0, 10)}.pdf`)
+  download(doc, buildExportFilename("GEOGRÁFICO", projectName, surveyCode))
 }

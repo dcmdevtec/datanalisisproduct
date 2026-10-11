@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
     // Supervisores y coordinadores para los selectores de jerarquía (slide 19).
     // Ambos viven en public.users (roles 'supervisor' y 'coordinator' — ver
     // sql/2026_07_reports_outcome_and_hierarchy.sql).
-    const { data: allSupervisors } = await admin.from("users").select("id, name").eq("role", "supervisor").order("name")
+    const { data: allSupervisors } = await admin.from("users").select("id, name, coordinator_id").eq("role", "supervisor").order("name")
     const { data: allCoordinators } = await admin.from("users").select("id, name").eq("role", "coordinator").order("name")
 
     // Resuelve qué encuestadores caen bajo el supervisor/coordinador elegido.
@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
     const emptyResponse = () => NextResponse.json({
       companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
-      surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id })),
+      surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id, code: s.code ?? null })),
       surveyors: (allSurveyors || []).map((s: any) => ({ id: s.id, name: s.name, supervisorId: s.supervisor_id })),
       supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
       coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
@@ -797,7 +797,12 @@ export async function GET(request: NextRequest) {
       otro: "Otro",
     }
     const incidenceBreakdown = Object.entries(incidenceTypeCounts)
-      .map(([type, count]) => ({ type, label: INCIDENCE_TYPE_LABELS[type] || type, count }))
+      .map(([type, count]) => ({
+        type,
+        label: INCIDENCE_TYPE_LABELS[type] || type,
+        count,
+        percentage: incidencias > 0 ? Math.round((count / incidencias) * 1000) / 10 : 0,
+      }))
       .sort((a, b) => b.count - a.count)
     const tasaRespuestasEfectivas = totalResponses > 0 ? Math.round((efectivas / totalResponses) * 1000) / 10 : 0
 
@@ -1073,11 +1078,25 @@ export async function GET(request: NextRequest) {
     const supervisorNameById: Record<string, string> = {}
     for (const sup of (allSupervisors || [])) supervisorNameById[sup.id] = sup.name
 
+    // Ítem "Rendimiento por Encuestador" (acta 05/10/2026): agrupar también
+    // por Coordinador. coordinator_id vive en el supervisor (public.users —
+    // ver sql/2026_07_reports_outcome_and_hierarchy.sql), igual de "fijo"
+    // que supervisor_id ya lo es para el encuestador acá arriba — no se usa
+    // survey_surveyor_zones.coordinator_id (el override por encuesta del
+    // armador de grupos en Asignación) para no cambiar de qué supervisor
+    // "cuelga" cada encuestador en esta tabla, que ya funcionaba así.
+    const coordinatorIdBySupervisorId: Record<string, string | null> = {}
+    const coordinatorNameById: Record<string, string> = {}
+    for (const sup of (allSupervisors || [])) coordinatorIdBySupervisorId[sup.id] = (sup as any).coordinator_id ?? null
+    for (const coord of (allCoordinators || [])) coordinatorNameById[coord.id] = coord.name
+
     // surveyorMap: clave = surveyor_id
     const surveyorMap: Record<string, {
       name: string
       supervisorId: string | null
       supervisorName: string | null
+      coordinatorId: string | null
+      coordinatorName: string | null
       efectivas: number
       incidencias: number
       abandonadas: number
@@ -1166,9 +1185,12 @@ export async function GET(request: NextRequest) {
       if (!sid || surveyorMap[sid]) continue
       const name = (a.surveyors as any)?.name || sid
       const supervisorId = (a.surveyors as any)?.supervisor_id ?? null
+      const coordinatorId = supervisorId ? (coordinatorIdBySupervisorId[supervisorId] ?? null) : null
       surveyorMap[sid] = {
         name, supervisorId,
         supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
+        coordinatorId,
+        coordinatorName: coordinatorId ? (coordinatorNameById[coordinatorId] ?? null) : null,
         efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0, timeDiffs: [],
         firstResponseAt: null, lastResponseAt: null,
       }
@@ -1191,9 +1213,12 @@ export async function GET(request: NextRequest) {
       if (!surveyorMap[sid]) {
         const name = (ssz?.surveyors as any)?.name || metaSurveyor?.name || respondentSurveyor?.name || sid
         const supervisorId = (ssz?.surveyors as any)?.supervisor_id ?? metaSurveyor?.supervisor_id ?? respondentSurveyor?.supervisor_id ?? null
+        const coordinatorId = supervisorId ? (coordinatorIdBySupervisorId[supervisorId] ?? null) : null
         surveyorMap[sid] = {
           name, supervisorId,
           supervisorName: supervisorId ? (supervisorNameById[supervisorId] ?? null) : null,
+          coordinatorId,
+          coordinatorName: coordinatorId ? (coordinatorNameById[coordinatorId] ?? null) : null,
           efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0, timeDiffs: [],
           firstResponseAt: null, lastResponseAt: null,
         }
@@ -1231,6 +1256,8 @@ export async function GET(request: NextRequest) {
           name: s.name,
           supervisorId: s.supervisorId,
           supervisorName: s.supervisorName,
+          coordinatorId: s.coordinatorId,
+          coordinatorName: s.coordinatorName,
           totalRegistros,
           efectivas: s.efectivas,
           incidencias: s.incidencias,
@@ -1258,20 +1285,45 @@ export async function GET(request: NextRequest) {
     const dailyDistribution = dayNames.map((d) => ({ day: d, count: responsesByDayOfWeek[d] || 0 }))
 
     // Per-survey performance (works even without assignments — from responses table directly)
-    const surveyPerfMap: Record<string, { title: string; total: number; completed: number; timeDiffs: number[] }> = {}
+    // Ítem "Rendimiento por Encuesta" (acta 05/10/2026): la tabla con título
+    // RENDIMIENTO POR ENCUESTA debe tener también Incidencias/Abandonadas/
+    // Descalificadas/Efectivas/Tasa/Fecha inicial/Fecha final — antes solo
+    // tenía Respuestas/Completadas/Tasa de finalización/Tiempo.
+    const surveyPerfMap: Record<string, {
+      title: string; total: number; completed: number; timeDiffs: number[]
+      efectivas: number; incidencias: number; abandonadas: number; descalificadas: number
+      firstEfectivaAt: string | null; lastEfectivaAt: string | null
+    }> = {}
     for (const r of responses) {
       const sid = r.survey_id as string
       const title = (r.surveys as any)?.title || "Sin título"
-      if (!surveyPerfMap[sid]) surveyPerfMap[sid] = { title, total: 0, completed: 0, timeDiffs: [] }
-      surveyPerfMap[sid].total++
+      if (!surveyPerfMap[sid]) {
+        surveyPerfMap[sid] = {
+          title, total: 0, completed: 0, timeDiffs: [],
+          efectivas: 0, incidencias: 0, abandonadas: 0, descalificadas: 0,
+          firstEfectivaAt: null, lastEfectivaAt: null,
+        }
+      }
+      const entry = surveyPerfMap[sid]
+      entry.total++
       if (r.status === "completed") {
-        surveyPerfMap[sid].completed++
+        entry.completed++
         const start = (r as any).started_at
         if (r.completed_at && start) {
           const diff = (new Date(r.completed_at).getTime() - new Date(start).getTime()) / 1000
-          if (diff > 0 && diff < 7200) surveyPerfMap[sid].timeDiffs.push(diff)
+          if (diff > 0 && diff < 7200) entry.timeDiffs.push(diff)
         }
       }
+      const outcome = resolveOutcome(r)
+      if (outcome === "efectiva") {
+        entry.efectivas++
+        if (r.created_at) {
+          if (!entry.firstEfectivaAt || r.created_at < entry.firstEfectivaAt) entry.firstEfectivaAt = r.created_at
+          if (!entry.lastEfectivaAt || r.created_at > entry.lastEfectivaAt) entry.lastEfectivaAt = r.created_at
+        }
+      } else if (outcome === "incidencia") entry.incidencias++
+      else if (outcome === "descalificado") entry.descalificadas++
+      else entry.abandonadas++
     }
     const surveyPerformance = Object.entries(surveyPerfMap)
       .map(([, s]) => {
@@ -1285,6 +1337,13 @@ export async function GET(request: NextRequest) {
           completedResponses: s.completed,
           completionRate: s.total > 0 ? Math.round((s.completed / s.total) * 1000) / 10 : 0,
           avgTime: avgSecs > 0 ? `${m}:${String(sec).padStart(2, "0")}` : "—",
+          efectivas: s.efectivas,
+          incidencias: s.incidencias,
+          abandonadas: s.abandonadas,
+          descalificadas: s.descalificadas,
+          tasaEfectivas: s.total > 0 ? Math.round((s.efectivas / s.total) * 1000) / 10 : 0,
+          firstEfectivaAt: s.firstEfectivaAt,
+          lastEfectivaAt: s.lastEfectivaAt,
         }
       })
       .sort((a, b) => b.totalResponses - a.totalResponses)
@@ -1295,7 +1354,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
-      surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id })),
+      surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id, code: s.code ?? null })),
       surveyors: (allSurveyors || []).map((s: any) => ({ id: s.id, name: s.name, supervisorId: s.supervisor_id })),
       supervisors: (allSupervisors || []).map((s: any) => ({ id: s.id, name: s.name })),
       coordinators: (allCoordinators || []).map((c: any) => ({ id: c.id, name: c.name })),
