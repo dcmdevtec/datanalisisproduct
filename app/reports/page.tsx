@@ -85,6 +85,13 @@ function ReportsPageContent() {
   const [selectedSupervisor, setSelectedSupervisor] = useState<string>("all")
   const [selectedCoordinator, setSelectedCoordinator] = useState<string>("all")
   const [selectedTipo, setSelectedTipo] = useState<string>("all")
+  // Ítem "Prueba/Activa" (05/10/2026): las respuestas de prueba ya no se
+  // borran al activar una encuesta (ver app/api/surveys/[id]/route.ts) —
+  // se marcan con response_mode y se pueden filtrar acá. Default "activa"
+  // para que el reporte siga mostrando solo datos reales salvo que se pida
+  // lo contrario explícitamente (mismo criterio que "Limpiar filtros" usa
+  // con dateFrom/dateTo: el default es la vista acotada, limpiar amplía).
+  const [selectedResponseMode, setSelectedResponseMode] = useState<string>("activa")
   // Rango de fechas real (pptx slide 19), reemplaza el selector de "período" fijo.
   // Ítem 14/09/2026: "quiero que el filtro de fecha por defecto siempre
   // cargue el día actual al entrar" — antes arrancaba vacío (todo el
@@ -248,6 +255,7 @@ function ReportsPageContent() {
       supervisor: selectedSupervisor,
       coordinator: selectedCoordinator,
       tipo: selectedTipo,
+      responseMode: selectedResponseMode,
     })
     if (dateFrom) params.set("dateFrom", dateFrom)
     if (dateTo) params.set("dateTo", dateTo)
@@ -260,7 +268,7 @@ function ReportsPageContent() {
       params.set("crossColQuestionId", crossColQuestionId)
     }
     return params
-  }, [selectedCompany, selectedProject, selectedSurvey, selectedSurveyor, selectedSupervisor, selectedCoordinator, selectedTipo, dateFrom, dateTo, advancedFilterQuestionId, advancedFilterValue, crossRowQuestionId, crossColQuestionId])
+  }, [selectedCompany, selectedProject, selectedSurvey, selectedSurveyor, selectedSupervisor, selectedCoordinator, selectedTipo, selectedResponseMode, dateFrom, dateTo, advancedFilterQuestionId, advancedFilterValue, crossRowQuestionId, crossColQuestionId])
 
   const fetchData = useCallback(async () => {
     if (!user) return
@@ -568,6 +576,19 @@ function ReportsPageContent() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Estado de la Encuesta</Label>
+              <Select value={selectedResponseMode} onValueChange={setSelectedResponseMode}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="prueba">Prueba</SelectItem>
+                  <SelectItem value="activa">Activa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Desde</Label>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full sm:w-[150px]" />
             </div>
@@ -575,11 +596,11 @@ function ReportsPageContent() {
               <Label className="text-xs text-muted-foreground">Hasta</Label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full sm:w-[150px]" />
             </div>
-            {(dateFrom || dateTo || selectedSurveyor !== "all" || selectedSupervisor !== "all" || selectedCoordinator !== "all" || selectedTipo !== "all") && (
+            {(dateFrom || dateTo || selectedSurveyor !== "all" || selectedSupervisor !== "all" || selectedCoordinator !== "all" || selectedTipo !== "all" || selectedResponseMode !== "activa") && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedSurveyor("all"); setSelectedSupervisor("all"); setSelectedCoordinator("all"); setSelectedTipo("all") }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setSelectedSurveyor("all"); setSelectedSupervisor("all"); setSelectedCoordinator("all"); setSelectedTipo("all"); setSelectedResponseMode("all") }}
               >
                 Limpiar filtros
               </Button>

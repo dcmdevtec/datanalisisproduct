@@ -90,18 +90,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (surveyCheckError) return NextResponse.json({ error: "Encuesta no encontrada" }, { status: 404 })
 
-    // Al pasar de "prueba" (draft) a "activa": las respuestas recopiladas
-    // mientras se probaba la encuesta son basura de prueba, no datos reales —
-    // se borran para que el reporte arranque en cero al salir a producción.
-    // answers tiene ON DELETE CASCADE sobre response_id (ver schema.sql), así
-    // que borrar responses ya limpia sus answers asociadas.
-    if (existingSurvey.status === "draft" && status === "active") {
-      const { error: wipeError } = await supabase.from("responses").delete().eq("survey_id", id)
-      if (wipeError) {
-        console.error("Error borrando respuestas de prueba al activar encuesta:", wipeError)
-        return NextResponse.json({ error: "No se pudieron limpiar las respuestas de prueba antes de activar" }, { status: 500 })
-      }
-    }
+    // Al pasar de "prueba" (draft) a "activa": antes se borraban todas las
+    // respuestas recopiladas mientras se probaba la encuesta. Ítem pedido
+    // 05/10/2026: por control de calidad, esas respuestas de prueba ya NO
+    // se borran — quedan identificadas con responses.response_mode='prueba'
+    // (se asigna al crearse la respuesta, ver app/api/responses/route.ts y
+    // app/api/portal-encuestador/responses/finish/route.ts) y se pueden
+    // filtrar en Reportes con "Estado de la Encuesta".
 
     // ID único de encuesta (ítem pedido 08/09/2026, "ENC-2026-0001"): se
     // genera solo (trigger assign_survey_code() en el INSERT, ver migración

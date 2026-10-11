@@ -87,6 +87,9 @@ export async function GET(request: NextRequest) {
     const surveyFilter = searchParams.get("survey") || "all"
     const surveyorFilter = searchParams.get("surveyor") || "all"
     const tipoFilter = searchParams.get("tipo") || "all" // all | efectiva | incidencia | abandonada
+    // Ítem "Prueba/Activa" (05/10/2026): filtra por el estado que tenía la
+    // encuesta cuando se recibió cada respuesta (responses.response_mode).
+    const responseModeFilter = searchParams.get("responseMode") || "all" // all | prueba | activa
     // Filtro avanzado (pptx slide 21: "filtrar las gráficas teniendo en cuenta lo
     // que contestaron en una pregunta en particular"). Se aplica a TODO el reporte
     // (no solo al gráfico seleccionado) para que resumen/rendimiento/geográfico
@@ -304,7 +307,7 @@ export async function GET(request: NextRequest) {
 
     // --- Build responses query with filters ---
     let responsesQuery = admin.from("responses").select(
-      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, surveys(title)"
+      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, response_mode, surveys(title)"
     )
     if (filteredSurveyIds !== null) {
       responsesQuery = responsesQuery.in("survey_id", filteredSurveyIds)
@@ -317,6 +320,12 @@ export async function GET(request: NextRequest) {
     }
     if (dateTo) {
       responsesQuery = responsesQuery.lte("created_at", dateTo.toISOString())
+    }
+    if (responseModeFilter !== "all") {
+      // cast a any: "response_mode" es una columna nueva (ver
+      // db/migrations/2026-10-08_add_response_mode_tracking.sql) que el tipo
+      // generado de Supabase todavía no conoce.
+      responsesQuery = (responsesQuery as any).eq("response_mode", responseModeFilter)
     }
 
     const { data: rawResponses } = await responsesQuery.order("created_at", { ascending: false })

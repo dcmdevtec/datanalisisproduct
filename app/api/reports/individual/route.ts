@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const surveyFilter = searchParams.get("survey") || "all"
     const surveyorFilter = searchParams.get("surveyor") || "all"
     const tipoFilter = searchParams.get("tipo") || "all"
+    const responseModeFilter = searchParams.get("responseMode") || "all" // all | prueba | activa
     const dateFromParam = searchParams.get("dateFrom")
     const dateToParam = searchParams.get("dateTo")
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1)
@@ -96,13 +97,17 @@ export async function GET(request: NextRequest) {
     let query = admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, surveys(title)",
+        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, response_mode, surveys(title)",
         { count: "exact" }
       )
     if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
     if (filteredAssignmentIds !== null) query = query.in("assignment_id", filteredAssignmentIds)
     if (dateFrom) query = query.gte("created_at", dateFrom.toISOString())
     if (dateTo) query = query.lte("created_at", dateTo.toISOString())
+    // cast a any: "response_mode" es una columna nueva (ver
+    // db/migrations/2026-10-08_add_response_mode_tracking.sql) que el tipo
+    // generado de Supabase todavía no conoce.
+    if (responseModeFilter !== "all") query = (query as any).eq("response_mode", responseModeFilter)
 
     query = query.order("created_at", { ascending: false })
 

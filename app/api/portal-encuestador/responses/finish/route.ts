@@ -62,6 +62,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Asignación no encontrada" }, { status: 404 })
     }
 
+    // Ítem "Prueba/Activa" (05/10/2026): ver mismo comentario en
+    // app/api/responses/route.ts — ya no se borran las respuestas de
+    // prueba, se marcan para poder filtrarlas en Reportes.
+    const { data: surveyForMode } = await admin.from("surveys").select("status").eq("id", assignment.survey_id).maybeSingle()
+    const responseMode = (surveyForMode as any)?.status === "draft" ? "prueba" : "activa"
+
     const insertPayload: any = {
       survey_id: assignment.survey_id,
       // Ítem 14/09/2026: "las abandonadas/incidencias no aparecen en
@@ -79,17 +85,27 @@ export async function POST(request: NextRequest) {
       respondent_id: surveyor.userId,
       location: location || null,
       status: "completed",
+      response_mode: responseMode,
       completed_at: new Date().toISOString(),
       assignment_id: assignment.id,
       outcome,
       ...(outcome === "incidencia" ? { incidence_type: incidenceType } : {}),
     }
 
-    const { data: responseData, error } = await admin
+    let { data: responseData, error } = await admin
       .from("responses")
       .insert(insertPayload)
       .select("id")
       .single()
+
+    // Fallback: si response_mode todavía no existe en la BD (migración
+    // db/migrations/2026-10-08_add_response_mode_tracking.sql pendiente de
+    // correr), reintenta sin esa columna en vez de tumbar el registro del
+    // abandono/incidencia — mismo criterio que ya usa app/api/responses/route.ts.
+    if (error && /response_mode/i.test(error.message || "")) {
+      delete insertPayload.response_mode
+      ;({ data: responseData, error } = await admin.from("responses").insert(insertPayload).select("id").single())
+    }
 
     if (error || !responseData) {
       console.error("Error creando respuesta de incidencia/abandono:", error)

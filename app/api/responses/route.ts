@@ -88,6 +88,13 @@ export async function POST(request: NextRequest) {
     // Obtener usuario actual
     const { data: { session } } = await supabase.auth.getSession()
 
+    // Ítem "Prueba/Activa" (05/10/2026): deja constancia de en qué estado
+    // estaba la encuesta cuando se recibió ESTA respuesta — ya no se borran
+    // las de prueba (ver app/api/surveys/[id]/route.ts), se marcan para
+    // poder filtrarlas en Reportes.
+    const { data: surveyForMode } = await supabase.from("surveys").select("status").eq("id", survey_id).maybeSingle()
+    const responseMode = (surveyForMode as any)?.status === "draft" ? "prueba" : "activa"
+
     // Crear respuesta principal
     const insertPayload: any = {
       survey_id,
@@ -95,6 +102,7 @@ export async function POST(request: NextRequest) {
       location: location || null,
       device_info: device_info || null,
       status: "completed",
+      response_mode: responseMode,
       completed_at: new Date().toISOString(),
       // started_at: momento real en que el encuestado empezó a responder,
       // enviado por el cliente (survey-public-renderer / collect page). Sin

@@ -70,10 +70,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Esta encuesta no tiene resultados disponibles públicamente" }, { status: 403 })
     }
 
+    // Ítem "Prueba/Activa" (05/10/2026): las respuestas de prueba ya no se
+    // borran al activar la encuesta (ver app/api/surveys/[id]/route.ts) —
+    // este link es público y externo, así que SIEMPRE se excluyen, sin
+    // opción de filtro (a diferencia del panel de admin en /api/reports).
     const { data: responses } = await admin
       .from("responses")
       .select("id, created_at")
       .eq("survey_id", surveyId)
+      .eq("response_mode", "activa")
 
     const responseList = (responses as any[]) || []
     const totalResponses = responseList.length
