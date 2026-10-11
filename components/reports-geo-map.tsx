@@ -143,6 +143,25 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
+// Ítem "flecha de dirección" (acta de ajustes 05/10/2026): "¿se puede
+// colocar una flecha de dirección? Es simplemente para conocer hacia qué
+// dirección va el encuestador". Rumbo inicial (compass bearing, 0°=Norte,
+// 90°=Este...) del segmento from→to — fórmula estándar de navegación, no
+// la aproximación plana ingenua (lng/lat como si fueran x/y), que se
+// distorsiona cada vez más lejos del ecuador. En pantalla/canvas (norte
+// arriba, este a la derecha) este grado se puede usar DIRECTO como ángulo
+// de rotación en CSS/canvas (ambos rotan en sentido horario desde "arriba",
+// igual que un rumbo de brújula).
+function bearingDegrees(from: { lat: number; lng: number }, to: { lat: number; lng: number }): number {
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const φ1 = toRad(from.lat), φ2 = toRad(to.lat)
+  const Δλ = toRad(to.lng - from.lng)
+  const y = Math.sin(Δλ) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  const θ = Math.atan2(y, x)
+  return ((θ * 180) / Math.PI + 360) % 360
+}
+
 // Solo el anillo exterior de cada polígono — suficiente para el relleno
 // aproximado de drawOverlayCanvas más abajo; las zonas de esta app son
 // bounding boxes simples, no hace falta soporte de huecos (holes).
@@ -690,8 +709,30 @@ export default function ReportsGeoMap({
       try { map.removeLayer(existing) } catch { }
     }
     const latlngs = points.map((pt) => [pt.lat, pt.lng])
-    const polyline = L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: "6 4" }).addTo(map)
-    routeLayersRef.current.set(surveyorId, polyline)
+    const polyline = L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: "6 4" })
+    // Flecha de dirección (ítem 05/10/2026) por cada tramo — un divIcon con
+    // un triángulo rotado al rumbo real del segmento (bearingDegrees),
+    // puesto en el punto medio. Se agrupan con la línea en un solo
+    // L.layerGroup para que routeLayersRef (removeLayer/getBounds/etc, ver
+    // usos más abajo) siga tratando la ruta completa como una sola capa.
+    const arrowMarkers = []
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1]
+      const bearing = bearingDegrees(a, b)
+      const midLat = (a.lat + b.lat) / 2
+      const midLng = (a.lng + b.lng) / 2
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="width:14px;height:14px;transform:rotate(${bearing}deg);display:flex;align-items:center;justify-content:center">
+                 <svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 12,12 7,9 2,12" fill="${color}" stroke="#ffffff" stroke-width="1"/></svg>
+               </div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      })
+      arrowMarkers.push(L.marker([midLat, midLng], { icon, interactive: false, keyboard: false }))
+    }
+    const group = L.layerGroup([polyline, ...arrowMarkers]).addTo(map)
+    routeLayersRef.current.set(surveyorId, group)
     drawOverlayCanvas()
   }
 
@@ -847,6 +888,32 @@ export default function ReportsGeoMap({
       ctx.stroke()
       ctx.setLineDash([])
       ctx.globalAlpha = 1
+
+      // Flecha de dirección por tramo — mismo triángulo rotado al rumbo
+      // real (bearingDegrees) que dibuja drawCachedRoute() en el mapa
+      // visible (ver comentario ahí), para que el PDF exportado coincida.
+      for (let i = 0; i < points.length - 1; i++) {
+        const a = toPoint(points[i].lat, points[i].lng)
+        const b = toPoint(points[i + 1].lat, points[i + 1].lng)
+        const bearing = bearingDegrees(points[i], points[i + 1])
+        const midX = (a.x + b.x) / 2
+        const midY = (a.y + b.y) / 2
+        ctx.save()
+        ctx.translate(midX, midY)
+        ctx.rotate((bearing * Math.PI) / 180)
+        ctx.beginPath()
+        ctx.moveTo(0, -6)
+        ctx.lineTo(5, 5)
+        ctx.lineTo(0, 2)
+        ctx.lineTo(-5, 5)
+        ctx.closePath()
+        ctx.fillStyle = color
+        ctx.fill()
+        ctx.strokeStyle = "#ffffff"
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.restore()
+      }
     }
 
     ctx.restore()
