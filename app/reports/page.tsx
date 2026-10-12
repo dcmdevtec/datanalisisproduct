@@ -987,9 +987,9 @@ function ReportsPageContent() {
                   <CardHeader>
                     <CardTitle>Rendimiento por Encuesta</CardTitle>
                     <CardDescription>
-                      Respuestas, completación y tiempo promedio por encuesta — &quot;Tasa de finalización&quot;: % que
-                      terminó de responder el formulario (distinto de &quot;Tasa de Respuestas Efectivas&quot;, que además
-                      exige que no haya sido incidencia ni descalificada)
+                      Mismos campos que &quot;Rendimiento por Encuestador&quot; arriba, pero totalizados por encuesta —
+                      &quot;Tasa&quot;: % de respuestas efectivas sobre el total (no exige que haya terminado el
+                      formulario, exige que no haya sido incidencia, abandonada ni descalificada)
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -1001,35 +1001,24 @@ function ReportsPageContent() {
                       columns={[
                         { key: "title", label: "Encuesta", align: "left", sortable: true,
                           render: (s) => <span className="font-medium text-sm truncate block max-w-[280px]" title={s.title}>{s.title}</span> },
-                        { key: "totalResponses", label: "Respuestas", align: "center",
-                          render: (s) => <span className="text-sm">{s.totalResponses}</span> },
-                        { key: "completedResponses", label: "Completadas", align: "center",
-                          render: (s) => <span className="text-sm">{s.completedResponses}</span> },
-                        { key: "completionRate", label: "Tasa Finaliz.", align: "center",
-                          render: (s) => (
-                            <span className="inline-flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }} />
-                              <span className="text-sm font-semibold" style={{ color: s.completionRate >= 80 ? "#18b0a4" : s.completionRate >= 50 ? "#f59e0b" : "#ef4444" }}>
-                                {formatPercent(s.completionRate)}
-                              </span>
-                            </span>
-                          ) },
-                        { key: "avgTime", label: "Tiempo", align: "center", sortable: false,
-                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.avgTime}</span> },
+                        { key: "totalResponses", label: "Total Registros", align: "center",
+                          render: (s) => <span className="text-sm font-medium">{s.totalResponses}</span> },
                         { key: "incidencias", label: "Incidencias", align: "center",
-                          render: (s) => <span className="text-sm">{s.incidencias}</span> },
+                          render: (s) => <span className={s.incidencias > 0 ? "text-sm text-red-500 font-medium" : "text-sm text-muted-foreground"}>{s.incidencias}</span> },
                         { key: "abandonadas", label: "Abandonadas", align: "center",
-                          render: (s) => <span className="text-sm">{s.abandonadas}</span> },
+                          render: (s) => <span className={s.abandonadas > 0 ? "text-sm text-amber-500 font-medium" : "text-sm text-muted-foreground"}>{s.abandonadas}</span> },
                         { key: "descalificadas", label: "Descalificadas", align: "center",
-                          render: (s) => <span className="text-sm">{s.descalificadas}</span> },
+                          render: (s) => <span className={s.descalificadas > 0 ? "text-sm text-purple-500 font-medium" : "text-sm text-muted-foreground"}>{s.descalificadas}</span> },
                         { key: "efectivas", label: "Efectivas", align: "center",
-                          render: (s) => <span className="text-sm font-medium">{s.efectivas}</span> },
+                          render: (s) => <span className="text-sm text-[#18b0a4] font-medium">{s.efectivas}</span> },
                         { key: "tasaEfectivas", label: "Tasa", align: "center",
-                          render: (s) => <span className="text-sm font-semibold" style={{ color: "#18b0a4" }}>{formatPercent(s.tasaEfectivas)}</span> },
-                        { key: "firstEfectivaAt", label: "Fecha inicial", align: "center", sortable: true,
-                          render: (s) => <span className="text-xs text-muted-foreground">{s.firstEfectivaAt ? bogotaDateTime(s.firstEfectivaAt).date : "—"}</span> },
-                        { key: "lastEfectivaAt", label: "Fecha final", align: "center", sortable: true,
-                          render: (s) => <span className="text-xs text-muted-foreground">{s.lastEfectivaAt ? bogotaDateTime(s.lastEfectivaAt).date : "—"}</span> },
+                          render: (s) => <span className="text-sm font-semibold" style={{ color: s.tasaEfectivas >= 80 ? "#18b0a4" : s.tasaEfectivas >= 50 ? "#f59e0b" : "#ef4444" }}>{formatPercent(s.tasaEfectivas)}</span> },
+                        { key: "avgTime", label: "Tiempo prom.", align: "center", sortable: false,
+                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.avgTime}</span> },
+                        { key: "firstEfectivaAt", label: "Inicio 1ra", align: "center", sortable: true,
+                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.firstEfectivaAt ? bogotaDateTime(s.firstEfectivaAt).time : "—"}</span> },
+                        { key: "lastEfectivaAt", label: "Fin última", align: "center", sortable: true,
+                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.lastEfectivaAt ? bogotaDateTime(s.lastEfectivaAt).time : "—"}</span> },
                       ]}
                     />
                   </CardContent>
