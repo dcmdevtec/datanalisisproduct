@@ -4,6 +4,13 @@
 // nombrados extra en un archivo page.tsx de App Router.
 
 export interface ReportData {
+  // Ítem "Asignación de personal" (acta 05/10/2026): el rol de quien pidió
+  // el reporte — la UI lo usa para esconder los selectores de Supervisor/
+  // Coordinador cuando quien mira YA es un supervisor/coordinador (el
+  // backend fuerza su propio id sobre esos filtros sin importar qué venga
+  // en la URL, así que mostrárselos como si pudieran elegir OTRO equipo es
+  // engañoso — ver /api/reports, auth.user.role).
+  viewerRole?: string
   companies: { id: string; name: string }[]
   projects: { id: string; name: string; companyId: string }[]
   surveys: { id: string; title: string; projectId: string; code?: string | null }[]

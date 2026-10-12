@@ -221,6 +221,12 @@ function DashboardContent() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Ítem "Asignación de personal" (acta 05/10/2026): "no debo ver
+                mas nada" — mismo criterio que app/reports/page.tsx (el
+                backend fuerza el propio id de un supervisor/coordinador
+                sobre estos dos filtros sin importar qué venga en la URL). */}
+            {(!data?.viewerRole || data.viewerRole === "admin") && (
+              <>
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Supervisor</Label>
               <Select value={selectedSupervisor} onValueChange={setSelectedSupervisor}>
@@ -249,6 +255,8 @@ function DashboardContent() {
                 </SelectContent>
               </Select>
             </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Tipo de encuesta</Label>
               <Select value={selectedTipo} onValueChange={setSelectedTipo}>

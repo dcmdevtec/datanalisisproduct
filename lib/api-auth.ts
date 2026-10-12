@@ -142,6 +142,21 @@ export async function resolveAllowedMessageReceivers(user: AuthedUser): Promise<
     for (const s of (mySurveyors as any[]) || []) {
       ids.add(s.user_id ?? s.id) // user_id si el encuestador tiene cuenta propia; si no, fallback legacy id===user_id
     }
+    // Ítem "Asignación de personal" (acta 05/10/2026): "por proyecto el
+    // grupo de trabajo del supervisor... cambia" — lo de arriba es el
+    // organigrama GLOBAL fijo (surveyors.supervisor_id). Se suma también
+    // quien le quedó asignado por el armador de grupos de Asignación
+    // (survey_surveyor_zones.supervisor_id, por proyecto), que puede
+    // incluir encuestadores que no son "suyos" globalmente.
+    // cast a any: supervisor_id/coordinator_id son columnas nuevas (ver
+    // sql/2026_07_reports_outcome_and_hierarchy.sql / migration.sql) que el
+    // tipo generado de Supabase todavía no conoce para esta tabla.
+    const { data: myPerProjectSurveyorIds } = await (admin.from("survey_surveyor_zones") as any).select("surveyor_id").eq("supervisor_id", user.id)
+    const perProjectIds = [...new Set(((myPerProjectSurveyorIds as any[]) || []).map((r) => r.surveyor_id).filter(Boolean))]
+    if (perProjectIds.length > 0) {
+      const { data: theirUsers } = await admin.from("surveyors").select("user_id, id").in("id", perProjectIds)
+      for (const s of (theirUsers as any[]) || []) ids.add(s.user_id ?? s.id)
+    }
     return { any: false, ids: [...ids] }
   }
 
@@ -155,6 +170,18 @@ export async function resolveAllowedMessageReceivers(user: AuthedUser): Promise<
       for (const s of (theirSurveyors as any[]) || []) {
         ids.add(s.user_id ?? s.id)
       }
+    }
+    // Mismo criterio que supervisor arriba: se suma el equipo por proyecto
+    // (survey_surveyor_zones.coordinator_id/supervisor_id) además del
+    // organigrama global.
+    const { data: myPerProjectRows } = await (admin.from("survey_surveyor_zones") as any).select("surveyor_id, supervisor_id").eq("coordinator_id", user.id)
+    const perProjectRows = (myPerProjectRows as any[]) || []
+    const perProjectSupIds = [...new Set(perProjectRows.map((r) => r.supervisor_id).filter(Boolean))]
+    const perProjectSurveyorIds = [...new Set(perProjectRows.map((r) => r.surveyor_id).filter(Boolean))]
+    for (const id of perProjectSupIds) ids.add(id)
+    if (perProjectSurveyorIds.length > 0) {
+      const { data: theirUsers } = await admin.from("surveyors").select("user_id, id").in("id", perProjectSurveyorIds)
+      for (const s of (theirUsers as any[]) || []) ids.add(s.user_id ?? s.id)
     }
     return { any: false, ids: [...ids] }
   }

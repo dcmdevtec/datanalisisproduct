@@ -545,34 +545,45 @@ function ReportsPageContent() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">Supervisor</Label>
-              <Select value={selectedSupervisor} onValueChange={setSelectedSupervisor}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Supervisor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {data?.supervisors?.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">Coordinador</Label>
-              <Select value={selectedCoordinator} onValueChange={setSelectedCoordinator}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Coordinador" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {data?.coordinators?.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Ítem "Asignación de personal" (acta 05/10/2026): "no debo ver
+                mas nada" — el backend YA fuerza el propio id de un
+                supervisor/coordinador sobre estos dos filtros sin importar
+                qué venga en la URL (ver auth.user.role en /api/reports), así
+                que mostrárselos como si pudieran elegir OTRO equipo es
+                engañoso. Solo se muestran cuando quien mira es admin (o
+                antes del primer fetch, cuando viewerRole todavía no llegó). */}
+            {(!data?.viewerRole || data.viewerRole === "admin") && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Supervisor</Label>
+                  <Select value={selectedSupervisor} onValueChange={setSelectedSupervisor}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue placeholder="Supervisor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {data?.supervisors?.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Coordinador</Label>
+                  <Select value={selectedCoordinator} onValueChange={setSelectedCoordinator}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue placeholder="Coordinador" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {data?.coordinators?.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Tipo de encuesta</Label>
               <Select value={selectedTipo} onValueChange={setSelectedTipo}>

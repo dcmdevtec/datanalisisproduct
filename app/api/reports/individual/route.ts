@@ -13,7 +13,14 @@ import { reverseGeocodeBatch } from "@/lib/geocode"
 // cualquier usuario autenticado, incl. encuestadores.
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["admin", "supervisor"])
+    // SEGURIDAD (ítem "Asignación de personal", acta 05/10/2026): faltaba
+    // "coordinator" en los roles permitidos (un coordinador no podía ni
+    // entrar a esta pestaña) y, más importante, no había NINGÚN scoping por
+    // equipo — un supervisor autenticado veía nombre/documento/ubicación de
+    // TODAS las respuestas individuales del sistema, no solo las de su
+    // equipo (mismo hueco que ya se cerró en /api/reports, ver comentario
+    // de "isSelfScoped" ahí).
+    const auth = await requireRole(["admin", "supervisor", "coordinator"])
     if (!auth.ok) return auth.response
 
     const { searchParams } = new URL(request.url)
@@ -82,6 +89,28 @@ export async function GET(request: NextRequest) {
         if (!filteredAssignmentIds.includes(id)) filteredAssignmentIds.push(id)
       }
 
+      if (filteredAssignmentIds.length === 0) {
+        return NextResponse.json({ items: [], total: 0, page, pageSize })
+      }
+    }
+
+    // Ítem "Asignación de personal" (acta 05/10/2026): "ÚNICAMENTE de mi
+    // equipo de trabajo. No debo ver mas nada" — mismo criterio de
+    // seguridad que /api/reports (su propio id GANA sobre cualquier filtro
+    // que venga en la URL, nunca al revés). El equipo real es el de
+    // survey_surveyor_zones (por proyecto), no el organigrama global fijo
+    // de public.users/surveyors.
+    if (auth.user.role === "supervisor" || auth.user.role === "coordinator") {
+      let ownQuery: any = admin.from("survey_surveyor_zones").select("id")
+      ownQuery = auth.user.role === "supervisor"
+        ? ownQuery.eq("supervisor_id", auth.user.id)
+        : ownQuery.eq("coordinator_id", auth.user.id)
+      if (filteredSurveyIds !== null) ownQuery = ownQuery.in("survey_id", filteredSurveyIds)
+      const { data: ownRows } = await ownQuery
+      const ownAssignmentIds = new Set(((ownRows as any[]) || []).map((r) => r.id))
+      filteredAssignmentIds = filteredAssignmentIds === null
+        ? [...ownAssignmentIds]
+        : filteredAssignmentIds.filter((id) => ownAssignmentIds.has(id))
       if (filteredAssignmentIds.length === 0) {
         return NextResponse.json({ items: [], total: 0, page, pageSize })
       }

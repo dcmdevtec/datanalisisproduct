@@ -155,17 +155,49 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Load companies, projects, surveys for cascading filter dropdowns ---
-    const { data: allCompanies } = await admin.from("companies").select("id, name").order("name")
-    const { data: allProjects } = await admin.from("projects").select("id, name, company_id").order("name")
+    let { data: allCompanies } = await admin.from("companies").select("id, name").order("name")
+    let { data: allProjects } = await admin.from("projects").select("id, name, company_id").order("name")
     // code (09/09/2026): "mostrar nombre y código interno en todas las
     // vistas y reportes" — ver db/migrations/2026-09-08_add_survey_code.sql.
-    const { data: allSurveys } = await admin.from("surveys").select("id, title, project_id, code").order("created_at", { ascending: false })
-    // Encuestadores para el selector de filtro (slide 19).
-    const { data: allSurveyors } = await admin
+    let { data: allSurveys } = await admin.from("surveys").select("id, title, project_id, code").order("created_at", { ascending: false })
+
+    // Ítem "Asignación de personal" (acta 05/10/2026): "no debo ver mas
+    // nada" — un supervisor/coordinador no debe ver siquiera los NOMBRES de
+    // empresas/proyectos/encuestas ajenas a su equipo en los selectores de
+    // filtro, aunque la data de respuestas ya estuviera bien acotada (ver
+    // bloque de hierarchySurveyorIds más abajo). Se recorta esta lista
+    // ANTES de construir cualquier respuesta — todo lo que se arma a partir
+    // de allSurveys/allProjects/allCompanies de ahí en adelante hereda el
+    // recorte solo.
+    let ownScopeSurveyIds: Set<string> | null = null
+    let ownScopeSurveyorIds: Set<string> | null = null
+    if (auth.user.role === "supervisor" || auth.user.role === "coordinator") {
+      let ownScopeQuery: any = admin.from("survey_surveyor_zones").select("survey_id, surveyor_id")
+      ownScopeQuery = auth.user.role === "supervisor"
+        ? ownScopeQuery.eq("supervisor_id", auth.user.id)
+        : ownScopeQuery.eq("coordinator_id", auth.user.id)
+      const { data: ownSszRows } = await ownScopeQuery
+      ownScopeSurveyIds = new Set(((ownSszRows as any[]) || []).map((r) => r.survey_id).filter(Boolean))
+      ownScopeSurveyorIds = new Set(((ownSszRows as any[]) || []).map((r) => r.surveyor_id).filter(Boolean))
+      allSurveys = (allSurveys || []).filter((s: any) => ownScopeSurveyIds!.has(s.id))
+      const ownProjectIds = new Set(allSurveys.map((s: any) => s.project_id))
+      allProjects = (allProjects || []).filter((p: any) => ownProjectIds.has(p.id))
+      const ownCompanyIds = new Set(allProjects.map((p: any) => p.company_id))
+      allCompanies = (allCompanies || []).filter((c: any) => ownCompanyIds.has(c.id))
+    }
+    // Encuestadores para el selector de filtro (slide 19). Mismo recorte
+    // "no debo ver mas nada" de arriba — un supervisor/coordinador solo ve
+    // encuestadores que de verdad están en SU equipo en alguno de sus
+    // proyectos (survey_surveyor_zones), nunca el listado completo de la
+    // organización.
+    let { data: allSurveyors } = await admin
       .from("surveyors")
       .select("id, name, supervisor_id")
       .eq("status", "active")
       .order("name")
+    if (ownScopeSurveyorIds !== null) {
+      allSurveyors = (allSurveyors || []).filter((s: any) => ownScopeSurveyorIds!.has(s.id))
+    }
     // Supervisores y coordinadores para los selectores de jerarquía (slide 19).
     // Ambos viven en public.users (roles 'supervisor' y 'coordinator' — ver
     // sql/2026_07_reports_outcome_and_hierarchy.sql).
@@ -240,6 +272,30 @@ export async function GET(request: NextRequest) {
       filteredSurveyIds = (allSurveys || []).filter((s: any) => companyProjectIds.includes(s.project_id)).map((s: any) => s.id)
     }
 
+    // Ítem "Asignación de personal" (acta de ajustes 05/10/2026): "cada
+    // coordinador o supervisor solo debe visualizar el grupo que tenga
+    // asignado dentro de ese proyecto... por proyecto el grupo de trabajo
+    // del supervisor y del coordinador cambia". El bloque de arriba
+    // (líneas ~195-229, "Reunión 2026-08-27: Asignación") ya resuelve esto
+    // bien cuando hay UNA encuesta puntual elegida (surveyFilter !== "all")
+    // — pero si el supervisor/coordinador está mirando el tablero sin
+    // acotar a una encuesta (Resumen/Geográfico/Rendimiento agregados de
+    // TODOS sus proyectos), ese bloque nunca corre y hierarchySurveyorIds
+    // se queda con la jerarquía GLOBAL de arriba (surveyors.supervisor_id /
+    // users.coordinator_id, fija por usuario) — que puede no coincidir con
+    // su equipo real en cada proyecto puntual. Para self-scoped, se
+    // reemplaza siempre por la unión de equipos reales (survey_surveyor_zones)
+    // de todas las encuestas en vista.
+    if (surveyFilter === "all" && (auth.user.role === "supervisor" || auth.user.role === "coordinator")) {
+      let sszHierarchyQuery: any = admin.from("survey_surveyor_zones").select("surveyor_id")
+      sszHierarchyQuery = auth.user.role === "supervisor"
+        ? sszHierarchyQuery.eq("supervisor_id", auth.user.id)
+        : sszHierarchyQuery.eq("coordinator_id", auth.user.id)
+      if (filteredSurveyIds !== null) sszHierarchyQuery = sszHierarchyQuery.in("survey_id", filteredSurveyIds)
+      const { data: ownTeamRows } = await sszHierarchyQuery
+      hierarchySurveyorIds = [...new Set(((ownTeamRows as any[]) || []).map((r) => r.surveyor_id).filter(Boolean))]
+    }
+
     // Si hay filtro por encuestador (directo o vía jerarquía supervisor/coordinador),
     // resolvemos primero los assignment_id que le pertenecen, porque responses no
     // tiene surveyor_id directo (solo assignment_id -> surveyor).
@@ -284,6 +340,7 @@ export async function GET(request: NextRequest) {
     }
 
     const emptyResponse = () => NextResponse.json({
+      viewerRole: auth.user.role,
       companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
       surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id, code: s.code ?? null })),
@@ -621,6 +678,7 @@ export async function GET(request: NextRequest) {
       // No hay respuestas, pero devolvemos datos geográficos (ubicaciones de
       // encuestadores y polígonos de zonas) para que el mapa funcione igual.
       return NextResponse.json({
+        viewerRole: auth.user.role,
         companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
         projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
         surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id, code: s.code ?? null })),
@@ -1352,6 +1410,7 @@ export async function GET(request: NextRequest) {
     // (antes del early-return) para que el mapa funcione aunque no haya respuestas.
 
     return NextResponse.json({
+      viewerRole: auth.user.role,
       companies: (allCompanies || []).map((c: any) => ({ id: c.id, name: c.name })),
       projects: (allProjects || []).map((p: any) => ({ id: p.id, name: p.name, companyId: p.company_id })),
       surveys: (allSurveys || []).map((s: any) => ({ id: s.id, title: s.title, projectId: s.project_id, code: s.code ?? null })),
