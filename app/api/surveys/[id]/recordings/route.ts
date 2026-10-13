@@ -36,7 +36,10 @@ function sanitizeFilenamePart(s: string): string {
 // audios de encuestadores (grabaciones de campo) a cualquiera con el ID de
 // la encuesta.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(["admin", "supervisor"])
+  // Ítem "revisar los accesos y permisos de cada rol" (13/10/2026): faltaba
+  // "coordinator" — bloqueaba la pestaña Audios de Reportes para ese rol,
+  // que ya tiene acceso al resto de Reportes de esta misma encuesta.
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   try {

@@ -18,7 +18,15 @@ type SurveyorInsert = Database["public"]["Tables"]["surveyors"]["Insert"]
 // (el rol ya fue verificado por requireRole antes de hacer cualquier query).
 
 export async function GET(request: Request) {
-  const auth = await requireRole(["admin", "supervisor"])
+  // Ítem "revisar los accesos y permisos de cada rol" (acta 13/10/2026):
+  // este GET nunca scopeó por equipo — un supervisor autenticado veía la
+  // lista COMPLETA de encuestadores de toda la organización, no solo los
+  // suyos (mismo hueco que ya se había cerrado en /api/tracking y
+  // /api/reports para este mismo módulo). Se agrega "coordinator" también
+  // — la pestaña Geolocalización de esta misma página ya le daba acceso
+  // real vía /api/tracking, pero la pestaña Encuestadores (esta ruta) lo
+  // rechazaba sin más.
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   // Admin client bypasses RLS — safe porque requireRole ya verificó rol.
@@ -32,10 +40,33 @@ export async function GET(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+    // Mismo criterio de equipo que la lista completa (abajo) — un
+    // supervisor/coordinador no puede pedir el detalle de un encuestador
+    // ajeno a su equipo solo porque conoce su id.
+    if (auth.user.role === "supervisor" && (data as any)?.supervisor_id !== auth.user.id) {
+      return NextResponse.json({ error: "No tienes permiso sobre este encuestador" }, { status: 403 })
+    }
+    if (auth.user.role === "coordinator") {
+      const supervisorId = (data as any)?.supervisor_id
+      const { data: ownsSupervisor } = supervisorId
+        ? await admin.from("users").select("id").eq("id", supervisorId).eq("coordinator_id", auth.user.id).maybeSingle()
+        : { data: null }
+      if (!ownsSupervisor) {
+        return NextResponse.json({ error: "No tienes permiso sobre este encuestador" }, { status: 403 })
+      }
+    }
     return NextResponse.json(data)
   }
 
-  const { data, error } = await admin.from("surveyors").select("*").order("created_at", { ascending: false })
+  let query = admin.from("surveyors").select("*").order("created_at", { ascending: false })
+  if (auth.user.role === "supervisor") {
+    query = query.eq("supervisor_id", auth.user.id)
+  } else if (auth.user.role === "coordinator") {
+    const { data: mySupervisors } = await admin.from("users").select("id").eq("role", "supervisor").eq("coordinator_id", auth.user.id)
+    const supIds = ((mySupervisors as any[]) || []).map((s) => s.id)
+    query = query.in("supervisor_id", supIds.length > 0 ? supIds : ["__none__"])
+  }
+  const { data, error } = await query
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

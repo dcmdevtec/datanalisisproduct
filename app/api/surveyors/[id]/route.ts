@@ -18,7 +18,11 @@ interface SurveyorUpdateRequest {
 // cualquier encuestador — no tenía ningún check de sesión/rol. Mismo
 // criterio que /api/surveyors: lectura admin+supervisor, mutaciones solo admin.
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(["admin", "supervisor"])
+  // Ítem "revisar los accesos y permisos de cada rol" (acta 13/10/2026):
+  // mismo hueco que /api/surveyors (lista) — sin scoping, cualquier
+  // supervisor/coordinador podía pedir el detalle de CUALQUIER encuestador
+  // por id, no solo los suyos.
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   const { id } = await params
@@ -32,6 +36,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   if (!surveyor) {
     return NextResponse.json({ error: "Surveyor not found" }, { status: 404 })
+  }
+
+  if (auth.user.role === "supervisor" && (surveyor as any).supervisor_id !== auth.user.id) {
+    return NextResponse.json({ error: "No tienes permiso sobre este encuestador" }, { status: 403 })
+  }
+  if (auth.user.role === "coordinator") {
+    const admin = createAdminSupabase()
+    const supervisorId = (surveyor as any).supervisor_id
+    const { data: ownsSupervisor } = supervisorId
+      ? await admin.from("users").select("id").eq("id", supervisorId).eq("coordinator_id", auth.user.id).maybeSingle()
+      : { data: null }
+    if (!ownsSupervisor) {
+      return NextResponse.json({ error: "No tienes permiso sobre este encuestador" }, { status: 403 })
+    }
   }
 
   return NextResponse.json(surveyor)

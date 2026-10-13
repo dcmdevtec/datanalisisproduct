@@ -35,7 +35,9 @@ import { Readable } from "stream"
 // Supabase Storage, se agrega al archive, y se libera antes de pasar al
 // siguiente.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(["admin", "supervisor"])
+  // Ítem "revisar los accesos y permisos de cada rol" (13/10/2026): mismo
+  // criterio que recordings/route.ts — faltaba "coordinator".
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   try {

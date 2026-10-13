@@ -35,7 +35,12 @@ function extractValue(val: any, questionType?: string): string {
 // SEGURIDAD (auditoría 2026-07-29): verificaba sesión pero no rol.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const auth = await requireRole(["admin", "supervisor"])
+    // Ítem "revisar los accesos y permisos de cada rol" (13/10/2026): el
+    // list (app/api/reports/individual/route.ts) ya permite "coordinator"
+    // — sin este fix, el coordinador veía la lista de Respuestas
+    // Individuales pero no podía abrir el detalle de ninguna (bloqueado
+    // acá con 403/401 implícito).
+    const auth = await requireRole(["admin", "supervisor", "coordinator"])
     if (!auth.ok) return auth.response
 
     const { id: responseId } = await params
@@ -370,7 +375,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 // admin, ver DELETE más abajo).
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const auth = await requireRole(["admin", "supervisor"])
+    // Mismo criterio que el GET de arriba: coordinador ya ve y gestiona
+    // este módulo igual que supervisor, no tiene sentido que pueda ver el
+    // detalle pero no corregir un dato mal digitado.
+    const auth = await requireRole(["admin", "supervisor", "coordinator"])
     if (!auth.ok) return auth.response
 
     const { id: responseId } = await params

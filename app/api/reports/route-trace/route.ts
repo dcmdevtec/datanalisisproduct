@@ -10,7 +10,10 @@ import { requireRole } from "@/lib/api-auth"
 // surveyor_id + tiempo, tan precisa como la frecuencia con la que la APK
 // reporta ubicación.
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["admin", "supervisor"])
+  // Ítem "revisar los accesos y permisos de cada rol" (13/10/2026): faltaba
+  // "coordinator" — bloqueaba "Ver ruta" en el mapa Geográfico de Reportes
+  // para ese rol, que ya tiene acceso al resto de esa pestaña.
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(request.url)

@@ -16,8 +16,13 @@ import { requireRole } from "@/lib/api-auth"
 // "a la fuerza" de un lado a otro sin cooperación del cliente — este es el
 // mismo patrón (mejor esfuerzo, vía polling) que ya usa el resto del portal
 // para llegar al dispositivo del encuestador (mensajes, ubicación, etc.).
+// Ítem "cerrar sesión automáticamente... también el coordinador y
+// supervisor" (acta de ajustes 13/10/2026): el botón de cerrar sesión
+// remota ya vivía en la pestaña Geolocalización (app/surveyors/page.tsx),
+// a la que un coordinador YA tiene acceso (ver /api/tracking, que sí lo
+// scopea) — solo faltaba que esta ruta aceptara su rol.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(["admin", "supervisor"])
+  const auth = await requireRole(["admin", "supervisor", "coordinator"])
   if (!auth.ok) return auth.response
 
   const { id } = await params
@@ -38,6 +43,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // resolveTeamSurveyorIds en app/api/tracking/route.ts).
   if (auth.user.role === "supervisor" && (surveyor as any).supervisor_id !== auth.user.id) {
     return NextResponse.json({ error: "No tienes permiso sobre este encuestador" }, { status: 403 })
+  }
+
+  // Un coordinador solo puede forzar el cierre de sesión de encuestadores
+  // bajo alguno de SUS supervisores — mismo criterio que
+  // resolveTeamSurveyorIds (app/api/tracking/route.ts) y
+  // resolveAllowedMessageReceivers (lib/api-auth.ts) para este mismo rol.
+  if (auth.user.role === "coordinator") {
+    const supervisorId = (surveyor as any).supervisor_id
+    const { data: ownsSupervisor } = supervisorId
+      ? await admin.from("users").select("id").eq("id", supervisorId).eq("coordinator_id", auth.user.id).maybeSingle()
+      : { data: null }
+    if (!ownsSupervisor) {
+      return NextResponse.json({ error: "No tienes permiso sobre este encuestador" }, { status: 403 })
+    }
   }
 
   // Cast a any: force_logout_requested_at es una columna nueva (ver
