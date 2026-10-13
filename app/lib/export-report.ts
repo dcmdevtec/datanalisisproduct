@@ -1,6 +1,5 @@
 import html2canvas from "html2canvas"
 import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
 import { formatPercent } from "@/lib/format"
 
 // Antes esto generaba un .xlsx con ExcelJS (el botón decía "Descargar Excel"
@@ -221,18 +220,6 @@ function addImageFitted(doc: jsPDF, img: ChartCapture, y: number): number {
   return y + totalH + 16
 }
 
-function addSectionTitle(doc: jsPDF, title: string, y: number): number {
-  const pageHeight = doc.internal.pageSize.getHeight()
-  if (y > pageHeight - 60) { doc.addPage(); y = 40 }
-  doc.setFontSize(13)
-  doc.setFont("helvetica", "bold")
-  doc.setTextColor(TEAL)
-  doc.text(title, 40, y)
-  doc.setTextColor("#111111")
-  doc.setFont("helvetica", "normal")
-  return y + 20
-}
-
 function download(doc: jsPDF, filename: string) {
   doc.save(filename)
 }
@@ -380,89 +367,41 @@ export async function exportSummary(data: any, period: string, surveyTitle?: str
 }
 
 // ======================== ANÁLISIS DE RESULTADOS ========================
+// Ítem "la idea es que se exporte siempre lo de cada pantalla" (13/10/2026):
+// esta función armaba su PROPIA tabla "Análisis por pregunta" combinando
+// todas las preguntas en una sola tabla — contenido que no existe así en
+// pantalla (ahí cada pregunta es su propia tarjeta, con su gráfico y,
+// opcionalmente, su propia tabla — ver questionSettings/showTable en
+// app/reports/page.tsx). captureCharts() ya captura esas tarjetas tal cual
+// se ven (cada una con data-export-chart, ver components/reports/question-card.tsx)
+// — la tabla combinada aparte era contenido EXTRA que no está en la pantalla,
+// así que se quita: el PDF ahora es exactamente las tarjetas de preguntas,
+// ni más ni menos.
 export async function exportResponses(data: any, period: string, surveyTitle?: string | null, projectName?: string | null, surveyCode?: string | null) {
   const doc = newDoc()
   let y = addHeader(doc, "responses", period, surveyTitle)
-  const breakdowns = data.responses?.questionBreakdowns || []
-
-  y = addSectionTitle(doc, `Análisis por pregunta (${breakdowns.length})`, y)
-
-  const rows: (string | number)[][] = []
-  for (const qb of breakdowns) {
-    if (qb.distribution && qb.distribution.length > 0) {
-      qb.distribution.forEach((d: any, i: number) => {
-        rows.push([i === 0 ? qb.text : "", i === 0 ? qb.type : "", d.label, d.count, formatPercent(d.percentage)])
-      })
-    } else if (qb.sampleAnswers && qb.sampleAnswers.length > 0) {
-      qb.sampleAnswers.forEach((s: string, i: number) => {
-        rows.push([i === 0 ? qb.text : "", i === 0 ? qb.type : "", s, "", ""])
-      })
-    } else {
-      rows.push([qb.text, qb.type, "Sin datos", "", ""])
-    }
-  }
-  autoTable(doc, {
-    startY: y,
-    margin: { left: 40, right: 40 },
-    head: [["Pregunta", "Tipo", "Opción / Valor", "Cantidad", "%"]],
-    body: rows,
-    headStyles: { fillColor: [24, 176, 164] },
-    styles: { fontSize: 8, cellWidth: "wrap" },
-    columnStyles: { 0: { cellWidth: 160 }, 2: { cellWidth: 160 } },
-  })
-  y = (doc as any).lastAutoTable.finalY + 24
 
   const chartImages = await captureCharts("export-responses")
-  if (chartImages.length > 0) {
-    y = addSectionTitle(doc, "Gráficos", y)
-    for (const img of chartImages) y = addImageFitted(doc, img, y)
-  }
+  for (const img of chartImages) y = addImageFitted(doc, img, y)
 
   download(doc, buildExportFilename("ANÁLISIS DE RESULTADOS", projectName, surveyCode))
 }
 
 // ======================== RENDIMIENTO ========================
+// Ítem "la idea es que se exporte siempre lo de cada pantalla" (13/10/2026):
+// esta función armaba DOS tablas propias — "Encuestadores" (esquema viejo:
+// Asignaciones/Completadas/Pendientes, de antes del rediseño de Rendimiento
+// por Encuestador) y "Respuestas por día de la semana" (duplicado del
+// gráfico "Actividad por Día de la Semana" que ya se ve en pantalla) — que
+// no coinciden con lo que de verdad está en la pantalla. Se quitan: ahora
+// el PDF es exactamente las tarjetas de Rendimiento (por Encuestador, por
+// Encuesta, Actividad por Día) tal como las captura captureCharts().
 export async function exportPerformance(data: any, period: string, surveyTitle?: string | null, projectName?: string | null, surveyCode?: string | null) {
   const doc = newDoc()
   let y = addHeader(doc, "performance", period, surveyTitle)
-  const perf = data.performance
-
-  y = addSectionTitle(doc, "Encuestadores", y)
-  let totalAssign = 0, totalCompleted = 0
-  const rows = (perf?.surveyorPerformance || []).map((s: any) => {
-    const pending = s.totalAssignments - s.completedAssignments
-    totalAssign += s.totalAssignments
-    totalCompleted += s.completedAssignments
-    return [s.name, s.totalAssignments, s.completedAssignments, pending, formatPercent(s.completionRate)]
-  })
-  autoTable(doc, {
-    startY: y,
-    margin: { left: 40, right: 40 },
-    head: [["Encuestador", "Asignaciones", "Completadas", "Pendientes", "Tasa"]],
-    body: rows,
-    foot: rows.length > 0 ? [["TOTAL", totalAssign, totalCompleted, totalAssign - totalCompleted, totalAssign > 0 ? formatPercent(Math.round((totalCompleted / totalAssign) * 1000) / 10) : "0%"]] : undefined,
-    headStyles: { fillColor: [24, 176, 164] },
-    footStyles: { fillColor: [230, 247, 246], textColor: [17, 17, 17], fontStyle: "bold" },
-    styles: { fontSize: 9 },
-  })
-  y = (doc as any).lastAutoTable.finalY + 24
-
-  y = addSectionTitle(doc, "Respuestas por día de la semana", y)
-  autoTable(doc, {
-    startY: y,
-    margin: { left: 40, right: 40 },
-    head: [["Día", "Cantidad de Respuestas"]],
-    body: (perf?.dailyDistribution || []).map((d: any) => [d.day, d.count]),
-    headStyles: { fillColor: [24, 176, 164] },
-    styles: { fontSize: 9 },
-  })
-  y = (doc as any).lastAutoTable.finalY + 24
 
   const chartImages = await captureCharts("export-performance")
-  if (chartImages.length > 0) {
-    y = addSectionTitle(doc, "Gráficos", y)
-    for (const img of chartImages) y = addImageFitted(doc, img, y)
-  }
+  for (const img of chartImages) y = addImageFitted(doc, img, y)
 
   download(doc, buildExportFilename("RENDIMIENTO", projectName, surveyCode))
 }
@@ -472,46 +411,17 @@ export async function exportGeographic(data: any, period: string, surveyTitle?: 
   // Horizontal (antes portrait, igual que las demás pestañas): el mapa es
   // contenido ancho por naturaleza — en A4 vertical quedaba angosto/pequeño.
   // Ítem #33 (acta 07/09/2026): "se puede mejorar la descarga del PDF, más
-  // grande". No toca newDoc() por defecto porque Rendimiento/Análisis
-  // (tablas) sí están mejor en vertical.
+  // grande".
   const doc = newDoc("landscape")
   let y = addHeader(doc, "geographic", period, surveyTitle, surveyorName)
-  const geo = data.geographic
 
-  // Ítem 15/09/2026: "elimina la hoja 1 porque sale en blanco — pasemos el
-  // mapa a la página 1, del resto quitá todo" — esta tabla se dibujaba
-  // SIEMPRE, aunque no hubiera ninguna zona en el filtro actual (ej.
-  // filtrando por un encuestador puntual, que no tiene desglose por zona).
-  // Vacía, seguía ocupando la página 1 completa (título + encabezado de
-  // tabla sin filas) y empujaba el mapa a la página 2, que además arrancaba
-  // casi en blanco. Ahora solo se dibuja si hay datos reales de zonas —
-  // cuando no los hay, el mapa pasa a ser lo primero después del
-  // encabezado, en la página 1.
-  const zoneBreakdown = geo?.zoneBreakdown || []
-  if (zoneBreakdown.length > 0) {
-    y = addSectionTitle(doc, "Zonas — detalle", y)
-    const totalZone = zoneBreakdown.reduce((s: number, z: any) => s + z.responseCount, 0) || 1
-    let tAll = 0, tComp = 0
-    const rows = zoneBreakdown.map((z: any) => {
-      const pending = z.responseCount - z.completedCount
-      const pct = Math.round((z.responseCount / totalZone) * 1000) / 10
-      tAll += z.responseCount
-      tComp += z.completedCount
-      return [z.zone, z.responseCount, z.completedCount, pending, formatPercent(z.completionRate), formatPercent(pct)]
-    })
-    autoTable(doc, {
-      startY: y,
-      margin: { left: 40, right: 40 },
-      head: [["Zona", "Asignaciones", "Completadas", "Pendientes", "Tasa Fin.", "% Total"]],
-      body: rows,
-      foot: [["TOTAL", tAll, tComp, tAll - tComp, tAll > 0 ? formatPercent(Math.round((tComp / tAll) * 1000) / 10) : "0%", "100,0%"]],
-      headStyles: { fillColor: [24, 176, 164] },
-      footStyles: { fillColor: [230, 247, 246], textColor: [17, 17, 17], fontStyle: "bold" },
-      styles: { fontSize: 9 },
-    })
-    y = (doc as any).lastAutoTable.finalY + 24
-  }
-
+  // Ítem "la idea es que se exporte siempre lo de cada pantalla" (13/10/2026):
+  // acá había además una tabla propia "Zonas — detalle" (Asignaciones/
+  // Completadas/Pendientes/Tasa Fin./% Total) que no coincide con la tabla
+  // "Comparativa por Zona" que sí está en pantalla (Zona/Asignaciones/
+  // Completadas/Tasa, ver app/reports/page.tsx) — contenido extra que no
+  // está en la pantalla. Se quita: captureCharts() ya captura esa tarjeta
+  // tal como se ve, junto con el mapa y el resto de tarjetas de esta pestaña.
   const chartImages = await captureCharts("export-geographic")
   for (const img of chartImages) y = addImageFitted(doc, img, y)
 
