@@ -21,6 +21,28 @@ export const metadata = {
     shortcut: '/favicon.svg',
     apple: '/logo.png',
   },
+  // Ítem "logo de Datanálisis" (acta de ajustes 05/10/2026, con seguimiento
+  // 13/10/2026): "no usar el blanco [al compartir el link], no se ve muy
+  // bien". Causa real: no había NINGÚN openGraph configurado, así que
+  // WhatsApp/el unfurler que sea caía al apple-touch-icon (icons.apple
+  // arriba, /logo.png) — que es la versión BLANCA del logo (correcta para
+  // el círculo teal del sidebar, components/ui/logo.tsx, pero invisible
+  // sobre la tarjeta blanca de una vista previa de link). app/opengraph-image.png
+  // y app/twitter-image.png (versión teal, buen contraste en blanco) ya
+  // generan las etiquetas og:image/twitter:image correctas por convención
+  // de Next.js — acá solo se agrega el resto de metadata estándar para que
+  // el título/descripción también salgan bien en la tarjeta compartida.
+  openGraph: {
+    title: "Datanalisis",
+    description: "Plataforma de encuestas y análisis de datos",
+    siteName: "Datanalisis",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Datanalisis",
+    description: "Plataforma de encuestas y análisis de datos",
+  },
 }
 
 export default function RootLayout({
