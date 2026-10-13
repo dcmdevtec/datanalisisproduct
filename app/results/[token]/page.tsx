@@ -32,7 +32,16 @@ export async function generateMetadata(
   }
   const title = config.customTitle || surveyTitle
   const description = config.surveyDescription || "Reporte de encuesta compartido — Datanalisis"
-  const imageUrl: string | null = config.imageUrl || null
+  // Seguimiento 13/10/2026 ("el logo sigue saliendo blanco"): esta página
+  // define su PROPIO openGraph (generateMetadata), que reemplaza por
+  // completo al del layout raíz en vez de heredarlo — así que cuando no
+  // hay imagen de vista previa personalizada (config.imageUrl), este link
+  // quedaba SIN ningún og:image, y WhatsApp caía al apple-touch-icon
+  // (metadata.icons.apple en app/layout.tsx, /logo.png, la versión blanca)
+  // como última alternativa. Se usa /opengraph-image.png (logo teal, mismo
+  // archivo que ya corrige el preview del sitio general) como respaldo
+  // explícito en vez de depender de esa herencia que no ocurre acá.
+  const imageUrl: string = config.imageUrl || "/opengraph-image.png"
 
   return {
     title,
@@ -41,13 +50,13 @@ export async function generateMetadata(
       title,
       description,
       type: "website",
-      images: imageUrl ? [{ url: imageUrl }] : undefined,
+      images: [{ url: imageUrl }],
     },
     twitter: {
-      card: imageUrl ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title,
       description,
-      images: imageUrl ? [imageUrl] : undefined,
+      images: [imageUrl],
     },
   }
 }

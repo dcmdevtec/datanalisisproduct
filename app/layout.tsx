@@ -10,6 +10,12 @@ import ClientLayout from "@/app/client-layout"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
+  // Necesario para que una URL relativa de imagen (ej. /opengraph-image.png,
+  // usada también como respaldo en app/results/[token]/page.tsx) se resuelva
+  // a una URL absoluta real en el og:image — sin esto Next.js cae a
+  // http://localhost:3000 como base, que un rastreador externo (WhatsApp,
+  // Slack) no puede alcanzar.
+  metadataBase: new URL("https://datanalisis.dcmsystem.co"),
   title: "Datanalisis",
   description: "A comprehensive survey platform for data collection and analysis",
   generator: 'v0.dev',
