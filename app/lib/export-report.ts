@@ -66,6 +66,47 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
   const cards = container.querySelectorAll<HTMLElement>("[data-export-chart]")
   const images: ChartCapture[] = []
   for (const card of Array.from(cards)) {
+    // Ítem "la tabla sale incompleta, los nombres salen cortos" (13/10/2026):
+    // las tablas anchas de Reportes (Rendimiento por Encuestador/Encuesta,
+    // ambas con muchas columnas) envuelven su <table> en un div
+    // "overflow-x-auto" para poder scrollear en pantalla cuando no caben
+    // todas las columnas — pero html2canvas NO captura lo que queda fuera
+    // de vista dentro de un contenedor con overflow (lo recorta igual que
+    // lo haría un navegador real), así que el PDF salía con la tabla
+    // cortada según en qué posición de scroll hubiera quedado.
+    //
+    // Agrandar SOLO el wrapper (width: scrollWidth + overflow: visible) NO
+    // alcanza — comprobado aparte con una captura aislada (Playwright +
+    // html2canvas real): en flujo de bloque normal, un hijo más ancho que
+    // su contenedor NO hace crecer al contenedor (el padre se queda en su
+    // "width: auto" = ancho de SU propio contenedor, el hijo solo se ve
+    // desbordado) — y html2canvas dimensiona el canvas según la caja del
+    // elemento que se le pasa (acá `card`, no el wrapper), así que seguía
+    // recortando exactamente igual. Hay que agrandar TAMBIÉN `card` mismo a
+    // su ancho de contenido real (width: max-content) para que html2canvas
+    // capture esa caja ya crecida — confirmado con la misma prueba aislada
+    // (sin esto: recorta igual que antes; con esto: la tabla completa sale
+    // en la captura, sin cortar nada a los lados).
+    const scrollWrappers = card.querySelectorAll<HTMLElement>(".overflow-x-auto")
+    const restoreWrappers: (() => void)[] = []
+    if (scrollWrappers.length > 0) {
+      const prevCardWidth = card.style.width
+      card.style.width = "max-content"
+      restoreWrappers.push(() => { card.style.width = prevCardWidth })
+    }
+    for (const wrapper of Array.from(scrollWrappers)) {
+      const prevWidth = wrapper.style.width
+      const prevOverflow = wrapper.style.overflow
+      const prevScrollLeft = wrapper.scrollLeft
+      wrapper.style.width = `${wrapper.scrollWidth}px`
+      wrapper.style.overflow = "visible"
+      wrapper.scrollLeft = 0
+      restoreWrappers.push(() => {
+        wrapper.style.width = prevWidth
+        wrapper.style.overflow = prevOverflow
+        wrapper.scrollLeft = prevScrollLeft
+      })
+    }
     try {
       const canvas = await html2canvas(card, {
         scale: 3,
@@ -86,6 +127,8 @@ async function captureCharts(containerId: string): Promise<ChartCapture[]> {
       images.push({ dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height, layout, maxWidth, legend })
     } catch {
       // Skip cards that fail to render
+    } finally {
+      restoreWrappers.forEach((fn) => fn())
     }
   }
   return images
