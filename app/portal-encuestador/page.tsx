@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider"
 import supabase from "@/lib/supabase/client"
 import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
 import { getPendingCount, flushQueue } from "@/lib/offline-queue"
+import { bogotaDayKey } from "@/lib/bogota-time"
 import { useToast } from "@/components/ui/use-toast"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -70,8 +71,12 @@ export default function PortalEncuestadorPage() {
   const [surveysLoading, setSurveysLoading] = useState(true)
   const [kpis, setKpis] = useState<DashboardKpis | null>(null)
   const [kpisLoading, setKpisLoading] = useState(true)
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  // Las cards de indicadores arrancan mostrando SOLO el día de hoy (hora de
+  // Bogotá) — antes arrancaban sin filtro y sumaban el histórico completo
+  // desde el primer día del encuestador. El filtro Desde/Hasta sigue
+  // disponible para que el encuestador consulte otro rango manualmente.
+  const [dateFrom, setDateFrom] = useState(() => bogotaDayKey(new Date().toISOString()))
+  const [dateTo, setDateTo] = useState(() => bogotaDayKey(new Date().toISOString()))
   // Contador de mensajes directos sin leer, para el botón de Mensajes del
   // header (módulo de mensajes del encuestador — antes no existía acceso
   // a esto desde el portal).
@@ -434,17 +439,21 @@ export default function PortalEncuestadorPage() {
           })}
         </div>
 
-        {/* Filtro de rango de fechas (pptx slide 2) */}
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
+        {/* Filtro de rango de fechas (pptx slide 2). min-w-0 en los
+            contenedores flex-1 es necesario: un <input type="date"> tiene un
+            ancho mínimo de contenido (por su propia UI de calendario) que
+            por defecto bloquea el shrink de un hijo flex, desbordando la
+            fila en pantallas angostas en vez de ajustarse a ellas. */}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-0">
             <Label className="text-xs text-muted-foreground">Desde</Label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <Label className="text-xs text-muted-foreground">Hasta</Label>
             <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
-          <Button variant="outline" size="icon" onClick={fetchKpis} disabled={kpisLoading}>
+          <Button variant="outline" size="icon" className="flex-shrink-0" onClick={fetchKpis} disabled={kpisLoading}>
             <RefreshCw className={`h-4 w-4 ${kpisLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
