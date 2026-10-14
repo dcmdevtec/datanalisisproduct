@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react"
 import { ArrowUp, ArrowDown, ArrowUpDown, ChevronDown, ChevronRight } from "lucide-react"
 import { formatPercent } from "@/lib/format"
+import { bogotaDateTime } from "@/lib/bogota-time"
 import { Badge } from "@/components/ui/badge"
 
 // Tabla de rendimiento por encuestador — pptx slide 25 + ajustes reunión
@@ -65,11 +66,15 @@ const columns: ColDef[] = [
 
 const NONE_KEY = "__none__"
 
-function formatHour(iso: string | null): string {
+// Ítem 14/10/2026: "cambiar la hora de inicio y fin por fecha de inicio y
+// fecha fin, no por hora" — antes mostraba solo HH:MM, además calculado en
+// la hora local del SERVIDOR (new Date().toLocaleTimeString sin timeZone
+// explícito), el mismo bug documentado en lib/bogota-time.ts. Se usa
+// bogotaDateTime().date, igual que "Rendimiento por Encuesta" en
+// app/reports/page.tsx (misma tabla, deben coincidir).
+function formatDate(iso: string | null): string {
   if (!iso) return "—"
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return "—"
-  return d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })
+  return bogotaDateTime(iso).date
 }
 
 interface Subtotal {
@@ -310,8 +315,8 @@ export function SortablePerformanceTable({ rows }: SortablePerformanceTableProps
                             </span>
                           </td>
                           <td className="p-3 text-center text-xs font-mono text-muted-foreground">{row.avgTime}</td>
-                          <td className="p-3 text-center text-xs font-mono text-muted-foreground">{formatHour(row.firstResponseAt)}</td>
-                          <td className="p-3 text-center text-xs font-mono text-muted-foreground">{formatHour(row.lastResponseAt)}</td>
+                          <td className="p-3 text-center text-xs font-mono text-muted-foreground">{formatDate(row.firstResponseAt)}</td>
+                          <td className="p-3 text-center text-xs font-mono text-muted-foreground">{formatDate(row.lastResponseAt)}</td>
                         </tr>
                       ))}
                     </Fragment>

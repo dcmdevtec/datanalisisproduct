@@ -1016,9 +1016,9 @@ function ReportsPageContent() {
                         { key: "avgTime", label: "Tiempo prom.", align: "center", sortable: false,
                           render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.avgTime}</span> },
                         { key: "firstEfectivaAt", label: "Inicio 1ra", align: "center", sortable: true,
-                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.firstEfectivaAt ? bogotaDateTime(s.firstEfectivaAt).time : "—"}</span> },
+                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.firstEfectivaAt ? bogotaDateTime(s.firstEfectivaAt).date : "—"}</span> },
                         { key: "lastEfectivaAt", label: "Fin última", align: "center", sortable: true,
-                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.lastEfectivaAt ? bogotaDateTime(s.lastEfectivaAt).time : "—"}</span> },
+                          render: (s) => <span className="text-xs text-muted-foreground font-mono">{s.lastEfectivaAt ? bogotaDateTime(s.lastEfectivaAt).date : "—"}</span> },
                       ]}
                     />
                   </CardContent>

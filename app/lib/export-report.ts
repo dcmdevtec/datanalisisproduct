@@ -285,19 +285,45 @@ function layoutRows(images: ChartCapture[], contentWidth: number, gap: number) {
 // Dibuja una leyenda con texto real de jsPDF (círculo de color + label +
 // cantidad/porcentaje) — nunca queda "corrida" como pasaba capturando el
 // HTML con html2canvas, porque no depende de ningún motor de captura.
+// Ítem 14/10/2026: "las letras salen cortadas, no se notan completas" — el
+// label se dibujaba con doc.text() sin ningún límite de ancho, así que una
+// opción con nombre largo (ej. "No sabe / No responde") invadía el espacio
+// del valor (count + %) alineado a la derecha en la misma fila, y los dos
+// textos quedaban superpuestos/ilegibles. Se trunca el label con "…" al
+// ancho real disponible (medido con el mismo font/size con el que se va a
+// dibujar), dejando siempre el valor completo y legible.
+function truncateToWidth(doc: jsPDF, text: string, maxWidth: number): string {
+  if (maxWidth <= 0) return ""
+  if (doc.getTextWidth(text) <= maxWidth) return text
+  const ellipsis = "…"
+  let lo = 0, hi = text.length
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    if (doc.getTextWidth(text.slice(0, mid) + ellipsis) <= maxWidth) lo = mid
+    else hi = mid - 1
+  }
+  return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis
+}
+
 function drawNativeLegend(doc: jsPDF, legend: NonNullable<ChartCapture["legend"]>, x: number, y: number, width: number) {
   doc.setFontSize(10)
   for (const item of legend) {
     const rowY = y + LEGEND_ROW_HEIGHT / 2
     doc.setFillColor(item.color)
     doc.circle(x + 5, rowY, 4, "F")
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor("#64748b") // slate-500, mismo tono que text-muted-foreground
-    doc.text(item.label, x + 14, rowY + 3.5)
+
     doc.setFont("helvetica", "bold")
     doc.setTextColor("#111111")
     const valueText = `${item.count} (${formatPercent(item.percentage)})`
+    const valueWidth = doc.getTextWidth(valueText)
     doc.text(valueText, x + width, rowY + 3.5, { align: "right" })
+
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor("#64748b") // slate-500, mismo tono que text-muted-foreground
+    const labelGap = 10 // separación mínima entre label y valor
+    const labelMaxWidth = width - 14 - valueWidth - labelGap
+    doc.text(truncateToWidth(doc, item.label, labelMaxWidth), x + 14, rowY + 3.5)
+
     y += LEGEND_ROW_HEIGHT
   }
   doc.setFont("helvetica", "normal")
