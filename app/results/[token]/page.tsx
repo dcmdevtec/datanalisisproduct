@@ -11,7 +11,11 @@ import ResultsClient from "./ResultsClient"
 export async function generateMetadata(
   { params }: { params: Promise<{ token: string }> }
 ): Promise<Metadata> {
-  const { token } = await params
+  const { token: rawToken } = await params
+  // Ítem 14/10/2026: ver el mismo comentario en
+  // app/api/public-report/[token]/route.ts — el link puede traer
+  // "-CODIGO" concatenado; el token real son los primeros 32 hex.
+  const token = rawToken.slice(0, 32)
   const admin = createAdminSupabase()
 
   const { data: share } = await (admin as any)

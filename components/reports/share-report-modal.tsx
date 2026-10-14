@@ -24,6 +24,13 @@ interface ShareReportModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedSurvey: string
+  // Ítem 14/10/2026: "concatena el código de la encuesta... el mismo
+  // código que sale en los PDF" — el link de "Compartir encuesta"
+  // (survey-qr-code.tsx) ya usa ese código como el ID del link
+  // (/encuesta/[code]); este modal todavía armaba /results/[token] con
+  // SOLO el token random, sin ninguna referencia visible a qué encuesta
+  // es. Se concatena como sufijo legible — ver buildResultsLink() abajo.
+  surveyCode?: string | null
   questions: ShareQuestion[]
   currentFilters: {
     surveyorId?: string
@@ -42,8 +49,22 @@ const EXPIRY_OPTIONS = [
   { value: "365",   label: "1 año" },
 ]
 
+// El token real en la base (shared_reports.token) es SIEMPRE un hex de 32
+// caracteres sin guiones (default `replace(gen_random_uuid()::text,'-','')`
+// — ver app/api/migrations/2026_08_shared_reports.sql). Concatenar el
+// código de la encuesta como "-CODIGO" después de esos 32 caracteres es
+// retrocompatible: la API y generateMetadata solo necesitan quedarse con
+// los primeros 32 caracteres del segmento de URL para seguir encontrando
+// el link (ver normalizeShareToken() en app/api/public-report/[token]/
+// route.ts y app/results/[token]/page.tsx), y los links ya compartidos
+// ANTES de este cambio (sin sufijo) se siguen resolviendo igual.
+function buildResultsLink(origin: string, token: string, surveyCode?: string | null): string {
+  const suffix = surveyCode?.trim() ? `-${surveyCode.trim().replace(/[^a-zA-Z0-9-]/g, "")}` : ""
+  return `${origin}/results/${token}${suffix}`
+}
+
 export function ShareReportModal({
-  open, onOpenChange, selectedSurvey, questions, currentFilters,
+  open, onOpenChange, selectedSurvey, surveyCode, questions, currentFilters,
 }: ShareReportModalProps) {
   const { toast } = useToast()
 
@@ -99,7 +120,7 @@ export function ShareReportModal({
         setCustomTitle(cfg.customTitle || "")
         setPreviewImageUrl(cfg.imageUrl || null)
         const origin = typeof window !== "undefined" ? window.location.origin : ""
-        setGeneratedLink(`${origin}/results/${link.token}`)
+        setGeneratedLink(buildResultsLink(origin, link.token, surveyCode))
       })
       .catch(() => { /* si falla la precarga, el modal simplemente ofrece crear un link nuevo */ })
       .finally(() => { if (!cancelled) setLoadingExisting(false) })
@@ -198,7 +219,7 @@ export function ShareReportModal({
         return
       }
       const origin = typeof window !== "undefined" ? window.location.origin : ""
-      setGeneratedLink(`${origin}/results/${data.token}`)
+      setGeneratedLink(buildResultsLink(origin, data.token, surveyCode))
       if (isUpdate) {
         toast({ title: "Link actualizado", description: "Los cambios ya se reflejan en el link que enviaste." })
       } else {

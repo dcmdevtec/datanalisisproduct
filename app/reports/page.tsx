@@ -1324,6 +1324,7 @@ function ReportsPageContent() {
         open={shareModalOpen}
         onOpenChange={setShareModalOpen}
         selectedSurvey={selectedSurvey}
+        surveyCode={surveyCodeForExport}
         // Reutiliza la selección ya armada y guardada en "Análisis de
         // resultados" — así compartir el link no vuelve a pedir elegir
         // preguntas; si el usuario no armó ninguna, cae de vuelta a todas.

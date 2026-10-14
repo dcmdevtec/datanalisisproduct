@@ -43,8 +43,12 @@ export async function GET(
   context: { params: Promise<{ token: string }> | { token: string } }
 ) {
   const params = await Promise.resolve(context.params)
-  const { token } = params as { token: string }
-  if (!token) return NextResponse.json({ error: "Token inválido." }, { status: 400 })
+  const { token: rawToken } = params as { token: string }
+  if (!rawToken) return NextResponse.json({ error: "Token inválido." }, { status: 400 })
+  // Ítem 14/10/2026: el link ahora puede traer "-CODIGO" concatenado al
+  // final (ver buildResultsLink() en share-report-modal.tsx) — el token
+  // real en la base son siempre los primeros 32 caracteres hex.
+  const token = rawToken.slice(0, 32)
 
   const admin = createAdminSupabase()
 
