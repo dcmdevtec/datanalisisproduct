@@ -61,6 +61,12 @@ interface AudiosTabProps {
   dateTo?: string
   tipo?: string // all | efectiva | incidencia | abandonada | descalificado
   initialSurveyorId?: string
+  // Ítem 19/10/2026 ("los audios está mostrando el id largo de la
+  // encuesta"): el ZIP se descargaba como audios_<uuid>.zip — mismo código
+  // interno que ya se usa en el nombre de los PDF y en el link de
+  // "Compartir reporte" (buildExportFilename en app/lib/export-report.ts,
+  // buildResultsLink en share-report-modal.tsx).
+  surveyCode?: string | null
 }
 
 function formatDuration(secs: number | null): string {
@@ -80,7 +86,7 @@ function groupCheckState(ids: string[], selected: Set<string>): boolean | "indet
   return "indeterminate"
 }
 
-export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId }: AudiosTabProps) {
+export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId, surveyCode }: AudiosTabProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [recordings, setRecordings] = useState<Recording[]>([])
@@ -210,7 +216,7 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId 
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `audios_${surveyId}.zip`
+      a.download = `audios_${surveyCode || surveyId}.zip`
       document.body.appendChild(a)
       a.click()
       a.remove()

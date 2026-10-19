@@ -1309,6 +1309,7 @@ function ReportsPageContent() {
             ) : (
               <AudiosTab
                 surveyId={selectedSurvey}
+                surveyCode={surveyCodeForExport}
                 dateFrom={dateFrom || undefined}
                 dateTo={dateTo || undefined}
                 tipo={selectedTipo}

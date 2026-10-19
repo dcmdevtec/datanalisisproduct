@@ -17,6 +17,15 @@ function sanitizeFilenamePart(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, "").trim()
 }
 
+// Ítem 19/10/2026 ("el id está muy largo en los audios, truncarlo hasta el
+// primer guion"): response_id es un UUID completo
+// (ej. 5b9497a8-c4cf-40c1-9e45-9e98d2c41023) — se deja solo el primer
+// segmento (5b9497a8) en el nombre del archivo, igual de identificable
+// para diferenciar PARTE 1/2/3 de un mismo intento, sin ocupar tanto.
+function shortId(id: string): string {
+  return id.split("-")[0]
+}
+
 // Lista las grabaciones de audio del portal de encuestador ligadas a ESTA
 // encuesta, para el módulo de detalle (app/surveys/[id]/page.tsx).
 //
@@ -165,7 +174,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const partNumber = partNumberByRecordingId.get(rec.id) ?? 1
         const fileNameParts = [surveyorLabel, dateLabel]
         if (surveyCode) fileNameParts.push(sanitizeFilenamePart(surveyCode))
-        fileNameParts.push(outcomeLabel, rec.response_id || "sin-respuesta", `PARTE ${partNumber}`)
+        fileNameParts.push(outcomeLabel, rec.response_id ? shortId(rec.response_id) : "sin-respuesta", `PARTE ${partNumber}`)
         return {
           id: rec.id,
           // surveyorId (auditoría 2026-07-29, "hay que organizar mejor" las

@@ -132,10 +132,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const OUTCOME_LABEL: Record<string, string> = {
       efectiva: "Efectiva", incidencia: "Incidencia", abandonada: "Abandonada", descalificado: "Descalificada",
     }
+    // Ítem 19/10/2026 ("el id está muy largo en los audios, truncarlo hasta
+    // el primer guion"): mismo criterio que /api/surveys/[id]/recordings —
+    // solo el primer segmento del UUID (ej. 5b9497a8), suficiente para
+    // diferenciar PARTE 1/2/3 de un mismo intento.
+    const shortId = (id: string) => id.split("-")[0]
     const buildBaseName = (surveyorName: string, dateStr: string, outcome: string | null, responseId: string) => {
       const parts = [sanitize(surveyorName), dateStr]
       if (surveyCode) parts.push(sanitize(surveyCode))
-      parts.push(outcome ? (OUTCOME_LABEL[outcome] || outcome) : "Sin-estado", responseId)
+      parts.push(outcome ? (OUTCOME_LABEL[outcome] || outcome) : "Sin-estado", shortId(responseId))
       return parts.join(" - ")
     }
 
