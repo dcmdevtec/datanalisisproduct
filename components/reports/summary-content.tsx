@@ -171,7 +171,11 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
                       "Incidencias",
                     ]}
                   />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22} fill="#ef4444" label={incidenceValueLabel} />
+                  {/* isAnimationActive: ver components/reports/question-chart.tsx —
+                      sin esto, captureCharts() (export-report.ts) podía disparar
+                      html2canvas a mitad de la animación de entrada de la barra,
+                      capturándola incompleta/sin su etiqueta de valor+%. */}
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22} fill="#ef4444" label={incidenceValueLabel} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -302,6 +306,7 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
                     fill="url(#timelineGrad)"
                     dot={{ r: 3, fill: "#18b0a4", strokeWidth: 0 }}
                     activeDot={{ r: 5, fill: "#18b0a4" }}
+                    isAnimationActive={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -401,7 +406,7 @@ export function SummaryContent({ data }: { data: ReportData | null }) {
                     labelFormatter={(label) => `Hora: ${label}`}
                     cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
                   />
-                  <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={24}>
+                  <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={24} isAnimationActive={false}>
                     {(summary?.responsesByHour ?? []).map((h, i) => (
                       <Cell
                         key={i}

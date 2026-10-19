@@ -147,6 +147,23 @@ function PieOrDonut({
               stroke="hsl(var(--background))"
               labelLine={false}
               label={<CustomLabel />}
+              // Ítem 19/10/2026 ("el porcentaje a veces no sale, el anillo
+              // sale parcial/cortado en el PDF"): Recharts anima la entrada
+              // de la torta/anillo por defecto (barrido progresivo de 0° al
+              // ángulo final, ~800ms). captureCharts() (export-report.ts)
+              // dispara html2canvas apenas el usuario hace clic en
+              // "Exportar" — si eso ocurre ANTES de que la animación
+              // termine (muy probable: no hay ninguna espera a que Recharts
+              // avise que terminó), html2canvas capturaba la gráfica A
+              // MITAD de la animación: un arco parcial, sin la etiqueta de
+              // % (que recharts no dibuja hasta terminar) y sin el total
+              // centrado. Confirmado de forma empírica (arnés Playwright +
+              // html2canvas real contra este mismo componente): con
+              // animación quedaba cortado de forma intermitente y
+              // dependiente del timing; sin animación, completo siempre.
+              // No aporta nada en un dashboard de reportes (se re-dibuja
+              // cada vez que cambia un filtro) y evita este riesgo de raíz.
+              isAnimationActive={false}
             >
               {distribution.map((d, i) => (
                 <Cell
@@ -275,7 +292,12 @@ function BarsVertical({
           domain={[0, (max: number) => Math.ceil((max || 1) * 1.2)]}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
-        <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? <ValueLabel /> : false}>
+        {/* isAnimationActive: ver el mismo comentario en PieOrDonut — captureCharts()
+            puede disparar html2canvas antes de que termine la animación de
+            entrada de la barra, capturándola a mitad de crecimiento (y su
+            ValueLabel, que depende de la altura final, mal posicionado o
+            ausente). */}
+        <Bar dataKey="count" radius={[4, 4, 0, 0]} label={showLabels ? <ValueLabel /> : false} isAnimationActive={false}>
           {distribution.map((d, i) => (
             <Cell
               key={i}
@@ -345,7 +367,9 @@ function BarsHorizontal({
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
-        <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? <ValueLabel /> : false}>
+        {/* isAnimationActive: ver el comentario en PieOrDonut (mismo fix,
+            evita capturar la barra a mitad de su animación de entrada). */}
+        <Bar dataKey="count" radius={[0, 4, 4, 0]} label={showLabels ? <ValueLabel /> : false} isAnimationActive={false}>
           {distribution.map((d, i) => (
             <Cell
               key={i}
@@ -410,6 +434,7 @@ function Trend({ timeline, showLabels }: { timeline: TimelinePoint[]; showLabels
           fill="url(#trendGrad)"
           dot={{ r: 3, fill: "#18b0a4", strokeWidth: 0 }}
           activeDot={{ r: 5, fill: "#18b0a4" }}
+          isAnimationActive={false}
         />
       </AreaChart>
     </ResponsiveContainer>
