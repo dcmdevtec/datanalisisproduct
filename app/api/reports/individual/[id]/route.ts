@@ -66,6 +66,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Lookup del encuestador — mismo fix que el list API (2026-08-12):
     // responses.assignment_id apunta a survey_surveyor_zones.id, no a assignments.id.
+    let surveyorId: string | null = null
     let surveyorName: string | null = null
     let surveyorEmail: string | null = null
     if (r.assignment_id) {
@@ -76,15 +77,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq("id", r.assignment_id)
         .maybeSingle()
       if (sszRow?.surveyors) {
+        surveyorId = (sszRow as any).surveyors?.id ?? null
         surveyorName = (sszRow as any).surveyors?.name ?? null
         surveyorEmail = (sszRow as any).surveyors?.email ?? null
       } else {
         // 2️⃣ Fallback: assignments legacy
         const { data: assignment } = await (admin as any)
           .from("assignments")
-          .select("surveyors(name, email)")
+          .select("surveyors(id, name, email)")
           .eq("id", r.assignment_id)
           .maybeSingle()
+        surveyorId = (assignment as any)?.surveyors?.id ?? null
         surveyorName = (assignment as any)?.surveyors?.name ?? null
         surveyorEmail = (assignment as any)?.surveyors?.email ?? null
       }
@@ -332,6 +335,61 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               durationSecs: row.duration_secs ?? null,
               startedAt: row.started_at ?? null,
             })
+          }
+        }
+      }
+
+      // Ítem 19/10/2026 ("las incidencias no se están grabando los audios,
+      // esto no se está mostrando"): una incidencia se reporta ANTES de
+      // tocar "Iniciar Encuesta" (ver handleReportIncidence en
+      // app/portal-encuestador/encuesta/[surveyId]/page.tsx) — nunca se
+      // llama a recording.startSurveySegment() para ese intento, así que
+      // NUNCA existe una fila scope='survey' con este response_id (recRow
+      // arriba siempre sale null) y todo el bloque de arriba se salta
+      // entero. El audio de la conversación SÍ se grabó igual — queda en
+      // el segmento de turno (scope='shift') de fondo, que nunca se
+      // paraba — pero no había ningún camino en este endpoint para
+      // encontrarlo sin esa fila ancla. Se busca directamente el turno que
+      // estaba activo del encuestador al momento de esta respuesta
+      // (surveyor_shifts) y sus segmentos scope='shift' en los 30 min
+      // previos — misma ventana que ya se usaba arriba para "antes de
+      // iniciar la encuesta", solo que sin requerir el ancla scope='survey'.
+      if (!recRow && surveyorId && r.created_at) {
+        const { data: activeShift } = await (admin as any)
+          .from("surveyor_shifts")
+          .select("id")
+          .eq("surveyor_id", surveyorId)
+          .lte("started_at", r.created_at)
+          .or(`ended_at.is.null,ended_at.gte.${r.created_at}`)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle() as { data: { id: string } | null }
+
+        if (activeShift?.id) {
+          const lowerBound = new Date(new Date(r.created_at).getTime() - 30 * 60 * 1000).toISOString()
+          const { data: incidenceRows } = await (admin as any)
+            .from("surveyor_recordings")
+            .select("storage_path, duration_secs, started_at")
+            .eq("shift_id", activeShift.id)
+            .eq("scope", "shift")
+            .eq("upload_status", "uploaded")
+            .gte("started_at", lowerBound)
+            .lte("started_at", r.created_at)
+            .order("started_at", { ascending: true })
+            .limit(10) as { data: { storage_path: string; duration_secs: number | null; started_at: string | null }[] | null }
+
+          for (const row of incidenceRows || []) {
+            if (!row.storage_path) continue
+            const { data: signed } = await admin.storage
+              .from("response-media")
+              .createSignedUrl(row.storage_path, 3600)
+            if (signed?.signedUrl) {
+              preSurveyRecordings.push({
+                audioUrl: signed.signedUrl,
+                durationSecs: row.duration_secs ?? null,
+                startedAt: row.started_at ?? null,
+              })
+            }
           }
         }
       }
