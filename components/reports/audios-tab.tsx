@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Download, FileAudio, AlertCircle, Play, ChevronDown, ChevronRight } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { bogotaDayKey, bogotaDateTime } from "@/lib/bogota-time"
 
 // Pestaña "Audios" (reunión 2026-08-27): descarga en un solo ZIP todas las
 // grabaciones de la encuesta, organizadas en carpetas
@@ -139,7 +140,13 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
     return recordings.filter((r) => {
       if (filterSurveyorId !== "all" && r.surveyorId !== filterSurveyorId) return false
       if (tipo && tipo !== "all" && r.outcome !== tipo) return false
-      const dateKey = (r.startedAt || "").slice(0, 10)
+      // Ítem 20/10/2026 ("el filtro de fecha no aplica en los audios"):
+      // slice(0,10) sobre el ISO UTC de startedAt da la fecha calendario del
+      // SERVIDOR, no la de Bogotá — una grabación hecha a las 7-11pm en
+      // Bogotá cae en el día SIGUIENTE en UTC, así que el filtro la excluía
+      // (o la clasificaba mal) aunque el usuario viera esa fecha en pantalla
+      // en cualquier otra parte de Reportes (que sí usa bogotaDayKey).
+      const dateKey = r.startedAt ? bogotaDayKey(r.startedAt) : ""
       if (dateFrom && dateKey && dateKey < dateFrom) return false
       if (dateTo && dateKey && dateKey > dateTo) return false
       return true
@@ -151,7 +158,7 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
   const tree = useMemo(() => {
     const byDate = new Map<string, Map<string, Recording[]>>()
     for (const r of filteredRecordings) {
-      const dateKey = (r.startedAt || "").slice(0, 10) || "Sin fecha"
+      const dateKey = (r.startedAt ? bogotaDayKey(r.startedAt) : "") || "Sin fecha"
       const surveyorKey = r.surveyorName || "Sin asignar"
       if (!byDate.has(dateKey)) byDate.set(dateKey, new Map())
       const bySurveyor = byDate.get(dateKey)!
@@ -321,7 +328,7 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
                               <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={(v) => toggleIds([r.id], v === true)} />
                               <Play className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                               <span className="text-xs text-muted-foreground w-16 flex-shrink-0">
-                                {r.startedAt ? new Date(r.startedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                {r.startedAt ? bogotaDateTime(r.startedAt).time : "—"}
                               </span>
                               {/* A qué intento pertenece — ver comentario en la interfaz Recording */}
                               {r.outcome && (
