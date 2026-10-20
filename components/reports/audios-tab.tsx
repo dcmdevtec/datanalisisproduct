@@ -93,11 +93,21 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [hint, setHint] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
-  // Lazy initializer: solo lee initialSurveyorId UNA vez al montar — si el
-  // usuario cambia el filtro global después, no le pisa la selección que
-  // haya hecho dentro de esta pestaña (mismo criterio que initialMapView en
-  // components/reports-geo-map.tsx).
+  // Lazy initializer: lee initialSurveyorId al montar — si el usuario
+  // cambia el filtro DENTRO de esta pestaña, no se le pisa (mismo criterio
+  // que initialMapView en components/reports-geo-map.tsx). Pero si el
+  // filtro GLOBAL de Encuestador (arriba, en /reports) cambia DESPUÉS de
+  // montada esta pestaña, sí debe reflejarse acá — antes se quedaba
+  // "pegado" al encuestador que estaba seleccionado cuando se montó la
+  // pestaña por primera vez (ítem 20/10/2026, "el encuestador no me sale"
+  // tras cambiar el filtro arriba). El useEffect de abajo sincroniza en
+  // cada cambio del prop, sin impedir que el usuario lo cambie localmente
+  // después (hasta el próximo cambio real del filtro global).
   const [filterSurveyorId, setFilterSurveyorId] = useState<string>(() => initialSurveyorId ?? "all")
+  useEffect(() => {
+    setFilterSurveyorId(initialSurveyorId ?? "all")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSurveyorId])
   // Ítem #36 (acta 07/09/2026): formato del ZIP — "webm" (el que grabó el
   // navegador, sin recodificar) o "mp3" (más compatible, requiere ffmpeg en
   // el servidor; si la conversión falla para algún archivo, ese queda en su
@@ -152,6 +162,22 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
       return true
     })
   }, [recordings, filterSurveyorId, tipo, dateFrom, dateTo])
+
+  // Ítem 20/10/2026 ("los audios no concuerda con lo que se esta
+  // filtrando"): selectedIds no se limpiaba al cambiar un filtro — si el
+  // usuario marcaba grabaciones con un filtro amplio (o "Seleccionar
+  // todo") y LUEGO acotaba fecha/encuestador/tipo, las marcas de lo que ya
+  // no era visible seguían ahí, y el ZIP descargado terminaba con audios
+  // que no correspondían al filtro actual. Se podan automáticamente las
+  // marcadas que ya no están en filteredRecordings cada vez que el filtro
+  // cambia.
+  useEffect(() => {
+    const visibleIds = new Set(filteredRecordings.map((r) => r.id))
+    setSelectedIds((prev) => {
+      if ([...prev].every((id) => visibleIds.has(id))) return prev
+      return new Set([...prev].filter((id) => visibleIds.has(id)))
+    })
+  }, [filteredRecordings])
 
   // Árbol Fecha → Encuestador → grabaciones (orden: fecha más reciente
   // primero, encuestador alfabético dentro de cada fecha).
