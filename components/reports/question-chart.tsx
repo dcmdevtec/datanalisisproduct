@@ -116,9 +116,18 @@ function PieOrDonut({
     const x = cx + radius * Math.cos(-midAngle * RADIAN)
     const y = cy + radius * Math.sin(-midAngle * RADIAN)
     return (
+      // Ítem 20/10/2026 ("los porcentajes en blanco se pierden"): texto
+      // blanco sobre colores claros de la paleta (teal, naranja) quedaba
+      // casi invisible. Texto oscuro + un halo blanco (stroke dibujado
+      // ANTES del fill, paintOrder="stroke") se lee bien tanto sobre
+      // porciones claras como oscuras (azul, rojo), sin tener que elegir
+      // un color por porción.
       <text
         x={x} y={y}
-        fill="#fff"
+        fill="#111111"
+        stroke="#fff"
+        strokeWidth={3}
+        paintOrder="stroke"
         textAnchor="middle"
         dominantBaseline="central"
         fontSize={11}

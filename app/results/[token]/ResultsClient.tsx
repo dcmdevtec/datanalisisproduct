@@ -78,7 +78,20 @@ function RenderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
   const y = cy + radius * Math.sin(-midAngle * RADIAN)
   return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
+    // Ítem 20/10/2026: mismo fix que components/reports/question-chart.tsx —
+    // texto blanco se perdía sobre porciones claras de la paleta. Texto
+    // oscuro + halo blanco (stroke antes del fill) se lee sobre cualquier color.
+    <text
+      x={x} y={y}
+      fill="#111111"
+      stroke="#fff"
+      strokeWidth={3}
+      paintOrder="stroke"
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontSize={11}
+      fontWeight={600}
+    >
       {`${(percent * 100).toFixed(0)}%`}
     </text>
   )
