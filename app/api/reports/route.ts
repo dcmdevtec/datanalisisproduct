@@ -360,7 +360,44 @@ export async function GET(request: NextRequest) {
     })
 
     if (filteredSurveyIds !== null && filteredSurveyIds.length === 0) return emptyResponse()
-    if (filteredAssignmentIds !== null && filteredAssignmentIds.length === 0) return emptyResponse()
+    // Ítem 20/10/2026 ("los audios no concuerda... en el resumen no me
+    // muestre nada"): filtrar por UN encuestador puntual (surveyorFilter,
+    // no el agregado de equipo de hierarchySurveyorIds) solía devolver
+    // emptyResponse() de una vez si filteredAssignmentIds salía vacío — sin
+    // darle chance al respaldo por respondent_id/metadata.surveyor_id (ver
+    // bloque "resolveSurveyorFallback" abajo) que SÍ puede encontrar
+    // respuestas reales de ese encuestador cuando su fila de
+    // survey_surveyor_zones fue reasignada después de creada la respuesta
+    // (mismo caso ya documentado en app/api/portal-encuestador/responses/
+    // finish/route.ts: "si la fila de survey_surveyor_zones fue reasignada
+    // a otra zona/encuesta... cambiando su survey_id"). Esas respuestas SÍ
+    // tienen grabación de audio real (surveyor_recordings.surveyor_id no
+    // depende de assignment_id para nada), así que la pestaña Audios las
+    // mostraba bien mientras el resto de Reportes las ocultaba por
+    // completo al filtrar por ese encuestador. Se difiere este corte
+    // temprano para el caso de un solo encuestador — el agregado por
+    // equipo (hierarchySurveyorIds) no se toca, mantiene su comportamiento
+    // de siempre.
+    if (surveyorFilter === "all" && filteredAssignmentIds !== null && filteredAssignmentIds.length === 0) {
+      return emptyResponse()
+    }
+
+    // Respaldo por encuestador puntual: resuelve su user_id para poder
+    // además encontrar respuestas de incidencia/abandono cuyo respondent_id
+    // quedó con el id del ENCUESTADOR (no del encuestado, ver comentario en
+    // finish/route.ts) y respuestas cuyo metadata.surveyor_id lo identifique
+    // directamente — ambos caminos YA existían en este archivo para
+    // etiquetar puntos del mapa, pero nunca se usaban para decidir qué
+    // respuestas entran al filtro desde el principio.
+    let surveyorFallbackUserId: string | null = null
+    if (surveyorFilter !== "all") {
+      const { data: targetSurveyor } = await admin
+        .from("surveyors")
+        .select("user_id")
+        .eq("id", surveyorFilter)
+        .maybeSingle()
+      surveyorFallbackUserId = (targetSurveyor as any)?.user_id ?? null
+    }
 
     // --- Build responses query with filters ---
     let responsesQuery = admin.from("responses").select(
@@ -369,7 +406,26 @@ export async function GET(request: NextRequest) {
     if (filteredSurveyIds !== null) {
       responsesQuery = responsesQuery.in("survey_id", filteredSurveyIds)
     }
-    if (filteredAssignmentIds !== null) {
+    // surveyorFilter viene de un query param (no de una tabla de confianza)
+    // y .or() toma un string de filtro crudo, no valores parametrizados
+    // como .eq()/.in() — se valida que sea un UUID antes de interpolarlo
+    // ahí, para no arriesgar que un valor con caracteres especiales
+    // (comas, puntos) altere la lógica del filtro compuesto.
+    const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+    if (surveyorFilter !== "all" && isUuid(surveyorFilter)) {
+      // OR en vez de AND: una respuesta de este encuestador cuenta si su
+      // assignment_id resuelve a él (caso normal) O si no resuelve pero se
+      // identifica por el respaldo de arriba (caso reasignación).
+      const orParts: string[] = []
+      if (filteredAssignmentIds && filteredAssignmentIds.length > 0) {
+        orParts.push(`assignment_id.in.(${filteredAssignmentIds.join(",")})`)
+      }
+      if (surveyorFallbackUserId) {
+        orParts.push(`respondent_id.eq.${surveyorFallbackUserId}`)
+      }
+      orParts.push(`metadata->>surveyor_id.eq.${surveyorFilter}`)
+      responsesQuery = responsesQuery.or(orParts.join(","))
+    } else if (filteredAssignmentIds !== null) {
       responsesQuery = responsesQuery.in("assignment_id", filteredAssignmentIds)
     }
     if (dateFrom) {
