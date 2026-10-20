@@ -1314,6 +1314,9 @@ function ReportsPageContent() {
                 dateTo={dateTo || undefined}
                 tipo={selectedTipo}
                 initialSurveyorId={selectedSurveyor !== "all" ? selectedSurveyor : undefined}
+                supervisorId={selectedSupervisor !== "all" ? selectedSupervisor : undefined}
+                coordinatorId={selectedCoordinator !== "all" ? selectedCoordinator : undefined}
+                responseMode={selectedResponseMode}
               />
             )}
           </TabsContent>

@@ -28,6 +28,13 @@ interface Recording {
   id: string
   surveyorId: string | null
   surveyorName: string
+  // supervisorId/coordinatorId/responseMode (20/10/2026, "revisa que todos
+  // los filtros sirvan"): los filtros de Supervisor, Coordinador y Estado
+  // de la Encuesta (Prueba/Activa) de /reports nunca llegaban a esta
+  // pestaña — se agregan para poder filtrar por ellos acá también.
+  supervisorId: string | null
+  coordinatorId: string | null
+  responseMode: string
   // outcome (09/09/2026): "debe quedar claro a qué encuesta o intento
   // pertenece cada audio — esto puede ocurrir porque el encuestador entra,
   // sale o abandona varias veces". Ya venía en la respuesta de la API, solo
@@ -68,6 +75,15 @@ interface AudiosTabProps {
   // "Compartir reporte" (buildExportFilename en app/lib/export-report.ts,
   // buildResultsLink en share-report-modal.tsx).
   surveyCode?: string | null
+  // Ítem 20/10/2026 ("revisa que todos los filtros sirvan"): Supervisor y
+  // Coordinador de /reports nunca llegaban hasta acá — a diferencia de
+  // Encuestador, esta pestaña no tiene su propio selector para ninguno de
+  // los dos, así que se usan directo del filtro global (sin copia a estado
+  // local), igual que tipo/dateFrom/dateTo.
+  supervisorId?: string
+  coordinatorId?: string
+  // "Estado de la Encuesta" (Prueba/Activa) — mismo criterio.
+  responseMode?: string
 }
 
 function formatDuration(secs: number | null): string {
@@ -87,7 +103,7 @@ function groupCheckState(ids: string[], selected: Set<string>): boolean | "indet
   return "indeterminate"
 }
 
-export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId, surveyCode }: AudiosTabProps) {
+export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId, surveyCode, supervisorId, coordinatorId, responseMode }: AudiosTabProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [recordings, setRecordings] = useState<Recording[]>([])
@@ -150,6 +166,9 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
     return recordings.filter((r) => {
       if (filterSurveyorId !== "all" && r.surveyorId !== filterSurveyorId) return false
       if (tipo && tipo !== "all" && r.outcome !== tipo) return false
+      if (supervisorId && r.supervisorId !== supervisorId) return false
+      if (coordinatorId && r.coordinatorId !== coordinatorId) return false
+      if (responseMode && responseMode !== "all" && r.responseMode !== responseMode) return false
       // Ítem 20/10/2026 ("el filtro de fecha no aplica en los audios"):
       // slice(0,10) sobre el ISO UTC de startedAt da la fecha calendario del
       // SERVIDOR, no la de Bogotá — una grabación hecha a las 7-11pm en
@@ -161,7 +180,7 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
       if (dateTo && dateKey && dateKey > dateTo) return false
       return true
     })
-  }, [recordings, filterSurveyorId, tipo, dateFrom, dateTo])
+  }, [recordings, filterSurveyorId, tipo, dateFrom, dateTo, supervisorId, coordinatorId, responseMode])
 
   // Ítem 20/10/2026 ("los audios no concuerda con lo que se esta
   // filtrando"): selectedIds no se limpiaba al cambiar un filtro — si el

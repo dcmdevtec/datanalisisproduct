@@ -60,7 +60,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: responses, error: responsesError } = await admin
       .from("responses")
-      .select("id, outcome, incidence_type, completed_at, created_at")
+      .select("id, outcome, incidence_type, completed_at, created_at, response_mode")
       .eq("survey_id", surveyId)
 
     if (responsesError) {
@@ -130,9 +130,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const surveyorIds = Array.from(new Set(recordings.map((r: any) => r.surveyor_id).filter(Boolean)))
     const { data: surveyors } = await admin
       .from("surveyors")
-      .select("id, name, email")
+      .select("id, name, email, supervisor_id")
       .in("id", surveyorIds)
     const surveyorById = new Map<string, any>((surveyors || []).map((s: any) => [s.id, s]))
+
+    // Ítem 20/10/2026 ("revisa que todos los filtros sirvan"): Supervisor y
+    // Coordinador (filtros de /reports) nunca llegaban hasta acá — mismo
+    // criterio de jerarquía GLOBAL (surveyors.supervisor_id +
+    // users.coordinator_id) que ya usa "Rendimiento por Encuestador" en
+    // app/api/reports/route.ts, para no introducir un segundo criterio
+    // distinto (por-proyecto) en esta misma pestaña.
+    const supervisorIds = Array.from(
+      new Set((surveyors || []).map((s: any) => s.supervisor_id).filter(Boolean))
+    )
+    const { data: supervisorUsers } = supervisorIds.length
+      ? await admin.from("users").select("id, coordinator_id").in("id", supervisorIds)
+      : { data: [] as any[] }
+    const coordinatorIdBySupervisorId = new Map<string, string | null>(
+      (supervisorUsers || []).map((u: any) => [u.id, u.coordinator_id ?? null])
+    )
 
     // PARTE X: orden de este segmento DENTRO de su propia respuesta (un
     // mismo intento puede tener varios audios si el encuestador entró/salió
@@ -175,6 +191,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const fileNameParts = [surveyorLabel, dateLabel]
         if (surveyCode) fileNameParts.push(sanitizeFilenamePart(surveyCode))
         fileNameParts.push(outcomeLabel, rec.response_id ? shortId(rec.response_id) : "sin-respuesta", `PARTE ${partNumber}`)
+        const supervisorId: string | null = surveyor?.supervisor_id ?? null
         return {
           id: rec.id,
           // surveyorId (auditoría 2026-07-29, "hay que organizar mejor" las
@@ -183,8 +200,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           // grupo, y agrupar por id es estable aunque se edite el nombre.
           surveyorId: rec.surveyor_id || null,
           surveyorName: surveyor?.name || surveyor?.email || "Encuestador desconocido",
+          supervisorId,
+          coordinatorId: supervisorId ? (coordinatorIdBySupervisorId.get(supervisorId) ?? null) : null,
           outcome: response?.outcome || null,
           incidenceType: response?.incidence_type || null,
+          // "Prueba" vs "Activa" (Estado de la Encuesta en /reports) — ver
+          // db/migrations/2026-10-08_add_response_mode_tracking.sql. Default
+          // "activa" para respuestas de antes de esa migración.
+          responseMode: response?.response_mode || "activa",
           startedAt: rec.started_at,
           endedAt: rec.ended_at,
           durationSecs: rec.duration_secs,
