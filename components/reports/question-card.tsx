@@ -469,6 +469,20 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
                     </button>
                   </div>
                   <div className="divide-y">
+                    {/* Ítem 20/10/2026 ("textos mochos" en esta tabla, en el
+                        PDF exportado): confirmado con una captura real
+                        (html2canvas) que la causa es la clase `truncate`
+                        (text-overflow:ellipsis + overflow:hidden +
+                        white-space:nowrap) en la columna "Opción", combinada
+                        con el ícono de color de ancho fijo (w-2.5 h-2.5) en
+                        el mismo flex row — html2canvas calculaba mal el
+                        alto de esa fila y recortaba el texto contra el
+                        borde superior. Se quita `truncate`: una opción con
+                        nombre muy largo ahora pasa a una segunda línea en
+                        vez de cortarse con "…", que de cualquier forma
+                        quedaba rota en el PDF. Confirmado con el mismo
+                        arnés de prueba (Playwright + html2canvas real)
+                        usado para los demás fixes de exportación de hoy. */}
                     {sortedDistribution.map((d, i) => (
                       <button
                         key={i}
@@ -479,7 +493,7 @@ export function QuestionCard({ question, index, settings, onSettingsChange, onHi
                           selectedLabel === d.label ? "bg-muted ring-1 ring-inset ring-foreground/30" : ""
                         }`}
                       >
-                        <div className="truncate flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                           <span
                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                             style={{
