@@ -70,6 +70,24 @@ export async function GET(request: NextRequest) {
     // responses.assignment_id = survey_surveyor_zones.id. Se corrige el filtro
     // para buscar en survey_surveyor_zones primero y en assignments como fallback.
     let filteredAssignmentIds: string[] | null = null
+    // Ítem 20/10/2026 ("falta aún en Respuestas Individuales"): mismo bug ya
+    // corregido en /api/reports (ver ese comentario largo) — si la fila de
+    // survey_surveyor_zones de este encuestador fue reasignada DESPUÉS de
+    // creada la respuesta, filteredAssignmentIds puede salir vacío (o
+    // incompleto) aunque existan respuestas reales de él. Se agrega el
+    // mismo respaldo (respondent_id/metadata.surveyor_id), pero acá hay que
+    // cuidar algo que /api/reports no tiene en este mismo punto: el scoping
+    // de equipo de abajo ("ÚNICAMENTE de mi equipo de trabajo") funciona
+    // intersectando filteredAssignmentIds con el equipo real del
+    // supervisor/coordinador — mi respaldo matchea por fuera de
+    // filteredAssignmentIds, así que si no lo cuido, un supervisor/
+    // coordinador podría ver datos de un encuestador AJENO a su equipo
+    // mandando ?surveyor=<otro> a mano. surveyorFallbackAllowed se calcula
+    // DESPUÉS de verificar que ese encuestador puntual sí es de su equipo
+    // (si el viewer es supervisor/coordinador) — para admin siempre aplica.
+    const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+    let surveyorFallbackUserId: string | null = null
+    let surveyorFallbackAllowed = false
     if (surveyorFilter !== "all") {
       // 1️⃣ survey_surveyor_zones (flujo real del portal encuestador)
       let sszQuery = (admin as any)
@@ -89,7 +107,23 @@ export async function GET(request: NextRequest) {
         if (!filteredAssignmentIds.includes(id)) filteredAssignmentIds.push(id)
       }
 
-      if (filteredAssignmentIds.length === 0) {
+      if (isUuid(surveyorFilter)) {
+        surveyorFallbackAllowed = true
+        if (auth.user.role === "supervisor" || auth.user.role === "coordinator") {
+          let teamCheck: any = admin.from("survey_surveyor_zones").select("id").eq("surveyor_id", surveyorFilter).limit(1)
+          teamCheck = auth.user.role === "supervisor"
+            ? teamCheck.eq("supervisor_id", auth.user.id)
+            : teamCheck.eq("coordinator_id", auth.user.id)
+          const { data: teamRow } = await teamCheck.maybeSingle()
+          surveyorFallbackAllowed = !!teamRow
+        }
+        if (surveyorFallbackAllowed) {
+          const { data: targetSurveyor } = await admin.from("surveyors").select("user_id").eq("id", surveyorFilter).maybeSingle()
+          surveyorFallbackUserId = (targetSurveyor as any)?.user_id ?? null
+        }
+      }
+
+      if (filteredAssignmentIds.length === 0 && !surveyorFallbackAllowed) {
         return NextResponse.json({ items: [], total: 0, page, pageSize })
       }
     }
@@ -111,7 +145,11 @@ export async function GET(request: NextRequest) {
       filteredAssignmentIds = filteredAssignmentIds === null
         ? [...ownAssignmentIds]
         : filteredAssignmentIds.filter((id) => ownAssignmentIds.has(id))
-      if (filteredAssignmentIds.length === 0) {
+      // surveyorFallbackAllowed ya verificó (arriba) que, si hay un
+      // surveyorFilter puntual, de verdad es de este equipo — no hace
+      // falta repetir ese chequeo acá, solo no cortar en seco si el
+      // respaldo todavía puede encontrar algo.
+      if (filteredAssignmentIds.length === 0 && !surveyorFallbackAllowed) {
         return NextResponse.json({ items: [], total: 0, page, pageSize })
       }
     }
@@ -130,7 +168,22 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       )
     if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
-    if (filteredAssignmentIds !== null) query = query.in("assignment_id", filteredAssignmentIds)
+    if (surveyorFallbackAllowed) {
+      // OR en vez de AND: cuenta si assignment_id resuelve a este
+      // encuestador (caso normal) O si no resuelve pero se identifica por
+      // el respaldo (caso reasignación) — ver comentario largo arriba.
+      const orParts: string[] = []
+      if (filteredAssignmentIds && filteredAssignmentIds.length > 0) {
+        orParts.push(`assignment_id.in.(${filteredAssignmentIds.join(",")})`)
+      }
+      if (surveyorFallbackUserId) {
+        orParts.push(`respondent_id.eq.${surveyorFallbackUserId}`)
+      }
+      orParts.push(`metadata->>surveyor_id.eq.${surveyorFilter}`)
+      query = query.or(orParts.join(","))
+    } else if (filteredAssignmentIds !== null) {
+      query = query.in("assignment_id", filteredAssignmentIds)
+    }
     if (dateFrom) query = query.gte("created_at", dateFrom.toISOString())
     if (dateTo) query = query.lte("created_at", dateTo.toISOString())
     // cast a any: "response_mode" es una columna nueva (ver
