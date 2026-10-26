@@ -53,7 +53,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: response, error: responseError } = await admin
       .from("responses")
       .select(
-        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, location, surveys(title, description)"
+        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, metadata, location, surveys(title, description)"
       )
       .eq("id", responseId)
       .single()
@@ -90,6 +90,39 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         surveyorId = (assignment as any)?.surveyors?.id ?? null
         surveyorName = (assignment as any)?.surveyors?.name ?? null
         surveyorEmail = (assignment as any)?.surveyors?.email ?? null
+      }
+    }
+
+    // Ítem 26/10/2026 ("las incidencias siguen sin aparecer en el
+    // detalle"): si la fila de survey_surveyor_zones de esta respuesta fue
+    // reasignada DESPUÉS de creada (mismo caso que ya se documentó y
+    // corrigió en app/api/reports/route.ts para el filtro de Encuestador),
+    // sszRow/assignment salían null y surveyorId se quedaba null — lo que
+    // además de perder el nombre del encuestador en esta pantalla,
+    // bloqueaba por completo el respaldo de audio de abajo (exige
+    // surveyorId no-nulo para buscar su turno activo). Mismo respaldo ya
+    // usado en otros endpoints: metadata.surveyor_id (lo manda la APK
+    // directo) o respondent_id (que para incidencia/abandono guarda el id
+    // del ENCUESTADOR, no del encuestado — ver comentario en
+    // app/api/portal-encuestador/responses/finish/route.ts).
+    if (!surveyorId) {
+      const metaSurveyorId = (r.metadata as any)?.surveyor_id as string | undefined
+      if (metaSurveyorId) {
+        const { data: metaSurveyor } = await admin.from("surveyors").select("id, name, email").eq("id", metaSurveyorId).maybeSingle()
+        if (metaSurveyor) {
+          surveyorId = (metaSurveyor as any).id
+          surveyorName = (metaSurveyor as any).name ?? null
+          surveyorEmail = (metaSurveyor as any).email ?? null
+        }
+      }
+    }
+    if (!surveyorId && r.respondent_id) {
+      const { data: byUserId } = await admin.from("surveyors").select("id, name, email").eq("user_id", r.respondent_id).maybeSingle()
+      const resolved = byUserId ?? (await admin.from("surveyors").select("id, name, email").eq("id", r.respondent_id).maybeSingle()).data
+      if (resolved) {
+        surveyorId = (resolved as any).id
+        surveyorName = (resolved as any).name ?? null
+        surveyorEmail = (resolved as any).email ?? null
       }
     }
 

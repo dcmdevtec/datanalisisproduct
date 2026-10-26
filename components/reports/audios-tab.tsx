@@ -45,6 +45,13 @@ interface Recording {
   durationSecs: number | null
   audioUrl: string | null
   fileName: string
+  // segment (26/10/2026, "en respuestas individuales salen todos los
+  // audios... y en el repositorio sale únicamente durante la encuesta"):
+  // "survey" = grabado desde "Iniciar Encuesta" en adelante (como antes);
+  // "shift" = audio de fondo del turno, de ANTES de iniciar (consulta de
+  // incidencia, charla previa) — ver app/api/surveys/[id]/recordings/route.ts.
+  // Opcional por compatibilidad si llega una respuesta vieja sin el campo.
+  segment?: "survey" | "shift"
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
@@ -375,6 +382,19 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
                               <span className="text-xs text-muted-foreground w-16 flex-shrink-0">
                                 {r.startedAt ? bogotaDateTime(r.startedAt).time : "—"}
                               </span>
+                              {/* segment (26/10/2026): distingue el audio de ANTES de iniciar
+                                  la encuesta (fondo del turno) del de DURANTE — mismo criterio
+                                  de color que ya usa individual-responses-tab.tsx para no
+                                  introducir una convención visual distinta acá. */}
+                              {r.segment === "shift" ? (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 bg-sky-100 text-sky-700">
+                                  Antes de iniciar
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 bg-amber-100 text-amber-700">
+                                  Durante la encuesta
+                                </span>
+                              )}
                               {/* A qué intento pertenece — ver comentario en la interfaz Recording */}
                               {r.outcome && (
                                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${OUTCOME_CLASS[r.outcome] || "bg-muted text-muted-foreground"}`}>
