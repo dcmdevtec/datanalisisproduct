@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: responses } = await admin
       .from("responses")
-      .select("id, created_at, outcome")
+      .select("id, created_at, completed_at, outcome, assignment_id, respondent_id, metadata")
       .eq("survey_id", surveyId)
 
     const responseIds = (responses || []).map((r: any) => r.id)
@@ -82,6 +82,107 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Esta encuesta no tiene respuestas todavía" }, { status: 404 })
     }
     const responseById = new Map<string, any>((responses || []).map((r: any) => [r.id, r]))
+
+    // Ítem 26/10/2026 ("deberían llegar todos los audios al seleccionado,
+    // pero solo llegó uno"): "Seleccionar todo" en la pestaña Audios marca
+    // tanto ids de scope='survey' como de scope='shift' (los clips sueltos
+    // "Antes de iniciar", que existen SOLOS para respuestas de incidencia —
+    // esas nunca tienen grabación scope='survey', ver comentario en
+    // app/api/portal-encuestador/responses/finish/route.ts). La consulta de
+    // abajo (recordingsQuery) fuerza scope='survey', así que esos ids
+    // simplemente desaparecían del ZIP sin aviso. Se resuelve acá, en lote,
+    // el mismo mapeo clip-de-turno -> respuesta que ya usa
+    // app/api/surveys/[id]/recordings/route.ts, para poder incluir esos
+    // clips sueltos como archivos independientes cuando vienen marcados.
+    const assignmentIds = Array.from(new Set((responses || []).map((r: any) => r.assignment_id).filter(Boolean)))
+    const { data: sszRows } = assignmentIds.length
+      ? await admin.from("survey_surveyor_zones").select("id, surveyor_id").in("id", assignmentIds)
+      : { data: [] as any[] }
+    const surveyorIdByAssignmentId = new Map<string, string>((sszRows || []).map((r: any) => [r.id, r.surveyor_id]))
+
+    const respondentIds = Array.from(new Set((responses || []).map((r: any) => r.respondent_id).filter(Boolean)))
+    const { data: byUserId } = respondentIds.length
+      ? await admin.from("surveyors").select("id, user_id").in("user_id", respondentIds)
+      : { data: [] as any[] }
+    const { data: byOwnId } = respondentIds.length
+      ? await admin.from("surveyors").select("id").in("id", respondentIds)
+      : { data: [] as any[] }
+    const surveyorIdByUserId = new Map<string, string>((byUserId || []).map((s: any) => [s.user_id, s.id]))
+    const surveyorIdsByOwnId = new Set<string>((byOwnId || []).map((s: any) => s.id))
+
+    const resolveSurveyorId = (r: any): string | null => {
+      if (r.assignment_id && surveyorIdByAssignmentId.has(r.assignment_id)) return surveyorIdByAssignmentId.get(r.assignment_id)!
+      const metaId = r.metadata?.surveyor_id as string | undefined
+      if (metaId) return metaId
+      if (r.respondent_id) {
+        if (surveyorIdByUserId.has(r.respondent_id)) return surveyorIdByUserId.get(r.respondent_id)!
+        if (surveyorIdsByOwnId.has(r.respondent_id)) return r.respondent_id
+      }
+      return null
+    }
+    const resolvedSurveyorIdByResponseId = new Map<string, string | null>(
+      (responses || []).map((r: any) => [r.id, resolveSurveyorId(r)])
+    )
+
+    const involvedSurveyorIds = Array.from(
+      new Set(Array.from(resolvedSurveyorIdByResponseId.values()).filter(Boolean) as string[])
+    )
+    const { data: shifts } = involvedSurveyorIds.length
+      ? await admin.from("surveyor_shifts").select("id, surveyor_id, started_at, ended_at").in("surveyor_id", involvedSurveyorIds)
+      : { data: [] as any[] }
+
+    const shiftIdByResponseId = new Map<string, string>()
+    for (const r of (responses || []) as any[]) {
+      const sid = resolvedSurveyorIdByResponseId.get(r.id)
+      if (!sid || !r.created_at) continue
+      const at = new Date(r.created_at).getTime()
+      let best: any = null
+      for (const s of (shifts || []) as any[]) {
+        if (s.surveyor_id !== sid) continue
+        const start = new Date(s.started_at).getTime()
+        const end = s.ended_at ? new Date(s.ended_at).getTime() : Infinity
+        if (start <= at && at <= end && (!best || start > new Date(best.started_at).getTime())) best = s
+      }
+      if (best) shiftIdByResponseId.set(r.id, best.id)
+    }
+
+    const involvedShiftIds = Array.from(new Set(Array.from(shiftIdByResponseId.values())))
+    const { data: shiftRecordingsAll } = involvedShiftIds.length
+      ? await admin
+          .from("surveyor_recordings")
+          .select("id, shift_id, surveyor_id, storage_path, duration_secs, started_at, upload_status")
+          .in("shift_id", involvedShiftIds)
+          .eq("scope", "shift")
+          .eq("upload_status", "uploaded")
+          .not("storage_path", "is", null)
+      : { data: [] as any[] }
+
+    // Ventana de cada respuesta dentro de su turno (30 min previos, acotados
+    // por el cierre del intento anterior del mismo turno) — mismo criterio
+    // que recordings/route.ts, para que un mismo clip nunca quede asociado a
+    // dos respuestas distintas.
+    const responsesByShift = new Map<string, any[]>()
+    for (const r of (responses || []) as any[]) {
+      const shiftId = shiftIdByResponseId.get(r.id)
+      if (!shiftId) continue
+      if (!responsesByShift.has(shiftId)) responsesByShift.set(shiftId, [])
+      responsesByShift.get(shiftId)!.push(r)
+    }
+    const responseIdByShiftClipId = new Map<string, string>()
+    for (const [shiftId, respList] of responsesByShift) {
+      respList.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""))
+      const shiftClips = ((shiftRecordingsAll || []) as any[]).filter((c) => c.shift_id === shiftId)
+      let prevBoundary: string | null = null
+      for (const r of respList) {
+        const upper = r.created_at
+        const fixedLower = new Date(new Date(upper).getTime() - 30 * 60 * 1000).toISOString()
+        const lower = prevBoundary && prevBoundary > fixedLower ? prevBoundary : fixedLower
+        const clips = shiftClips.filter((c) => c.started_at && c.started_at >= lower && c.started_at < upper)
+        for (const c of clips) responseIdByShiftClipId.set(c.id, r.id)
+        prevBoundary = r.completed_at || r.created_at
+      }
+    }
+    const shiftClipById = new Map<string, any>((shiftRecordingsAll || []).map((c: any) => [c.id, c]))
 
     let recordingsQuery = admin
       .from("surveyor_recordings")
@@ -115,11 +216,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         })
       : recordingsRaw
 
-    if (!recordings || recordings.length === 0) {
+    // Ids seleccionados en el árbol que son clips sueltos "Antes de iniciar"
+    // (scope='shift') — no los trajo recordingsQuery porque esa consulta
+    // fuerza scope='survey'. Se resuelven acá con el mapeo calculado arriba.
+    const standaloneShiftRecs = recordingIdsFilter
+      ? recordingIdsFilter
+          .filter((id) => !(recordings || []).some((r: any) => r.id === id))
+          .map((id) => shiftClipById.get(id))
+          .filter(Boolean)
+      : []
+
+    if ((!recordings || recordings.length === 0) && standaloneShiftRecs.length === 0) {
       return NextResponse.json({ error: "No hay grabaciones de audio para esta encuesta con ese filtro" }, { status: 404 })
     }
 
-    const surveyorIds = Array.from(new Set(recordings.map((r: any) => r.surveyor_id).filter(Boolean)))
+    const surveyorIds = Array.from(
+      new Set([
+        ...(recordings || []).map((r: any) => r.surveyor_id).filter(Boolean),
+        ...standaloneShiftRecs.map((r: any) => r.surveyor_id).filter(Boolean),
+      ])
+    )
     const { data: surveyors } = await admin.from("surveyors").select("id, name").in("id", surveyorIds)
     const surveyorNameById = new Map<string, string>((surveyors || []).map((s: any) => [s.id, s.name || "Sin nombre"]))
 
@@ -244,6 +360,45 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           console.error("[audios/zip] error procesando grabación", rec.id, err)
         }
       }
+
+      // Clips sueltos "Antes de iniciar" (scope='shift') marcados en el
+      // árbol sin una grabación scope='survey' asociada — el caso típico es
+      // una Incidencia, que nunca llega a "Iniciar Encuesta" (ver comentario
+      // arriba de standaloneShiftRecs). Se agregan como archivo
+      // independiente, con el mismo esquema de nombre que ya usa
+      // /api/surveys/[id]/recordings para estos clips (sufijo "ANTES").
+      for (const rec of standaloneShiftRecs as any[]) {
+        try {
+          if (!rec.storage_path) continue
+          const responseId = responseIdByShiftClipId.get(rec.id) || null
+          const response = responseId ? responseById.get(responseId) : null
+          const surveyorName = sanitize(surveyorNameById.get(rec.surveyor_id) || "Sin asignar")
+          const dateStr = (rec.started_at || response?.created_at || new Date().toISOString()).slice(0, 10)
+          const folderBase = `${sanitize(projectName)}/${sanitize(surveyName)}/${dateStr}/${surveyorName}`
+
+          const { data: fileBlob, error: downloadError } = await admin.storage
+            .from("response-media")
+            .download(rec.storage_path)
+          if (downloadError || !fileBlob) {
+            console.error("[audios/zip] no se pudo descargar", rec.storage_path, downloadError)
+            continue
+          }
+          const buffer = Buffer.from(await fileBlob.arrayBuffer())
+          const ext = rec.storage_path.split(".").pop() || "webm"
+          const mp3 = wantsMp3 ? await convertToMp3(buffer, ext) : null
+          const baseName = buildBaseName(
+            surveyorNameById.get(rec.surveyor_id) || "Sin asignar",
+            dateStr,
+            response?.outcome ?? null,
+            responseId || rec.id
+          )
+          const fileName = `${baseName} - ANTES 1.${mp3 ? "mp3" : ext}`
+          archive.append(mp3 || buffer, { name: `${folderBase}/${fileName}` })
+        } catch (err) {
+          console.error("[audios/zip] error procesando clip suelto", rec.id, err)
+        }
+      }
+
       archive.finalize()
     })()
 
