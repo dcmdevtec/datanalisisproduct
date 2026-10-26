@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/api-auth"
 import { mergeAudioSegments, convertToMp3 } from "@/lib/audio-merge"
 import { ZipArchive } from "archiver"
 import { Readable } from "stream"
+import { bogotaDayKey } from "@/lib/bogota-time"
 
 // GET /api/surveys/[id]/audios/zip?date=YYYY-MM-DD&surveyorId=<uuid> —
 // descarga las grabaciones de audio de una encuesta en un único ZIP,
@@ -208,10 +209,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // No aplica cuando ya se filtró por recordingIds explícitos (selección
     // de árbol) — ahí la selección YA es exacta, filtrar de nuevo por fecha
     // podría excluir algo que el usuario marcó a propósito.
+    // Ítem 26/10/2026 ("debe concordar con lo que se está filtrando"):
+    // slice(0,10) sobre un ISO UTC da la fecha calendario del SERVIDOR, no
+    // la de Bogotá — mismo bug ya corregido en audios-tab.tsx (el `date` que
+    // llega acá en la URL es justamente ese bogotaDayKey que arma el
+    // frontend al filtrar/agrupar). Comparar con slice(0,10) podía excluir
+    // (o incluir de más) grabaciones de la noche, desajustando el ZIP
+    // respecto a lo que el usuario ve filtrado en pantalla.
     const recordings = dateFilter && !recordingIdsFilter
       ? (recordingsRaw || []).filter((r: any) => {
           const response = responseById.get(r.response_id)
-          const effectiveDate = (r.started_at || response?.created_at || "").slice(0, 10)
+          const effectiveDate = r.started_at ? bogotaDayKey(r.started_at) : (response?.created_at ? bogotaDayKey(response.created_at) : "")
           return effectiveDate === dateFilter
         })
       : recordingsRaw
@@ -272,7 +280,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         try {
           const surveyorName = sanitize(surveyorNameById.get(rec.surveyor_id) || "Sin asignar")
           const response = responseById.get(rec.response_id)
-          const dateStr = (rec.started_at || response?.created_at || new Date().toISOString()).slice(0, 10)
+          const dateStr = bogotaDayKey(rec.started_at || response?.created_at || new Date().toISOString())
           const folderBase = `${sanitize(projectName)}/${sanitize(surveyName)}/${dateStr}/${surveyorName}`
 
           // Segmentos "de antes" (fondo del turno, ver comentario de cabecera)
@@ -373,7 +381,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           const responseId = responseIdByShiftClipId.get(rec.id) || null
           const response = responseId ? responseById.get(responseId) : null
           const surveyorName = sanitize(surveyorNameById.get(rec.surveyor_id) || "Sin asignar")
-          const dateStr = (rec.started_at || response?.created_at || new Date().toISOString()).slice(0, 10)
+          const dateStr = bogotaDayKey(rec.started_at || response?.created_at || new Date().toISOString())
           const folderBase = `${sanitize(projectName)}/${sanitize(surveyName)}/${dateStr}/${surveyorName}`
 
           const { data: fileBlob, error: downloadError } = await admin.storage
