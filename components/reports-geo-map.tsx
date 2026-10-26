@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css"
 import { Maximize2, Minimize2 } from "lucide-react"
 import { formatPercent } from "@/lib/format"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useToast } from "@/components/ui/use-toast"
 
 interface ZonePolygon {
   id: string
@@ -271,6 +272,7 @@ export default function ReportsGeoMap({
   // ruta seleccionada sigue siendo la misma.
   const routeDataCacheRef = useRef<Map<string, { lat: number; lng: number }[]>>(new Map())
   const [loadingRouteIds, setLoadingRouteIds] = useState<Set<string>>(new Set())
+  const { toast } = useToast()
   const [isClient, setIsClient] = useState(false)
   const [showPoints, setShowPoints] = useState(initialShowPoints ?? true)
   const [showZones, setShowZones] = useState(initialShowZones ?? true)
@@ -752,9 +754,26 @@ export default function ReportsGeoMap({
     try {
       const params = new URLSearchParams({ surveyorId, from, to })
       const res = await fetch(`/api/reports/route-trace?${params}`)
-      if (!res.ok) return
+      const surveyorLabel = surveyorOptions.find((s) => s.id === surveyorId)?.name ?? "este encuestador"
+      if (!res.ok) {
+        toast({ title: "No se pudo cargar la ruta", description: `Error al pedir el recorrido GPS de ${surveyorLabel}.`, variant: "destructive" })
+        return
+      }
       const { points } = await res.json()
-      if (!Array.isArray(points) || points.length < 2) return
+      // Ítem 26/10/2026 ("pedí la ruta y no salió la línea, qué cambió?"):
+      // antes esto se quedaba en silencio total — ni línea ni aviso — si
+      // surveyor_locations no tenía al menos 2 pings de fondo en la
+      // ventana de tiempo de esta encuesta. Eso pasa cuando el celular del
+      // encuestador no mandó ubicación de fondo de forma confiable durante
+      // ese turno (APK/señal/batería) — no es un bug de este módulo, pero
+      // antes era indistinguible de uno porque no se avisaba nada.
+      if (!Array.isArray(points) || points.length < 2) {
+        toast({
+          title: "Sin suficiente GPS para dibujar la ruta",
+          description: `No hay al menos 2 puntos de ubicación registrados para ${surveyorLabel} en el rango de esta encuesta — puede que el celular no haya enviado ubicación de fondo durante ese turno.`,
+        })
+        return
+      }
 
       routeDataCacheRef.current.set(surveyorId, points)
       drawCachedRoute(L, map, surveyorId, points, color)
