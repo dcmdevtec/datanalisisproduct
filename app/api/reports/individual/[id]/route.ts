@@ -317,7 +317,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      if (recRow?.shift_id && recRow.started_at) {
+      // Ítem 26/11/2026: audios "antes" ligados directamente a esta
+      // respuesta por el portal (ver POST /api/portal-encuestador/recordings/link).
+      // Si existen, son exactamente los de este intento y se salta la
+      // ventana por hora de abajo, que queda solo para audios viejos.
+      const { data: linkedPreRows } = await (admin as any)
+        .from("surveyor_recordings")
+        .select("storage_path, duration_secs, started_at")
+        .eq("response_id", responseId)
+        .eq("scope", "shift")
+        .eq("upload_status", "uploaded")
+        .order("started_at", { ascending: true }) as { data: { storage_path: string | null; duration_secs: number | null; started_at: string | null }[] | null }
+      const hasLinkedPre = (linkedPreRows || []).length > 0
+      for (const row of linkedPreRows || []) {
+        if (!row.storage_path) continue
+        const { data: signed } = await admin.storage
+          .from("response-media")
+          .createSignedUrl(row.storage_path, 3600)
+        if (signed?.signedUrl) {
+          preSurveyRecordings.push({
+            audioUrl: signed.signedUrl,
+            durationSecs: row.duration_secs ?? null,
+            startedAt: row.started_at ?? null,
+          })
+        }
+      }
+
+      if (!hasLinkedPre && recRow?.shift_id && recRow.started_at) {
         // Ítem 09/09/2026: "debe quedar claro a qué encuesta o intento
         // pertenece cada audio — esto puede pasar porque el encuestador
         // entra, sale o abandona varias veces". Causa raíz: el límite de
@@ -352,6 +378,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .eq("shift_id", recRow.shift_id)
           .eq("scope", "shift")
           .eq("upload_status", "uploaded")
+          .is("response_id", null)
           .gte("started_at", lowerBound)
           .lt("started_at", recRow.started_at)
           .order("started_at", { ascending: true })
@@ -387,7 +414,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // (surveyor_shifts) y sus segmentos scope='shift' en los 30 min
       // previos — misma ventana que ya se usaba arriba para "antes de
       // iniciar la encuesta", solo que sin requerir el ancla scope='survey'.
-      if (!recRow && surveyorId && r.created_at) {
+      if (!hasLinkedPre && !recRow && surveyorId && r.created_at) {
         const { data: activeShift } = await (admin as any)
           .from("surveyor_shifts")
           .select("id")
@@ -406,6 +433,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             .eq("shift_id", activeShift.id)
             .eq("scope", "shift")
             .eq("upload_status", "uploaded")
+            .is("response_id", null)
             .gte("started_at", lowerBound)
             .lte("started_at", r.created_at)
             .order("started_at", { ascending: true })

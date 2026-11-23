@@ -35,7 +35,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // registra su abandono/incidencia — llega en ese momento, no al abrir.
     const responseIdRaw = formData.get("responseId")
     const responseId = responseIdRaw ? String(responseIdRaw) : null
-    const responseIdPatch = responseId && recording.scope === "survey" ? { response_id: responseId } : {}
+    // Ítem 26/11/2026: antes solo se aceptaba para scope='survey' — el audio
+    // de fondo que contiene una incidencia nunca quedaba ligado a ella. Ahora
+    // el portal manda responseId también al cortar ese segmento (ver
+    // markIncidence en lib/portal-encuestador/use-shift-recording.ts).
+    const responseIdPatch = responseId ? { response_id: responseId } : {}
 
     if (!file || file.size === 0) {
       // Segmento vacío (ej. usuario cerró sesión sin grabar nada útil) — se marca sin audio.

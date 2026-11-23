@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
 import { bogotaDayKey } from "@/lib/bogota-time"
+import { resolvePreSurveyClips } from "@/lib/audio-attribution"
 
 // Ítem "Nombre de los audios" (acta de ajustes 05/10/2026):
 // "[ENCUESTADOR] - [FECHA] - [CODIGO INTERNO] - [ESTADO DE ENCUESTA] -
@@ -108,114 +109,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }, { status: 500 })
     }
 
-    // Ítem 26/10/2026: resolución de encuestador POR RESPUESTA (no solo por
-    // la grabación scope='survey', que puede no existir) — mismo respaldo
-    // de 3 niveles ya usado en app/api/reports/route.ts y en
-    // app/api/reports/individual/[id]/route.ts: 1) assignment_id ->
-    // survey_surveyor_zones.surveyor_id (estado actual de la asignación);
-    // 2) metadata.surveyor_id (lo manda la APK directo); 3) respondent_id
-    // contra surveyors.user_id o surveyors.id (para incidencia/abandono,
-    // respondent_id guarda el id del ENCUESTADOR, no del encuestado — ver
-    // app/api/portal-encuestador/responses/finish/route.ts). Necesario para
-    // poder encontrarle el turno (surveyor_shifts) a una respuesta aunque
-    // su asignación haya sido reasignada después de creada, o aunque nunca
-    // haya tenido assignment_id (incidencia reportada antes de "Iniciar
-    // Encuesta").
-    const assignmentIds = Array.from(new Set((responses || []).map((r: any) => r.assignment_id).filter(Boolean)))
-    const { data: sszRows } = assignmentIds.length
-      ? await admin.from("survey_surveyor_zones").select("id, surveyor_id").in("id", assignmentIds)
-      : { data: [] as any[] }
-    const surveyorIdByAssignmentId = new Map<string, string>((sszRows || []).map((r: any) => [r.id, r.surveyor_id]))
-
-    const respondentIds = Array.from(new Set((responses || []).map((r: any) => r.respondent_id).filter(Boolean)))
-    const { data: byUserId } = respondentIds.length
-      ? await admin.from("surveyors").select("id, user_id").in("user_id", respondentIds)
-      : { data: [] as any[] }
-    const { data: byOwnId } = respondentIds.length
-      ? await admin.from("surveyors").select("id").in("id", respondentIds)
-      : { data: [] as any[] }
-    const surveyorIdByUserId = new Map<string, string>((byUserId || []).map((s: any) => [s.user_id, s.id]))
-    const surveyorIdsByOwnId = new Set<string>((byOwnId || []).map((s: any) => s.id))
-
-    const resolveSurveyorId = (r: any): string | null => {
-      if (r.assignment_id && surveyorIdByAssignmentId.has(r.assignment_id)) return surveyorIdByAssignmentId.get(r.assignment_id)!
-      const metaId = r.metadata?.surveyor_id as string | undefined
-      if (metaId) return metaId
-      if (r.respondent_id) {
-        if (surveyorIdByUserId.has(r.respondent_id)) return surveyorIdByUserId.get(r.respondent_id)!
-        if (surveyorIdsByOwnId.has(r.respondent_id)) return r.respondent_id
-      }
-      return null
-    }
-    const resolvedSurveyorIdByResponseId = new Map<string, string | null>(
-      (responses || []).map((r: any) => [r.id, resolveSurveyorId(r)])
-    )
-
-    // Turno activo de cada respuesta (el que estaba corriendo al momento de
-    // su created_at) — para ubicar sus clips scope='shift' de "antes de
-    // iniciar". Se trae TODOS los turnos de los encuestadores involucrados
-    // de una sola vez (no uno por respuesta) y se matchea en memoria.
+    // Clips "antes de iniciar" (scope='shift') de cada respuesta: primero los
+    // ligados directamente por el portal, y como respaldo la ventana por
+    // hora para audios viejos — ver lib/audio-attribution.ts, compartido con
+    // el ZIP para que ambos muestren exactamente lo mismo.
+    const { preClipsByResponseId, resolvedSurveyorIdByResponseId } = await resolvePreSurveyClips(admin, responses || [])
     const involvedSurveyorIds = Array.from(
-      new Set(Array.from(resolvedSurveyorIdByResponseId.values()).filter(Boolean) as string[])
+      new Set([
+        ...(Array.from(resolvedSurveyorIdByResponseId.values()).filter(Boolean) as string[]),
+        ...Array.from(preClipsByResponseId.values()).flat().map((c) => c.surveyor_id).filter(Boolean) as string[],
+      ])
     )
-    const { data: shifts } = involvedSurveyorIds.length
-      ? await admin.from("surveyor_shifts").select("id, surveyor_id, started_at, ended_at").in("surveyor_id", involvedSurveyorIds)
-      : { data: [] as any[] }
-
-    const shiftIdByResponseId = new Map<string, string>()
-    for (const r of (responses || []) as any[]) {
-      const sid = resolvedSurveyorIdByResponseId.get(r.id)
-      if (!sid || !r.created_at) continue
-      const at = new Date(r.created_at).getTime()
-      let best: any = null
-      for (const s of (shifts || []) as any[]) {
-        if (s.surveyor_id !== sid) continue
-        const start = new Date(s.started_at).getTime()
-        const end = s.ended_at ? new Date(s.ended_at).getTime() : Infinity
-        if (start <= at && at <= end && (!best || start > new Date(best.started_at).getTime())) best = s
-      }
-      if (best) shiftIdByResponseId.set(r.id, best.id)
-    }
-
-    const involvedShiftIds = Array.from(new Set(Array.from(shiftIdByResponseId.values())))
-    const { data: shiftRecordings } = involvedShiftIds.length
-      ? await admin
-          .from("surveyor_recordings")
-          .select("id, shift_id, storage_path, duration_secs, started_at, upload_status")
-          .in("shift_id", involvedShiftIds)
-          .eq("scope", "shift")
-          .eq("upload_status", "uploaded")
-      : { data: [] as any[] }
-
-    // Ventana de cada respuesta dentro de su turno: 30 min antes de su
-    // created_at, acotada por el cierre (completed_at/created_at) del
-    // intento ANTERIOR en el mismo turno — mismo criterio que ya usa
-    // app/api/reports/individual/[id]/route.ts, generalizado acá a todas
-    // las respuestas en lote para que dos intentos seguidos del mismo
-    // turno nunca se repartan el mismo clip de audio.
-    const responsesByShift = new Map<string, any[]>()
-    for (const r of (responses || []) as any[]) {
-      const shiftId = shiftIdByResponseId.get(r.id)
-      if (!shiftId) continue
-      if (!responsesByShift.has(shiftId)) responsesByShift.set(shiftId, [])
-      responsesByShift.get(shiftId)!.push(r)
-    }
-    const preClipsByResponseId = new Map<string, any[]>()
-    for (const [shiftId, respList] of responsesByShift) {
-      respList.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""))
-      const shiftClips = ((shiftRecordings || []) as any[]).filter((c) => c.shift_id === shiftId)
-      let prevBoundary: string | null = null
-      for (const r of respList) {
-        const upper = r.created_at
-        const fixedLower = new Date(new Date(upper).getTime() - 30 * 60 * 1000).toISOString()
-        const lower = prevBoundary && prevBoundary > fixedLower ? prevBoundary : fixedLower
-        const clips = shiftClips
-          .filter((c) => c.started_at && c.started_at >= lower && c.started_at < upper)
-          .sort((a, b) => (a.started_at || "").localeCompare(b.started_at || ""))
-        if (clips.length > 0) preClipsByResponseId.set(r.id, clips)
-        prevBoundary = r.completed_at || r.created_at
-      }
-    }
 
     if ((!recordings || recordings.length === 0) && preClipsByResponseId.size === 0) {
       // Diagnóstico extra: ¿hay grabaciones en otros estados (failed/pending)?
@@ -359,7 +263,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         items.push(
           buildItem(
             { ...clip, response_id: responseId },
-            { segment: "shift", surveyorIdOverride: surveyorIdForResponse, partLabel: `ANTES ${i + 1}` }
+            { segment: "shift", surveyorIdOverride: clip.surveyor_id ?? surveyorIdForResponse, partLabel: `ANTES ${i + 1}` }
           )
         )
       })

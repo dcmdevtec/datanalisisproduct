@@ -73,6 +73,14 @@ export function useShiftRecording() {
   // ref evita que el handler de visibilitychange confunda "en pausa a
   // propósito" con "se interrumpió la grabación, hay que retomarla".
   const audioPausedForSurveyRef = useRef(false)
+  // Intento en curso (ítem 26/11/2026: "el audio de las incidencias no se
+  // detiene al registrarla, y se acumulan"): ids de TODOS los segmentos
+  // (antes y durante) abiertos desde que el encuestador entró a esta
+  // encuesta. Al registrar la incidencia, o al enviar/abandonar, se ligan
+  // todos a esa respuesta (POST /recordings/link) — así los reportes ya no
+  // adivinan por la hora a qué intento pertenece cada audio. null = no hay
+  // intento abierto (dashboard, entre encuestas).
+  const attemptSegmentIdsRef = useRef<string[] | null>(null)
 
   // BUG DE PRODUCCIÓN (2026-07-28): "Inicia encuesta" sin protección contra
   // reentrancia dejaba que startSurveySegment, la rotación automática del
@@ -163,6 +171,7 @@ export function useShiftRecording() {
       const segment: StartedSegment = { recordingId, scope, recorder, chunks: [], startedAt: Date.now() }
       recorder.ondataavailable = (e) => { if (e.data.size > 0) segment.chunks.push(e.data) }
       recorder.start()
+      attemptSegmentIdsRef.current?.push(recordingId)
       return segment
     } catch (err) {
       console.error("Error iniciando MediaRecorder para el segmento:", err)
@@ -194,6 +203,29 @@ export function useShiftRecording() {
     })
     await uploadSegment(segment, responseId)
   }, [uploadSegment])
+
+  // Liga a la respuesta todos los segmentos del intento en curso y cierra
+  // el intento. Incluye partes que se cortaron antes por bloqueo de
+  // pantalla o por la rotación de 2 min, que al cerrarse todavía no
+  // conocían su respuesta.
+  const linkAttemptToResponse = useCallback(async (responseId?: string | null) => {
+    const ids = attemptSegmentIdsRef.current
+    attemptSegmentIdsRef.current = null
+    if (!responseId || !ids || ids.length === 0) return
+    try {
+      const res = await fetch("/api/portal-encuestador/recordings/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recordingIds: ids, responseId }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        console.error(`Error ligando audios a la respuesta ${responseId} (HTTP ${res.status}):`, body?.details || body?.error || body)
+      }
+    } catch (err) {
+      console.error("Error de red ligando audios a la respuesta:", err)
+    }
+  }, [])
 
   // Programa el corte/reinicio automático de un segmento 'shift' cada N minutos,
   // para no perder audio largo en un solo blob y para subirlo incrementalmente.
@@ -302,7 +334,9 @@ export function useShiftRecording() {
   const endSurveySegment = useCallback(async (responseId?: string) => {
     await runExclusive(async () => {
       if (statusRef.current !== "recording-survey") return
-      await closeCurrentSegment(responseId ?? currentSurveyResponseIdRef.current)
+      const finalResponseId = responseId ?? currentSurveyResponseIdRef.current
+      await closeCurrentSegment(finalResponseId)
+      await linkAttemptToResponse(finalResponseId)
       currentSurveyResponseIdRef.current = null
       audioPausedForSurveyRef.current = false
       const segment = await openSegment("shift")
@@ -312,7 +346,48 @@ export function useShiftRecording() {
         setStatus("recording-shift")
       }
     })
+  }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation, linkAttemptToResponse])
+
+  // Al entrar a una encuesta (pantalla "Iniciar encuesta / Registrar
+  // incidencia"): corta el audio de fondo en este punto y abre un intento
+  // nuevo. Lo grabado desde acá es el "antes" de ESTE intento — no se
+  // mezcla con lo que se grabó caminando desde la casa anterior.
+  const beginAttempt = useCallback(async () => {
+    await runExclusive(async () => {
+      if (statusRef.current !== "recording-shift") return
+      attemptSegmentIdsRef.current = []
+      // Pestaña oculta en este instante: no hay segmento que cortar; el
+      // handler de visibilitychange abrirá uno al volver y quedará dentro
+      // del intento (openSegment lo agrega a attemptSegmentIdsRef).
+      if (!currentSegmentRef.current) return
+      await closeCurrentSegment()
+      const segment = await openSegment("shift")
+      if (segment) {
+        currentSegmentRef.current = segment
+        scheduleShiftRotation()
+      }
+    })
   }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation])
+
+  // "Registrar incidencia": corta el audio en este punto, lo liga (junto
+  // con las demás partes del intento) a la respuesta de incidencia, y abre
+  // un segmento de fondo nuevo — así el audio de la siguiente incidencia
+  // siempre empieza a una hora posterior, sin arrastrar esta conversación.
+  const markIncidence = useCallback(async (responseId?: string | null) => {
+    await runExclusive(async () => {
+      if (statusRef.current !== "recording-shift") {
+        attemptSegmentIdsRef.current = null
+        return
+      }
+      await closeCurrentSegment(responseId)
+      await linkAttemptToResponse(responseId)
+      const segment = await openSegment("shift")
+      if (segment) {
+        currentSegmentRef.current = segment
+        scheduleShiftRotation()
+      }
+    })
+  }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation, linkAttemptToResponse])
 
   // Cierra todo: corta el segmento en curso, sube el audio y marca el turno
   // como terminado. Se llama al cerrar sesión. keepalive:true permite que el
@@ -323,6 +398,7 @@ export function useShiftRecording() {
   const endShift = useCallback(async () => {
     await closeCurrentSegment()
     audioPausedForSurveyRef.current = false
+    attemptSegmentIdsRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (shiftIdRef.current) {
@@ -395,5 +471,5 @@ export function useShiftRecording() {
     }
   }, [])
 
-  return { status, error, shiftId, startShift, endShift, startSurveySegment, endSurveySegment }
+  return { status, error, shiftId, startShift, endShift, startSurveySegment, endSurveySegment, beginAttempt, markIncidence }
 }

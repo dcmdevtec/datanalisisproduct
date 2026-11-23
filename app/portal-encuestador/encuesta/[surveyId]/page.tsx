@@ -119,6 +119,9 @@ export default function PortalEncuestadorSurveyPage() {
         if (cancelled) return
         setAssignment(json)
         setStage("incidence")
+        // Corta el audio de fondo acá: lo grabado desde este momento es el
+        // "antes" de este intento (ver beginAttempt en use-shift-recording.ts).
+        recording.beginAttempt()
       } catch {
         if (!cancelled) setStage("not-found")
       }
@@ -156,9 +159,12 @@ export default function PortalEncuestadorSurveyPage() {
     setStage("survey")
   }, [recording, surveyId, startingSurvey, toast, assignment])
 
-  // Motivo de incidencia seleccionado: registra la respuesta (outcome='incidencia')
-  // y vuelve al dashboard. No hubo segmento 'survey' que cerrar (no se llegó a
-  // iniciar la encuesta) — el audio de este intento quedó en el segmento de turno.
+  // Motivo de incidencia seleccionado: registra la respuesta (outcome='incidencia'),
+  // corta el audio en este punto y lo liga a esa respuesta, y vuelve al
+  // dashboard. Antes no se tocaba la grabación: el audio seguía corriendo en
+  // el mismo segmento de fondo y se mezclaba con la siguiente incidencia
+  // (ítem 26/11/2026). El corte va DESPUÉS de crear la respuesta para que el
+  // segmento nuevo empiece a una hora posterior a ella.
   const handleReportIncidence = useCallback(async (reason: string) => {
     if (!assignment) return
     try {
@@ -169,13 +175,18 @@ export default function PortalEncuestadorSurveyPage() {
         body: JSON.stringify({ assignmentId: assignment.assignmentId, outcome: "incidencia", incidenceType: reason, location }),
       })
       if (!res.ok) throw new Error("No se pudo registrar la incidencia")
+      const json = await res.json().catch(() => ({}))
+      // Sin await: el corte y la subida del audio siguen en segundo plano
+      // (el motor vive en el layout y su cola garantiza que termine antes de
+      // que arranque el siguiente intento) — el encuestador no espera.
+      recording.markIncidence(json?.response_id)
       toast({ title: "Incidencia registrada", description: reason })
       router.push("/portal-encuestador")
     } catch (err) {
       console.error(err)
       toast({ title: "Error", description: "No se pudo registrar la incidencia", variant: "destructive" })
     }
-  }, [assignment, router, toast])
+  }, [assignment, recording, router, toast])
 
   // Bug reportado 08/09/2026: "cuando entro a realizar otra encuesta me salen
   // las opciones seleccionadas que fueron abandonadas". Causa raíz: el motor

@@ -5,6 +5,7 @@ import { convertToMp3 } from "@/lib/audio-merge"
 import { ZipArchive } from "archiver"
 import { Readable } from "stream"
 import { bogotaDayKey } from "@/lib/bogota-time"
+import { resolvePreSurveyClips } from "@/lib/audio-attribution"
 
 // GET /api/surveys/[id]/audios/zip?date=YYYY-MM-DD&surveyorId=<uuid> —
 // descarga las grabaciones de audio de una encuesta en un único ZIP,
@@ -99,99 +100,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // esas nunca tienen grabación scope='survey', ver comentario en
     // app/api/portal-encuestador/responses/finish/route.ts). La consulta de
     // abajo (recordingsQuery) fuerza scope='survey', así que esos ids
-    // simplemente desaparecían del ZIP sin aviso. Se resuelve acá, en lote,
-    // el mismo mapeo clip-de-turno -> respuesta que ya usa
-    // app/api/surveys/[id]/recordings/route.ts, para poder incluir esos
-    // clips sueltos como archivos independientes cuando vienen marcados.
-    const assignmentIds = Array.from(new Set((responses || []).map((r: any) => r.assignment_id).filter(Boolean)))
-    const { data: sszRows } = assignmentIds.length
-      ? await admin.from("survey_surveyor_zones").select("id, surveyor_id").in("id", assignmentIds)
-      : { data: [] as any[] }
-    const surveyorIdByAssignmentId = new Map<string, string>((sszRows || []).map((r: any) => [r.id, r.surveyor_id]))
-
-    const respondentIds = Array.from(new Set((responses || []).map((r: any) => r.respondent_id).filter(Boolean)))
-    const { data: byUserId } = respondentIds.length
-      ? await admin.from("surveyors").select("id, user_id").in("user_id", respondentIds)
-      : { data: [] as any[] }
-    const { data: byOwnId } = respondentIds.length
-      ? await admin.from("surveyors").select("id").in("id", respondentIds)
-      : { data: [] as any[] }
-    const surveyorIdByUserId = new Map<string, string>((byUserId || []).map((s: any) => [s.user_id, s.id]))
-    const surveyorIdsByOwnId = new Set<string>((byOwnId || []).map((s: any) => s.id))
-
-    const resolveSurveyorId = (r: any): string | null => {
-      if (r.assignment_id && surveyorIdByAssignmentId.has(r.assignment_id)) return surveyorIdByAssignmentId.get(r.assignment_id)!
-      const metaId = r.metadata?.surveyor_id as string | undefined
-      if (metaId) return metaId
-      if (r.respondent_id) {
-        if (surveyorIdByUserId.has(r.respondent_id)) return surveyorIdByUserId.get(r.respondent_id)!
-        if (surveyorIdsByOwnId.has(r.respondent_id)) return r.respondent_id
-      }
-      return null
-    }
-    const resolvedSurveyorIdByResponseId = new Map<string, string | null>(
-      (responses || []).map((r: any) => [r.id, resolveSurveyorId(r)])
-    )
-
-    const involvedSurveyorIds = Array.from(
-      new Set(Array.from(resolvedSurveyorIdByResponseId.values()).filter(Boolean) as string[])
-    )
-    const { data: shifts } = involvedSurveyorIds.length
-      ? await admin.from("surveyor_shifts").select("id, surveyor_id, started_at, ended_at").in("surveyor_id", involvedSurveyorIds)
-      : { data: [] as any[] }
-
-    const shiftIdByResponseId = new Map<string, string>()
-    for (const r of (responses || []) as any[]) {
-      const sid = resolvedSurveyorIdByResponseId.get(r.id)
-      if (!sid || !r.created_at) continue
-      const at = new Date(r.created_at).getTime()
-      let best: any = null
-      for (const s of (shifts || []) as any[]) {
-        if (s.surveyor_id !== sid) continue
-        const start = new Date(s.started_at).getTime()
-        const end = s.ended_at ? new Date(s.ended_at).getTime() : Infinity
-        if (start <= at && at <= end && (!best || start > new Date(best.started_at).getTime())) best = s
-      }
-      if (best) shiftIdByResponseId.set(r.id, best.id)
-    }
-
-    const involvedShiftIds = Array.from(new Set(Array.from(shiftIdByResponseId.values())))
-    const { data: shiftRecordingsAll } = involvedShiftIds.length
-      ? await admin
-          .from("surveyor_recordings")
-          .select("id, shift_id, surveyor_id, storage_path, duration_secs, started_at, upload_status")
-          .in("shift_id", involvedShiftIds)
-          .eq("scope", "shift")
-          .eq("upload_status", "uploaded")
-          .not("storage_path", "is", null)
-      : { data: [] as any[] }
-
-    // Ventana de cada respuesta dentro de su turno (30 min previos, acotados
-    // por el cierre del intento anterior del mismo turno) — mismo criterio
-    // que recordings/route.ts, para que un mismo clip nunca quede asociado a
-    // dos respuestas distintas.
-    const responsesByShift = new Map<string, any[]>()
-    for (const r of (responses || []) as any[]) {
-      const shiftId = shiftIdByResponseId.get(r.id)
-      if (!shiftId) continue
-      if (!responsesByShift.has(shiftId)) responsesByShift.set(shiftId, [])
-      responsesByShift.get(shiftId)!.push(r)
-    }
+    // simplemente desaparecían del ZIP sin aviso. La atribución clip ->
+    // respuesta sale del mismo módulo que usa el repositorio
+    // (lib/audio-attribution.ts), así el ZIP contiene exactamente lo que se
+    // ve y se marca en pantalla.
+    const { preClipsByResponseId } = await resolvePreSurveyClips(admin, responses || [])
     const responseIdByShiftClipId = new Map<string, string>()
-    for (const [shiftId, respList] of responsesByShift) {
-      respList.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""))
-      const shiftClips = ((shiftRecordingsAll || []) as any[]).filter((c) => c.shift_id === shiftId)
-      let prevBoundary: string | null = null
-      for (const r of respList) {
-        const upper = r.created_at
-        const fixedLower = new Date(new Date(upper).getTime() - 30 * 60 * 1000).toISOString()
-        const lower = prevBoundary && prevBoundary > fixedLower ? prevBoundary : fixedLower
-        const clips = shiftClips.filter((c) => c.started_at && c.started_at >= lower && c.started_at < upper)
-        for (const c of clips) responseIdByShiftClipId.set(c.id, r.id)
-        prevBoundary = r.completed_at || r.created_at
+    const shiftClipById = new Map<string, any>()
+    for (const [responseId, clips] of preClipsByResponseId) {
+      for (const clip of clips) {
+        responseIdByShiftClipId.set(clip.id, responseId)
+        shiftClipById.set(clip.id, clip)
       }
     }
-    const shiftClipById = new Map<string, any>((shiftRecordingsAll || []).map((c: any) => [c.id, c]))
 
     let recordingsQuery = admin
       .from("surveyor_recordings")
