@@ -8,6 +8,7 @@ import supabase from "@/lib/supabase/client"
 import { useRecordingContext } from "@/lib/portal-encuestador/recording-context"
 import { IncidenceScreen } from "@/components/portal-encuestador/incidence-screen"
 import { AbandonSurveyButton } from "@/components/portal-encuestador/abandon-survey-button"
+import { IosLockWarning } from "@/components/portal-encuestador/ios-lock-warning"
 import { useToast } from "@/components/ui/use-toast"
 import { loadSurveyIntoPreviewStorage, normalizeSurveyAnswers } from "@/lib/survey-preview-data"
 import { Loader2 } from "lucide-react"
@@ -83,6 +84,9 @@ export default function PortalEncuestadorSurveyPage() {
   // sobre una encuesta que ya se envió. Este flag lo oculta de inmediato,
   // sin esperar a la navegación.
   const [justSubmitted, setJustSubmitted] = useState(false)
+  // Aviso de iPhone: se cierra una vez por intento (no reaparece al pasar de
+  // la pantalla de incidencia a la encuesta).
+  const [iosWarningDismissed, setIosWarningDismissed] = useState(false)
   const verifiedRef = useRef(false)
 
   // Verifica rol + que la encuesta esté realmente asignada a este encuestador.
@@ -278,19 +282,24 @@ export default function PortalEncuestadorSurveyPage() {
 
   if (stage === "incidence" && assignment) {
     return (
-      <IncidenceScreen
-        surveyTitle={assignment.title}
-        zoneName={assignment.zoneName}
-        onStartSurvey={handleStartSurvey}
-        onReportIncidence={handleReportIncidence}
-        startingSurvey={startingSurvey}
-      />
+      <>
+        {!iosWarningDismissed && <IosLockWarning onDismiss={() => setIosWarningDismissed(true)} className="pt-4" />}
+        <IncidenceScreen
+          surveyTitle={assignment.title}
+          zoneName={assignment.zoneName}
+          onStartSurvey={handleStartSurvey}
+          onReportIncidence={handleReportIncidence}
+          startingSurvey={startingSurvey}
+        />
+      </>
     )
   }
 
   if (stage === "survey" && assignment) {
     return (
       <>
+        {/* pt-16: queda debajo del botón fijo "Abandonar encuesta" (arriba a la derecha). */}
+        {!iosWarningDismissed && !justSubmitted && <IosLockWarning onDismiss={() => setIosWarningDismissed(true)} className="pt-16" />}
         <SurveyPreviewPage assignmentId={assignment.assignmentId} onSubmitted={handleSubmitted} />
         {!justSubmitted && <AbandonSurveyButton onAbandon={handleAbandon} />}
       </>
