@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
-import { mergeAudioSegments, convertToMp3 } from "@/lib/audio-merge"
+import { convertToMp3 } from "@/lib/audio-merge"
 import { ZipArchive } from "archiver"
 import { Readable } from "stream"
 import { bogotaDayKey } from "@/lib/bogota-time"
@@ -23,13 +23,21 @@ import { bogotaDayKey } from "@/lib/bogota-time"
 // se inserta desde aquí, solo se lee) y es un caso mucho más raro que la
 // grabación completa de la entrevista, que es lo que pidió el cliente.
 //
-// Pedido 2026-08-31: fusionar en UN solo archivo por encuestado el audio
-// "de antes" (segmentos scope='shift' del turno, grabados justo antes de
-// "Iniciar Encuesta" — ver app/api/reports/individual/[id]/route.ts, mismo
-// criterio de ventana de 30 min) con el de la encuesta misma
-// (scope='survey'), vía ffmpeg (lib/audio-merge.ts). Si la fusión falla
-// por lo que sea, cae con gracia: deja los clips sueltos en el ZIP en vez
-// de romper la descarga completa por un solo archivo problemático.
+// Pedido 2026-08-31: originalmente este endpoint fusionaba (ffmpeg) el
+// audio "de antes" (scope='shift') con el de la encuesta misma
+// (scope='survey') en un solo archivo. Se retiró el 26/11/2026: desde que
+// /api/surveys/[id]/recordings lista cada clip "de antes" como su propia
+// fila seleccionable (no fusionada con "durante"), la fusión aquí
+// recalculaba la ventana de asociación con SU PROPIO criterio (por
+// grabación, acotado por la grabación anterior del mismo turno) — distinto
+// del que ahora usa esta misma ruta para los clips sueltos (por RESPUESTA,
+// ver standaloneShiftRecs más abajo). Los dos criterios podían discrepar y
+// producir el mismo audio duplicado (una vez fusionado en "PARTE 1", otra
+// vez suelto como "ANTES 1"), o archivos con nombres repetidos que el
+// explorador de archivos pisa al descomprimir — exactamente lo reportado:
+// "7 grabaciones, pero solo llegan 4 al ZIP". Ahora cada id marcado en el
+// árbol produce exactamente un archivo, sin fusionar nada server-side —
+// el ZIP queda forzosamente igual a lo que el usuario seleccionó en pantalla.
 //
 // El ZIP se arma en streaming (archiver + Readable.toWeb) para no cargar
 // todas las grabaciones en memoria a la vez — cada archivo se descarga de
@@ -268,102 +276,76 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return parts.join(" - ")
     }
 
+    // PARTE N por RESPUESTA (no por posición en el array) — mismo criterio
+    // que partNumberByRecordingId en recordings/route.ts. Necesario porque
+    // un mismo intento puede tener varias grabaciones scope='survey' si el
+    // encuestador entró/salió de la encuesta varias veces; sin numerar por
+    // respuesta, dos segmentos de un mismo intento competían por el nombre
+    // "PARTE 1" y uno pisaba al otro en el ZIP.
+    const partNumberByRecordingId = new Map<string, number>()
+    {
+      const byResponseId = new Map<string, any[]>()
+      for (const rec of (recordings || []) as any[]) {
+        if (!rec.response_id) continue
+        if (!byResponseId.has(rec.response_id)) byResponseId.set(rec.response_id, [])
+        byResponseId.get(rec.response_id)!.push(rec)
+      }
+      for (const group of byResponseId.values()) {
+        group.sort((a, b) => (a.started_at || "").localeCompare(b.started_at || ""))
+        group.forEach((rec, i) => partNumberByRecordingId.set(rec.id, i + 1))
+      }
+    }
+
+    // ANTES N por RESPUESTA, mismo motivo: la grabación de fondo puede
+    // cortar varios clips antes de que el encuestador toque "Iniciar
+    // Encuesta" (p.ej. una Incidencia reportada en dos partes) — sin
+    // numerar, todos esos clips de una misma respuesta se llamaban igual
+    // ("ANTES 1") y el ZIP terminaba con menos archivos de los marcados.
+    const antesNumberByClipId = new Map<string, number>()
+    {
+      const byResponseId = new Map<string, any[]>()
+      for (const rec of standaloneShiftRecs as any[]) {
+        const responseId = responseIdByShiftClipId.get(rec.id) || rec.id
+        if (!byResponseId.has(responseId)) byResponseId.set(responseId, [])
+        byResponseId.get(responseId)!.push(rec)
+      }
+      for (const group of byResponseId.values()) {
+        group.sort((a, b) => (a.started_at || "").localeCompare(b.started_at || ""))
+        group.forEach((rec, i) => antesNumberByClipId.set(rec.id, i + 1))
+      }
+    }
+
     const archive = new ZipArchive({ zlib: { level: 6 } })
     archive.on("warning", (err: Error) => console.warn("[audios/zip] warning:", err))
     archive.on("error", (err: Error) => console.error("[audios/zip] error:", err))
 
     // Descarga + agrega cada grabación al archive de forma secuencial (no
     // Promise.all) para no tener N descargas de audio completas en memoria
-    // a la vez.
+    // a la vez. Un id marcado en el árbol = un archivo en el ZIP, sin
+    // fusionar nada server-side (ver comentario de cabecera, 26/11/2026).
     ;(async () => {
       for (const rec of recordings as any[]) {
         try {
+          if (!rec.storage_path) continue
           const surveyorName = sanitize(surveyorNameById.get(rec.surveyor_id) || "Sin asignar")
           const response = responseById.get(rec.response_id)
           const dateStr = bogotaDayKey(rec.started_at || response?.created_at || new Date().toISOString())
           const folderBase = `${sanitize(projectName)}/${sanitize(surveyName)}/${dateStr}/${surveyorName}`
 
-          // Segmentos "de antes" (fondo del turno, ver comentario de cabecera)
-          // que terminan justo antes de que arrancara esta encuesta — mismo
-          // criterio de ventana (30 min) que app/api/reports/individual/[id]/route.ts.
-          let preRows: { storage_path: string; started_at: string | null }[] = []
-          if (rec.shift_id && rec.started_at) {
-            // Ítem 09/09/2026 (mismo fix que app/api/reports/individual/[id]/route.ts):
-            // acota la ventana al final del intento anterior de este mismo
-            // turno, si hay uno, para no mezclar audio "de antes" de un
-            // intento abandonado previo con el de esta grabación.
-            let lowerBound = new Date(new Date(rec.started_at).getTime() - 30 * 60 * 1000).toISOString()
-            const { data: prevAttempt } = await admin
-              .from("surveyor_recordings")
-              .select("ended_at")
-              .eq("shift_id", rec.shift_id)
-              .eq("scope", "survey")
-              .neq("id", rec.id)
-              .lt("started_at", rec.started_at)
-              .gte("started_at", lowerBound)
-              .order("started_at", { ascending: false })
-              .limit(1)
-              .maybeSingle()
-            if ((prevAttempt as any)?.ended_at && (prevAttempt as any).ended_at > lowerBound) {
-              lowerBound = (prevAttempt as any).ended_at
-            }
-            const { data } = await admin
-              .from("surveyor_recordings")
-              .select("storage_path, started_at")
-              .eq("shift_id", rec.shift_id)
-              .eq("scope", "shift")
-              .eq("upload_status", "uploaded")
-              .not("storage_path", "is", null)
-              .gte("started_at", lowerBound)
-              .lt("started_at", rec.started_at)
-              .order("started_at", { ascending: true })
-              .limit(10)
-            preRows = data || []
+          const { data: fileBlob, error: downloadError } = await admin.storage
+            .from("response-media")
+            .download(rec.storage_path)
+          if (downloadError || !fileBlob) {
+            console.error("[audios/zip] no se pudo descargar", rec.storage_path, downloadError)
+            continue
           }
-
-          // Descarga el clip de la encuesta + todos los "de antes", en orden
-          // cronológico (los de antes primero, la encuesta al final).
-          const allPaths = [...preRows.map((r) => r.storage_path), rec.storage_path]
-          const downloaded: { buffer: Buffer; ext: string }[] = []
-          for (const path of allPaths) {
-            const { data: fileBlob, error: downloadError } = await admin.storage
-              .from("response-media")
-              .download(path)
-            if (downloadError || !fileBlob) {
-              console.error("[audios/zip] no se pudo descargar", path, downloadError)
-              continue
-            }
-            downloaded.push({
-              buffer: Buffer.from(await fileBlob.arrayBuffer()),
-              ext: path.split(".").pop() || "webm",
-            })
-          }
-          if (downloaded.length === 0) continue
-
-          if (downloaded.length > 1) {
-            // Varios segmentos para este encuestado: se fusionan en un solo
-            // archivo. Si ffmpeg falla por lo que sea, se cae con gracia a
-            // agregar cada clip por separado en vez de perder la grabación.
-            const merged = await mergeAudioSegments(downloaded)
-            if (merged) {
-              // Ítem #36: conversión opcional a mp3 — si falla, se deja el
-              // webm ya fusionado en vez de perder el archivo.
-              const mp3 = wantsMp3 ? await convertToMp3(merged, "webm") : null
-              const baseName = buildBaseName(surveyorNameById.get(rec.surveyor_id) || "Sin asignar", dateStr, response?.outcome ?? null, rec.response_id)
-              const fileName = `${baseName} - PARTE 1.${mp3 ? "mp3" : "webm"}`
-              archive.append(mp3 || merged, { name: `${folderBase}/${fileName}` })
-              continue
-            }
-            console.error("[audios/zip] fusión falló para", rec.id, "— se dejan los clips sueltos")
-          }
-
+          const buffer = Buffer.from(await fileBlob.arrayBuffer())
+          const ext = rec.storage_path.split(".").pop() || "webm"
+          const mp3 = wantsMp3 ? await convertToMp3(buffer, ext) : null
           const baseName = buildBaseName(surveyorNameById.get(rec.surveyor_id) || "Sin asignar", dateStr, response?.outcome ?? null, rec.response_id)
-          for (let idx = 0; idx < downloaded.length; idx++) {
-            const seg = downloaded[idx]
-            const mp3 = wantsMp3 ? await convertToMp3(seg.buffer, seg.ext) : null
-            const fileName = `${baseName} - PARTE ${idx + 1}.${mp3 ? "mp3" : seg.ext}`
-            archive.append(mp3 || seg.buffer, { name: `${folderBase}/${fileName}` })
-          }
+          const partNum = partNumberByRecordingId.get(rec.id) ?? 1
+          const fileName = `${baseName} - PARTE ${partNum}.${mp3 ? "mp3" : ext}`
+          archive.append(mp3 || buffer, { name: `${folderBase}/${fileName}` })
         } catch (err) {
           console.error("[audios/zip] error procesando grabación", rec.id, err)
         }
@@ -400,7 +382,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             response?.outcome ?? null,
             responseId || rec.id
           )
-          const fileName = `${baseName} - ANTES 1.${mp3 ? "mp3" : ext}`
+          const antesNum = antesNumberByClipId.get(rec.id) ?? 1
+          const fileName = `${baseName} - ANTES ${antesNum}.${mp3 ? "mp3" : ext}`
           archive.append(mp3 || buffer, { name: `${folderBase}/${fileName}` })
         } catch (err) {
           console.error("[audios/zip] error procesando clip suelto", rec.id, err)
