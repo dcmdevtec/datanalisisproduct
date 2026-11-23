@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
+import { resolveClientInstant } from "@/lib/portal-encuestador/client-time"
 
 // Finaliza un segmento de grabación: recibe el blob de audio (multipart/form-data,
 // campo "file") y lo sube al bucket privado 'response-media', actualiza el
@@ -40,11 +41,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // el portal manda responseId también al cortar ese segmento (ver
     // markIncidence en lib/portal-encuestador/use-shift-recording.ts).
     const responseIdPatch = responseId ? { response_id: responseId } : {}
+    // Hora real de fin del audio (reloj del teléfono corregido) — el audio
+    // puede subirse mucho después, si no había señal (ítem 26/11/2026).
+    const endedAtMs = formData.get("endedAt")
+    const clientNow = formData.get("clientNow")
+    const endedAtIso = resolveClientInstant(
+      endedAtMs !== null ? Number(endedAtMs) : undefined,
+      clientNow !== null ? Number(clientNow) : undefined
+    )
 
     if (!file || file.size === 0) {
       // Segmento vacío (ej. usuario cerró sesión sin grabar nada útil) — se marca sin audio.
       await admin.from("surveyor_recordings").update({
-        ended_at: new Date().toISOString(),
+        ended_at: endedAtIso,
         upload_status: "failed",
         ...responseIdPatch,
       }).eq("id", recordingId)
@@ -61,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (uploadError) {
       console.error("Error subiendo segmento de audio:", uploadError)
       await admin.from("surveyor_recordings").update({
-        ended_at: new Date().toISOString(),
+        ended_at: endedAtIso,
         upload_status: "failed",
         ...responseIdPatch,
       }).eq("id", recordingId)
@@ -73,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const { error: updateError } = await admin.from("surveyor_recordings").update({
-      ended_at: new Date().toISOString(),
+      ended_at: endedAtIso,
       storage_path: path,
       duration_secs: durationSecs,
       upload_status: "uploaded",

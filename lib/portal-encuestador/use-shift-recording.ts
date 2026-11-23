@@ -1,27 +1,55 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  appendChunk,
+  deleteSegment,
+  listSegments,
+  loadChunks,
+  putSegmentMeta,
+  readPendingLinks,
+  updateSegmentMeta,
+  writePendingLinks,
+  type BufferedSegmentMeta,
+} from "./recording-buffer"
 
 // Motor de grabación continua del portal de encuestador.
 //
-// Diseño (según lo pedido): se graba TODO el turno del encuestador desde que
-// inicia sesión, Y ADEMÁS cada encuesta individual queda grabada por separado
-// para poder reproducirla en "Respuestas Individuales". Se logra con
-// SEGMENTOS: un único MediaStream de micrófono se mantiene abierto todo el
-// turno, y se van creando instancias de MediaRecorder de scope 'shift'
-// (fondo, entre encuestas) o 'survey' (una encuesta puntual, con response_id).
-// Al cortar un segmento se sube inmediatamente y se abre el siguiente, así
-// nunca hay huecos largos sin grabar y nunca se pierde más que el segmento
-// en curso si algo falla.
+// Se graba TODO el turno del encuestador desde que inicia sesión, y cada
+// intento (incidencia o encuesta) queda en sus propios segmentos: un único
+// MediaStream de micrófono vive todo el turno y se van creando MediaRecorder
+// de scope 'shift' (fondo / "antes de iniciar") o 'survey' ("durante").
 //
-// LÍMITE TÉCNICO CONOCIDO (ya conversado con el usuario): un navegador NO
-// puede grabar de forma confiable si la pestaña pasa a segundo plano o el
-// teléfono se bloquea — eso solo lo puede garantizar una app nativa con
-// foreground service (la APK). Este hook hace el mejor esfuerzo posible
-// dentro de esas limitaciones: intenta cerrar y subir el segmento en curso
-// cuando detecta que la pestaña se oculta o se va a cerrar.
+// Rediseño 26/11/2026 ("lo importante es que no se pierdan los audios al
+// bloquear el celular, que no se corten"):
+//  1. Bloquear la pantalla YA NO detiene la grabación. Antes este motor la
+//     paraba a propósito al ocultarse la pestaña y abría otro archivo al
+//     volver: lo dicho con el teléfono bloqueado se perdía y cada bloqueo
+//     partía el audio. En Android, Chrome mantiene el micrófono activo para
+//     una página que lo está usando (igual que una llamada web).
+//  2. Cada trozo de audio (cada CHUNK_TIMESLICE_MS) se guarda al instante en
+//     el teléfono (IndexedDB, recording-buffer.ts) y solo se borra cuando el
+//     servidor confirma la subida. Si la página muere, se va la señal o el
+//     sistema mata el navegador, el audio se sube en la próxima oportunidad
+//     (recoverPending).
+//  3. Grabar no depende de la red: el id de cada segmento se genera en el
+//     teléfono y la grabación arranca de inmediato; el registro y la subida
+//     al servidor van por detrás. Un corte (entrar a una encuesta, registrar
+//     incidencia) nunca deja de grabar por falta de señal.
+//  4. Mientras hay un intento abierto se pide a la pantalla que no se apague
+//     sola (Screen Wake Lock): evita el apagado automático mientras el
+//     encuestador conversa sin tocar el celular.
+//  5. Si el sistema sí corta el micrófono (iOS lo suspende con la pantalla
+//     bloqueada), al volver se retoma sola la grabación; las partes quedan
+//     ligadas al mismo intento.
+// Para grabación garantizada con la pantalla bloqueada en cualquier
+// teléfono, la opción sigue siendo la APK nativa.
 
-const SHIFT_SEGMENT_ROTATE_MS = 2 * 60 * 1000 // corta y sube cada 2 min mientras graba de fondo
+// Corte periódico del audio de fondo SOLO fuera de un intento (entre casas);
+// dentro de un intento nunca se corta.
+const SHIFT_SEGMENT_ROTATE_MS = 10 * 60 * 1000
+const CHUNK_TIMESLICE_MS = 5 * 1000
+const HEALTH_CHECK_MS = 15 * 1000
 
 export type RecordingStatus =
   | "idle"
@@ -33,21 +61,105 @@ export type RecordingStatus =
 
 interface StartedSegment {
   recordingId: string
+  shiftId: string
   scope: "shift" | "survey"
   recorder: MediaRecorder
-  chunks: BlobPart[]
+  mimeType: string
+  chunks: Blob[]
   startedAt: number
+  endedAt: number | null
+  // Cadena de escrituras a IndexedDB de este segmento — se espera antes de
+  // borrarlo, para no dejar trozos huérfanos escritos después del borrado.
+  persist: Promise<void>
+  registration: Promise<SendResult>
+}
+
+type SendResult = "ok" | "gone" | "retry"
+
+function newRecordingId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID()
+  } catch { /* contexto no seguro */ }
+  const b = new Uint8Array(16)
+  crypto.getRandomValues(b)
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("")
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+
+function classify(status: number): SendResult {
+  if (status >= 200 && status < 300) return "ok"
+  // 400/404/409: el servidor nunca va a aceptar este dato — no reintentar.
+  if (status === 400 || status === 404 || status === 409) return "gone"
+  return "retry" // 401 (sesión vencida), 5xx, etc.
+}
+
+async function registerSegment(meta: { recordingId: string; shiftId: string; scope: string; startedAt: number }): Promise<SendResult> {
+  try {
+    const res = await fetch("/api/portal-encuestador/recordings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: meta.recordingId,
+        shiftId: meta.shiftId,
+        scope: meta.scope,
+        startedAt: meta.startedAt,
+        clientNow: Date.now(),
+      }),
+    })
+    return classify(res.status)
+  } catch {
+    return "retry"
+  }
+}
+
+async function sendSegmentFile(
+  recordingId: string,
+  blob: Blob,
+  durationSecs: number,
+  endedAt: number,
+  responseId?: string | null
+): Promise<SendResult> {
+  const formData = new FormData()
+  formData.append("file", blob, `${recordingId}.webm`)
+  formData.append("durationSecs", String(durationSecs))
+  formData.append("endedAt", String(endedAt))
+  formData.append("clientNow", String(Date.now()))
+  if (responseId) formData.append("responseId", responseId)
+  try {
+    const res = await fetch(`/api/portal-encuestador/recordings/${recordingId}`, { method: "PATCH", body: formData })
+    const result = classify(res.status)
+    if (result !== "ok") {
+      const body = await res.json().catch(() => ({}))
+      console.error(`Error subiendo segmento de audio (${recordingId}, HTTP ${res.status}):`, body?.details || body?.error || body)
+    }
+    return result
+  } catch (err) {
+    console.error("Sin red subiendo segmento de audio (queda guardado en el teléfono para reintentar):", err)
+    return "retry"
+  }
+}
+
+async function postLink(responseId: string, recordingIds: string[]): Promise<SendResult> {
+  try {
+    const res = await fetch("/api/portal-encuestador/recordings/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recordingIds, responseId }),
+    })
+    return classify(res.status)
+  } catch {
+    return "retry"
+  }
 }
 
 export function useShiftRecording() {
   const [status, setStatus] = useState<RecordingStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const [shiftId, setShiftId] = useState<string | null>(null)
-  // Espejo de `status` en un ref: dentro de runExclusive necesitamos leer el
-  // status VIGENTE en el momento en que la operación realmente se ejecuta
-  // (que puede ser más tarde de cuando se llamó, si había otra operación en
-  // curso) — el `status` capturado por closure en el useCallback puede estar
-  // obsoleto para ese momento.
+  // Espejo de `status` en un ref: dentro de runExclusive se necesita el
+  // status VIGENTE al momento de ejecutar, no el capturado por closure.
   const statusRef = useRef<RecordingStatus>("idle")
   useEffect(() => { statusRef.current = status }, [status])
 
@@ -55,45 +167,26 @@ export function useShiftRecording() {
   const currentSegmentRef = useRef<StartedSegment | null>(null)
   const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shiftIdRef = useRef<string | null>(null)
-  // Recuerdan qué se estaba grabando justo antes de ocultarse la pestaña,
-  // para retomar el mismo scope/encuesta al volver a primer plano.
-  const pendingResumeScopeRef = useRef<"shift" | "survey">("shift")
-  const pendingResumeResponseIdRef = useRef<string | null>(null)
   const currentSurveyResponseIdRef = useRef<string | null>(null)
-  // Pedido 2026-07-29: la encuesta tiene un toggle "Grabación de Audio" en
-  // su configuración que antes no hacía nada (el motor siempre grababa). El
-  // usuario confirmó que sí quiere que sea funcional de verdad — aunque
-  // contradice la política de "grabar siempre" pedida antes, aquí la
-  // diferencia es que SOLO un admin puede desactivarlo (vive en la
-  // configuración de la encuesta, no lo controla el encuestador en campo).
-  // Cuando está desactivado para la encuesta actual, no se abre ningún
-  // segmento 'survey' — el micrófono queda "en pausa" (el MediaStream sigue
-  // vivo para no perder el permiso ni tener que pedirlo de nuevo, pero no se
-  // graba ni sube nada) hasta terminar/abandonar esa encuesta puntual. Este
-  // ref evita que el handler de visibilitychange confunda "en pausa a
-  // propósito" con "se interrumpió la grabación, hay que retomarla".
+  // Pedido 2026-07-29: con settings.allowAudio=false en la encuesta actual no
+  // se graba nada mientras dure (el MediaStream sigue vivo para no perder el
+  // permiso). Este ref evita que la verificación de salud lo confunda con una
+  // grabación interrumpida y la "retome".
   const audioPausedForSurveyRef = useRef(false)
-  // Intento en curso (ítem 26/11/2026: "el audio de las incidencias no se
-  // detiene al registrarla, y se acumulan"): ids de TODOS los segmentos
-  // (antes y durante) abiertos desde que el encuestador entró a esta
-  // encuesta. Al registrar la incidencia, o al enviar/abandonar, se ligan
-  // todos a esa respuesta (POST /recordings/link) — así los reportes ya no
-  // adivinan por la hora a qué intento pertenece cada audio. null = no hay
-  // intento abierto (dashboard, entre encuestas).
+  // Intento en curso (ítem 26/11/2026): ids de TODOS los segmentos (antes y
+  // durante) abiertos desde que el encuestador entró a esta encuesta. Al
+  // registrar la incidencia o enviar/abandonar se ligan a esa respuesta.
+  // null = no hay intento abierto.
   const attemptSegmentIdsRef = useRef<string[] | null>(null)
+  const registrationsRef = useRef<Map<string, Promise<SendResult>>>(new Map())
+  const uploadingIdsRef = useRef<Set<string>>(new Set())
+  const wakeLockRef = useRef<any>(null)
+  const recoveringRef = useRef(false)
 
-  // BUG DE PRODUCCIÓN (2026-07-28): "Inicia encuesta" sin protección contra
-  // reentrancia dejaba que startSurveySegment, la rotación automática del
-  // segmento de turno, y el handler de visibilitychange corrieran en
-  // paralelo cuando coincidían (ej. un doble click, o un cambio de
-  // visibilidad justo al iniciar encuesta). Todas mutan currentSegmentRef y
-  // llaman new MediaRecorder(streamRef.current) sobre el MISMO stream
-  // compartido — al superponerse, el navegador terminaba lanzando
-  // "NotSupportedError: Failed to execute 'start' on 'MediaRecorder'" y
-  // varios segmentos quedaban huérfanos (los PATCH de cierre fallaban con
-  // 500 porque el segmento ya había sido reemplazado). Fix: todas las
-  // operaciones que abren/cierran un segmento pasan por esta cola — se
-  // ejecutan una a la vez, en orden, nunca en paralelo.
+  // BUG DE PRODUCCIÓN (2026-07-28): todas las operaciones que abren/cierran
+  // un segmento pasan por esta cola — una a la vez, en orden (dos
+  // MediaRecorder arrancando a la vez sobre el mismo stream terminaban en
+  // "NotSupportedError" y segmentos huérfanos).
   const opQueueRef = useRef<Promise<unknown>>(Promise.resolve())
   const runExclusive = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
     const run = opQueueRef.current.then(fn, fn)
@@ -112,143 +205,223 @@ export function useShiftRecording() {
     return undefined
   }
 
-  // Sube el blob acumulado de un segmento y lo marca terminado en el backend.
-  // responseId es opcional: para segmentos scope='survey' recién se conoce al
-  // enviar/abandonar la encuesta, así que se adjunta en este punto (cierre),
-  // no al abrir el segmento.
-  const uploadSegment = useCallback(async (segment: StartedSegment, responseId?: string | null) => {
-    const blob = new Blob(segment.chunks, { type: segment.recorder.mimeType || "audio/webm" })
-    const durationSecs = Math.round((Date.now() - segment.startedAt) / 1000)
-    const formData = new FormData()
-    formData.append("file", blob, `${segment.recordingId}.webm`)
-    formData.append("durationSecs", String(durationSecs))
-    if (responseId) formData.append("responseId", responseId)
+  // Pantalla encendida mientras hay un intento abierto. El navegador la
+  // suelta al ocultarse la pestaña; se vuelve a pedir al regresar.
+  const acquireWakeLock = useCallback(async () => {
     try {
-      const res = await fetch(`/api/portal-encuestador/recordings/${segment.recordingId}`, {
-        method: "PATCH",
-        body: formData,
-      })
-      // ANTES: no se revisaba res.ok, así que un 500 del servidor pasaba
-      // completamente desapercibido para este código (fetch solo rechaza la
-      // promesa ante una falla de RED, no ante un status HTTP de error) — lo
-      // único visible era el log automático de la consola del navegador, sin
-      // el detalle real del error. Ahora se lee y loguea el cuerpo de la
-      // respuesta para poder diagnosticar sin acceso a los logs del servidor.
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        console.error(`Error subiendo segmento de audio (${segment.recordingId}, HTTP ${res.status}):`, body?.details || body?.error || body)
-      }
-    } catch (err) {
-      console.error("Error de red subiendo segmento de audio:", err)
+      if (attemptSegmentIdsRef.current === null) return
+      if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return
+      if (document.visibilityState !== "visible") return
+      if (wakeLockRef.current && !wakeLockRef.current.released) return
+      wakeLockRef.current = await (navigator as any).wakeLock.request("screen")
+    } catch {
+      // Denegado (batería baja, ahorro de energía) — se sigue grabando igual.
     }
   }, [])
 
-  // Crea un segmento nuevo en el backend y arranca un MediaRecorder para él.
-  const openSegment = useCallback(async (scope: "shift" | "survey", responseId?: string) => {
-    if (!streamRef.current || !shiftIdRef.current) return null
-    const res = await fetch("/api/portal-encuestador/recordings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shiftId: shiftIdRef.current, scope, responseId }),
-    })
-    if (!res.ok) {
-      console.error("No se pudo crear el segmento de grabación")
-      return null
-    }
-    const { recordingId } = await res.json()
+  const releaseWakeLock = useCallback(() => {
+    try { wakeLockRef.current?.release?.() } catch { /* ya liberado */ }
+    wakeLockRef.current = null
+  }, [])
 
-    // recorder.start() puede lanzar NotSupportedError si el MediaStream
-    // quedó en un estado inválido (ej. dos MediaRecorder intentando arrancar
-    // casi al mismo tiempo sobre el mismo stream — ver runExclusive arriba).
-    // Sin este try/catch, el error se propagaba como una promesa rechazada
-    // sin capturar y el segmento en el backend quedaba "pending" para
-    // siempre (nunca se sube ni se marca failed). Ahora, si falla, se marca
-    // el segmento como failed en el backend y se devuelve null como
-    // cualquier otro caso de fallo — el llamador ya sabe manejar null.
+  // Arranca a grabar un segmento nuevo YA, sin esperar a la red. El registro
+  // en el servidor sale por detrás (segment.registration).
+  const startSegment = useCallback((scope: "shift" | "survey"): StartedSegment | null => {
+    const stream = streamRef.current
+    const currentShiftId = shiftIdRef.current
+    if (!stream || !currentShiftId) return null
+    const recordingId = newRecordingId()
     try {
-      const mimeType = pickMimeType()
-      const recorder = new MediaRecorder(streamRef.current, mimeType ? { mimeType } : undefined)
-      const segment: StartedSegment = { recordingId, scope, recorder, chunks: [], startedAt: Date.now() }
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) segment.chunks.push(e.data) }
-      recorder.start()
+      const preferred = pickMimeType()
+      const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined)
+      const startedAt = Date.now()
+      const segment: StartedSegment = {
+        recordingId,
+        shiftId: currentShiftId,
+        scope,
+        recorder,
+        mimeType: recorder.mimeType || preferred || "audio/webm",
+        chunks: [],
+        startedAt,
+        endedAt: null,
+        persist: Promise.resolve(),
+        registration: Promise.resolve("retry"),
+      }
+      const meta: BufferedSegmentMeta = {
+        recordingId,
+        shiftId: currentShiftId,
+        scope,
+        mimeType: segment.mimeType,
+        startedAt,
+        lastChunkAt: startedAt,
+        registered: false,
+      }
+      // La metadata se escribe primero en la cadena, así ningún trozo queda
+      // guardado sin su segmento.
+      segment.persist = putSegmentMeta(meta)
+      recorder.ondataavailable = (e) => {
+        if (e.data.size === 0) return
+        segment.chunks.push(e.data)
+        segment.persist = segment.persist.then(() => appendChunk(recordingId, e.data))
+      }
+      recorder.onerror = (e: any) => console.error("Error del MediaRecorder:", e?.error || e)
+      // Con timeslice el navegador entrega un trozo cada pocos segundos, que
+      // se guarda al instante en el teléfono.
+      recorder.start(CHUNK_TIMESLICE_MS)
       attemptSegmentIdsRef.current?.push(recordingId)
+
+      segment.registration = segment.persist.then(async () => {
+        const result = await registerSegment(meta)
+        if (result === "ok") await updateSegmentMeta(recordingId, { registered: true })
+        return result
+      })
+      registrationsRef.current.set(recordingId, segment.registration)
       return segment
     } catch (err) {
       console.error("Error iniciando MediaRecorder para el segmento:", err)
-      try {
-        // Sin campo "file" -> el backend lo marca upload_status='failed' (ver
-        // app/api/portal-encuestador/recordings/[id]/route.ts).
-        await fetch(`/api/portal-encuestador/recordings/${recordingId}`, {
-          method: "PATCH",
-          body: new FormData(),
-        })
-      } catch { /* best effort */ }
       return null
     }
   }, [])
 
-  // Corta el segmento actual (si hay uno) y sube su audio. responseId opcional:
-  // se pasa cuando ya se conoce (fin de encuesta enviada/abandonada) para
-  // ligar el segmento 'survey' a su fila real en `responses`.
+  const stopRecorder = (segment: StartedSegment) =>
+    new Promise<void>((resolve) => {
+      segment.endedAt = Date.now()
+      if (segment.recorder.state === "inactive") { resolve(); return }
+      segment.recorder.onstop = () => resolve()
+      try { segment.recorder.stop() } catch { resolve() }
+    })
+
+  // Sube un segmento ya detenido. Solo se borra la copia del teléfono cuando
+  // el servidor confirma; si no, queda para recoverPending.
+  const uploadSegment = useCallback(async (segment: StartedSegment, responseId?: string | null) => {
+    const id = segment.recordingId
+    uploadingIdsRef.current.add(id)
+    try {
+      await segment.persist
+      await updateSegmentMeta(id, { closed: true, ...(responseId ? { responseId } : {}) })
+      let reg = await segment.registration
+      if (reg === "retry") reg = await registerSegment(segment)
+      if (reg === "retry") return
+      if (reg === "gone") { await deleteSegment(id); return }
+      await updateSegmentMeta(id, { registered: true })
+      const endedAt = segment.endedAt ?? Date.now()
+      const blob = new Blob(segment.chunks, { type: segment.mimeType })
+      const durationSecs = Math.max(0, Math.round((endedAt - segment.startedAt) / 1000))
+      const result = await sendSegmentFile(id, blob, durationSecs, endedAt, responseId)
+      if (result !== "retry") await deleteSegment(id)
+    } finally {
+      uploadingIdsRef.current.delete(id)
+      registrationsRef.current.delete(id)
+    }
+  }, [])
+
+  // Cambia al siguiente segmento: detiene el actual, arranca el nuevo de
+  // inmediato (sin red) y sube el anterior por detrás — el hueco entre uno y
+  // otro es de milisegundos y nunca depende de la señal.
+  const swapSegment = useCallback(async (scope: "shift" | "survey", closeResponseId?: string | null) => {
+    const prev = currentSegmentRef.current
+    currentSegmentRef.current = null
+    if (rotateTimerRef.current) { clearTimeout(rotateTimerRef.current); rotateTimerRef.current = null }
+    if (prev) await stopRecorder(prev)
+    const next = startSegment(scope)
+    currentSegmentRef.current = next
+    if (prev) void uploadSegment(prev, closeResponseId)
+    return next
+  }, [startSegment, uploadSegment])
+
+  // Corta el segmento actual y espera a que suba (o quede guardado).
   const closeCurrentSegment = useCallback(async (responseId?: string | null) => {
     const segment = currentSegmentRef.current
     if (!segment) return
     currentSegmentRef.current = null
     if (rotateTimerRef.current) { clearTimeout(rotateTimerRef.current); rotateTimerRef.current = null }
-
-    await new Promise<void>((resolve) => {
-      if (segment.recorder.state === "inactive") { resolve(); return }
-      segment.recorder.onstop = () => resolve()
-      segment.recorder.stop()
-    })
+    await stopRecorder(segment)
     await uploadSegment(segment, responseId)
   }, [uploadSegment])
 
-  // Liga a la respuesta todos los segmentos del intento en curso y cierra
-  // el intento. Incluye partes que se cortaron antes por bloqueo de
-  // pantalla o por la rotación de 2 min, que al cerrarse todavía no
-  // conocían su respuesta.
-  const linkAttemptToResponse = useCallback(async (responseId?: string | null) => {
+  // Liga a la respuesta todos los segmentos del intento y cierra el intento.
+  // Si no hay señal, el vínculo queda en cola y además viaja con el audio
+  // cuando se suba (responseId en la metadata del teléfono).
+  // Recibe los ids ya separados del intento (detachAttempt) — se separan
+  // ANTES de abrir el segmento siguiente, para que ese segmento nuevo no
+  // quede ligado a la respuesta que se está cerrando.
+  const detachAttempt = useCallback((): string[] | null => {
     const ids = attemptSegmentIdsRef.current
     attemptSegmentIdsRef.current = null
+    releaseWakeLock()
+    return ids
+  }, [releaseWakeLock])
+
+  const linkAttemptToResponse = useCallback(async (ids: string[] | null, responseId?: string | null) => {
     if (!responseId || !ids || ids.length === 0) return
+    await Promise.all(ids.map((id) => updateSegmentMeta(id, { responseId })))
+    await Promise.all(ids.map((id) => registrationsRef.current.get(id) ?? Promise.resolve("ok" as SendResult)))
+    const result = await postLink(responseId, ids)
+    if (result === "retry") writePendingLinks([...readPendingLinks(), { responseId, recordingIds: ids }])
+  }, [])
+
+  // Sube lo que haya quedado guardado en el teléfono (página cerrada por el
+  // sistema, sin señal al subir, etc.) y reenvía vínculos pendientes.
+  const recoverPending = useCallback(async () => {
+    if (recoveringRef.current) return
+    recoveringRef.current = true
     try {
-      const res = await fetch("/api/portal-encuestador/recordings/link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recordingIds: ids, responseId }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        console.error(`Error ligando audios a la respuesta ${responseId} (HTTP ${res.status}):`, body?.details || body?.error || body)
+      const metas = await listSegments()
+      for (const meta of metas) {
+        if (meta.recordingId === currentSegmentRef.current?.recordingId) continue
+        if (uploadingIdsRef.current.has(meta.recordingId)) continue
+        // Abierto y con trozos recientes: puede estar grabando en otra pestaña.
+        if (!meta.closed && Date.now() - meta.lastChunkAt < 60 * 1000) continue
+        const chunks = await loadChunks(meta.recordingId)
+        if (chunks.length === 0) {
+          await deleteSegment(meta.recordingId)
+          continue
+        }
+        if (!meta.registered) {
+          const reg = await registerSegment(meta)
+          if (reg === "retry") break // sin red o sin sesión: se reintenta después
+          if (reg === "gone") { await deleteSegment(meta.recordingId); continue }
+          await updateSegmentMeta(meta.recordingId, { registered: true })
+        }
+        const blob = new Blob(chunks, { type: meta.mimeType || "audio/webm" })
+        const durationSecs = Math.max(0, Math.round((meta.lastChunkAt - meta.startedAt) / 1000))
+        const result = await sendSegmentFile(meta.recordingId, blob, durationSecs, meta.lastChunkAt, meta.responseId)
+        if (result === "retry") break
+        await deleteSegment(meta.recordingId)
       }
-    } catch (err) {
-      console.error("Error de red ligando audios a la respuesta:", err)
+
+      const pending = readPendingLinks()
+      if (pending.length > 0) {
+        const stillPending: typeof pending = []
+        for (const link of pending) {
+          const result = await postLink(link.responseId, link.recordingIds)
+          if (result === "retry") stillPending.push(link)
+        }
+        writePendingLinks(stillPending)
+      }
+    } finally {
+      recoveringRef.current = false
     }
   }, [])
 
-  // Programa el corte/reinicio automático de un segmento 'shift' cada N minutos,
-  // para no perder audio largo en un solo blob y para subirlo incrementalmente.
+  // Corte periódico del audio de fondo, solo fuera de un intento.
   const scheduleShiftRotation = useCallback(() => {
     if (rotateTimerRef.current) clearTimeout(rotateTimerRef.current)
     rotateTimerRef.current = setTimeout(() => {
       runExclusive(async () => {
-        // Solo rota si seguimos en modo 'shift' (si ya se abrió una encuesta, no interferir)
-        if (currentSegmentRef.current?.scope === "shift") {
-          await closeCurrentSegment()
-          const next = await openSegment("shift")
-          if (next) {
-            currentSegmentRef.current = next
-            scheduleShiftRotation()
-          }
+        if (currentSegmentRef.current?.scope !== "shift") return
+        if (attemptSegmentIdsRef.current !== null) {
+          scheduleShiftRotation()
+          return
         }
+        const next = await swapSegment("shift")
+        if (next) scheduleShiftRotation()
       })
     }, SHIFT_SEGMENT_ROTATE_MS)
-  }, [runExclusive, closeCurrentSegment, openSegment])
+  }, [runExclusive, swapSegment])
 
   // Inicia el turno: pide permiso de micrófono, crea el turno en el backend,
-  // y arranca la grabación de fondo (scope='shift'). Se llama automáticamente
-  // al entrar al portal, apenas el encuestador inicia sesión.
+  // y arranca la grabación de fondo (scope='shift').
   const startShift = useCallback(async () => {
     setStatus("requesting-permission")
     setError(null)
@@ -270,10 +443,8 @@ export function useShiftRecording() {
       setShiftId(newShiftId)
 
       await runExclusive(async () => {
-        // Defensivo: si por alguna razón ya hay un segmento abierto (ej.
-        // startShift llamado dos veces), no pisarlo con uno nuevo.
         if (currentSegmentRef.current) { setStatus("recording-shift"); return }
-        const segment = await openSegment("shift")
+        const segment = startSegment("shift")
         if (segment) {
           currentSegmentRef.current = segment
           scheduleShiftRotation()
@@ -283,122 +454,89 @@ export function useShiftRecording() {
           setError("No se pudo iniciar la grabación de fondo")
         }
       })
+      recoverPending()
     } catch (err) {
       console.error(err)
       setStatus("error")
       setError("No se pudo iniciar el turno")
     }
-  }, [runExclusive, openSegment, scheduleShiftRotation])
+  }, [runExclusive, startSegment, scheduleShiftRotation, recoverPending])
 
-  // Al abrir una encuesta: corta el segmento de fondo y arranca uno dedicado
-  // a esa encuesta. responseId es opcional y normalmente NO se conoce en este
-  // punto (la fila en `responses` recién se crea al enviar/abandonar) — se
-  // liga después, en endSurveySegment, cuando ya existe.
-  //
-  // recordAudio (pedido 2026-07-29): si la encuesta tiene
-  // settings.allowAudio=false, no se abre ningún segmento — el MediaStream
-  // del micrófono sigue vivo (no se libera el permiso) pero no se graba ni
-  // sube nada mientras dure esta encuesta puntual. audioPausedForSurveyRef
-  // marca este caso para que el handler de visibilitychange no lo confunda
-  // con una interrupción a medio grabar y trate de "retomar" grabación que
-  // nunca debió existir.
+  // "Iniciar encuesta": corta el audio de fondo y arranca el segmento de la
+  // encuesta. Con settings.allowAudio=false no se graba (ver
+  // audioPausedForSurveyRef).
   const startSurveySegment = useCallback(async (responseId?: string, recordAudio: boolean = true) => {
     await runExclusive(async () => {
       if (statusRef.current !== "recording-shift" && statusRef.current !== "recording-survey") return
-      // Ya estamos en la encuesta (llamada duplicada, ej. doble click) — no
-      // abrir un segundo segmento sobre el mismo MediaStream.
       if (currentSegmentRef.current?.scope === "survey") return
-      await closeCurrentSegment()
-      currentSurveyResponseIdRef.current = null
+      currentSurveyResponseIdRef.current = responseId ?? null
       if (!recordAudio) {
+        const prev = currentSegmentRef.current
+        currentSegmentRef.current = null
+        if (rotateTimerRef.current) { clearTimeout(rotateTimerRef.current); rotateTimerRef.current = null }
+        if (prev) {
+          await stopRecorder(prev)
+          void uploadSegment(prev)
+        }
         audioPausedForSurveyRef.current = true
         setStatus("recording-survey")
         return
       }
-      const segment = await openSegment("survey", responseId)
-      if (segment) {
-        currentSegmentRef.current = segment
-        currentSurveyResponseIdRef.current = responseId ?? null
-        setStatus("recording-survey")
-      }
+      await swapSegment("survey")
+      setStatus("recording-survey")
     })
-  }, [runExclusive, closeCurrentSegment, openSegment])
+  }, [runExclusive, swapSegment, uploadSegment])
 
-  // Al terminar/abandonar la encuesta: corta el segmento de la encuesta y
-  // retoma automáticamente la grabación de fondo del turno. responseId se
-  // pasa aquí (ya se conoce: se acaba de enviar o registrar el abandono) para
-  // ligar el audio de esta encuesta a su fila real en `responses`. Si la
-  // encuesta tenía el audio pausado (ver startSurveySegment), closeCurrentSegment
-  // no hace nada (no hay segmento que cerrar) y solo se retoma la grabación
-  // de fondo normalmente.
+  // Al enviar/abandonar la encuesta: corta el audio de la encuesta, liga todo
+  // el intento a su respuesta y retoma la grabación de fondo.
   const endSurveySegment = useCallback(async (responseId?: string) => {
     await runExclusive(async () => {
       if (statusRef.current !== "recording-survey") return
       const finalResponseId = responseId ?? currentSurveyResponseIdRef.current
-      await closeCurrentSegment(finalResponseId)
-      await linkAttemptToResponse(finalResponseId)
-      currentSurveyResponseIdRef.current = null
       audioPausedForSurveyRef.current = false
-      const segment = await openSegment("shift")
-      if (segment) {
-        currentSegmentRef.current = segment
-        scheduleShiftRotation()
-        setStatus("recording-shift")
-      }
+      const attemptIds = detachAttempt()
+      const next = await swapSegment("shift", finalResponseId)
+      await linkAttemptToResponse(attemptIds, finalResponseId)
+      currentSurveyResponseIdRef.current = null
+      if (next) scheduleShiftRotation()
+      setStatus("recording-shift")
     })
-  }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation, linkAttemptToResponse])
+  }, [runExclusive, swapSegment, detachAttempt, linkAttemptToResponse, scheduleShiftRotation])
 
   // Al entrar a una encuesta (pantalla "Iniciar encuesta / Registrar
-  // incidencia"): corta el audio de fondo en este punto y abre un intento
-  // nuevo. Lo grabado desde acá es el "antes" de ESTE intento — no se
-  // mezcla con lo que se grabó caminando desde la casa anterior.
+  // incidencia"): corta el audio de fondo y abre un intento nuevo. Lo
+  // grabado desde acá es el "antes" de ESTE intento.
   const beginAttempt = useCallback(async () => {
     await runExclusive(async () => {
       if (statusRef.current !== "recording-shift") return
       attemptSegmentIdsRef.current = []
-      // Pestaña oculta en este instante: no hay segmento que cortar; el
-      // handler de visibilitychange abrirá uno al volver y quedará dentro
-      // del intento (openSegment lo agrega a attemptSegmentIdsRef).
-      if (!currentSegmentRef.current) return
-      await closeCurrentSegment()
-      const segment = await openSegment("shift")
-      if (segment) {
-        currentSegmentRef.current = segment
-        scheduleShiftRotation()
-      }
+      acquireWakeLock()
+      const next = await swapSegment("shift")
+      if (next) scheduleShiftRotation()
     })
-  }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation])
+  }, [runExclusive, swapSegment, scheduleShiftRotation, acquireWakeLock])
 
-  // "Registrar incidencia": corta el audio en este punto, lo liga (junto
-  // con las demás partes del intento) a la respuesta de incidencia, y abre
-  // un segmento de fondo nuevo — así el audio de la siguiente incidencia
-  // siempre empieza a una hora posterior, sin arrastrar esta conversación.
+  // "Registrar incidencia": corta el audio en este punto, lo liga (con las
+  // demás partes del intento) a la incidencia y sigue grabando en un segmento
+  // nuevo — el audio de la siguiente incidencia empieza a una hora posterior.
   const markIncidence = useCallback(async (responseId?: string | null) => {
     await runExclusive(async () => {
-      if (statusRef.current !== "recording-shift") {
-        attemptSegmentIdsRef.current = null
-        return
-      }
-      await closeCurrentSegment(responseId)
-      await linkAttemptToResponse(responseId)
-      const segment = await openSegment("shift")
-      if (segment) {
-        currentSegmentRef.current = segment
-        scheduleShiftRotation()
-      }
+      const attemptIds = detachAttempt()
+      if (statusRef.current !== "recording-shift") return
+      const next = await swapSegment("shift", responseId)
+      await linkAttemptToResponse(attemptIds, responseId)
+      if (next) scheduleShiftRotation()
     })
-  }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation, linkAttemptToResponse])
+  }, [runExclusive, swapSegment, detachAttempt, linkAttemptToResponse, scheduleShiftRotation])
 
-  // Cierra todo: corta el segmento en curso, sube el audio y marca el turno
-  // como terminado. Se llama al cerrar sesión. keepalive:true permite que el
-  // fetch de cierre siga en curso brevemente aunque la pestaña ya se esté
-  // descargando (caso pagehide, ver más abajo) — sin esto, el navegador
-  // puede cancelar la petición a mitad de camino y el turno queda "activo"
-  // para siempre en la base de datos.
+  // Cierra todo al cerrar sesión. keepalive:true permite que el cierre del
+  // turno siga aunque la pestaña ya se esté descargando (pagehide); si la
+  // subida del audio no alcanza, queda en el teléfono para la próxima sesión.
   const endShift = useCallback(async () => {
+    attemptSegmentIdsRef.current = null
+    releaseWakeLock()
     await closeCurrentSegment()
     audioPausedForSurveyRef.current = false
-    attemptSegmentIdsRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (shiftIdRef.current) {
@@ -411,14 +549,8 @@ export function useShiftRecording() {
     shiftIdRef.current = null
     setShiftId(null)
     setStatus("idle")
-  }, [closeCurrentSegment])
+  }, [closeCurrentSegment, releaseWakeLock])
 
-  // Mejor esfuerzo: si se cierra la pestaña/navegador desde CUALQUIER página
-  // del portal (dashboard o una encuesta en curso), intenta cerrar el turno.
-  // Vive aquí (a nivel del hook, instanciado una sola vez en
-  // app/portal-encuestador/layout.tsx) y no en cada página, porque si
-  // viviera en la página del dashboard se perdería al navegar a una
-  // encuesta (esa página se desmonta y se lleva su listener con ella).
   useEffect(() => {
     const handler = () => { endShift() }
     window.addEventListener("pagehide", handler)
@@ -426,48 +558,87 @@ export function useShiftRecording() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Mejor esfuerzo: si la pestaña se oculta o se está por cerrar, intenta
-  // cortar y subir el segmento en curso. No hay garantía de que complete
-  // (limitación de navegador, ver comentario arriba del archivo).
+  const shouldBeRecording = () =>
+    !!shiftIdRef.current &&
+    (statusRef.current === "recording-shift" || statusRef.current === "recording-survey") &&
+    !audioPausedForSurveyRef.current
+
+  // Verifica que la grabación siga viva; si el sistema cortó el micrófono o
+  // el grabador, guarda/sube lo que alcanzó a grabar y retoma sola.
+  const ensureRecording = useCallback(async () => {
+    await runExclusive(async () => {
+      if (!shouldBeRecording()) return
+      const track = streamRef.current?.getAudioTracks()[0]
+      const streamAlive = !!track && track.readyState === "live"
+      const segment = currentSegmentRef.current
+      if (streamAlive && segment && segment.recorder.state === "recording") return
+
+      if (!streamAlive) {
+        try {
+          streamRef.current?.getTracks().forEach((t) => t.stop())
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } catch (err) {
+          console.error("No se pudo recuperar el micrófono:", err)
+          return
+        }
+      }
+      const scope: "shift" | "survey" = segment?.scope ?? (statusRef.current === "recording-survey" ? "survey" : "shift")
+      const next = await swapSegment(scope)
+      if (next && scope === "shift") scheduleShiftRotation()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runExclusive, swapSegment, scheduleShiftRotation])
+
   useEffect(() => {
     const handleVisibility = () => {
-      runExclusive(async () => {
-        if (document.visibilityState === "hidden" && currentSegmentRef.current) {
-          // Best effort: sube lo grabado hasta ahora antes de que el navegador
-          // pueda suspender la pestaña. Recordamos qué scope tenía el segmento
-          // para poder retomarlo exactamente igual al volver.
-          pendingResumeScopeRef.current = currentSegmentRef.current.scope
-          pendingResumeResponseIdRef.current = currentSegmentRef.current.scope === "survey"
-            ? currentSurveyResponseIdRef.current
-            : null
-          await closeCurrentSegment()
-        } else if (
-          document.visibilityState === "visible" &&
-          !currentSegmentRef.current &&
-          shiftIdRef.current &&
-          streamRef.current &&
-          !audioPausedForSurveyRef.current // no "retomar" grabación en una encuesta con audio desactivado a propósito (ver startSurveySegment)
-        ) {
-          // Volvimos a primer plano sin un segmento activo — retoma grabando
-          // en el mismo scope en el que estaba antes de ocultarse.
-          const scope = pendingResumeScopeRef.current ?? "shift"
-          const responseId = pendingResumeResponseIdRef.current ?? undefined
-          const segment = await openSegment(scope, responseId)
-          if (segment) {
-            currentSegmentRef.current = segment
-            if (scope === "shift") scheduleShiftRotation()
-          }
+      if (document.visibilityState === "hidden") {
+        // NO se detiene la grabación: solo se fuerza a guardar en el teléfono
+        // lo grabado hasta este instante, por si el sistema mata la página.
+        const recorder = currentSegmentRef.current?.recorder
+        if (recorder && recorder.state === "recording") {
+          try { recorder.requestData() } catch { /* best effort */ }
         }
-      })
+        return
+      }
+      acquireWakeLock()
+      ensureRecording()
+      recoverPending()
     }
     document.addEventListener("visibilitychange", handleVisibility)
     return () => document.removeEventListener("visibilitychange", handleVisibility)
-  }, [runExclusive, closeCurrentSegment, openSegment, scheduleShiftRotation])
+  }, [acquireWakeLock, ensureRecording, recoverPending])
+
+  // Con la página a la vista, revisa periódicamente que se esté grabando.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "visible" || !shouldBeRecording()) return
+      const track = streamRef.current?.getAudioTracks()[0]
+      const segment = currentSegmentRef.current
+      const broken = !segment || !track || track.readyState !== "live" || segment.recorder.state !== "recording"
+      if (broken) ensureRecording()
+    }, HEALTH_CHECK_MS)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensureRecording])
+
+  // Al cargar el portal, al volver la señal y cada minuto, sube lo pendiente
+  // (incluido el audio de una página que el sistema mató mientras grababa).
+  useEffect(() => {
+    recoverPending()
+    const onOnline = () => { recoverPending() }
+    window.addEventListener("online", onOnline)
+    const interval = setInterval(() => { recoverPending() }, 60 * 1000)
+    return () => {
+      window.removeEventListener("online", onOnline)
+      clearInterval(interval)
+    }
+  }, [recoverPending])
 
   // Cleanup al desmontar el componente (navegación fuera del portal).
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop())
+      try { wakeLockRef.current?.release?.() } catch { /* ya liberado */ }
     }
   }, [])
 
