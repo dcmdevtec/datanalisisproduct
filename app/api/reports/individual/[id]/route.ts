@@ -321,15 +321,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // respuesta por el portal (ver POST /api/portal-encuestador/recordings/link).
       // Si existen, son exactamente los de este intento y se salta la
       // ventana por hora de abajo, que queda solo para audios viejos.
+      type PreRow = { shift_id: string | null; storage_path: string | null; duration_secs: number | null; started_at: string | null }
       const { data: linkedPreRows } = await (admin as any)
         .from("surveyor_recordings")
-        .select("storage_path, duration_secs, started_at")
+        .select("shift_id, storage_path, duration_secs, started_at")
         .eq("response_id", responseId)
         .eq("scope", "shift")
         .eq("upload_status", "uploaded")
-        .order("started_at", { ascending: true }) as { data: { storage_path: string | null; duration_secs: number | null; started_at: string | null }[] | null }
+        .order("started_at", { ascending: true }) as { data: PreRow[] | null }
       const hasLinkedPre = (linkedPreRows || []).length > 0
-      for (const row of linkedPreRows || []) {
+      const preRowsToShow: PreRow[] = [...(linkedPreRows || [])]
+      // Lo que pasó ANTES de abrir la encuesta en el celular: el segmento
+      // inmediatamente anterior al primer clip ligado, si no pertenece a otra
+      // respuesta — mismo criterio que lib/audio-attribution.ts (repositorio
+      // y ZIP), para que las tres vistas muestren lo mismo.
+      const firstLinked = preRowsToShow[0]
+      if (firstLinked?.shift_id && firstLinked.started_at) {
+        const { data: prevClip } = await (admin as any)
+          .from("surveyor_recordings")
+          .select("shift_id, response_id, storage_path, duration_secs, started_at, upload_status")
+          .eq("shift_id", firstLinked.shift_id)
+          .eq("scope", "shift")
+          .lt("started_at", firstLinked.started_at)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (prevClip && !prevClip.response_id && prevClip.upload_status === "uploaded" && prevClip.storage_path) {
+          preRowsToShow.unshift(prevClip)
+        }
+      }
+      for (const row of preRowsToShow) {
         if (!row.storage_path) continue
         const { data: signed } = await admin.storage
           .from("response-media")

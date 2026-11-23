@@ -92,6 +92,51 @@ export async function resolvePreSurveyClips(
     preClipsByResponseId.get(clip.response_id)!.push(clip)
   }
 
+  // 1b) Lo que pasó ANTES de abrir la encuesta en el celular (ítem 26/11/2026:
+  // "lo que pasa antes de la incidencia no lo está subiendo"). El portal corta
+  // el audio al abrir la encuesta, así que la conversación en la puerta antes
+  // de abrirla queda en el segmento anterior, sin ligar. Se agrega el segmento
+  // inmediatamente anterior al primer clip ligado de cada respuesta, solo si
+  // no está ligado a otra respuesta — si lo está, es el final del intento
+  // anterior y no hay "antes" que agregar (así nunca se mezclan intentos).
+  const claimed = new Set<string>()
+  const linkedShiftIds = Array.from(
+    new Set(((linkedClips || []) as ShiftClip[]).map((c) => c.shift_id).filter(Boolean))
+  ) as string[]
+  if (linkedShiftIds.length) {
+    // Toda la línea de tiempo del turno (también los no subidos o ligados a
+    // otra respuesta): el "anterior" se decide sobre la secuencia real.
+    const { data: timelineRows } = await admin
+      .from("surveyor_recordings")
+      .select(`${CLIP_COLUMNS}, upload_status`)
+      .in("shift_id", linkedShiftIds)
+      .eq("scope", "shift")
+    const timelineByShift = new Map<string, any[]>()
+    for (const row of (timelineRows || []) as any[]) {
+      if (!row.shift_id || !row.started_at) continue
+      if (!timelineByShift.has(row.shift_id)) timelineByShift.set(row.shift_id, [])
+      timelineByShift.get(row.shift_id)!.push(row)
+    }
+    for (const rows of timelineByShift.values()) rows.sort((a, b) => a.started_at.localeCompare(b.started_at))
+
+    for (const clips of preClipsByResponseId.values()) {
+      const first = clips.reduce<ShiftClip | null>(
+        (min, c) => (c.started_at && (!min || c.started_at < (min.started_at as string)) ? c : min),
+        null
+      )
+      if (!first?.shift_id || !first.started_at) continue
+      let prev: any = null
+      for (const row of timelineByShift.get(first.shift_id) || []) {
+        if (row.started_at < first.started_at) prev = row
+        else break
+      }
+      if (prev && !prev.response_id && prev.upload_status === "uploaded" && prev.storage_path && !claimed.has(prev.id)) {
+        clips.push(prev as ShiftClip)
+        claimed.add(prev.id)
+      }
+    }
+  }
+
   // 2) Ventana por hora, solo para respuestas sin clips ligados.
   const involvedSurveyorIds = Array.from(
     new Set(Array.from(resolvedSurveyorIdByResponseId.values()).filter(Boolean) as string[])
@@ -145,7 +190,7 @@ export async function resolvePreSurveyClips(
       // Una respuesta con clips ligados ya tiene sus audios exactos; igual
       // avanza el límite para que la siguiente no tome lo que le tocaba.
       if (!preClipsByResponseId.has(r.id)) {
-        const clips = clipsOfShift.filter((c) => c.started_at && c.started_at >= lower && c.started_at < upper)
+        const clips = clipsOfShift.filter((c) => !claimed.has(c.id) && c.started_at && c.started_at >= lower && c.started_at < upper)
         if (clips.length > 0) preClipsByResponseId.set(r.id, clips)
       }
       prevBoundary = r.completed_at || r.created_at
