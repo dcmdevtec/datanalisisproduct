@@ -250,6 +250,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // ("Antes de iniciar la encuesta"). El frontend usa esto para
         // mostrar la distinción, igual que en Respuestas Individuales.
         segment: opts.segment,
+        // responseId + partLabel (ítem 26/11/2026, "distinguir qué fragmentos
+        // pertenecen a una encuesta, el antes y el después"): el frontend
+        // agrupa los fragmentos por intento y muestra su orden (ANTES 1,
+        // ANTES 2, PARTE 1...), igual que en el nombre del archivo.
+        responseId: rec.response_id ?? null,
+        partLabel: opts.partLabel,
       }
     }
 

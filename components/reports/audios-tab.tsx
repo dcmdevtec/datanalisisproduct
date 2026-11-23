@@ -42,6 +42,7 @@ interface Recording {
   // el audio de un intento abandonado del de la encuesta que sí completó.
   outcome: "efectiva" | "incidencia" | "abandonada" | "descalificado" | null
   startedAt: string | null
+  endedAt?: string | null
   durationSecs: number | null
   audioUrl: string | null
   fileName: string
@@ -52,6 +53,30 @@ interface Recording {
   // incidencia, charla previa) — ver app/api/surveys/[id]/recordings/route.ts.
   // Opcional por compatibilidad si llega una respuesta vieja sin el campo.
   segment?: "survey" | "shift"
+  // Ítem 26/11/2026 ("distinguir qué fragmentos pertenecen a una encuesta,
+  // el antes y el después"): respuesta/intento al que pertenece el fragmento
+  // y su orden dentro de él ("ANTES 1", "PARTE 1"...), para agrupar.
+  responseId?: string | null
+  partLabel?: string
+  incidenceType?: string | null
+}
+
+// Un intento (una encuesta o incidencia) con todos sus fragmentos en orden.
+interface Attempt {
+  key: string
+  responseId: string | null
+  outcome: Recording["outcome"]
+  incidenceType: string | null
+  clips: Recording[]
+  startedAt: string | null
+  endedAt: string | null
+  totalSecs: number
+}
+
+// "ANTES 2" -> "Antes 2", "PARTE 1" -> "Durante 1".
+function fragmentLabel(r: Recording): string {
+  const n = r.partLabel?.match(/\d+/)?.[0]
+  return `${r.segment === "shift" ? "Antes" : "Durante"}${n ? ` ${n}` : ""}`
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
@@ -205,17 +230,43 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
     })
   }, [filteredRecordings])
 
-  // Árbol Fecha → Encuestador → grabaciones (orden: fecha más reciente
-  // primero, encuestador alfabético dentro de cada fecha).
+  // Árbol Fecha → Encuestador → Encuesta (intento) → fragmentos. Ítem
+  // 26/11/2026: antes los fragmentos de distintas encuestas salían mezclados
+  // en una sola lista; ahora cada intento agrupa su "antes" y su "durante"
+  // en orden cronológico. Orden: fecha más reciente primero, encuestador
+  // alfabético, encuesta más reciente primero. La fecha/encuestador de un
+  // intento son los de su primer fragmento, para no partirlo en dos grupos.
   const tree = useMemo(() => {
-    const byDate = new Map<string, Map<string, Recording[]>>()
+    const clipsByAttempt = new Map<string, Recording[]>()
     for (const r of filteredRecordings) {
-      const dateKey = (r.startedAt ? bogotaDayKey(r.startedAt) : "") || "Sin fecha"
-      const surveyorKey = r.surveyorName || "Sin asignar"
+      const key = r.responseId ?? `solo-${r.id}`
+      if (!clipsByAttempt.has(key)) clipsByAttempt.set(key, [])
+      clipsByAttempt.get(key)!.push(r)
+    }
+    const byDate = new Map<string, Map<string, Attempt[]>>()
+    for (const [key, clips] of clipsByAttempt) {
+      clips.sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""))
+      const first = clips[0]
+      const last = clips[clips.length - 1]
+      const lastEnd =
+        last.endedAt ??
+        (last.startedAt && last.durationSecs ? new Date(new Date(last.startedAt).getTime() + last.durationSecs * 1000).toISOString() : null)
+      const attempt: Attempt = {
+        key,
+        responseId: first.responseId ?? null,
+        outcome: first.outcome,
+        incidenceType: first.incidenceType ?? null,
+        clips,
+        startedAt: first.startedAt,
+        endedAt: lastEnd,
+        totalSecs: clips.reduce((sum, c) => sum + (c.durationSecs || 0), 0),
+      }
+      const dateKey = (first.startedAt ? bogotaDayKey(first.startedAt) : "") || "Sin fecha"
+      const surveyorKey = first.surveyorName || "Sin asignar"
       if (!byDate.has(dateKey)) byDate.set(dateKey, new Map())
       const bySurveyor = byDate.get(dateKey)!
       if (!bySurveyor.has(surveyorKey)) bySurveyor.set(surveyorKey, [])
-      bySurveyor.get(surveyorKey)!.push(r)
+      bySurveyor.get(surveyorKey)!.push(attempt)
     }
     return Array.from(byDate.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
@@ -223,7 +274,10 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
         date,
         surveyors: Array.from(bySurveyor.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([surveyorName, recs]) => ({ surveyorName, recordings: recs })),
+          .map(([surveyorName, attempts]) => ({
+            surveyorName,
+            attempts: attempts.sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || "")),
+          })),
       }))
   }, [filteredRecordings])
 
@@ -345,7 +399,7 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
 
             <div className="rounded-md border divide-y max-h-[32rem] overflow-y-auto">
               {tree.map(({ date, surveyors }) => {
-                const dateIds = surveyors.flatMap((s) => s.recordings.map((r) => r.id))
+                const dateIds = surveyors.flatMap((s) => s.attempts.flatMap((a) => a.clips.map((r) => r.id)))
                 const dateState = groupCheckState(dateIds, selectedIds)
                 const collapsed = collapsedDates.has(date)
                 return (
@@ -360,8 +414,8 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
                         · {dateIds.length} grabación{dateIds.length !== 1 ? "es" : ""}
                       </span>
                     </div>
-                    {!collapsed && surveyors.map(({ surveyorName, recordings: recs }) => {
-                      const surveyorIds = recs.map((r) => r.id)
+                    {!collapsed && surveyors.map(({ surveyorName, attempts }) => {
+                      const surveyorIds = attempts.flatMap((a) => a.clips.map((r) => r.id))
                       const surveyorState = groupCheckState(surveyorIds, selectedIds)
                       const surveyorKey = `${date}::${surveyorName}`
                       const surveyorCollapsed = collapsedSurveyors.has(surveyorKey)
@@ -373,47 +427,76 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
                             </button>
                             <Checkbox checked={surveyorState} onCheckedChange={(v) => toggleIds(surveyorIds, v === true)} />
                             <span>{surveyorName}</span>
-                            <span className="font-normal">· {recs.length} grabación{recs.length !== 1 ? "es" : ""}</span>
+                            <span className="font-normal">
+                              · {attempts.length} encuesta{attempts.length !== 1 ? "s" : ""} · {surveyorIds.length} fragmento{surveyorIds.length !== 1 ? "s" : ""}
+                            </span>
                           </div>
-                          {!surveyorCollapsed && recs.map((r) => (
-                            <div key={r.id} className="flex items-center gap-3 pl-14 pr-3 py-2 text-sm">
-                              <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={(v) => toggleIds([r.id], v === true)} />
-                              <Play className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                              <span className="text-xs text-muted-foreground w-16 flex-shrink-0">
-                                {r.startedAt ? bogotaDateTime(r.startedAt).time : "—"}
-                              </span>
-                              {/* segment (26/10/2026): distingue el audio de ANTES de iniciar
-                                  la encuesta (fondo del turno) del de DURANTE — mismo criterio
-                                  de color que ya usa individual-responses-tab.tsx para no
-                                  introducir una convención visual distinta acá. */}
-                              {r.segment === "shift" ? (
-                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 bg-sky-100 text-sky-700">
-                                  Antes de iniciar
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 bg-amber-100 text-amber-700">
-                                  Durante la encuesta
-                                </span>
-                              )}
-                              {/* A qué intento pertenece — ver comentario en la interfaz Recording */}
-                              {r.outcome && (
-                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${OUTCOME_CLASS[r.outcome] || "bg-muted text-muted-foreground"}`}>
-                                  {OUTCOME_LABEL[r.outcome] || r.outcome}
-                                </span>
-                              )}
-                              <span className="text-xs text-muted-foreground w-14 flex-shrink-0 font-mono">{formatDuration(r.durationSecs)}</span>
-                              {r.audioUrl ? (
-                                <audio controls src={r.audioUrl} className="h-8 flex-1 min-w-0" />
-                              ) : (
-                                <span className="text-xs text-muted-foreground italic flex-1">Sin archivo disponible</span>
-                              )}
-                              {r.audioUrl && (
-                                <a href={r.audioUrl} download={r.fileName} title="Descargar esta grabación">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"><Download className="h-3.5 w-3.5" /></Button>
-                                </a>
-                              )}
+                          {!surveyorCollapsed && (
+                            <div className="space-y-2 py-2 pl-14 pr-3">
+                              {attempts.map((attempt) => {
+                                const attemptIds = attempt.clips.map((r) => r.id)
+                                const attemptState = groupCheckState(attemptIds, selectedIds)
+                                return (
+                                  <div key={attempt.key} className="overflow-hidden rounded-md border">
+                                    {/* Encabezado del intento: a qué encuesta pertenecen los fragmentos de abajo. */}
+                                    <div className="flex flex-wrap items-center gap-2 bg-muted/40 px-3 py-1.5 text-xs">
+                                      <Checkbox checked={attemptState} onCheckedChange={(v) => toggleIds(attemptIds, v === true)} />
+                                      <span className="font-semibold">Encuesta</span>
+                                      {attempt.outcome && (
+                                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${OUTCOME_CLASS[attempt.outcome] || "bg-muted text-muted-foreground"}`}>
+                                          {OUTCOME_LABEL[attempt.outcome] || attempt.outcome}
+                                          {attempt.outcome === "incidencia" && attempt.incidenceType ? `: ${attempt.incidenceType}` : ""}
+                                        </span>
+                                      )}
+                                      <span className="text-muted-foreground">
+                                        {attempt.startedAt ? bogotaDateTime(attempt.startedAt).time : "—"}
+                                        {attempt.endedAt ? ` – ${bogotaDateTime(attempt.endedAt).time}` : ""}
+                                        {" · "}
+                                        {attempt.clips.length} fragmento{attempt.clips.length !== 1 ? "s" : ""}
+                                        {attempt.totalSecs > 0 ? ` · ${formatDuration(attempt.totalSecs)} en total` : ""}
+                                      </span>
+                                      {attempt.responseId && (
+                                        <span className="ml-auto font-mono text-[10px] text-muted-foreground" title={attempt.responseId}>
+                                          #{attempt.responseId.split("-")[0]}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="divide-y">
+                                      {attempt.clips.map((r) => (
+                                        <div key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                                          <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={(v) => toggleIds([r.id], v === true)} />
+                                          <Play className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                          <span className="text-xs text-muted-foreground w-12 flex-shrink-0">
+                                            {r.startedAt ? bogotaDateTime(r.startedAt).time : "—"}
+                                          </span>
+                                          {/* Antes (fondo del turno, sky) / Durante (encuesta, amber) —
+                                              mismos colores que individual-responses-tab.tsx. */}
+                                          <span
+                                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 w-20 text-center ${
+                                              r.segment === "shift" ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"
+                                            }`}
+                                          >
+                                            {fragmentLabel(r)}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground w-12 flex-shrink-0 font-mono">{formatDuration(r.durationSecs)}</span>
+                                          {r.audioUrl ? (
+                                            <audio controls src={r.audioUrl} className="h-8 flex-1 min-w-0" />
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground italic flex-1">Sin archivo disponible</span>
+                                          )}
+                                          {r.audioUrl && (
+                                            <a href={r.audioUrl} download={r.fileName} title="Descargar este fragmento">
+                                              <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"><Download className="h-3.5 w-3.5" /></Button>
+                                            </a>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              })}
                             </div>
-                          ))}
+                          )}
                         </div>
                       )
                     })}
