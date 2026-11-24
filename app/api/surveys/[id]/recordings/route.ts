@@ -3,6 +3,7 @@ import { createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
 import { bogotaDayKey } from "@/lib/bogota-time"
 import { resolvePreSurveyClips } from "@/lib/audio-attribution"
+import { selectInChunks } from "@/lib/supabase-chunked"
 
 // Ítem "Nombre de los audios" (acta de ajustes 05/10/2026):
 // "[ENCUESTADOR] - [FECHA] - [CODIGO INTERNO] - [ESTADO DE ENCUESTA] -
@@ -86,13 +87,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const responseById = new Map<string, any>((responses || []).map((r: any) => [r.id, r]))
 
-    const { data: recordings, error: recordingsError } = await admin
-      .from("surveyor_recordings")
-      .select("id, surveyor_id, response_id, started_at, ended_at, storage_path, duration_secs, upload_status")
-      .in("response_id", responseIds)
-      .eq("scope", "survey")
-      .eq("upload_status", "uploaded")
-      .order("started_at", { ascending: false })
+    // Por lotes: con más de ~250 respuestas la URL del .in() superaba el
+    // límite del servidor (414) y la pestaña Audios fallaba entera.
+    const { data: recordings, error: recordingsError } = await selectInChunks(responseIds, (chunk) =>
+      admin
+        .from("surveyor_recordings")
+        .select("id, surveyor_id, response_id, started_at, ended_at, storage_path, duration_secs, upload_status")
+        .in("response_id", chunk)
+        .eq("scope", "survey")
+        .eq("upload_status", "uploaded")
+    )
 
     if (recordingsError) {
       // Si la tabla no existe (código 42P01 = undefined_table) informar con
@@ -123,11 +127,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if ((!recordings || recordings.length === 0) && preClipsByResponseId.size === 0) {
       // Diagnóstico extra: ¿hay grabaciones en otros estados (failed/pending)?
-      const { data: allRecs } = await admin
-        .from("surveyor_recordings")
-        .select("id, upload_status, response_id, scope")
-        .in("response_id", responseIds)
-        .eq("scope", "survey")
+      const { data: allRecs } = await selectInChunks(responseIds, (chunk) =>
+        admin.from("surveyor_recordings").select("id, upload_status, response_id, scope").in("response_id", chunk).eq("scope", "survey")
+      )
 
       const failedCount = (allRecs || []).filter((r: any) => r.upload_status === "failed").length
       const pendingCount = (allRecs || []).filter((r: any) => r.upload_status === "pending").length
@@ -156,10 +158,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ...involvedSurveyorIds,
       ])
     )
-    const { data: surveyors } = await admin
-      .from("surveyors")
-      .select("id, name, email, supervisor_id")
-      .in("id", surveyorIds)
+    const { data: surveyors } = await selectInChunks(surveyorIds, (chunk) =>
+      admin.from("surveyors").select("id, name, email, supervisor_id").in("id", chunk)
+    )
     const surveyorById = new Map<string, any>((surveyors || []).map((s: any) => [s.id, s]))
 
     // Ítem 20/10/2026 ("revisa que todos los filtros sirvan"): Supervisor y
@@ -171,9 +172,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const supervisorIds = Array.from(
       new Set((surveyors || []).map((s: any) => s.supervisor_id).filter(Boolean))
     )
-    const { data: supervisorUsers } = supervisorIds.length
-      ? await admin.from("users").select("id, coordinator_id").in("id", supervisorIds)
-      : { data: [] as any[] }
+    const { data: supervisorUsers } = await selectInChunks(supervisorIds as string[], (chunk) =>
+      admin.from("users").select("id, coordinator_id").in("id", chunk)
+    )
     const coordinatorIdBySupervisorId = new Map<string, string | null>(
       (supervisorUsers || []).map((u: any) => [u.id, u.coordinator_id ?? null])
     )

@@ -6,6 +6,7 @@ import { ZipArchive } from "archiver"
 import { Readable } from "stream"
 import { bogotaDayKey } from "@/lib/bogota-time"
 import { resolvePreSurveyClips } from "@/lib/audio-attribution"
+import { selectInChunks } from "@/lib/supabase-chunked"
 
 // GET /api/surveys/[id]/audios/zip?date=YYYY-MM-DD&surveyorId=<uuid> —
 // descarga las grabaciones de audio de una encuesta en un único ZIP,
@@ -44,7 +45,51 @@ import { resolvePreSurveyClips } from "@/lib/audio-attribution"
 // todas las grabaciones en memoria a la vez — cada archivo se descarga de
 // Supabase Storage, se agrega al archive, y se libera antes de pasar al
 // siguiente.
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+interface ZipInput {
+  dateFilter: string | null // YYYY-MM-DD
+  surveyorIdFilter: string | null
+  // Ítem 09/09/2026: "repositorio jerárquico... seleccionar mediante
+  // casillas exactamente qué carpetas o audios descargar". date/surveyorId
+  // solo soportan UN valor cada uno; recordingIds, cuando viene, manda sobre
+  // esos dos filtros: es la lista exacta de ids que el árbol dejó marcados.
+  recordingIdsFilter: string[] | null
+  // Ítem #36 (acta 07/09/2026): formato opcional mp3; por defecto el webm
+  // original grabado por el navegador.
+  wantsMp3: boolean
+}
+
+type RouteContext = { params: Promise<{ id: string }> }
+
+// Forma heredada: filtros en la URL. Sirve para pocos ids; con la selección
+// del árbol se usa POST (abajo).
+export async function GET(request: NextRequest, context: RouteContext) {
+  const { searchParams } = new URL(request.url)
+  const recordingIdsParam = searchParams.get("recordingIds")
+  return buildZip(context, {
+    dateFilter: searchParams.get("date"),
+    surveyorIdFilter: searchParams.get("surveyorId"),
+    recordingIdsFilter: recordingIdsParam ? recordingIdsParam.split(",").filter(Boolean) : null,
+    wantsMp3: searchParams.get("format") === "mp3",
+  })
+}
+
+// Selección del árbol en el cuerpo de la petición (ítem 24/11/2026): con
+// "Seleccionar todo" sobre cientos o miles de audios, la lista de ids en la
+// URL superaba el tamaño máximo que aceptan el servidor y el proxy.
+export async function POST(request: NextRequest, context: RouteContext) {
+  const body = await request.json().catch(() => null)
+  const ids = Array.isArray(body?.recordingIds)
+    ? body.recordingIds.filter((x: unknown): x is string => typeof x === "string" && UUID_RE.test(x))
+    : []
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "No se recibió ninguna grabación para descargar" }, { status: 400 })
+  }
+  return buildZip(context, { dateFilter: null, surveyorIdFilter: null, recordingIdsFilter: ids, wantsMp3: body?.format === "mp3" })
+}
+
+async function buildZip({ params }: RouteContext, { dateFilter, surveyorIdFilter, recordingIdsFilter, wantsMp3 }: ZipInput) {
   // Ítem "revisar los accesos y permisos de cada rol" (13/10/2026): mismo
   // criterio que recordings/route.ts — faltaba "coordinator".
   const auth = await requireRole(["admin", "supervisor", "coordinator"])
@@ -52,24 +97,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   try {
     const { id: surveyId } = await params
-    const { searchParams } = new URL(request.url)
-    const dateFilter = searchParams.get("date") // YYYY-MM-DD, opcional
-    const surveyorIdFilter = searchParams.get("surveyorId") // opcional
-    // Ítem 09/09/2026: "crear un repositorio jerárquico para descargar
-    // audios — encuesta → fecha → encuestador → audios, permitir
-    // seleccionar mediante casillas exactamente qué carpetas o audios
-    // descargar". date/surveyorId (arriba) solo soportan UN valor cada
-    // uno — no alcanza para una selección de árbol con casillas (varias
-    // fechas y/o encuestadores sueltos a la vez). recordingIds, cuando
-    // viene, manda sobre esos dos filtros: es la lista exacta de
-    // surveyor_recordings.id que el árbol dejó marcados.
-    const recordingIdsParam = searchParams.get("recordingIds") // CSV de ids, opcional
-    const recordingIdsFilter = recordingIdsParam ? recordingIdsParam.split(",").filter(Boolean) : null
-    // Ítem #36 (acta 07/09/2026): "¿en qué otro formato podemos guardar estos
-    // audios? Que no sea webm" — opcional, default se mantiene en el formato
-    // original grabado por el navegador (webm/opus) para no romper nada para
-    // quien no pida el cambio.
-    const wantsMp3 = searchParams.get("format") === "mp3"
     const admin = createAdminSupabase() as any
 
     const { data: survey } = await admin
@@ -114,17 +141,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    let recordingsQuery = admin
-      .from("surveyor_recordings")
-      .select("id, surveyor_id, response_id, shift_id, started_at, storage_path")
-      .in("response_id", responseIds)
-      .eq("scope", "survey")
-      .eq("upload_status", "uploaded")
-      .not("storage_path", "is", null)
-    if (recordingIdsFilter) recordingsQuery = recordingsQuery.in("id", recordingIdsFilter)
-    else if (surveyorIdFilter) recordingsQuery = recordingsQuery.eq("surveyor_id", surveyorIdFilter)
-
-    const { data: recordingsRaw, error: recordingsError } = await recordingsQuery
+    // Por lotes (ver lib/supabase-chunked.ts): con encuestas grandes o una
+    // selección grande, un solo .in() superaba el largo máximo de URL (414).
+    const surveyRecordings = (q: any) =>
+      q.eq("scope", "survey").eq("upload_status", "uploaded").not("storage_path", "is", null)
+    const RECORDING_COLUMNS = "id, surveyor_id, response_id, shift_id, started_at, storage_path"
+    const { data: recordingsRaw, error: recordingsError } = recordingIdsFilter
+      ? await selectInChunks(recordingIdsFilter, (chunk) =>
+          surveyRecordings(admin.from("surveyor_recordings").select(RECORDING_COLUMNS).in("id", chunk))
+        ).then((res) => ({
+          // Solo grabaciones de respuestas de ESTA encuesta: un id ajeno en la
+          // selección no puede colarse en el ZIP.
+          ...res,
+          data: res.data.filter((r: any) => responseById.has(r.response_id)),
+        }))
+      : await selectInChunks(responseIds, (chunk) => {
+          let q = surveyRecordings(admin.from("surveyor_recordings").select(RECORDING_COLUMNS).in("response_id", chunk))
+          if (surveyorIdFilter) q = q.eq("surveyor_id", surveyorIdFilter)
+          return q
+        })
 
     if (recordingsError) {
       console.error("Error obteniendo grabaciones para ZIP:", recordingsError)
@@ -173,7 +208,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ...standaloneShiftRecs.map((r: any) => r.surveyor_id).filter(Boolean),
       ])
     )
-    const { data: surveyors } = await admin.from("surveyors").select("id, name").in("id", surveyorIds)
+    const { data: surveyors } = await selectInChunks(surveyorIds as string[], (chunk) =>
+      admin.from("surveyors").select("id, name").in("id", chunk)
+    )
     const surveyorNameById = new Map<string, string>((surveyors || []).map((s: any) => [s.id, s.name || "Sin nombre"]))
 
     const projectName = (survey.projects as any)?.name || "Sin proyecto"

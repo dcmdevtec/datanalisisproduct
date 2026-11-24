@@ -316,10 +316,13 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
     setDownloading(true)
     const loadingToast = toast({ title: "Generando ZIP...", description: "Descargando y empaquetando los audios, puede tardar unos segundos." })
     try {
-      const qs = new URLSearchParams()
-      qs.set("recordingIds", Array.from(selectedIds).join(","))
-      if (format === "mp3") qs.set("format", "mp3")
-      const res = await fetch(`/api/surveys/${surveyId}/audios/zip?${qs.toString()}`)
+      // POST con la selección en el cuerpo: con cientos de audios marcados,
+      // la lista de ids en la URL superaba el largo máximo permitido.
+      const res = await fetch(`/api/surveys/${surveyId}/audios/zip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recordingIds: Array.from(selectedIds), format }),
+      })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         toast({ title: "No se pudo descargar", description: body?.error || "Error al generar el ZIP de audios.", variant: "destructive" })

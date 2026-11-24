@@ -13,6 +13,8 @@
 //    respuesta, acotados por la respuesta anterior del mismo turno. Nunca
 //    toma un clip ya ligado a otra respuesta.
 
+import { selectInChunks } from "./supabase-chunked"
+
 export interface ShiftClip {
   id: string
   shift_id: string | null
@@ -48,19 +50,20 @@ export async function resolvePreSurveyClips(
   // 2) metadata.surveyor_id (APK); 3) respondent_id, que en
   // incidencia/abandono guarda el user_id del ENCUESTADOR (ver
   // app/api/portal-encuestador/responses/finish/route.ts).
-  const assignmentIds = Array.from(new Set(responses.map((r) => r.assignment_id).filter(Boolean))) as string[]
-  const { data: sszRows } = assignmentIds.length
-    ? await admin.from("survey_surveyor_zones").select("id, surveyor_id").in("id", assignmentIds)
-    : { data: [] as any[] }
+  // Todas las consultas .in() van por lotes: con encuestas de más de ~250
+  // respuestas la URL superaba el límite del servidor (ver supabase-chunked.ts).
+  const { data: sszRows } = await selectInChunks(responses.map((r) => r.assignment_id), (chunk) =>
+    admin.from("survey_surveyor_zones").select("id, surveyor_id").in("id", chunk)
+  )
   const surveyorIdByAssignmentId = new Map<string, string>((sszRows || []).map((r: any) => [r.id, r.surveyor_id]))
 
-  const respondentIds = Array.from(new Set(responses.map((r) => r.respondent_id).filter(Boolean))) as string[]
-  const { data: byUserId } = respondentIds.length
-    ? await admin.from("surveyors").select("id, user_id").in("user_id", respondentIds)
-    : { data: [] as any[] }
-  const { data: byOwnId } = respondentIds.length
-    ? await admin.from("surveyors").select("id").in("id", respondentIds)
-    : { data: [] as any[] }
+  const respondentIds = responses.map((r) => r.respondent_id)
+  const { data: byUserId } = await selectInChunks(respondentIds, (chunk) =>
+    admin.from("surveyors").select("id, user_id").in("user_id", chunk)
+  )
+  const { data: byOwnId } = await selectInChunks(respondentIds, (chunk) =>
+    admin.from("surveyors").select("id").in("id", chunk)
+  )
   const surveyorIdByUserId = new Map<string, string>((byUserId || []).map((s: any) => [s.user_id, s.id]))
   const surveyorIdsByOwnId = new Set<string>((byOwnId || []).map((s: any) => s.id))
 
@@ -77,15 +80,15 @@ export async function resolvePreSurveyClips(
   const resolvedSurveyorIdByResponseId = new Map<string, string | null>(responses.map((r) => [r.id, resolveSurveyorId(r)]))
 
   // 1) Ligado directo.
-  const { data: linkedClips } = responseIds.length
-    ? await admin
-        .from("surveyor_recordings")
-        .select(CLIP_COLUMNS)
-        .in("response_id", responseIds)
-        .eq("scope", "shift")
-        .eq("upload_status", "uploaded")
-        .not("storage_path", "is", null)
-    : { data: [] as any[] }
+  const { data: linkedClips } = await selectInChunks(responseIds, (chunk) =>
+    admin
+      .from("surveyor_recordings")
+      .select(CLIP_COLUMNS)
+      .in("response_id", chunk)
+      .eq("scope", "shift")
+      .eq("upload_status", "uploaded")
+      .not("storage_path", "is", null)
+  )
   for (const clip of (linkedClips || []) as ShiftClip[]) {
     if (!clip.response_id) continue
     if (!preClipsByResponseId.has(clip.response_id)) preClipsByResponseId.set(clip.response_id, [])
@@ -106,11 +109,9 @@ export async function resolvePreSurveyClips(
   if (linkedShiftIds.length) {
     // Toda la línea de tiempo del turno (también los no subidos o ligados a
     // otra respuesta): el "anterior" se decide sobre la secuencia real.
-    const { data: timelineRows } = await admin
-      .from("surveyor_recordings")
-      .select(`${CLIP_COLUMNS}, upload_status`)
-      .in("shift_id", linkedShiftIds)
-      .eq("scope", "shift")
+    const { data: timelineRows } = await selectInChunks(linkedShiftIds, (chunk) =>
+      admin.from("surveyor_recordings").select(`${CLIP_COLUMNS}, upload_status`).in("shift_id", chunk).eq("scope", "shift")
+    )
     const timelineByShift = new Map<string, any[]>()
     for (const row of (timelineRows || []) as any[]) {
       if (!row.shift_id || !row.started_at) continue
@@ -141,9 +142,9 @@ export async function resolvePreSurveyClips(
   const involvedSurveyorIds = Array.from(
     new Set(Array.from(resolvedSurveyorIdByResponseId.values()).filter(Boolean) as string[])
   )
-  const { data: shifts } = involvedSurveyorIds.length
-    ? await admin.from("surveyor_shifts").select("id, surveyor_id, started_at, ended_at").in("surveyor_id", involvedSurveyorIds)
-    : { data: [] as any[] }
+  const { data: shifts } = await selectInChunks(involvedSurveyorIds, (chunk) =>
+    admin.from("surveyor_shifts").select("id, surveyor_id, started_at, ended_at").in("surveyor_id", chunk)
+  )
 
   const shiftIdByResponseId = new Map<string, string>()
   for (const r of responses) {
@@ -161,16 +162,16 @@ export async function resolvePreSurveyClips(
   }
 
   const involvedShiftIds = Array.from(new Set(Array.from(shiftIdByResponseId.values())))
-  const { data: shiftClips } = involvedShiftIds.length
-    ? await admin
-        .from("surveyor_recordings")
-        .select(CLIP_COLUMNS)
-        .in("shift_id", involvedShiftIds)
-        .eq("scope", "shift")
-        .eq("upload_status", "uploaded")
-        .not("storage_path", "is", null)
-        .is("response_id", null)
-    : { data: [] as any[] }
+  const { data: shiftClips } = await selectInChunks(involvedShiftIds, (chunk) =>
+    admin
+      .from("surveyor_recordings")
+      .select(CLIP_COLUMNS)
+      .in("shift_id", chunk)
+      .eq("scope", "shift")
+      .eq("upload_status", "uploaded")
+      .not("storage_path", "is", null)
+      .is("response_id", null)
+  )
 
   const responsesByShift = new Map<string, AttributableResponse[]>()
   for (const r of responses) {
