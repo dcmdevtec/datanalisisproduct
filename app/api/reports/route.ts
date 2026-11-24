@@ -3,6 +3,7 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
 import { bogotaDateParamToUTC } from "@/lib/bogota-time"
+import { selectInChunks, IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 
 // Colombia no observa horario de verano — offset fijo UTC-5 todo el año, pero
 // calculamos con Intl (zona real "America/Bogota") en vez de restar 5h a mano
@@ -391,48 +392,54 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Build responses query with filters ---
-    let responsesQuery = admin.from("responses").select(
-      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, response_mode, surveys(title)"
-    )
-    if (filteredSurveyIds !== null) {
-      responsesQuery = responsesQuery.in("survey_id", filteredSurveyIds)
-    }
     // surveyorFilter viene de un query param (no de una tabla de confianza)
     // y .or() toma un string de filtro crudo, no valores parametrizados
     // como .eq()/.in() — se valida que sea un UUID antes de interpolarlo
     // ahí, para no arriesgar que un valor con caracteres especiales
     // (comas, puntos) altere la lógica del filtro compuesto.
     const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
-    if (surveyorFilter !== "all" && isUuid(surveyorFilter)) {
-      // OR en vez de AND: una respuesta de este encuestador cuenta si su
-      // assignment_id resuelve a él (caso normal) O si no resuelve pero se
-      // identifica por el respaldo de arriba (caso reasignación).
-      const orParts: string[] = []
-      if (filteredAssignmentIds && filteredAssignmentIds.length > 0) {
-        orParts.push(`assignment_id.in.(${filteredAssignmentIds.join(",")})`)
+    // Arma la consulta de respuestas con todos los filtros; assignmentIds es
+    // la lista (o un lote de ella) para el filtro por asignación.
+    const buildResponsesQuery = (assignmentIds: string[] | null) => {
+      let q: any = admin.from("responses").select(
+        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, response_mode, surveys(title)"
+      )
+      if (filteredSurveyIds !== null) q = q.in("survey_id", filteredSurveyIds)
+      if (surveyorFilter !== "all" && isUuid(surveyorFilter)) {
+        // OR en vez de AND: una respuesta de este encuestador cuenta si su
+        // assignment_id resuelve a él (caso normal) O si no resuelve pero se
+        // identifica por el respaldo de arriba (caso reasignación).
+        const orParts: string[] = []
+        if (assignmentIds && assignmentIds.length > 0) orParts.push(`assignment_id.in.(${assignmentIds.join(",")})`)
+        if (surveyorFallbackUserId) orParts.push(`respondent_id.eq.${surveyorFallbackUserId}`)
+        orParts.push(`metadata->>surveyor_id.eq.${surveyorFilter}`)
+        q = q.or(orParts.join(","))
+      } else if (assignmentIds !== null) {
+        q = q.in("assignment_id", assignmentIds)
       }
-      if (surveyorFallbackUserId) {
-        orParts.push(`respondent_id.eq.${surveyorFallbackUserId}`)
-      }
-      orParts.push(`metadata->>surveyor_id.eq.${surveyorFilter}`)
-      responsesQuery = responsesQuery.or(orParts.join(","))
-    } else if (filteredAssignmentIds !== null) {
-      responsesQuery = responsesQuery.in("assignment_id", filteredAssignmentIds)
-    }
-    if (dateFrom) {
-      responsesQuery = responsesQuery.gte("created_at", dateFrom.toISOString())
-    }
-    if (dateTo) {
-      responsesQuery = responsesQuery.lte("created_at", dateTo.toISOString())
-    }
-    if (responseModeFilter !== "all") {
-      // cast a any: "response_mode" es una columna nueva (ver
-      // db/migrations/2026-10-08_add_response_mode_tracking.sql) que el tipo
-      // generado de Supabase todavía no conoce.
-      responsesQuery = (responsesQuery as any).eq("response_mode", responseModeFilter)
+      if (dateFrom) q = q.gte("created_at", dateFrom.toISOString())
+      if (dateTo) q = q.lte("created_at", dateTo.toISOString())
+      // "response_mode" es una columna nueva (ver
+      // db/migrations/2026-10-08_add_response_mode_tracking.sql).
+      if (responseModeFilter !== "all") q = q.eq("response_mode", responseModeFilter)
+      return q
     }
 
-    const { data: rawResponses } = await responsesQuery.order("created_at", { ascending: false })
+    // Ítem 24/11/2026: un supervisor/coordinador (o un filtro de equipo)
+    // puede tener cientos de asignaciones; en un solo .in() la URL superaba
+    // el límite del servidor (414) y Reportes quedaba vacío. Por encima de
+    // un lote se consulta por lotes y se une (sin repetidos: con el OR del
+    // respaldo, una misma respuesta puede venir en más de un lote).
+    let rawResponses: any[] | null
+    if (filteredAssignmentIds !== null && filteredAssignmentIds.length > IN_CHUNK_SIZE) {
+      const { data } = await selectInChunks(filteredAssignmentIds, (chunk) => buildResponsesQuery(chunk))
+      const byId = new Map<string, any>()
+      for (const r of data) byId.set(r.id, r)
+      rawResponses = [...byId.values()].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    } else {
+      const { data } = await buildResponsesQuery(filteredAssignmentIds).order("created_at", { ascending: false })
+      rawResponses = data
+    }
 
     // Aplica el filtro de tipo (efectiva/incidencia/abandonada) en memoria, porque
     // depende del fallback resolveOutcome() y no solo de la columna outcome.
@@ -500,10 +507,9 @@ export async function GET(request: NextRequest) {
     const zoneIdsEarly = [...new Set(assignments.map((a: any) => a.zone_id).filter(Boolean))]
     let zonePolygons: { id: string; name: string; geometry: any; zoneColor: string; responseCount: number; completedCount: number; completionRate: number }[] = []
     if (zoneIdsEarly.length > 0) {
-      const { data: zonesGeoEarly } = await admin
-        .from("zones")
-        .select("id, name, geometry, zone_color")
-        .in("id", zoneIdsEarly)
+      const { data: zonesGeoEarly } = await selectInChunks(zoneIdsEarly as string[], (chunk) =>
+        (admin as any).from("zones").select("id, name, geometry, zone_color").in("id", chunk)
+      )
       if (zonesGeoEarly) {
         zonePolygons = zonesGeoEarly
           .filter((z: any) => z.geometry)
@@ -536,12 +542,16 @@ export async function GET(request: NextRequest) {
     const respondentNameByResponseId: Record<string, string> = {}
     const respondentPhoneByResponseId: Record<string, string> = {}
     if (geoResponseIds.length > 0) {
-      const { data: contactAnswers } = await admin
-        .from("answers")
-        .select("response_id, value, questions!inner(type)")
-        .in("response_id", geoResponseIds)
-        .eq("questions.type", "contact_info")
-        .limit(2000)
+      // Por lotes: con todas las respuestas con GPS en un solo .in() la URL
+      // superaba el límite (414); y el .limit(2000) aplicaba sobre el total.
+      const { data: contactAnswers } = await selectInChunks(geoResponseIds, (chunk) =>
+        (admin as any)
+          .from("answers")
+          .select("response_id, value, questions!inner(type)")
+          .in("response_id", chunk)
+          .eq("questions.type", "contact_info")
+          .limit(2000)
+      )
       for (const a of (contactAnswers as any[]) || []) {
         const val = a.value
         if (!val || typeof val !== "object") continue
@@ -577,7 +587,7 @@ export async function GET(request: NextRequest) {
     ]
     const geoSurveyorNameByMetaId: Record<string, string | null> = {}
     if (geoMetaSurveyorIds.length > 0) {
-      const { data } = await admin.from("surveyors").select("id, name").in("id", geoMetaSurveyorIds)
+      const { data } = await selectInChunks(geoMetaSurveyorIds, (chunk) => (admin as any).from("surveyors").select("id, name").in("id", chunk))
       for (const s of (data as any[]) || []) geoSurveyorNameByMetaId[s.id] = s.name ?? null
     }
 
@@ -597,10 +607,9 @@ export async function GET(request: NextRequest) {
     // encuestador").
     const geoSurveyorByRespondentId: Record<string, { id: string; name: string | null }> = {}
     if (geoRespondentIdsNeedingSurveyor.length > 0) {
-      const { data: byUserId } = await admin
-        .from("surveyors")
-        .select("id, user_id, name")
-        .in("user_id", geoRespondentIdsNeedingSurveyor)
+      const { data: byUserId } = await selectInChunks(geoRespondentIdsNeedingSurveyor, (chunk) =>
+        (admin as any).from("surveyors").select("id, user_id, name").in("user_id", chunk)
+      )
       const resolvedIds = new Set<string>()
       for (const s of (byUserId as any[]) || []) {
         geoSurveyorByRespondentId[s.user_id] = { id: s.id, name: s.name ?? null }
@@ -608,7 +617,7 @@ export async function GET(request: NextRequest) {
       }
       const remaining = geoRespondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
       if (remaining.length > 0) {
-        const { data: byLegacyId } = await admin.from("surveyors").select("id, name").in("id", remaining)
+        const { data: byLegacyId } = await selectInChunks(remaining, (chunk) => (admin as any).from("surveyors").select("id, name").in("id", chunk))
         for (const s of (byLegacyId as any[]) || []) geoSurveyorByRespondentId[s.id] = { id: s.id, name: s.name ?? null }
       }
     }
@@ -752,7 +761,8 @@ export async function GET(request: NextRequest) {
 
     let answers: any[] = []
     if (responseIds.length > 0) {
-      const batchSize = 200
+      // 200 ids quedaban al borde del límite de URL del servidor (~8 KB).
+      const batchSize = IN_CHUNK_SIZE
       for (let i = 0; i < responseIds.length; i += batchSize) {
         const batch = responseIds.slice(i, i + batchSize)
         const { data: batchAnswers } = await admin
@@ -995,12 +1005,24 @@ export async function GET(request: NextRequest) {
       const periodMs = periodEnd.getTime() - dateFrom.getTime()
       const prevDateTo = new Date(dateFrom.getTime())
       const prevDateFrom = new Date(dateFrom.getTime() - periodMs)
-      let prevQuery = admin.from("responses").select("id", { count: "exact", head: true })
-      if (filteredSurveyIds !== null) prevQuery = prevQuery.in("survey_id", filteredSurveyIds)
-      if (filteredAssignmentIds !== null) prevQuery = prevQuery.in("assignment_id", filteredAssignmentIds)
-      prevQuery = prevQuery.gte("created_at", prevDateFrom.toISOString()).lt("created_at", prevDateTo.toISOString())
-      const { count } = await prevQuery
-      prevResponses = count ?? 0
+      const countPrev = async (assignmentIds: string[] | null) => {
+        let prevQuery: any = admin.from("responses").select("id", { count: "exact", head: true })
+        if (filteredSurveyIds !== null) prevQuery = prevQuery.in("survey_id", filteredSurveyIds)
+        if (assignmentIds !== null) prevQuery = prevQuery.in("assignment_id", assignmentIds)
+        prevQuery = prevQuery.gte("created_at", prevDateFrom.toISOString()).lt("created_at", prevDateTo.toISOString())
+        const { count } = await prevQuery
+        return count ?? 0
+      }
+      if (filteredAssignmentIds !== null && filteredAssignmentIds.length > IN_CHUNK_SIZE) {
+        // Por lotes (límite de URL); cada respuesta tiene un solo
+        // assignment_id, así que los conteos de los lotes no se solapan.
+        prevResponses = 0
+        for (let i = 0; i < filteredAssignmentIds.length; i += IN_CHUNK_SIZE) {
+          prevResponses += await countPrev(filteredAssignmentIds.slice(i, i + IN_CHUNK_SIZE))
+        }
+      } else {
+        prevResponses = await countPrev(filteredAssignmentIds)
+      }
     }
     const responseGrowth = prevResponses > 0
       ? Math.round(((totalResponses - prevResponses) / prevResponses) * 1000) / 10
@@ -1231,10 +1253,9 @@ export async function GET(request: NextRequest) {
     ]
     const surveyorByMetaId: Record<string, { name: string | null; supervisor_id: string | null }> = {}
     if (metaSurveyorIds.length > 0) {
-      const { data: surveyorRows } = await admin
-        .from("surveyors")
-        .select("id, name, supervisor_id")
-        .in("id", metaSurveyorIds)
+      const { data: surveyorRows } = await selectInChunks(metaSurveyorIds, (chunk) =>
+        (admin as any).from("surveyors").select("id, name, supervisor_id").in("id", chunk)
+      )
       for (const s of (surveyorRows as any[]) || []) {
         surveyorByMetaId[s.id] = { name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
       }
@@ -1263,10 +1284,9 @@ export async function GET(request: NextRequest) {
     // de rendimiento (bug detectado en reunión 2026-09-07, ítems #14/#28/#29).
     const surveyorByRespondentId: Record<string, { id: string; name: string | null; supervisor_id: string | null }> = {}
     if (respondentIdsNeedingSurveyor.length > 0) {
-      const { data: byUserId } = await admin
-        .from("surveyors")
-        .select("id, user_id, name, supervisor_id")
-        .in("user_id", respondentIdsNeedingSurveyor)
+      const { data: byUserId } = await selectInChunks(respondentIdsNeedingSurveyor, (chunk) =>
+        (admin as any).from("surveyors").select("id, user_id, name, supervisor_id").in("user_id", chunk)
+      )
       const resolvedIds = new Set<string>()
       for (const s of (byUserId as any[]) || []) {
         surveyorByRespondentId[s.user_id] = { id: s.id, name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
@@ -1274,10 +1294,9 @@ export async function GET(request: NextRequest) {
       }
       const remaining = respondentIdsNeedingSurveyor.filter((id) => !resolvedIds.has(id))
       if (remaining.length > 0) {
-        const { data: byLegacyId } = await admin
-          .from("surveyors")
-          .select("id, name, supervisor_id")
-          .in("id", remaining)
+        const { data: byLegacyId } = await selectInChunks(remaining, (chunk) =>
+          (admin as any).from("surveyors").select("id, name, supervisor_id").in("id", chunk)
+        )
         for (const s of (byLegacyId as any[]) || []) {
           surveyorByRespondentId[s.id] = { id: s.id, name: s.name ?? null, supervisor_id: s.supervisor_id ?? null }
         }

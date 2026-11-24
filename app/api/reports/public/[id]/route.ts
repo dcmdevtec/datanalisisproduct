@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { bogotaDayKey } from "@/lib/bogota-time"
+import { IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 
 // Endpoint PÚBLICO (sin auth) para la vista de resultados compartible de UNA
 // encuesta (pptx slide 21: "compartir un link para que la persona que lo tenga
@@ -86,7 +87,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let answers: any[] = []
     const responseIds = responseList.map((r) => r.id)
     if (responseIds.length > 0) {
-      const batchSize = 200
+      // 200 ids quedaban al borde del límite de URL del servidor (~8 KB).
+      const batchSize = IN_CHUNK_SIZE
       for (let i = 0; i < responseIds.length; i += batchSize) {
         const batch = responseIds.slice(i, i + batchSize)
         const { data: batchAnswers } = await admin

@@ -3,6 +3,7 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server
 import * as XLSX from "xlsx"
 import { requireRole } from "@/lib/api-auth"
 import { bogotaDayKey, bogotaDayIndex, bogotaDateTime } from "@/lib/bogota-time"
+import { IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 
 function extractValue(val: any): string {
   if (val === null || val === undefined) return ""
@@ -182,7 +183,8 @@ export async function GET(request: NextRequest) {
       const responseIds = (responses || []).map((r: any) => r.id)
       let answers: any[] = []
       if (responseIds.length > 0) {
-        const batchSize = 200
+        // 200 ids quedaban al borde del límite de URL del servidor (~8 KB).
+        const batchSize = IN_CHUNK_SIZE
         for (let i = 0; i < responseIds.length; i += batchSize) {
           const batch = responseIds.slice(i, i + batchSize)
           const { data: ba } = await admin

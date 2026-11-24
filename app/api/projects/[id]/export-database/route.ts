@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { selectInChunks, IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 
 // GET /api/projects/[id]/export-database — descarga en CSV TODAS las
 // respuestas de TODAS las encuestas de un proyecto, una fila por respuesta,
@@ -88,10 +89,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const assignmentIds = [...new Set(responseRows.map((r) => r.assignment_id).filter(Boolean))]
     const surveyorNameByAssignmentId: Record<string, string> = {}
     if (assignmentIds.length > 0) {
-      const { data: sszRows } = await admin
-        .from("survey_surveyor_zones")
-        .select("id, surveyors(id, name)")
-        .in("id", assignmentIds)
+      // Por lotes: un proyecto puede tener cientos de asignaciones y un solo
+      // .in() superaba el límite de URL del servidor (414).
+      const { data: sszRows } = await selectInChunks(assignmentIds as string[], (chunk) =>
+        (admin as any).from("survey_surveyor_zones").select("id, surveyors(id, name)").in("id", chunk)
+      )
       for (const a of (sszRows as any[]) || []) {
         if (a.surveyors?.name) surveyorNameByAssignmentId[a.id] = a.surveyors.name
       }
@@ -101,7 +103,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     )]
     const surveyorNameBySurveyorId: Record<string, string> = {}
     if (metaSurveyorIds.length > 0) {
-      const { data: surveyorRows } = await admin.from("surveyors").select("id, name").in("id", metaSurveyorIds)
+      const { data: surveyorRows } = await selectInChunks(metaSurveyorIds as string[], (chunk) =>
+        (admin as any).from("surveyors").select("id, name").in("id", chunk)
+      )
       for (const s of (surveyorRows as any[]) || []) surveyorNameBySurveyorId[s.id] = s.name
     }
 
@@ -110,11 +114,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // metadata.surveyor_id/respondent_id directo para las de la APK.
     let allowedAssignmentIds: Set<string> | null = null
     if (teamSurveyorIds !== null && assignmentIds.length > 0) {
-      const { data: sszTeam } = await admin
-        .from("survey_surveyor_zones")
-        .select("id, surveyor_id")
-        .in("id", assignmentIds)
-        .in("surveyor_id", teamSurveyorIds)
+      const { data: sszTeam } = await selectInChunks(assignmentIds as string[], (chunk) =>
+        (admin as any).from("survey_surveyor_zones").select("id, surveyor_id").in("id", chunk).in("surveyor_id", teamSurveyorIds!)
+      )
       allowedAssignmentIds = new Set(((sszTeam as any[]) || []).map((a) => a.id))
     }
     const finalResponses = teamSurveyorIds === null
@@ -134,7 +136,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const seenQuestionIds = new Set<string>()
 
     if (responseIds.length > 0) {
-      const CHUNK = 500
+      // Antes 500: con 500 ids la URL pasa del límite del servidor (~8 KB, 414).
+      const CHUNK = IN_CHUNK_SIZE
       for (let i = 0; i < responseIds.length; i += CHUNK) {
         const chunk = responseIds.slice(i, i + CHUNK)
         const { data: answers } = await admin

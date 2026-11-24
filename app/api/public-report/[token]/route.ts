@@ -3,6 +3,7 @@ import { createAdminSupabase } from "@/lib/supabase-server"
 import { createHash } from "crypto"
 import { resolveOutcome } from "@/lib/report-outcome"
 import { bogotaDayKey } from "@/lib/bogota-time"
+import { IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 
 function hashPassword(pw: string): string {
   return createHash("sha256").update(pw).digest("hex")
@@ -159,7 +160,8 @@ export async function GET(
   // 4. Fetch answers (for question breakdowns)
   let answers: any[] = []
   if (responseIds.length > 0 && (sections.analisis !== false)) {
-    const batchSize = 200
+    // 200 ids quedaban al borde del límite de URL del servidor (~8 KB).
+    const batchSize = IN_CHUNK_SIZE
     for (let i = 0; i < responseIds.length; i += batchSize) {
       const batch = responseIds.slice(i, i + batchSize)
       const { data: batchAnswers } = await admin

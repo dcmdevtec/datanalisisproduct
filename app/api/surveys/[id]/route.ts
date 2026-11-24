@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
 import { requireRole } from "@/lib/api-auth"
+import { selectInChunks, IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 
 // Cliente SSR de Supabase (sin helpers de nextjs)
 function getSupabaseClient() {
@@ -198,16 +199,18 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const responseIds = ((surveyResponses as any[]) || []).map((r) => r.id)
 
     if (responseIds.length > 0) {
-      const { data: surveyRecordings } = await (supabase as any)
-        .from("surveyor_recordings")
-        .select("id, storage_path")
-        .in("response_id", responseIds)
+      // Por lotes (ver lib/supabase-chunked.ts): con más de ~250 respuestas un
+      // solo .in() superaba el límite de URL (414) y los audios quedaban
+      // huérfanos en Storage.
+      const { data: recordingList } = await selectInChunks(responseIds, (chunk) =>
+        (supabase as any).from("surveyor_recordings").select("id, storage_path").in("response_id", chunk)
+      )
+      const storagePaths = recordingList.map((r: any) => r.storage_path).filter(Boolean)
 
-      const recordingList = (surveyRecordings as any[]) || []
-      const storagePaths = recordingList.map((r) => r.storage_path).filter(Boolean)
-
-      if (storagePaths.length > 0) {
-        const { error: storageDeleteError } = await supabase.storage.from("response-media").remove(storagePaths)
+      for (let i = 0; i < storagePaths.length; i += IN_CHUNK_SIZE) {
+        const { error: storageDeleteError } = await supabase.storage
+          .from("response-media")
+          .remove(storagePaths.slice(i, i + IN_CHUNK_SIZE))
         if (storageDeleteError) {
           console.error("Error eliminando audios de Storage al borrar la encuesta:", storageDeleteError.message)
           // No bloqueamos el borrado de la encuesta por esto — mejor una encuesta
@@ -215,11 +218,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         }
       }
 
-      if (recordingList.length > 0) {
+      const recordingIds = recordingList.map((r: any) => r.id)
+      for (let i = 0; i < recordingIds.length; i += IN_CHUNK_SIZE) {
         const { error: recordingsDeleteError } = await (supabase as any)
           .from("surveyor_recordings")
           .delete()
-          .in("response_id", responseIds)
+          .in("id", recordingIds.slice(i, i + IN_CHUNK_SIZE))
         if (recordingsDeleteError) {
           console.error("Error eliminando filas de surveyor_recordings al borrar la encuesta:", recordingsDeleteError.message)
         }

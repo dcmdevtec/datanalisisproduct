@@ -21,25 +21,18 @@ export async function GET(request: NextRequest) {
 
     const admin = createAdminSupabase() as any
 
-    // Trae todas las respuestas de esta pregunta
+    // Trae todas las respuestas de esta pregunta. Con filtro de encuesta se
+    // filtra por la tabla unida (responses!inner): antes se pasaban hasta
+    // 5000 ids de respuestas en un .in(), que superaba el límite de URL del
+    // servidor (414) con más de ~250, y si la encuesta no tenía respuestas
+    // no se aplicaba ningún filtro y salían archivos de TODAS las encuestas.
     let answersQuery = admin
       .from("answers")
-      .select("id, value, response_id, responses(survey_id)")
+      .select(surveyFilter !== "all" ? "id, value, response_id, responses!inner(survey_id)" : "id, value, response_id, responses(survey_id)")
       .eq("question_id", questionId)
       .limit(500)
-
-    // Si hay filtro de encuesta, filtra por survey_id a través de responses
     if (surveyFilter !== "all") {
-      // En Supabase no podemos filtrar por joined table fácilmente,
-      // así que buscamos primero los response_ids del survey
-      const { data: responseIds } = await admin
-        .from("responses")
-        .select("id")
-        .eq("survey_id", surveyFilter)
-        .limit(5000)
-      if (responseIds && responseIds.length > 0) {
-        answersQuery = answersQuery.in("response_id", responseIds.map((r: any) => r.id))
-      }
+      answersQuery = answersQuery.eq("responses.survey_id", surveyFilter)
     }
 
     const { data: answers } = await answersQuery

@@ -3,6 +3,7 @@ import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
 import { bogotaDateParamToUTC } from "@/lib/bogota-time"
+import { selectInChunks, IN_CHUNK_SIZE } from "@/lib/supabase-chunked"
 import { reverseGeocodeBatch } from "@/lib/geocode"
 
 // Lista paginada de respuestas individuales (pptx slide 22: "Respuestas Individuales").
@@ -155,37 +156,33 @@ export async function GET(request: NextRequest) {
     // nombres de encuestadores en un paso post-proceso para evitar ese problema.
     // metadata incluye surveyor_id (APK) y respondent_name (APK) — ambos
     // se usan en mapListItem cuando assignment_id es null (respuestas APK).
-    let query = admin
-      .from("responses")
-      .select(
-        "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, response_mode, surveys(title)",
-        { count: "exact" }
-      )
-    if (filteredSurveyIds !== null) query = query.in("survey_id", filteredSurveyIds)
-    if (surveyorFallbackAllowed) {
-      // OR en vez de AND: cuenta si assignment_id resuelve a este
-      // encuestador (caso normal) O si no resuelve pero se identifica por
-      // el respaldo (caso reasignación) — ver comentario largo arriba.
-      const orParts: string[] = []
-      if (filteredAssignmentIds && filteredAssignmentIds.length > 0) {
-        orParts.push(`assignment_id.in.(${filteredAssignmentIds.join(",")})`)
+    const LIST_COLUMNS =
+      "id, survey_id, assignment_id, created_at, completed_at, started_at, status, outcome, incidence_type, respondent_name, respondent_document_type, respondent_id, location, metadata, response_mode, surveys(title)"
+    // Arma la consulta con todos los filtros; assignmentIds es la lista (o
+    // un lote de ella) para el filtro por asignación.
+    const buildListQuery = (assignmentIds: string[] | null, withCount: boolean) => {
+      let q: any = admin.from("responses").select(LIST_COLUMNS, withCount ? { count: "exact" } : undefined)
+      if (filteredSurveyIds !== null) q = q.in("survey_id", filteredSurveyIds)
+      if (surveyorFallbackAllowed) {
+        // OR en vez de AND: cuenta si assignment_id resuelve a este
+        // encuestador (caso normal) O si no resuelve pero se identifica por
+        // el respaldo (caso reasignación) — ver comentario largo arriba.
+        const orParts: string[] = []
+        if (assignmentIds && assignmentIds.length > 0) orParts.push(`assignment_id.in.(${assignmentIds.join(",")})`)
+        if (surveyorFallbackUserId) orParts.push(`respondent_id.eq.${surveyorFallbackUserId}`)
+        orParts.push(`metadata->>surveyor_id.eq.${surveyorFilter}`)
+        q = q.or(orParts.join(","))
+      } else if (assignmentIds !== null) {
+        q = q.in("assignment_id", assignmentIds)
       }
-      if (surveyorFallbackUserId) {
-        orParts.push(`respondent_id.eq.${surveyorFallbackUserId}`)
-      }
-      orParts.push(`metadata->>surveyor_id.eq.${surveyorFilter}`)
-      query = query.or(orParts.join(","))
-    } else if (filteredAssignmentIds !== null) {
-      query = query.in("assignment_id", filteredAssignmentIds)
+      if (dateFrom) q = q.gte("created_at", dateFrom.toISOString())
+      if (dateTo) q = q.lte("created_at", dateTo.toISOString())
+      // "response_mode" es una columna nueva (ver
+      // db/migrations/2026-10-08_add_response_mode_tracking.sql).
+      if (responseModeFilter !== "all") q = q.eq("response_mode", responseModeFilter)
+      return q.order("created_at", { ascending: false })
     }
-    if (dateFrom) query = query.gte("created_at", dateFrom.toISOString())
-    if (dateTo) query = query.lte("created_at", dateTo.toISOString())
-    // cast a any: "response_mode" es una columna nueva (ver
-    // db/migrations/2026-10-08_add_response_mode_tracking.sql) que el tipo
-    // generado de Supabase todavía no conoce.
-    if (responseModeFilter !== "all") query = (query as any).eq("response_mode", responseModeFilter)
-
-    query = query.order("created_at", { ascending: false })
+    const query = buildListQuery(filteredAssignmentIds, true)
 
     // Cuando hay filtro de tipo, no podemos paginar en SQL puro porque el outcome
     // puede depender del fallback (status). Traemos una ventana generosa, filtramos
@@ -193,7 +190,27 @@ export async function GET(request: NextRequest) {
     let rawData: any[]
     let totalCount: number
 
-    if (tipoFilter !== "all") {
+    if (filteredAssignmentIds !== null && filteredAssignmentIds.length > IN_CHUNK_SIZE) {
+      // Ítem 24/11/2026: el equipo de un supervisor/coordinador puede tener
+      // cientos de asignaciones; en un solo .in() la URL superaba el límite
+      // del servidor (414) y la lista salía vacía. Se consulta por lotes, se
+      // une sin repetidos (con el OR del respaldo una respuesta puede venir
+      // en más de un lote), se ordena y se pagina en memoria — igual que ya
+      // se hacía con el filtro de tipo.
+      const { data: chunked, error: listErr } = await selectInChunks(filteredAssignmentIds, (chunk) => buildListQuery(chunk, false))
+      if (listErr) {
+        console.error("Error en reports/individual list (por lotes):", listErr)
+        return NextResponse.json({ items: [], total: 0, page, pageSize })
+      }
+      const byId = new Map<string, any>()
+      for (const r of chunked) byId.set(r.id, r)
+      const all = [...byId.values()]
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .filter((r: any) => tipoFilter === "all" || resolveOutcome(r) === tipoFilter)
+      totalCount = all.length
+      const start = (page - 1) * pageSize
+      rawData = all.slice(start, start + pageSize)
+    } else if (tipoFilter !== "all") {
       const { data: allMatching, error: listErr } = await (query as any).limit(5000)
       if (listErr) {
         console.error("Error en reports/individual list (tipo filter):", listErr)
