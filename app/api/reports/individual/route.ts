@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { bogotaDateParamToUTC } from "@/lib/bogota-time"
 import { reverseGeocodeBatch } from "@/lib/geocode"
 
 // Lista paginada de respuestas individuales (pptx slide 22: "Respuestas Individuales").
@@ -37,16 +38,9 @@ export async function GET(request: NextRequest) {
 
     const admin = createAdminSupabase()
 
-    let dateFrom: Date | null = null
-    let dateTo: Date | null = null
-    if (dateFromParam) {
-      const d = new Date(dateFromParam)
-      if (!isNaN(d.getTime())) dateFrom = d
-    }
-    if (dateToParam) {
-      const d = new Date(dateToParam)
-      if (!isNaN(d.getTime())) { d.setHours(23, 59, 59, 999); dateTo = d }
-    }
+    // Día de Bogotá, no de UTC — ver bogotaDateParamToUTC.
+    const dateFrom: Date | null = bogotaDateParamToUTC(dateFromParam, "start")
+    const dateTo: Date | null = bogotaDateParamToUTC(dateToParam, "end")
 
     const { data: allProjects } = await admin.from("projects").select("id, company_id")
     const { data: allSurveys } = await admin.from("surveys").select("id, project_id")

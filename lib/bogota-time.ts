@@ -66,3 +66,27 @@ export function bogotaDateTime(dateStr: string): { date: string; time: string } 
 export function bogotaStartOfDayUTC(): Date {
   return new Date(`${bogotaDayKey(new Date().toISOString())}T00:00:00-05:00`)
 }
+
+/**
+ * Límite de un filtro de fecha "YYYY-MM-DD" (input type="date" de Desde/
+ * Hasta) como instante UTC, tomando ese día en hora de Bogotá: "start" =
+ * 00:00:00.000, "end" = 23:59:59.999. Ítem 24/11/2026 ("no está
+ * registrando las encuestas, ni incidencias ni efectivas" — pruebas de
+ * noche): `new Date("2026-11-23")` es la medianoche UTC, y
+ * `setHours(23,59,59,999)` corre en la zona del SERVIDOR (UTC) — el "día"
+ * filtrado iba de 7pm del día anterior a 6:59pm en Bogotá, así que todo lo
+ * registrado después de las 7pm desaparecía de los indicadores y reportes
+ * de "hoy". Si el valor no es "YYYY-MM-DD" se interpreta como antes, para
+ * no romper a quien mande un timestamp completo. null si no es una fecha.
+ */
+export function bogotaDateParamToUTC(param: string | null | undefined, edge: "start" | "end"): Date | null {
+  if (!param) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(param)) {
+    const d = new Date(`${param}T${edge === "start" ? "00:00:00.000" : "23:59:59.999"}-05:00`)
+    return isNaN(d.getTime()) ? null : d
+  }
+  const d = new Date(param)
+  if (isNaN(d.getTime())) return null
+  if (edge === "end") d.setHours(23, 59, 59, 999)
+  return d
+}

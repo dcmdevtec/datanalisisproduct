@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminSupabase } from "@/lib/supabase-server"
 import { resolveCurrentSurveyor } from "@/lib/portal-encuestador/auth"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { bogotaDateParamToUTC } from "@/lib/bogota-time"
 
 // Indicadores de la pantalla principal del portal (pptx slide 2):
 // Total Registros, Encuestas Efectivas, Incidencias, Encuestas Abandonadas,
@@ -48,14 +49,11 @@ export async function GET(request: NextRequest) {
       .select("id, status, outcome, created_at, completed_at, updated_at")
       .in("assignment_id", assignmentIds)
 
-    if (dateFromParam) {
-      const d = new Date(dateFromParam)
-      if (!isNaN(d.getTime())) query = query.gte("created_at", d.toISOString())
-    }
-    if (dateToParam) {
-      const d = new Date(dateToParam)
-      if (!isNaN(d.getTime())) { d.setHours(23, 59, 59, 999); query = query.lte("created_at", d.toISOString()) }
-    }
+    // Día de Bogotá, no de UTC — ver bogotaDateParamToUTC.
+    const from = bogotaDateParamToUTC(dateFromParam, "start")
+    const to = bogotaDateParamToUTC(dateToParam, "end")
+    if (from) query = query.gte("created_at", from.toISOString())
+    if (to) query = query.lte("created_at", to.toISOString())
 
     const { data: responses } = await query
     const list = (responses as any[]) || []

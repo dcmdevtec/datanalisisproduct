@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabase, createAdminSupabase } from "@/lib/supabase-server"
 import { requireRole } from "@/lib/api-auth"
 import { resolveOutcome } from "@/lib/report-outcome"
+import { bogotaDateParamToUTC } from "@/lib/bogota-time"
 
 // Colombia no observa horario de verano — offset fijo UTC-5 todo el año, pero
 // calculamos con Intl (zona real "America/Bogota") en vez de restar 5h a mano
@@ -130,20 +131,10 @@ export async function GET(request: NextRequest) {
     // Calculate date range: prioriza dateFrom/dateTo explícitos; si no vienen,
     // cae al período heredado; si tampoco hay período, no filtra por fecha.
     const now = new Date()
-    let dateFrom: Date | null = null
-    let dateTo: Date | null = null
-    if (dateFromParam) {
-      const d = new Date(dateFromParam)
-      if (!isNaN(d.getTime())) dateFrom = d
-    }
-    if (dateToParam) {
-      const d = new Date(dateToParam)
-      if (!isNaN(d.getTime())) {
-        // Incluye todo el día seleccionado como "hasta"
-        d.setHours(23, 59, 59, 999)
-        dateTo = d
-      }
-    }
+    // Día de Bogotá, no de UTC — ver bogotaDateParamToUTC (incluye todo el
+    // día seleccionado como "hasta").
+    let dateFrom: Date | null = bogotaDateParamToUTC(dateFromParam, "start")
+    let dateTo: Date | null = bogotaDateParamToUTC(dateToParam, "end")
     if (!dateFrom && !dateTo && legacyPeriod) {
       switch (legacyPeriod) {
         case "week": dateFrom = new Date(now.getTime() - 7 * 86400000); break

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
 import { createAdminSupabase } from "@/lib/supabase-server"
+import { bogotaDateParamToUTC, bogotaStartOfDayUTC } from "@/lib/bogota-time"
 
 // GET /api/tracking/history?surveyor_id=<uuid>&date=YYYY-MM-DD
 //
@@ -43,10 +44,10 @@ export async function GET(request: Request) {
   }
 
   const dateParam = searchParams.get("date")
-  const dayStart = dateParam ? new Date(`${dateParam}T00:00:00`) : new Date()
-  if (!dateParam) dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
+  // Día de Bogotá, no de la zona del servidor (UTC) — si no, el recorrido
+  // de "hoy" iba de 7pm de ayer a 7pm de hoy (ver bogotaDateParamToUTC).
+  const dayStart = bogotaDateParamToUTC(dateParam, "start") ?? bogotaStartOfDayUTC()
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
 
   try {
     const { data, error } = await supabase
