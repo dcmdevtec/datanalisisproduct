@@ -10,7 +10,7 @@ import { selectInChunks } from "@/lib/supabase-chunked"
 
 // GET /api/surveys/[id]/audios/zip?date=YYYY-MM-DD&surveyorId=<uuid> —
 // descarga las grabaciones de audio de una encuesta en un único ZIP,
-// organizadas en carpetas Proyecto/Encuesta/Fecha/Encuestador/archivo
+// organizadas en carpetas ID-de-la-encuesta/Fecha/Encuestador/archivo
 // (reunión 2026-08-27, módulo "Audios"). `date`/`surveyorId` son opcionales
 // (acta 07/09/2026, ítem #34: "solo tengo la opción de descargar todos los
 // audios... con más de mil audios, ¿cuánto demorará?") — permiten pedir un
@@ -213,10 +213,14 @@ async function buildZip({ params }: RouteContext, { dateFilter, surveyorIdFilter
     )
     const surveyorNameById = new Map<string, string>((surveyors || []).map((s: any) => [s.id, s.name || "Sin nombre"]))
 
-    const projectName = (survey.projects as any)?.name || "Sin proyecto"
     const surveyName = survey.title || "Sin título"
     const surveyCode: string | null = (survey as any).code ?? null
     const sanitize = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 80) || "Sin nombre"
+    // Ítem 26/11/2026: la carpeta principal del ZIP lleva el ID de la
+    // encuesta (el código de su configuración, ej. GT-ALC-CALI-0926) en vez
+    // de Proyecto/Título — el ID ya identifica la encuesta. Si una encuesta
+    // vieja no tiene código, se usa el título.
+    const rootFolder = sanitize(surveyCode || surveyName)
     // Ítem "Nombre de los audios" (acta 05/10/2026): mismo formato que ya
     // usa /api/surveys/[id]/recordings — ver comentario ahí.
     const OUTCOME_LABEL: Record<string, string> = {
@@ -288,7 +292,7 @@ async function buildZip({ params }: RouteContext, { dateFilter, surveyorIdFilter
           const surveyorName = sanitize(surveyorNameById.get(rec.surveyor_id) || "Sin asignar")
           const response = responseById.get(rec.response_id)
           const dateStr = bogotaDayKey(rec.started_at || response?.created_at || new Date().toISOString())
-          const folderBase = `${sanitize(projectName)}/${sanitize(surveyName)}/${dateStr}/${surveyorName}`
+          const folderBase = `${rootFolder}/${dateStr}/${surveyorName}`
 
           const { data: fileBlob, error: downloadError } = await admin.storage
             .from("response-media")
@@ -322,7 +326,7 @@ async function buildZip({ params }: RouteContext, { dateFilter, surveyorIdFilter
           const response = responseId ? responseById.get(responseId) : null
           const surveyorName = sanitize(surveyorNameById.get(rec.surveyor_id) || "Sin asignar")
           const dateStr = bogotaDayKey(rec.started_at || response?.created_at || new Date().toISOString())
-          const folderBase = `${sanitize(projectName)}/${sanitize(surveyName)}/${dateStr}/${surveyorName}`
+          const folderBase = `${rootFolder}/${dateStr}/${surveyorName}`
 
           const { data: fileBlob, error: downloadError } = await admin.storage
             .from("response-media")
@@ -359,7 +363,7 @@ async function buildZip({ params }: RouteContext, { dateFilter, surveyorIdFilter
           .filter(Boolean)
           .map((s) => sanitize(String(s)))
           .join("_")
-    const zipFilename = `audios_${sanitize(surveyName)}${filterSuffix ? `_${filterSuffix}` : ""}.zip`
+    const zipFilename = `audios_${rootFolder}${filterSuffix ? `_${filterSuffix}` : ""}.zip`
     return new NextResponse(webStream, {
       headers: {
         "Content-Type": "application/zip",

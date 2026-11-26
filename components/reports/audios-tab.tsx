@@ -11,7 +11,7 @@ import { bogotaDayKey, bogotaDateTime } from "@/lib/bogota-time"
 
 // Pestaña "Audios" (reunión 2026-08-27): descarga en un solo ZIP todas las
 // grabaciones de la encuesta, organizadas en carpetas
-// Proyecto/Encuesta/Fecha/Encuestador/archivo — ver
+// ID-de-la-encuesta/Fecha/Encuestador/archivo — ver
 // app/api/surveys/[id]/audios/zip/route.ts.
 //
 // Ítem #34 (acta 07/09/2026): "solo tengo la opción de descargar todos los
@@ -353,7 +353,7 @@ export function AudiosTab({ surveyId, dateFrom, dateTo, tipo, initialSurveyorId,
         </CardTitle>
         <CardDescription>
           Reproduce grabaciones puntuales, o marca casillas por fecha, encuestador o audio individual y descarga
-          exactamente esa selección en un ZIP organizado por Proyecto / Encuesta / Fecha / Encuestador.
+          exactamente esa selección en un ZIP organizado por ID de la encuesta / Fecha / Encuestador.
         </CardDescription>
       </CardHeader>
       <CardContent>
